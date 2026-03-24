@@ -63,9 +63,49 @@ your-project/agents-lab/
 
 ## Requirements
 
-- Python 3.12+
-- Git
-- A Claude API key (set `ANTHROPIC_API_KEY` environment variable)
+- **Python 3.12+** (tested on macOS, Linux, and Windows with WSL)
+- **Git** (any modern version)
+- **Claude API key** - set the `ANTHROPIC_API_KEY` environment variable
+- **Internet connection** - for Claude API calls
+
+## Example use cases
+
+- **Bug fixes**: Create a "Fix login error" item, let an agent analyze logs and implement a solution
+- **Feature development**: "Add dark mode toggle" → agent updates CSS, templates, and JavaScript
+- **Code refactoring**: "Extract payment logic to service" → agent reorganizes code while preserving functionality
+- **Documentation**: "Update API docs" → agent reviews code and updates documentation files
+- **Testing**: "Add unit tests for user service" → agent analyzes code and writes comprehensive tests
+
+## Troubleshooting
+
+### Common issues
+
+**Port already in use**: The server auto-increments ports (8000 → 8001 → 8002...), but if all ports in range are busy, restart the conflicting services or wait a moment.
+
+**API key not found**: Ensure `ANTHROPIC_API_KEY` is set in your shell environment:
+```bash
+export ANTHROPIC_API_KEY=your_api_key_here
+echo $ANTHROPIC_API_KEY  # Should print your key
+```
+
+**Git worktree errors**: If you see git worktree issues, check that your project has at least one commit on the main/master branch:
+```bash
+git log --oneline -1  # Should show at least one commit
+```
+
+**Permission denied**: On some systems, you may need to make `run.sh` executable:
+```bash
+chmod +x /path/to/claude-agents-dashboard/run.sh
+```
+
+**Python version**: Verify you have Python 3.12+:
+```bash
+python3 --version  # Should show 3.12.0 or higher
+```
+
+### Getting help
+
+If agents seem stuck or unresponsive, check the work log in the UI for error messages. You can always stop a running agent and restart it, or move items back to "Todo" to try a different approach.
 
 ## Multiple projects
 

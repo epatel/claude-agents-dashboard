@@ -71,3 +71,49 @@ SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + gi
 - Attachments are stored as PNG files in `agents-lab/assets/` and referenced in the `attachments` table. Cleaned up on item delete.
 - The annotation canvas (`annotate.js`) is a self-contained component: `Annotate.init(canvasEl)` to start, `Annotate.toDataURL()` to export. Supports image drop, scale (wheel + corner handles), and annotation tools.
 - Card action buttons use `event.stopPropagation()` on individual buttons, not on the wrapper div, to avoid click blind spots.
+
+## Development workflows
+
+### Adding new features
+
+1. **Backend changes**: Update models in `models.py`, add database columns in `Database.initialize()`, implement business logic in `orchestrator.py`, add HTTP endpoints in `routes.py`.
+
+2. **Frontend changes**: Add HTML in templates (`web/static/`), update JavaScript modules, handle WebSocket events in `app.js`, broadcast state changes from backend.
+
+3. **Agent capabilities**: Extend the system prompt in `AgentOrchestrator.create_agent()`, add MCP tools via the agent config UI, or modify `ask_user` clarification flows.
+
+### Testing changes
+
+Since no automated test suite exists, manually verify changes by:
+- Starting the server against a test git repository
+- Creating board items and testing the full agent workflow
+- Testing edge cases: git conflicts, agent failures, clarification flows
+- Checking WebSocket updates in browser dev tools
+- Verifying git worktree cleanup after item completion
+
+### Debugging
+
+**Agent issues**: Check the work log for detailed agent output. Enable more verbose logging by setting `thinking={"type": "enabled", "budget_tokens": 20000}` in agent options.
+
+**WebSocket problems**: Open browser dev tools → Network tab → WS → check for connection errors. The server logs WebSocket events to console.
+
+**Git worktree issues**: Check `agents-lab/worktrees/` for orphaned directories. Clean up manually if needed:
+```bash
+git worktree list
+git worktree remove agents-lab/worktrees/agent-XXXXX
+```
+
+**Database problems**: The SQLite file is at `agents-lab/dashboard.db`. Use `sqlite3` CLI or DB Browser to inspect:
+```bash
+sqlite3 agents-lab/dashboard.db ".schema"
+sqlite3 agents-lab/dashboard.db "SELECT * FROM items;"
+```
+
+**Performance**: The app is designed for localhost use. For large repositories, git operations may be slow. Consider shallow clones for worktrees if needed.
+
+### Adding new MCP tools
+
+1. Create the tool server following MCP spec
+2. Update agent config via the UI to include your MCP server
+3. Test via the agent clarification flow or direct tool use
+4. Document new tools in the agent system prompt if they require specific usage patterns
