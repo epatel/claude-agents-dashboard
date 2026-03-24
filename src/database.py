@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS agent_config (
     tools           TEXT,
     model           TEXT DEFAULT 'claude-sonnet-4-20250514',
     project_context TEXT,
+    mcp_servers     TEXT DEFAULT '[]',
+    mcp_enabled     INTEGER DEFAULT 0,
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
@@ -72,6 +74,18 @@ class Database:
     async def initialize(self):
         async with self.connect() as db:
             await db.executescript(SCHEMA)
+
+            # Add MCP columns if they don't exist (migration for existing databases)
+            try:
+                await db.execute("ALTER TABLE agent_config ADD COLUMN mcp_servers TEXT DEFAULT '[]'")
+            except:
+                pass  # Column already exists
+
+            try:
+                await db.execute("ALTER TABLE agent_config ADD COLUMN mcp_enabled INTEGER DEFAULT 0")
+            except:
+                pass  # Column already exists
+
             # Ensure default agent config row exists
             await db.execute(
                 "INSERT OR IGNORE INTO agent_config (id) VALUES (1)"

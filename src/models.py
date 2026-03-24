@@ -78,3 +78,5 @@ class AgentConfig(BaseModel):
     tools: Optional[str] = "[]"
     model: str = "claude-sonnet-4-20250514"
     project_context: Optional[str] = ""
+    mcp_servers: Optional[str] = "[]"
+    mcp_enabled: bool = False

@@ -420,6 +420,8 @@ const Dialogs = {
             document.getElementById('config-model').value = config.model || 'claude-sonnet-4-20250514';
             document.getElementById('config-system-prompt').value = config.system_prompt || '';
             document.getElementById('config-project-context').value = config.project_context || '';
+            document.getElementById('config-mcp-enabled').checked = config.mcp_enabled || false;
+            document.getElementById('config-mcp-servers').value = config.mcp_servers || '[]';
             this.open('config-dialog');
         } catch (err) {
             console.error('Failed to load config:', err);
@@ -432,6 +434,8 @@ const Dialogs = {
             model: document.getElementById('config-model').value,
             system_prompt: document.getElementById('config-system-prompt').value,
             project_context: document.getElementById('config-project-context').value,
+            mcp_enabled: document.getElementById('config-mcp-enabled').checked,
+            mcp_servers: document.getElementById('config-mcp-servers').value,
         };
         try {
             await Api.request('PUT', '/api/config', config);

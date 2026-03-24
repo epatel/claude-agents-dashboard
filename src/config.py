@@ -32,4 +32,6 @@ DEFAULT_AGENT_CONFIG = {
     "tools": [],
     "model": "claude-sonnet-4-20250514",
     "project_context": "",
+    "mcp_servers": [],
+    "mcp_enabled": False,
 }
