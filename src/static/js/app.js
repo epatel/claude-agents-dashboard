@@ -75,7 +75,9 @@ const App = {
             tipEl.style.left = left + 'px';
         }, true);
         document.addEventListener('mouseleave', (e) => {
-            if (e.target.closest('.tooltip') && tipEl) {
+            // Ensure we have an Element (not a text node or other node type)
+            const target = e.target.nodeType === Node.ELEMENT_NODE ? e.target : e.target.parentElement;
+            if (target && target.closest('.tooltip') && tipEl) {
                 tipEl.remove();
                 tipEl = null;
             }
