@@ -56,7 +56,7 @@ Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card render
 
 ### Database
 
-SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + git metadata), `work_log` (agent activity stream), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings).
+SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + git metadata), `work_log` (agent activity stream), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config). New columns are added via migration in `Database.initialize()` for existing databases.
 
 ## Important patterns
 
@@ -66,7 +66,7 @@ SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + gi
 - Agent's `cwd` is set to the worktree path, and the system prompt explicitly tells the agent its working directory. `add_dirs` is also set to allow file operations there.
 - Extended thinking is enabled (`thinking={"type": "enabled", "budget_tokens": 10000}`) for richer agent reasoning.
 - Never use browser `confirm()` or `prompt()` in dialogs — they block and conflict with `<dialog>` modals. Use `Dialogs.confirm()` which returns a Promise.
-- Tooltips use JS positioning (`position: fixed`, appended to `document.body`) to escape dialog `overflow: hidden`.
+- Tooltips use JS positioning (`position: fixed`, appended to the nearest open `<dialog>` or `document.body`) so they appear above modal dialogs. Use `data-tip` for plain text, `data-tip-html` for rich formatted tooltips.
 - Avoid duplicate `from pathlib import Path` inside functions — it's imported at file top and local imports cause `UnboundLocalError`.
 - Attachments are stored as PNG files in `agents-lab/assets/` and referenced in the `attachments` table. Cleaned up on item delete.
 - The annotation canvas (`annotate.js`) is a self-contained component: `Annotate.init(canvasEl)` to start, `Annotate.toDataURL()` to export. Supports image drop, scale (wheel + corner handles), and annotation tools.

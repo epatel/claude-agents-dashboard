@@ -50,7 +50,8 @@ your-project/agents-lab/
 - **Session persistence** — request changes resumes the agent's conversation with full context
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
-- **Agent config** — set system prompt, model, and project context with tooltips
+- **Agent config** — set system prompt, model, project context, and MCP servers
+- **MCP support** — connect external tools and data sources via Model Context Protocol
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture
