@@ -158,7 +158,7 @@ const Board = {
     },
 
     async deleteItem(itemId) {
-        if (!confirm('Delete this item?')) return;
+        if (!await Dialogs.confirm('Delete this item?')) return;
         try {
             await Api.deleteItem(itemId);
         } catch (err) {

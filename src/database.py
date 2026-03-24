@@ -46,6 +46,14 @@ CREATE TABLE IF NOT EXISTS clarifications (
     answered_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS attachments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id     TEXT NOT NULL REFERENCES items(id),
+    filename    TEXT NOT NULL,
+    asset_path  TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS agent_config (
     id              INTEGER PRIMARY KEY CHECK (id = 1),
     system_prompt   TEXT,

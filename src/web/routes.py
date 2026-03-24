@@ -1,5 +1,9 @@
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+import base64
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
 from ..config import COLUMNS
@@ -108,6 +112,14 @@ async def delete_item(request: Request, item_id: str):
         if item:
             item = dict(item)
 
+        # Delete attachment files
+        cursor2 = await conn.execute("SELECT asset_path FROM attachments WHERE item_id = ?", (item_id,))
+        for row in await cursor2.fetchall():
+            p = Path(row[0])
+            if p.exists():
+                p.unlink()
+
+        await conn.execute("DELETE FROM attachments WHERE item_id = ?", (item_id,))
         await conn.execute("DELETE FROM work_log WHERE item_id = ?", (item_id,))
         await conn.execute("DELETE FROM review_comments WHERE item_id = ?", (item_id,))
         await conn.execute("DELETE FROM clarifications WHERE item_id = ?", (item_id,))
@@ -122,7 +134,6 @@ async def delete_item(request: Request, item_id: str):
 
     # Clean up worktree and branch
     if item and item.get("worktree_path") and item.get("branch_name"):
-        from pathlib import Path
         from ..git.worktree import cleanup_worktree
         try:
             await cleanup_worktree(
@@ -206,7 +217,6 @@ async def get_item_diff(request: Request, item_id: str):
         return {"diff": "", "files": []}
 
     repo = request.app.state.target_project
-    from pathlib import Path
     wt = Path(item["worktree_path"]) if item.get("worktree_path") else None
     diff = await get_diff(repo, item["branch_name"], worktree_path=wt)
     files = await get_changed_files(repo, item["branch_name"], worktree_path=wt)
@@ -281,6 +291,85 @@ async def update_config(request: Request, body: AgentConfig):
         await conn.commit()
         cursor = await conn.execute("SELECT * FROM agent_config WHERE id = 1")
         return dict(await cursor.fetchone())
+
+
+# --- Attachments ---
+
+@router.get("/api/items/{item_id}/attachments")
+async def list_attachments(request: Request, item_id: str):
+    db = request.app.state.db
+    async with db.connect() as conn:
+        cursor = await conn.execute(
+            "SELECT * FROM attachments WHERE item_id = ? ORDER BY created_at",
+            (item_id,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+class UploadAnnotation(BaseModel):
+    item_id: str
+    filename: str
+    data: str  # base64 PNG data URL
+
+
+@router.post("/api/items/{item_id}/attachments")
+async def upload_attachment(request: Request, item_id: str, body: UploadAnnotation):
+    """Upload an annotated image (base64 PNG)."""
+    db = request.app.state.db
+    assets_dir = request.app.state.data_dir / "assets"
+    assets_dir.mkdir(exist_ok=True)
+
+    # Decode base64 data URL
+    data = body.data
+    if data.startswith("data:"):
+        data = data.split(",", 1)[1]
+    img_bytes = base64.b64decode(data)
+
+    # Save to assets
+    asset_filename = f"{uuid.uuid4().hex[:12]}_{body.filename}"
+    asset_path = assets_dir / asset_filename
+    asset_path.write_bytes(img_bytes)
+
+    # Store in DB
+    async with db.connect() as conn:
+        await conn.execute(
+            "INSERT INTO attachments (item_id, filename, asset_path) VALUES (?, ?, ?)",
+            (item_id, body.filename, str(asset_path)),
+        )
+        await conn.commit()
+        cursor = await conn.execute(
+            "SELECT * FROM attachments WHERE item_id = ? ORDER BY id DESC LIMIT 1",
+            (item_id,),
+        )
+        attachment = dict(await cursor.fetchone())
+
+    return attachment
+
+
+@router.get("/api/assets/{filename}")
+async def serve_asset(request: Request, filename: str):
+    assets_dir = request.app.state.data_dir / "assets"
+    file_path = assets_dir / filename
+    if not file_path.exists() or not file_path.is_relative_to(assets_dir):
+        return {"error": "not found"}
+    return FileResponse(file_path)
+
+
+@router.delete("/api/attachments/{attachment_id}")
+async def delete_attachment(request: Request, attachment_id: int):
+    db = request.app.state.db
+    async with db.connect() as conn:
+        cursor = await conn.execute("SELECT * FROM attachments WHERE id = ?", (attachment_id,))
+        row = await cursor.fetchone()
+        if row:
+            # Delete file
+            asset_path = Path(dict(row)["asset_path"])
+            if asset_path.exists():
+                asset_path.unlink()
+            await conn.execute("DELETE FROM attachments WHERE id = ?", (attachment_id,))
+            await conn.commit()
+    return {"ok": True}
 
 
 # --- WebSocket ---

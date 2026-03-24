@@ -36,6 +36,35 @@ const App = {
             }
         });
 
+        // Tooltips — position with JS to escape overflow containers
+        let tipEl = null;
+        document.addEventListener('mouseenter', (e) => {
+            const t = e.target.closest('.tooltip');
+            if (!t) return;
+            const text = t.getAttribute('data-tip');
+            if (!text) return;
+            tipEl = document.createElement('div');
+            tipEl.className = 'tooltip-popup';
+            tipEl.textContent = text;
+            document.body.appendChild(tipEl);
+            const rect = t.getBoundingClientRect();
+            const tipRect = tipEl.getBoundingClientRect();
+            let top = rect.top - tipRect.height - 8;
+            let left = rect.left + rect.width / 2 - tipRect.width / 2;
+            // Keep on screen
+            if (top < 4) top = rect.bottom + 8;
+            if (left < 4) left = 4;
+            if (left + tipRect.width > window.innerWidth - 4) left = window.innerWidth - tipRect.width - 4;
+            tipEl.style.top = top + 'px';
+            tipEl.style.left = left + 'px';
+        }, true);
+        document.addEventListener('mouseleave', (e) => {
+            if (e.target.closest('.tooltip') && tipEl) {
+                tipEl.remove();
+                tipEl = null;
+            }
+        }, true);
+
         // Collapse archive column by default
         const archiveCol = document.querySelector('.column[data-column="archive"]');
         if (archiveCol) {

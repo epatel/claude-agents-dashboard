@@ -9,11 +9,40 @@ const Dialogs = {
         if (dialog && dialog.open) dialog.close();
     },
 
+    // --- Custom confirm dialog ---
+
+    confirm(message, title = 'Confirm', okLabel = 'Delete') {
+        return new Promise((resolve) => {
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-message').textContent = message;
+            const okBtn = document.getElementById('confirm-ok-btn');
+            okBtn.textContent = okLabel;
+            okBtn.className = okLabel === 'Delete' ? 'btn btn-danger' : 'btn btn-primary';
+            const cancelBtn = document.getElementById('confirm-cancel-btn');
+
+            const cleanup = (result) => {
+                okBtn.onclick = null;
+                cancelBtn.onclick = null;
+                this.close('confirm-dialog');
+                resolve(result);
+            };
+
+            okBtn.onclick = () => cleanup(true);
+            cancelBtn.onclick = () => cleanup(false);
+            this.open('confirm-dialog');
+        });
+    },
+
+    // Pending attachments for new items (before they have an ID)
+    _pendingAttachments: [],
+
     openNewItem() {
         document.getElementById('item-dialog-title').textContent = 'New Item';
         document.getElementById('item-form-id').value = '';
         document.getElementById('item-form-title').value = '';
         document.getElementById('item-form-desc').value = '';
+        this._pendingAttachments = [];
+        this._renderFormAttachments();
         this.open('item-dialog');
         document.getElementById('item-form-title').focus();
     },
@@ -23,8 +52,61 @@ const Dialogs = {
         document.getElementById('item-form-id').value = item.id;
         document.getElementById('item-form-title').value = item.title;
         document.getElementById('item-form-desc').value = item.description;
+        this._pendingAttachments = [];
+        this._renderFormAttachments();
+        // Load existing attachments for edit
+        if (item.id) {
+            this._loadFormAttachments(item.id);
+        }
         this.open('item-dialog');
         document.getElementById('item-form-title').focus();
+    },
+
+    async _loadFormAttachments(itemId) {
+        try {
+            const attachments = await Api.request('GET', `/api/items/${itemId}/attachments`);
+            const container = document.getElementById('item-form-attachments');
+            if (attachments.length > 0) {
+                container.innerHTML = attachments.map(a => `
+                    <div class="attachment-card">
+                        <img src="/api/assets/${a.asset_path.split('/').pop()}" alt="${a.filename}" class="attachment-img">
+                        <div class="attachment-info">
+                            <span class="attachment-name">${a.filename}</span>
+                        </div>
+                    </div>
+                `).join('') + (container.innerHTML || '');
+            }
+        } catch {}
+    },
+
+    _renderFormAttachments() {
+        const container = document.getElementById('item-form-attachments');
+        if (this._pendingAttachments.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        container.innerHTML = this._pendingAttachments.map((a, i) => `
+            <div class="attachment-card">
+                <img src="${a.dataUrl}" alt="${a.filename}" class="attachment-img">
+                <div class="attachment-info">
+                    <span class="attachment-name">${a.filename}</span>
+                    <button type="button" class="btn btn-xs btn-delete" onclick="Dialogs.removePendingAttachment(${i})" style="opacity:1">✕</button>
+                </div>
+            </div>
+        `).join('');
+    },
+
+    removePendingAttachment(index) {
+        this._pendingAttachments.splice(index, 1);
+        this._renderFormAttachments();
+    },
+
+    openAnnotateForNewItem() {
+        const canvas = document.getElementById('annotate-canvas');
+        Annotate.init(canvas);
+        this.setAnnotateTool('select');
+        this._annotateTarget = 'new-item';
+        this.open('annotate-dialog');
     },
 
     async submitItem(event) {
@@ -36,11 +118,24 @@ const Dialogs = {
         if (!title) return;
 
         try {
+            let itemId = id;
             if (id) {
                 await Api.updateItem(id, { title, description });
             } else {
-                await Api.createItem(title, description);
+                const item = await Api.createItem(title, description);
+                itemId = item.id;
             }
+
+            // Upload pending attachments
+            for (const a of this._pendingAttachments) {
+                await Api.request('POST', `/api/items/${itemId}/attachments`, {
+                    item_id: itemId,
+                    filename: a.filename,
+                    data: a.dataUrl,
+                });
+            }
+            this._pendingAttachments = [];
+
             this.close('item-dialog');
         } catch (err) {
             console.error('Failed to save item:', err);
@@ -70,6 +165,7 @@ const Dialogs = {
 
         // Header actions based on item state
         const editBtn = document.getElementById('detail-edit-btn');
+        const deleteBtn = document.getElementById('detail-delete-btn');
         const actionsEl = document.getElementById('detail-header-actions');
 
         // Remove any previously added play button
@@ -78,11 +174,23 @@ const Dialogs = {
 
         const isRunning = item.status === 'running' || item.status === 'resolving_conflicts';
 
-        // Hide edit when agent is active
+        // Hide edit/delete when agent is active
         editBtn.style.display = isRunning ? 'none' : '';
+        deleteBtn.style.display = isRunning ? 'none' : '';
         editBtn.onclick = () => {
             this.close('detail-dialog');
             this.openEditItem(item);
+        };
+        deleteBtn.onclick = async () => {
+            this.close('detail-dialog');
+            const ok = await Dialogs.confirm(`Delete "${item.title}"?`);
+            if (!ok) return;
+            try {
+                await Api.deleteItem(item.id);
+                Board.removeCard(item.id);
+            } catch (err) {
+                console.error('Failed to delete item:', err);
+            }
         };
 
         // Add play button in Todo
@@ -112,6 +220,13 @@ const Dialogs = {
         } catch {
             logEl.innerHTML = '';
         }
+
+        // Load attachments
+        this._currentItemId = itemId;
+        await this._loadAttachments(itemId);
+
+        // Reset to description tab
+        this.switchDetailTab('detail-desc');
 
         this.open('detail-dialog');
     },
@@ -323,6 +438,113 @@ const Dialogs = {
             this.close('config-dialog');
         } catch (err) {
             console.error('Failed to save config:', err);
+        }
+    },
+
+    // --- Detail tabs ---
+
+    switchDetailTab(tabName) {
+        document.querySelectorAll('#detail-dialog .review-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.tab === tabName);
+        });
+        document.querySelectorAll('#detail-dialog .review-tab-content').forEach(c => {
+            c.style.display = 'none';
+            c.classList.remove('active');
+        });
+        const active = document.getElementById(`detail-tab-${tabName}`);
+        if (active) {
+            active.style.display = '';
+            active.classList.add('active');
+        }
+    },
+
+    // --- Attachments ---
+
+    _currentItemId: null,
+
+    async _loadAttachments(itemId) {
+        const container = document.getElementById('detail-attachments');
+        const countEl = document.getElementById('detail-attach-count');
+        try {
+            const attachments = await Api.request('GET', `/api/items/${itemId}/attachments`);
+            countEl.textContent = attachments.length;
+            if (attachments.length === 0) {
+                container.innerHTML = '<p class="diff-empty">No attachments yet. Click "Add Annotated Image" to create one.</p>';
+                return;
+            }
+            container.innerHTML = attachments.map(a => `
+                <div class="attachment-card">
+                    <img src="/api/assets/${a.asset_path.split('/').pop()}" alt="${a.filename}" class="attachment-img" onclick="Dialogs.viewAttachment('/api/assets/${a.asset_path.split('/').pop()}', '${a.filename}')">
+                    <div class="attachment-info">
+                        <span class="attachment-name">${a.filename}</span>
+                        <button class="btn btn-xs" onclick="Dialogs.deleteAttachment(${a.id}, '${itemId}')" title="Delete" style="opacity:0.5">&#128465;</button>
+                    </div>
+                </div>
+            `).join('');
+        } catch (err) {
+            container.innerHTML = '<p>Error loading attachments</p>';
+        }
+    },
+
+    viewAttachment(src, filename) {
+        document.getElementById('view-attach-title').textContent = filename || 'Attachment';
+        document.getElementById('view-attach-img').src = src;
+        this.open('view-attach-dialog');
+    },
+
+    async deleteAttachment(attachmentId, itemId) {
+        if (!await Dialogs.confirm('Delete this attachment?')) return;
+        try {
+            await Api.request('DELETE', `/api/attachments/${attachmentId}`);
+            await this._loadAttachments(itemId);
+        } catch (err) {
+            console.error('Failed to delete attachment:', err);
+        }
+    },
+
+    // --- Annotation canvas ---
+
+    openAnnotateCanvas() {
+        const canvas = document.getElementById('annotate-canvas');
+        Annotate.init(canvas);
+        this.setAnnotateTool('select');
+        this._annotateTarget = null;
+        this.open('annotate-dialog');
+    },
+
+    setAnnotateTool(tool) {
+        Annotate.tool = tool;
+        document.querySelectorAll('.annotate-tool').forEach(b => {
+            b.classList.toggle('active', b.dataset.tool === tool);
+        });
+    },
+
+    async saveAnnotation() {
+        const dataUrl = Annotate.toDataURL();
+        const filename = `annotation_${Date.now()}.png`;
+
+        if (this._annotateTarget === 'new-item') {
+            // Save as pending attachment for the new item form
+            this._pendingAttachments.push({ dataUrl, filename });
+            this._renderFormAttachments();
+            this.close('annotate-dialog');
+            this._annotateTarget = null;
+            return;
+        }
+
+        if (!this._currentItemId) return;
+
+        try {
+            await Api.request('POST', `/api/items/${this._currentItemId}/attachments`, {
+                item_id: this._currentItemId,
+                filename,
+                data: dataUrl,
+            });
+            this.close('annotate-dialog');
+            await this._loadAttachments(this._currentItemId);
+            this.switchDetailTab('detail-attach');
+        } catch (err) {
+            console.error('Failed to save annotation:', err);
         }
     },
 

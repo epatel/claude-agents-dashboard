@@ -19,7 +19,7 @@
 </main>
 
 <!-- New / Edit Item Dialog -->
-<dialog id="item-dialog" class="modal">
+<dialog id="item-dialog" class="modal modal-large">
     <div class="modal-content">
         <div class="modal-header">
             <h3 id="item-dialog-title">New Item</h3>
@@ -33,7 +33,12 @@
             </div>
             <div class="form-group">
                 <label for="item-form-desc">Description <span class="tooltip" data-tip="Detailed task instructions for the agent. Supports Markdown. Be specific about what files to create/modify and expected outcomes.">?</span></label>
-                <textarea id="item-form-desc" rows="12" placeholder="Describe what the agent should do..."></textarea>
+                <textarea id="item-form-desc" rows="10" placeholder="Describe what the agent should do..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Attachments <span class="tooltip" data-tip="Add annotated screenshots or reference images. The agent can see these when working on the task.">?</span></label>
+                <div id="item-form-attachments" class="attachments-grid"></div>
+                <button type="button" class="btn btn-sm" style="margin-top: 8px;" onclick="Dialogs.openAnnotateForNewItem()">+ Add Annotated Image</button>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn" onclick="Dialogs.close('item-dialog')">Cancel</button>
@@ -49,12 +54,64 @@
         <div class="modal-header">
             <h3 id="detail-title"></h3>
             <div class="modal-header-actions" id="detail-header-actions">
+                <button class="btn btn-sm" id="detail-delete-btn" title="Delete item" style="color: var(--danger)">&#128465;</button>
                 <button class="btn btn-sm" id="detail-edit-btn">Edit</button>
                 <button class="btn-close" onclick="Dialogs.close('detail-dialog')">&times;</button>
             </div>
         </div>
-        <div id="detail-body" class="detail-body"></div>
-        <div id="detail-log" class="detail-log"></div>
+        <div class="review-tabs">
+            <button class="review-tab active" data-tab="detail-desc" onclick="Dialogs.switchDetailTab('detail-desc')">Description</button>
+            <button class="review-tab" data-tab="detail-attach" onclick="Dialogs.switchDetailTab('detail-attach')">Attachments <span id="detail-attach-count" class="column-count">0</span></button>
+            <button class="review-tab" data-tab="detail-wlog" onclick="Dialogs.switchDetailTab('detail-wlog')">Work Log</button>
+        </div>
+        <div id="detail-tab-detail-desc" class="review-content review-tab-content active">
+            <div id="detail-body" class="detail-body"></div>
+        </div>
+        <div id="detail-tab-detail-attach" class="review-content review-tab-content" style="display:none">
+            <div id="detail-attachments" class="attachments-grid"></div>
+            <div class="attachments-actions">
+                <button class="btn btn-sm" id="detail-annotate-btn" onclick="Dialogs.openAnnotateCanvas()">+ Add Annotated Image</button>
+            </div>
+        </div>
+        <div id="detail-tab-detail-wlog" class="review-content review-tab-content" style="display:none">
+            <div id="detail-log" class="detail-log" style="max-height:none; border-top:none"></div>
+        </div>
+    </div>
+</dialog>
+
+<!-- Annotation Canvas Dialog -->
+<dialog id="annotate-dialog" class="modal" style="width: min(900px, 95vw); max-height: 95vh;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Annotate Image</h3>
+            <button class="btn-close" onclick="Dialogs.close('annotate-dialog')">&times;</button>
+        </div>
+        <div class="annotate-toolbar">
+            <div class="annotate-tools">
+                <button class="btn btn-sm annotate-tool active" data-tool="select" onclick="Dialogs.setAnnotateTool('select')" title="Select / Move">&#9654;</button>
+                <button class="btn btn-sm annotate-tool" data-tool="arrow" onclick="Dialogs.setAnnotateTool('arrow')" title="Arrow">&#10132;</button>
+                <button class="btn btn-sm annotate-tool" data-tool="circle" onclick="Dialogs.setAnnotateTool('circle')" title="Circle / Ellipse">&#9711;</button>
+                <button class="btn btn-sm annotate-tool" data-tool="rect" onclick="Dialogs.setAnnotateTool('rect')" title="Rectangle">&#9633;</button>
+                <button class="btn btn-sm annotate-tool" data-tool="text" onclick="Dialogs.setAnnotateTool('text')" title="Text (double-click to place)">T</button>
+            </div>
+            <div class="annotate-options">
+                <input type="color" id="annotate-color" value="#ff3b30" onchange="Annotate.color = this.value" title="Color">
+                <select id="annotate-line-width" onchange="Annotate.lineWidth = +this.value" title="Line width">
+                    <option value="2">Thin</option>
+                    <option value="3" selected>Medium</option>
+                    <option value="5">Thick</option>
+                </select>
+            </div>
+            <div class="annotate-hint">Drop images onto the canvas</div>
+        </div>
+        <div class="annotate-canvas-wrap">
+            <canvas id="annotate-canvas" width="850" height="500"></canvas>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn" onclick="Annotate.clear()">Clear</button>
+            <button type="button" class="btn" onclick="Dialogs.close('annotate-dialog')">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="Dialogs.saveAnnotation()">Save</button>
+        </div>
     </div>
 </dialog>
 
@@ -83,6 +140,35 @@
         <div class="review-actions">
             <button class="btn" id="review-changes-btn">↩ Request Changes</button>
             <button class="btn btn-primary" id="review-approve-btn">✓ Approve & Merge</button>
+        </div>
+    </div>
+</dialog>
+
+<!-- Confirm Dialog -->
+<dialog id="confirm-dialog" class="modal" style="width: min(400px, 85vw);">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="confirm-title">Confirm</h3>
+        </div>
+        <div style="padding: 20px;">
+            <p id="confirm-message"></p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="confirm-cancel-btn">Cancel</button>
+            <button class="btn btn-danger" id="confirm-ok-btn">Delete</button>
+        </div>
+    </div>
+</dialog>
+
+<!-- View Attachment Dialog -->
+<dialog id="view-attach-dialog" class="modal" style="width: min(900px, 95vw); max-height: 95vh; background: transparent; box-shadow: none;">
+    <div class="modal-content" style="background: var(--bg-secondary); border-radius: var(--radius); box-shadow: var(--shadow-lg);">
+        <div class="modal-header">
+            <h3 id="view-attach-title">Attachment</h3>
+            <button class="btn-close" onclick="Dialogs.close('view-attach-dialog')">&times;</button>
+        </div>
+        <div style="padding: 12px; text-align: center; overflow: auto; max-height: 75vh;">
+            <img id="view-attach-img" src="" alt="" style="max-width: 100%; max-height: 70vh; border-radius: var(--radius-sm);">
         </div>
     </div>
 </dialog>

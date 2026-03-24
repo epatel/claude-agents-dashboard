@@ -124,7 +124,7 @@ body {
     to { transform: rotate(360deg); }
 }
 
-/* Tooltips */
+/* Tooltips — use JS positioning to escape overflow containers */
 .tooltip {
     display: inline-flex;
     align-items: center;
@@ -137,17 +137,12 @@ body {
     background: var(--bg-hover);
     border-radius: 50%;
     cursor: help;
-    position: relative;
     vertical-align: middle;
     margin-left: 4px;
 }
 
-.tooltip:hover::after {
-    content: attr(data-tip);
-    position: absolute;
-    bottom: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
+.tooltip-popup {
+    position: fixed;
     background: var(--text-primary);
     color: var(--bg-primary);
     padding: 8px 12px;
@@ -158,20 +153,8 @@ body {
     white-space: normal;
     width: max-content;
     max-width: 280px;
-    z-index: 1000;
+    z-index: 10000;
     box-shadow: var(--shadow-lg);
-    pointer-events: none;
-}
-
-.tooltip:hover::before {
-    content: '';
-    position: absolute;
-    bottom: calc(100% + 2px);
-    left: 50%;
-    transform: translateX(-50%);
-    border: 4px solid transparent;
-    border-top-color: var(--text-primary);
-    z-index: 1000;
     pointer-events: none;
 }
 
@@ -325,6 +308,122 @@ body {
 /* Error entries */
 .log-entry-error .log-content {
     color: var(--danger);
+}
+
+/* Attachments */
+.attachments-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.attachment-card {
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.attachment-img {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    cursor: pointer;
+    display: block;
+}
+
+.attachment-img:hover {
+    opacity: 0.85;
+}
+
+.attachment-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.attachment-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.attachments-actions {
+    margin-top: 12px;
+}
+
+/* Annotation canvas */
+.annotate-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--border-light);
+    flex-wrap: wrap;
+}
+
+.annotate-tools {
+    display: flex;
+    gap: 4px;
+}
+
+.annotate-tool {
+    min-width: 32px;
+    text-align: center;
+    font-size: 16px;
+    padding: 4px 8px;
+}
+
+.annotate-tool.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.annotate-options {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.annotate-options input[type="color"] {
+    width: 30px;
+    height: 28px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    background: var(--bg-input);
+}
+
+.annotate-options select {
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.annotate-hint {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-left: auto;
+}
+
+.annotate-canvas-wrap {
+    padding: 12px 20px;
+    overflow: auto;
+    max-height: 60vh;
+}
+
+.annotate-canvas-wrap canvas {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    display: block;
+    cursor: crosshair;
 }
 
 /* Clarification dialog */
