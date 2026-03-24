@@ -133,13 +133,23 @@ const App = {
 
     appendLog(data) {
         // Append to detail dialog log if it's open for this item
-        const logEl = document.getElementById('detail-log');
-        if (logEl) {
+        const detailLogEl = document.getElementById('detail-log');
+        if (detailLogEl) {
             const entry = document.createElement('div');
             entry.className = `log-entry log-entry-${data.entry_type}`;
             entry.innerHTML = `<span class="log-meta">[${data.entry_type}]</span> <div class="log-content">${Dialogs.renderMarkdown(data.content)}</div>`;
-            logEl.appendChild(entry);
-            logEl.scrollTop = logEl.scrollHeight;
+            detailLogEl.appendChild(entry);
+            detailLogEl.scrollTop = detailLogEl.scrollHeight;
+        }
+
+        // Also append to review dialog log if it's open for this item
+        const reviewLogEl = document.getElementById('review-log');
+        if (reviewLogEl) {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-entry-${data.entry_type}`;
+            entry.innerHTML = `<span class="log-meta">[${data.entry_type}]</span> <div class="log-content">${Dialogs.renderMarkdown(data.content)}</div>`;
+            reviewLogEl.appendChild(entry);
+            reviewLogEl.scrollTop = reviewLogEl.scrollHeight;
         }
     },
 };

@@ -214,6 +214,8 @@ const Dialogs = {
                 logEl.innerHTML = log.map(e =>
                     `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${this.renderMarkdown(e.content)}</div></div>`
                 ).join('');
+                // Scroll to end after loading
+                logEl.scrollTop = logEl.scrollHeight;
             } else {
                 logEl.innerHTML = '<div class="log-entry">No work log entries</div>';
             }
@@ -252,6 +254,8 @@ const Dialogs = {
                 logEl.innerHTML = log.map(e =>
                     `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${this.renderMarkdown(e.content)}</div></div>`
                 ).join('');
+                // Scroll to end after loading
+                logEl.scrollTop = logEl.scrollHeight;
             } else {
                 logEl.innerHTML = '<div class="log-entry">No work log entries</div>';
             }
@@ -311,6 +315,14 @@ const Dialogs = {
         if (active) {
             active.style.display = '';
             active.classList.add('active');
+
+            // Auto-scroll to end when switching to work log tab
+            if (tabName === 'log') {
+                const logEl = document.getElementById('review-log');
+                if (logEl && logEl.children.length > 0) {
+                    setTimeout(() => logEl.scrollTop = logEl.scrollHeight, 10);
+                }
+            }
         }
     },
 
@@ -353,6 +365,10 @@ const Dialogs = {
             logEl.innerHTML = log.length > 0
                 ? log.map(e => `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${this.renderMarkdown(e.content)}</div></div>`).join('')
                 : '<div class="log-entry">No work log entries</div>';
+            // Scroll to end after loading
+            if (log.length > 0) {
+                logEl.scrollTop = logEl.scrollHeight;
+            }
         } catch { logEl.innerHTML = ''; }
 
         this.open('detail-dialog');
@@ -459,6 +475,14 @@ const Dialogs = {
         if (active) {
             active.style.display = '';
             active.classList.add('active');
+
+            // Auto-scroll to end when switching to work log tab
+            if (tabName === 'detail-wlog') {
+                const logEl = document.getElementById('detail-log');
+                if (logEl && logEl.children.length > 0) {
+                    setTimeout(() => logEl.scrollTop = logEl.scrollHeight, 10);
+                }
+            }
         }
     },
 
