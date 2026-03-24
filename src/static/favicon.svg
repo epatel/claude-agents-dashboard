@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <style>
+      .star { fill: #D97753; }
+      .bg { fill: #fff; }
+    </style>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="16" cy="16" r="15" class="bg" stroke="#e5e5e5" stroke-width="1"/>
+
+  <!-- Claude starburst -->
+  <g transform="translate(16,16)">
+    <!-- Main rays -->
+    <path class="star" d="M0,-8 L1,-2 L0,8 L-1,-2 Z"/>
+    <path class="star" d="M8,0 L2,1 L-8,0 L2,-1 Z"/>
+
+    <!-- Diagonal rays -->
+    <path class="star" d="M5.66,-5.66 L1.41,-1.41 L-5.66,5.66 L-1.41,1.41 Z" transform="rotate(45)"/>
+    <path class="star" d="M5.66,-5.66 L1.41,-1.41 L-5.66,5.66 L-1.41,1.41 Z" transform="rotate(-45)"/>
+
+    <!-- Additional shorter rays -->
+    <path class="star" d="M0,-5 L0.5,-1.5 L0,5 L-0.5,-1.5 Z" transform="rotate(22.5)"/>
+    <path class="star" d="M0,-5 L0.5,-1.5 L0,5 L-0.5,-1.5 Z" transform="rotate(-22.5)"/>
+    <path class="star" d="M0,-5 L0.5,-1.5 L0,5 L-0.5,-1.5 Z" transform="rotate(67.5)"/>
+    <path class="star" d="M0,-5 L0.5,-1.5 L0,5 L-0.5,-1.5 Z" transform="rotate(-67.5)"/>
+  </g>
+</svg>
