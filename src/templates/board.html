@@ -6,7 +6,12 @@
     <div class="column" data-column="{{ col.id }}">
         <div class="column-header">
             <h2>{{ col.label }}</h2>
-            <span class="column-count" data-count-for="{{ col.id }}">0</span>
+            <div class="column-header-actions">
+                {% if col.id == 'todo' %}
+                <button class="btn btn-plus" onclick="Dialogs.openNewItem()" title="Add new item">+</button>
+                {% endif %}
+                <span class="column-count" data-count-for="{{ col.id }}">0</span>
+            </div>
         </div>
         <div class="column-cards" data-column="{{ col.id }}"
              ondrop="Board.handleDrop(event)" ondragover="Board.handleDragOver(event)">
