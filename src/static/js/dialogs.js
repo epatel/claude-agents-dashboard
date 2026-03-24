@@ -1,4 +1,13 @@
 const Dialogs = {
+    // Utility function for reliable auto-scroll
+    autoScroll(element) {
+        if (!element) return;
+        // Use requestAnimationFrame for better performance and reliability
+        requestAnimationFrame(() => {
+            element.scrollTop = element.scrollHeight;
+        });
+    },
+
     open(id) {
         const dialog = document.getElementById(id);
         if (dialog && !dialog.open) dialog.showModal();
@@ -215,7 +224,7 @@ const Dialogs = {
                     `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${this.renderMarkdown(e.content)}</div></div>`
                 ).join('');
                 // Scroll to end after loading
-                logEl.scrollTop = logEl.scrollHeight;
+                this.autoScroll(logEl);
             } else {
                 logEl.innerHTML = '<div class="log-entry">No work log entries</div>';
             }
@@ -255,7 +264,7 @@ const Dialogs = {
                     `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${this.renderMarkdown(e.content)}</div></div>`
                 ).join('');
                 // Scroll to end after loading
-                logEl.scrollTop = logEl.scrollHeight;
+                this.autoScroll(logEl);
             } else {
                 logEl.innerHTML = '<div class="log-entry">No work log entries</div>';
             }
@@ -320,7 +329,7 @@ const Dialogs = {
             if (tabName === 'log') {
                 const logEl = document.getElementById('review-log');
                 if (logEl && logEl.children.length > 0) {
-                    setTimeout(() => logEl.scrollTop = logEl.scrollHeight, 10);
+                    this.autoScroll(logEl);
                 }
             }
         }
@@ -367,7 +376,7 @@ const Dialogs = {
                 : '<div class="log-entry">No work log entries</div>';
             // Scroll to end after loading
             if (log.length > 0) {
-                logEl.scrollTop = logEl.scrollHeight;
+                this.autoScroll(logEl);
             }
         } catch { logEl.innerHTML = ''; }
 
@@ -480,7 +489,7 @@ const Dialogs = {
             if (tabName === 'detail-wlog') {
                 const logEl = document.getElementById('detail-log');
                 if (logEl && logEl.children.length > 0) {
-                    setTimeout(() => logEl.scrollTop = logEl.scrollHeight, 10);
+                    this.autoScroll(logEl);
                 }
             }
         }

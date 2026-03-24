@@ -3,6 +3,15 @@ const App = {
     ws: null,
     reconnectDelay: 1000,
 
+    // Utility function for reliable auto-scroll
+    autoScroll(element) {
+        if (!element) return;
+        // Use requestAnimationFrame for better performance and reliability
+        requestAnimationFrame(() => {
+            element.scrollTop = element.scrollHeight;
+        });
+    },
+
     init() {
         Theme.init();
 
@@ -139,7 +148,8 @@ const App = {
             entry.className = `log-entry log-entry-${data.entry_type}`;
             entry.innerHTML = `<span class="log-meta">[${data.entry_type}]</span> <div class="log-content">${Dialogs.renderMarkdown(data.content)}</div>`;
             detailLogEl.appendChild(entry);
-            detailLogEl.scrollTop = detailLogEl.scrollHeight;
+            // Use the reliable auto-scroll utility
+            this.autoScroll(detailLogEl);
         }
 
         // Also append to review dialog log if it's open for this item
@@ -149,7 +159,8 @@ const App = {
             entry.className = `log-entry log-entry-${data.entry_type}`;
             entry.innerHTML = `<span class="log-meta">[${data.entry_type}]</span> <div class="log-content">${Dialogs.renderMarkdown(data.content)}</div>`;
             reviewLogEl.appendChild(entry);
-            reviewLogEl.scrollTop = reviewLogEl.scrollHeight;
+            // Use the reliable auto-scroll utility
+            this.autoScroll(reviewLogEl);
         }
     },
 };
