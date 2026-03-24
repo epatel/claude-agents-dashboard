@@ -152,10 +152,19 @@ body {
     line-height: 1.5;
     white-space: normal;
     width: max-content;
-    max-width: 280px;
+    max-width: 340px;
     z-index: 10000;
     box-shadow: var(--shadow-lg);
     pointer-events: none;
+}
+
+.tooltip-popup pre {
+    white-space: pre;
+    overflow-x: auto;
+}
+
+.tooltip-popup b {
+    font-weight: 600;
 }
 
 /* Forms */
@@ -188,6 +197,20 @@ body {
     resize: vertical;
     font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
     font-size: 13px;
+}
+
+.form-group label:has(input[type="checkbox"]) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.form-group label input[type="checkbox"] {
+    margin-left: auto;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
 }
 
 .form-group select:focus,
