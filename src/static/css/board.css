@@ -27,6 +27,12 @@
     border-bottom: 1px solid var(--border-light);
 }
 
+.column-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .column-header h2 {
     font-size: 13px;
     font-weight: 600;
@@ -42,6 +48,32 @@
     padding: 1px 7px;
     border-radius: 10px;
     font-weight: 500;
+}
+
+.btn-plus {
+    font-size: 14px;
+    font-weight: 600;
+    width: 22px;
+    height: 22px;
+    border-radius: 11px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s, transform 0.15s;
+    line-height: 1;
+}
+
+.btn-plus:hover {
+    background: var(--accent-hover);
+    transform: scale(1.05);
+}
+
+.btn-plus:active {
+    transform: scale(0.95);
 }
 
 /* Cards area */
