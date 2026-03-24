@@ -244,6 +244,16 @@
                 <label for="config-project-context">Project Context <span class="tooltip" data-tip="Background information about the project that helps the agent understand the codebase. Architecture, tech stack, key decisions, etc.">?</span></label>
                 <textarea id="config-project-context" rows="6" placeholder="e.g. This is a React + FastAPI app. The frontend is in /web, the API is in /api. We use PostgreSQL for persistence."></textarea>
             </div>
+            <div class="form-group">
+                <label for="config-mcp-enabled">
+                    <input type="checkbox" id="config-mcp-enabled">
+                    Enable MCP (Model Context Protocol) <span class="tooltip" data-tip="Enable Model Context Protocol to connect external tools and data sources for enhanced agent capabilities.">?</span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label for="config-mcp-servers">MCP Servers <span class="tooltip" data-tip="JSON configuration for MCP servers. Each server provides tools, resources, and context that the agent can use.">?</span></label>
+                <textarea id="config-mcp-servers" rows="6" placeholder='[{"name": "filesystem", "command": "mcp-server-filesystem", "args": ["--path", "/path/to/data"]}]'></textarea>
+            </div>
             <div class="modal-footer">
                 <button type="button" class="btn" onclick="Dialogs.close('config-dialog')">Cancel</button>
                 <button type="submit" class="btn btn-primary">Save</button>
