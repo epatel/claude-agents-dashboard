@@ -4,7 +4,7 @@ A standalone scrum board that orchestrates Claude agents working on your project
 
 ## How it works
 
-1. **Create items** on the kanban board (Backlog → Todo → Doing → Clarify → Review → Done → Archive)
+1. **Create items** on the kanban board (Todo → Doing → Clarify → Review → Done → Archive)
 2. **Start an agent** on a Todo item — it gets its own git worktree and runs autonomously
 3. **Watch progress** in real-time via the work log (thinking, tool use, messages)
 4. **Review changes** — browse the diff, approve to merge into main, or request changes
@@ -39,14 +39,16 @@ your-project/agents-lab/
 
 ## Features
 
-- **Kanban board** with drag-and-drop, create/edit/delete items
+- **Kanban board** with drag-and-drop (smooth card spacing), create/edit/delete items
 - **Agent orchestration** via Claude Agent SDK — multiple agents can run simultaneously
 - **Git worktrees** — each agent works in isolation, branched off main
 - **Live work log** — streaming agent output via WebSocket (messages, thinking, tool use)
-- **Review & merge** — diff viewer with file list, approve or request changes
-- **Clarification flow** — agents can ask the user questions mid-task
-- **Session persistence** — request changes resumes the agent's conversation
-- **Agent config** — set system prompt, model, and project context
+- **Review & merge** — tabbed dialog with description, diff viewer, and work log; approve or request changes
+- **Clarification flow** — agents can ask the user questions mid-task via custom MCP tool
+- **Session persistence** — request changes resumes the agent's conversation with full context
+- **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
+- **Attachments** — attach annotated screenshots and reference images to items
+- **Agent config** — set system prompt, model, and project context with tooltips
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture

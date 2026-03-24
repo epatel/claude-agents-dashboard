@@ -52,11 +52,11 @@ Browser ←HTTP→ FastAPI routes (routes.py)
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2; JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
 
-Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card rendering), `dialogs.js` (all modals), `api.js` (HTTP helpers), `diff.js` (diff viewer).
+Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card rendering), `dialogs.js` (all modals + custom confirm), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas).
 
 ### Database
 
-SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + git metadata), `work_log` (agent activity stream), `review_comments`, `clarifications`, `agent_config` (single-row settings).
+SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + git metadata), `work_log` (agent activity stream), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings).
 
 ## Important patterns
 
@@ -65,3 +65,9 @@ SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + gi
 - `Starlette TemplateResponse` requires `request` as first kwarg: `TemplateResponse(request=request, name="...", context={...})`.
 - Agent's `cwd` is set to the worktree path, and the system prompt explicitly tells the agent its working directory. `add_dirs` is also set to allow file operations there.
 - Extended thinking is enabled (`thinking={"type": "enabled", "budget_tokens": 10000}`) for richer agent reasoning.
+- Never use browser `confirm()` or `prompt()` in dialogs — they block and conflict with `<dialog>` modals. Use `Dialogs.confirm()` which returns a Promise.
+- Tooltips use JS positioning (`position: fixed`, appended to `document.body`) to escape dialog `overflow: hidden`.
+- Avoid duplicate `from pathlib import Path` inside functions — it's imported at file top and local imports cause `UnboundLocalError`.
+- Attachments are stored as PNG files in `agents-lab/assets/` and referenced in the `attachments` table. Cleaned up on item delete.
+- The annotation canvas (`annotate.js`) is a self-contained component: `Annotate.init(canvasEl)` to start, `Annotate.toDataURL()` to export. Supports image drop, scale (wheel + corner handles), and annotation tools.
+- Card action buttons use `event.stopPropagation()` on individual buttons, not on the wrapper div, to avoid click blind spots.
