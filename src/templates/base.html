@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project_name }} — Agents Dashboard</title>
+    <link rel="stylesheet" href="/static/css/theme.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/board.css">
+    <link rel="stylesheet" href="/static/css/dialog.css">
+</head>
+<body>
+    <header class="top-bar">
+        <h1 class="project-title">{{ project_name }}</h1>
+        <div class="top-bar-actions">
+            <button id="new-item-btn" class="btn btn-primary" title="New item">+ New</button>
+            <button id="config-btn" class="btn btn-icon" title="Agent config">⚙</button>
+            <button id="theme-toggle" class="btn btn-icon" title="Toggle theme">
+                <span class="theme-icon-light">☀</span>
+                <span class="theme-icon-dark">☾</span>
+            </button>
+        </div>
+    </header>
+
+    {% block content %}{% endblock %}
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/theme.js"></script>
+    <script src="/static/js/diff.js"></script>
+    <script src="/static/js/dialogs.js"></script>
+    <script src="/static/js/board.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

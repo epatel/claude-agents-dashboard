@@ -1,0 +1,184 @@
+/* Kanban board layout */
+.board {
+    display: flex;
+    gap: 12px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    min-height: calc(100vh - 56px);
+    align-items: flex-start;
+}
+
+/* Column */
+.column {
+    flex: 0 0 260px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    border: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 80px);
+}
+
+.column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.column-header h2 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+}
+
+.column-count {
+    font-size: 12px;
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+/* Cards area */
+.column-cards {
+    padding: 8px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 60px;
+}
+
+/* Drop zone styling */
+.column-cards.drag-over {
+    background: var(--bg-hover);
+    border-radius: 0 0 var(--radius) var(--radius);
+}
+
+/* Drop indicator line */
+.drop-indicator {
+    height: 3px;
+    background: var(--accent);
+    border-radius: 2px;
+    margin: 2px 0;
+    pointer-events: none;
+    box-shadow: 0 0 4px var(--accent);
+}
+
+/* Smooth card transitions during drag */
+.column-cards.drag-over .card {
+    transition: transform 0.2s ease, margin 0.2s ease;
+}
+
+.card.drag-space-before {
+    margin-top: 42px;
+}
+
+.card.drag-space-before:first-child {
+    margin-top: 36px;
+}
+
+/* Card */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: box-shadow 0.15s, border-color 0.15s, margin 0.2s ease, transform 0.2s ease;
+    user-select: none;
+}
+
+.card:hover {
+    border-color: var(--border);
+    box-shadow: var(--shadow);
+}
+
+.card.dragging {
+    opacity: 0.3;
+    transform: scale(0.97);
+    box-shadow: none;
+}
+
+.card-title {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 4px;
+    word-break: break-word;
+}
+
+.card-status {
+    font-size: 11px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.card-status-running {
+    color: var(--accent);
+}
+
+.card-status-failed {
+    color: var(--danger);
+}
+
+.card-status-cancelled {
+    color: var(--text-muted);
+}
+
+.card-status-resolving_conflicts {
+    color: var(--warning);
+}
+
+.card-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.btn-delete {
+    opacity: 0;
+    transition: opacity 0.15s;
+    margin-left: auto;
+    color: var(--text-muted);
+    border-color: transparent;
+    background: transparent;
+}
+
+.card:hover .btn-delete {
+    opacity: 1;
+}
+
+.btn-delete:hover {
+    color: var(--danger);
+}
+
+/* Collapsed column (archive) */
+.column.collapsed .column-cards {
+    display: none;
+}
+
+.column.collapsed {
+    flex: 0 0 80px;
+    cursor: pointer;
+}
+
+.column.collapsed .column-header {
+    justify-content: center;
+}
+
+.column.collapsed .column-header h2 {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    padding: 8px 0;
+}
+
+.column.collapsed .column-count {
+    display: none;
+}

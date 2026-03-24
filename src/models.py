@@ -1,0 +1,80 @@
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime
+import uuid
+
+
+def new_id() -> str:
+    return uuid.uuid4().hex[:12]
+
+
+class ItemCreate(BaseModel):
+    title: str
+    description: str = ""
+
+
+class ItemUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    column_name: Optional[str] = None
+    position: Optional[int] = None
+    status: Optional[str] = None
+
+
+class ItemMove(BaseModel):
+    column_name: str
+    position: int
+
+
+class Item(BaseModel):
+    id: str
+    title: str
+    description: str
+    column_name: str
+    position: int
+    status: Optional[str]
+    branch_name: Optional[str]
+    worktree_path: Optional[str]
+    session_id: Optional[str]
+    created_at: str
+    updated_at: str
+
+
+class WorkLogEntry(BaseModel):
+    id: int
+    item_id: str
+    timestamp: str
+    entry_type: str
+    content: str
+    metadata: Optional[str]
+
+
+class ReviewComment(BaseModel):
+    id: int
+    item_id: str
+    file_path: Optional[str]
+    line_number: Optional[int]
+    content: str
+    created_at: str
+
+
+class ClarificationRequest(BaseModel):
+    id: int
+    item_id: str
+    prompt: str
+    choices: Optional[str]
+    allow_text: bool
+    response: Optional[str]
+    created_at: str
+    answered_at: Optional[str]
+
+
+class ClarificationResponse(BaseModel):
+    response: str
+
+
+class AgentConfig(BaseModel):
+    system_prompt: Optional[str] = ""
+    tools: Optional[str] = "[]"
+    model: str = "claude-sonnet-4-20250514"
+    project_context: Optional[str] = ""

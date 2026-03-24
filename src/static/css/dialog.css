@@ -1,0 +1,74 @@
+/* Modal dialog */
+.modal {
+    border: none;
+    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-lg);
+    padding: 0;
+    margin: auto;
+    width: min(500px, 90vw);
+    max-height: 85vh;
+    overflow: hidden;
+}
+
+.modal::backdrop {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.modal-large {
+    width: min(800px, 90vw);
+}
+
+.modal-content {
+    display: flex;
+    flex-direction: column;
+    max-height: 85vh;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.modal-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.modal-header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.btn-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.btn-close:hover {
+    color: var(--text-primary);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border-light);
+}
+
+/* Form inside dialog */
+.modal form {
+    padding: 20px;
+    overflow-y: auto;
+}
