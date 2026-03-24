@@ -48,15 +48,15 @@ async def create_item(request: Request, body: ItemCreate):
     db = request.app.state.db
     item_id = new_id()
     async with db.connect() as conn:
-        # Get next position in backlog
+        # Get next position in todo
         cursor = await conn.execute(
-            "SELECT COALESCE(MAX(position), -1) + 1 FROM items WHERE column_name = 'backlog'"
+            "SELECT COALESCE(MAX(position), -1) + 1 FROM items WHERE column_name = 'todo'"
         )
         row = await cursor.fetchone()
         position = row[0]
 
         await conn.execute(
-            "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, 'backlog', ?)",
+            "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, 'todo', ?)",
             (item_id, body.title, body.description, position),
         )
         await conn.commit()
@@ -102,11 +102,36 @@ async def update_item(request: Request, item_id: str, body: ItemUpdate):
 async def delete_item(request: Request, item_id: str):
     db = request.app.state.db
     async with db.connect() as conn:
+        # Get item info for cleanup
+        cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+        item = await cursor.fetchone()
+        if item:
+            item = dict(item)
+
         await conn.execute("DELETE FROM work_log WHERE item_id = ?", (item_id,))
         await conn.execute("DELETE FROM review_comments WHERE item_id = ?", (item_id,))
         await conn.execute("DELETE FROM clarifications WHERE item_id = ?", (item_id,))
         await conn.execute("DELETE FROM items WHERE id = ?", (item_id,))
         await conn.commit()
+
+    # Cancel running agent if any
+    orchestrator = request.app.state.orchestrator
+    session = orchestrator.sessions.pop(item_id, None)
+    if session:
+        await session.cancel()
+
+    # Clean up worktree and branch
+    if item and item.get("worktree_path") and item.get("branch_name"):
+        from pathlib import Path
+        from ..git.worktree import cleanup_worktree
+        try:
+            await cleanup_worktree(
+                request.app.state.target_project,
+                Path(item["worktree_path"]),
+                item["branch_name"],
+            )
+        except Exception:
+            pass
 
     await request.app.state.ws_manager.broadcast("item_deleted", {"id": item_id})
     return {"ok": True}
@@ -197,6 +222,20 @@ async def get_item_file(request: Request, item_id: str, file_path: str):
 
     content = await get_file_content(request.app.state.target_project, item["branch_name"], file_path)
     return {"content": content}
+
+
+@router.get("/api/items/{item_id}/clarification")
+async def get_pending_clarification(request: Request, item_id: str):
+    db = request.app.state.db
+    async with db.connect() as conn:
+        cursor = await conn.execute(
+            "SELECT * FROM clarifications WHERE item_id = ? AND response IS NULL ORDER BY id DESC LIMIT 1",
+            (item_id,),
+        )
+        row = await cursor.fetchone()
+        if row:
+            return dict(row)
+        return {"prompt": None}
 
 
 @router.post("/api/items/{item_id}/approve")

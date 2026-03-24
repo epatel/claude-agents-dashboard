@@ -28,12 +28,12 @@
         <form id="item-form" onsubmit="Dialogs.submitItem(event)">
             <input type="hidden" id="item-form-id" value="">
             <div class="form-group">
-                <label for="item-form-title">Title</label>
+                <label for="item-form-title">Title <span class="tooltip" data-tip="A short summary of the task. This becomes the card title on the board.">?</span></label>
                 <input type="text" id="item-form-title" required autofocus>
             </div>
             <div class="form-group">
-                <label for="item-form-desc">Description (Markdown)</label>
-                <textarea id="item-form-desc" rows="12"></textarea>
+                <label for="item-form-desc">Description <span class="tooltip" data-tip="Detailed task instructions for the agent. Supports Markdown. Be specific about what files to create/modify and expected outcomes.">?</span></label>
+                <textarea id="item-form-desc" rows="12" placeholder="Describe what the agent should do..."></textarea>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn" onclick="Dialogs.close('item-dialog')">Cancel</button>
@@ -88,20 +88,25 @@
 </dialog>
 
 <!-- Clarification Dialog -->
-<dialog id="clarify-dialog" class="modal">
+<dialog id="clarify-dialog" class="modal modal-large">
     <div class="modal-content">
         <div class="modal-header">
             <h3>Agent needs clarification</h3>
             <button class="btn-close" onclick="Dialogs.close('clarify-dialog')">&times;</button>
         </div>
-        <div id="clarify-prompt" class="detail-body"></div>
-        <div id="clarify-choices"></div>
         <form id="clarify-form" onsubmit="Dialogs.submitClarification(event)">
             <input type="hidden" id="clarify-item-id" value="">
-            <div class="form-group" style="padding: 0 20px;">
-                <textarea id="clarify-response" rows="3" placeholder="Your response..."></textarea>
+            <div class="form-group">
+                <label>Question from agent:</label>
+                <div id="clarify-prompt" class="clarify-prompt"></div>
+            </div>
+            <div id="clarify-choices" class="clarify-choices"></div>
+            <div class="form-group">
+                <label for="clarify-response">Your response:</label>
+                <textarea id="clarify-response" rows="6" placeholder="Your response..."></textarea>
             </div>
             <div class="modal-footer">
+                <button type="button" class="btn" onclick="Dialogs.close('clarify-dialog')">Cancel</button>
                 <button type="submit" class="btn btn-primary">Send</button>
             </div>
         </form>
@@ -118,7 +123,7 @@
         <form id="changes-form" onsubmit="Dialogs.submitChanges(event)">
             <input type="hidden" id="changes-item-id" value="">
             <div class="form-group">
-                <label for="changes-text">Describe what changes you'd like the agent to make:</label>
+                <label for="changes-text">Describe what changes you'd like the agent to make: <span class="tooltip" data-tip="The agent resumes its previous session with full context. Reference specific files, lines, or behaviors you want changed.">?</span></label>
                 <textarea id="changes-text" rows="10" placeholder="Please change..."></textarea>
             </div>
             <div class="modal-footer">
@@ -138,7 +143,7 @@
         </div>
         <form id="config-form" onsubmit="Dialogs.submitConfig(event)">
             <div class="form-group">
-                <label for="config-model">Model</label>
+                <label for="config-model">Model <span class="tooltip" data-tip="The Claude model used for all agent tasks. Sonnet is fast and capable, Opus is most powerful, Haiku is cheapest.">?</span></label>
                 <select id="config-model">
                     <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
                     <option value="claude-opus-4-6">Claude Opus 4.6</option>
@@ -146,12 +151,12 @@
                 </select>
             </div>
             <div class="form-group">
-                <label for="config-system-prompt">System Prompt</label>
-                <textarea id="config-system-prompt" rows="6" placeholder="Instructions for the agent..."></textarea>
+                <label for="config-system-prompt">System Prompt <span class="tooltip" data-tip="Instructions prepended to every agent task. Use this to define coding style, conventions, or constraints that apply to all work in this project.">?</span></label>
+                <textarea id="config-system-prompt" rows="6" placeholder="e.g. Use TypeScript with strict mode. Follow existing patterns in the codebase. Write tests for new features."></textarea>
             </div>
             <div class="form-group">
-                <label for="config-project-context">Project Context</label>
-                <textarea id="config-project-context" rows="6" placeholder="Background about this project..."></textarea>
+                <label for="config-project-context">Project Context <span class="tooltip" data-tip="Background information about the project that helps the agent understand the codebase. Architecture, tech stack, key decisions, etc.">?</span></label>
+                <textarea id="config-project-context" rows="6" placeholder="e.g. This is a React + FastAPI app. The frontend is in /web, the API is in /api. We use PostgreSQL for persistence."></textarea>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn" onclick="Dialogs.close('config-dialog')">Cancel</button>

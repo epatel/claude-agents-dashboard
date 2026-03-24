@@ -16,9 +16,7 @@
     </div>
     {% endif %}
     <div class="card-actions" onclick="event.stopPropagation()">
-        {% if item.column_name == 'backlog' %}
-        <button class="btn btn-xs" onclick="Board.moveItem('{{ item.id }}', 'todo')" title="Move to Todo">Ready</button>
-        {% elif item.column_name == 'todo' %}
+        {% if item.column_name == 'todo' %}
         <button class="btn btn-xs btn-primary" onclick="Board.startAgent('{{ item.id }}')" title="Start agent">▶</button>
         {% elif item.column_name == 'doing' and item.status == 'failed' %}
         <button class="btn btn-xs" onclick="Board.retryAgent('{{ item.id }}')" title="Retry">↻ Retry</button>

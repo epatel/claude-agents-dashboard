@@ -58,6 +58,11 @@ const Dialogs = {
             return this.showReview(itemId);
         }
 
+        // If item is in clarify, reopen the clarification dialog
+        if (item.column_name === 'clarify') {
+            return this.reopenClarification(itemId);
+        }
+
         document.getElementById('detail-title').textContent = item.title;
 
         const body = document.getElementById('detail-body');
@@ -195,6 +200,48 @@ const Dialogs = {
     },
 
     // --- Clarification dialog ---
+
+    async reopenClarification(itemId) {
+        // Fetch pending clarification from DB
+        try {
+            const data = await Api.request('GET', `/api/items/${itemId}/clarification`);
+            if (data && data.id) {
+                const choices = data.choices ? JSON.parse(data.choices) : [];
+                this.showClarification(itemId, data.prompt || '(Agent is waiting for your input)', choices);
+            } else {
+                // No pending clarification, show regular detail
+                this._showDetailDirect(itemId);
+            }
+        } catch (err) {
+            console.error('Failed to load clarification:', err);
+        }
+    },
+
+    async _showDetailDirect(itemId) {
+        const items = await Api.getItems();
+        const item = items.find(i => i.id === itemId);
+        if (!item) return;
+
+        document.getElementById('detail-title').textContent = item.title;
+        document.getElementById('detail-body').innerHTML = this.renderMarkdown(item.description || '(no description)');
+
+        const editBtn = document.getElementById('detail-edit-btn');
+        editBtn.style.display = '';
+        editBtn.onclick = () => { this.close('detail-dialog'); this.openEditItem(item); };
+
+        const oldPlay = document.getElementById('detail-play-btn');
+        if (oldPlay) oldPlay.remove();
+
+        const logEl = document.getElementById('detail-log');
+        try {
+            const log = await Api.getWorkLog(itemId);
+            logEl.innerHTML = log.length > 0
+                ? log.map(e => `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${this.renderMarkdown(e.content)}</div></div>`).join('')
+                : '<div class="log-entry">No work log entries</div>';
+        } catch { logEl.innerHTML = ''; }
+
+        this.open('detail-dialog');
+    },
 
     showClarification(itemId, prompt, choices) {
         document.getElementById('clarify-item-id').value = itemId;

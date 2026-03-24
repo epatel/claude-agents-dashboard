@@ -194,9 +194,7 @@ const Board = {
         let actionsHtml = '';
         const col = item.column_name;
         const deleteBtn = `<button class="btn btn-xs btn-delete" onclick="event.stopPropagation(); Board.deleteItem('${item.id}')" title="Delete">✕</button>`;
-        if (col === 'backlog') {
-            actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')">Ready</button>${deleteBtn}`;
-        } else if (col === 'todo') {
+        if (col === 'todo') {
             actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startAgent('${item.id}')">▶</button>${deleteBtn}`;
         } else if (col === 'doing' && item.status === 'failed') {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.retryAgent('${item.id}')">↻ Retry</button>

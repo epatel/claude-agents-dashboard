@@ -5,13 +5,23 @@ when they need user input. The orchestrator intercepts the tool call,
 moves the item to Clarify, and waits for the user's response.
 """
 
-from typing import TypedDict
 from claude_agent_sdk import tool, create_sdk_mcp_server
 
-
-class AskUserInput(TypedDict, total=False):
-    question: str
-    choices: list[str]
+ASK_USER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "question": {
+            "type": "string",
+            "description": "The question to ask the user. Be clear and specific.",
+        },
+        "choices": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Optional list of choices for the user to pick from.",
+        },
+    },
+    "required": ["question"],
+}
 
 
 def create_clarification_server(on_clarify):
@@ -29,9 +39,9 @@ def create_clarification_server(on_clarify):
         "Use this whenever you are unsure how to proceed, need to choose between approaches, "
         "or need information that isn't available in the codebase. "
         "Provide a clear question and optionally a list of choices.",
-        AskUserInput,
+        ASK_USER_SCHEMA,
     )
-    async def ask_user(input: AskUserInput) -> dict:
+    async def ask_user(input: dict) -> dict:
         """Ask the user for clarification."""
         question = input.get("question", "")
         choices = input.get("choices")

@@ -9,7 +9,6 @@ STATIC_DIR = DASHBOARD_DIR / "src" / "static"
 
 # Column definitions in display order
 COLUMNS = [
-    {"id": "backlog", "label": "Backlog"},
     {"id": "todo", "label": "Todo"},
     {"id": "doing", "label": "Doing"},
     {"id": "clarify", "label": "Clarify"},
