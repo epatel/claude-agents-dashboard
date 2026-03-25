@@ -126,13 +126,17 @@ sequenceDiagram
 
 - **Todo creation via MCP**: Agents can create new todo items via the `create_todo` MCP tool. This flows through `_on_create_todo` callback, creates new items in the database with proper positioning, and broadcasts real-time updates to the frontend.
 
-- **Per-item model selection**: Items can have an individual `model` field. `start_agent()` uses `item.get("model") or config.get("model")`, falling back to the global agent config default (`claude-sonnet-4-20250514`). Available models: Claude Sonnet 4 (`claude-sonnet-4-20250514`) and Claude Opus 4.6 (`claude-opus-4-6`).
+- **Per-item model selection**: Items can have an individual `model` field. `start_agent()` uses `item.get("model") or config.get("model")`, falling back to the global agent config default (`claude-sonnet-4-20250514`). Available models are centralized in `constants.py` as `AVAILABLE_MODELS`: Claude Sonnet 4 (`claude-sonnet-4-20250514`), Claude Opus 3 (`claude-3-opus-20240229`), and Claude Haiku 3 (`claude-3-haiku-20240307`).
+
+- **Session creation**: The `_create_session()` helper in orchestrator.py centralizes AgentSession construction with standard callbacks. Both `start_agent()` and `request_changes()` use this helper to avoid duplication.
 
 - **Session resumption**: `ResultMessage.session_id` is stored in the DB. When requesting changes, the agent resumes its previous session via `ClaudeAgentOptions(resume=session_id, continue_conversation=True)` so it retains full conversation context.
 
 - **Token usage extraction**: `AgentResult` includes `input_tokens`, `output_tokens`, `total_tokens` alongside `cost_usd`. Token extraction in `session.py` handles SDK field name variants (`input_tokens` vs `input_token_count`) and calculates totals from components as a fallback.
 
-- **Diff includes uncommitted changes**: `get_diff()` and `get_changed_files()` accept a `worktree_path` parameter. When provided, they combine committed branch diff + uncommitted changes + untracked files, since agents don't always commit their work.
+- **Path traversal protection**: `validate_file_path()` in operations.py blocks absolute paths, `..` traversal, null bytes, control characters, and other dangerous patterns before passing paths to `git show`. Routes catch `ValueError` for 400 responses.
+
+- **Diff includes uncommitted changes**: `get_diff()` and `get_changed_files()` accept a `worktree_path` parameter. When provided, they combine committed branch diff + uncommitted changes + untracked files, since agents don't always commit their work. Untracked file reads use `asyncio.to_thread()` to avoid blocking the event loop.
 
 - **Merge commits worktree first**: `merge_branch()` calls `commit_worktree_changes()` before merging, handling agents that leave uncommitted work. Uses agent-provided commit messages when available (via `set_commit_message` MCP tool).
 
@@ -140,7 +144,7 @@ sequenceDiagram
 
 - **Cost & token tracking**: Agent completion logs USD cost and token usage (input/output/total) via `AgentResult`. Token data is persisted to the `token_usage` table by `_save_token_usage()`. The completion message includes both cost and token count: `"Agent completed (cost: $X.XXXX, tokens: N)"`.
 
-- **Stats dashboard**: The `/api/stats` endpoint aggregates token usage, cost, message counts, tool calls, item status distribution, and recent activity. The frontend `StatsManager` (in `stats.js`) renders a stats bar in the header, auto-refreshes every 10 seconds, and updates on WebSocket events (item_created, item_updated, item_moved, agent_log) with debouncing. Stats bar is hidden on small screens (< 768px).
+- **Stats dashboard**: The `/api/stats` endpoint aggregates token usage, cost, message counts, tool calls, item status distribution, and recent activity. Server-side stats caching with 30s TTL (`_stats_cache` in routes.py) reduces DB load, with cache invalidation on mutations (create, delete, move, start, approve). The frontend `StatsManager` (in `stats.js`) renders a stats bar in the header, auto-refreshes every 10 seconds, and updates on WebSocket events (item_created, item_updated, item_moved, agent_log) with debouncing. Stats bar is hidden on small screens (< 768px).
 
 - **Retry reuses worktree**: `retry_agent()` cancels any existing session, reuses the existing worktree if present, and starts a fresh agent run. It does not resume the previous session.
 
@@ -162,7 +166,7 @@ sequenceDiagram
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2; JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
 
-Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card rendering), `dialogs.js` (all modals + custom confirm + plugin management), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates).
+Key JS modules: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering), `dialogs.js` (all modals + custom confirm + plugin management), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates).
 
 ### Database
 
@@ -234,7 +238,8 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 ```
 src/
 +-- main.py                           # Entry point, port discovery
-+-- config.py                         # Constants, column definitions
++-- config.py                         # Column definitions, default config
++-- constants.py                      # AVAILABLE_MODELS, DEFAULT_MODEL
 +-- models.py                         # Pydantic models
 +-- database.py                       # DB connection + migration init
 +-- manage.py                         # CLI for migrations
