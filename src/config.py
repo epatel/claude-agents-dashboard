@@ -34,4 +34,5 @@ DEFAULT_AGENT_CONFIG = {
     "project_context": "",
     "mcp_servers": [],
     "mcp_enabled": False,
+    "plugins": [],
 }

@@ -270,6 +270,14 @@
                 <label for="config-mcp-servers">MCP Servers <span class="tooltip" data-tip-html="<b>JSON array of MCP server configs.</b><br><br><b>Example:</b><pre style='margin:6px 0;font-size:11px;background:rgba(255,255,255,0.1);padding:6px;border-radius:4px'>[{<br>  &quot;name&quot;: &quot;filesystem&quot;,<br>  &quot;command&quot;: &quot;npx&quot;,<br>  &quot;args&quot;: [&quot;-y&quot;,<br>    &quot;@modelcontextprotocol/server-filesystem&quot;,<br>    &quot;/path/to/data&quot;]<br>}]</pre><b>Common servers:</b><br>filesystem, github, postgres, puppeteer, brave-search">?</span></label>
                 <textarea id="config-mcp-servers" rows="6" placeholder='[{"name": "filesystem", "command": "mcp-server-filesystem", "args": ["--path", "/path/to/data"]}]'></textarea>
             </div>
+            <div class="form-group">
+                <label>Plugins <span class="tooltip" data-tip-html="<b>Local plugin directories</b> that extend agents with custom skills, agents, hooks, and MCP servers.<br><br>Each plugin must contain a <code>.claude-plugin/plugin.json</code> manifest.<br><br><b>Structure:</b><pre style='margin:6px 0;font-size:11px;background:rgba(255,255,255,0.1);padding:6px;border-radius:4px'>my-plugin/<br>  .claude-plugin/plugin.json<br>  skills/<br>  agents/<br>  hooks/</pre>Enter one directory path per line (absolute or relative to the project root).">?</span></label>
+                <div id="config-plugins-list" class="plugins-list"></div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <input type="text" id="config-plugin-path-input" placeholder="/path/to/plugin or ./relative/path" style="flex:1">
+                    <button type="button" class="btn btn-sm" onclick="Dialogs.addPlugin()">+ Add Plugin</button>
+                </div>
+            </div>
             <div class="modal-footer">
                 <button type="button" class="btn" onclick="Dialogs.close('config-dialog')">Cancel</button>
                 <button type="submit" class="btn btn-primary">Save</button>

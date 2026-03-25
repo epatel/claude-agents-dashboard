@@ -50,6 +50,7 @@ class AgentSession:
         on_set_commit_message=None,
         mcp_servers: str | None = None,
         mcp_enabled: bool = False,
+        plugins: list[dict] | None = None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
@@ -64,6 +65,7 @@ class AgentSession:
         self.on_set_commit_message = on_set_commit_message  # async callback(message: str) -> str
         self.mcp_servers = mcp_servers      # JSON string of MCP server configurations from agent config
         self.mcp_enabled = mcp_enabled      # Whether MCP is enabled from agent config
+        self.plugins = plugins              # List of plugin configs: [{"type": "local", "path": "..."}]
         self.client: ClaudeSDKClient | None = None
         self._task: asyncio.Task | None = None
         self._cancelled = False
@@ -128,6 +130,16 @@ class AgentSession:
                 allowed_tools.append(f"mcp__{server_name}__*")
                 logger.info(f"Allowing all tools from external MCP server: {server_name}")
 
+        # Build plugins list from configured plugin paths
+        plugins = None
+        if self.plugins:
+            plugins = []
+            for plugin_config in self.plugins:
+                plugin_path = plugin_config.get("path", "")
+                if plugin_path:
+                    plugins.append({"type": "local", "path": plugin_path})
+                    logger.info(f"Loading plugin from: {plugin_path}")
+
         options = ClaudeAgentOptions(
             cwd=self.worktree_path,
             system_prompt=full_system_prompt,
@@ -137,6 +149,7 @@ class AgentSession:
             allowed_tools=allowed_tools if allowed_tools else None,
             add_dirs=[str(self.worktree_path)],
             thinking={"type": "enabled", "budget_tokens": 10000},
+            plugins=plugins if plugins else None,
         )
 
         if resume_session_id:
