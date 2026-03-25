@@ -89,7 +89,13 @@ class AgentSession:
 
         # Ensure agent knows to work in the worktree directory
         cwd_note = f"\n\nIMPORTANT: Your working directory is {self.worktree_path}. All file operations must be within this directory."
-        full_system_prompt = (self.system_prompt or "") + cwd_note
+        commit_note = (
+            "\n\nIMPORTANT: When you have finished your task, you MUST call the "
+            "set_commit_message tool with a concise commit message summarizing what you did. "
+            "Use conventional style: start with a verb (Add, Fix, Update, Refactor, Remove). "
+            "This is required — do not skip it."
+        )
+        full_system_prompt = (self.system_prompt or "") + cwd_note + commit_note
 
         # Configure allowed MCP tools
         allowed_tools = []
