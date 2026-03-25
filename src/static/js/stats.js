@@ -42,6 +42,7 @@ class StatsManager {
 
         // Update usage stats
         this.updateElement('total-cost', `$${usage.total_cost_usd.toFixed(2)}`);
+        this.updateElement('total-tokens', this.formatNumber(usage.total_tokens || 0));
         this.updateElement('total-messages', this.formatNumber(usage.total_messages));
         this.updateElement('tool-calls', this.formatNumber(usage.tool_calls));
         this.updateElement('active-agents', activity.active_agents);
@@ -84,6 +85,14 @@ class StatsManager {
         const costEl = document.getElementById('total-cost');
         if (costEl) {
             costEl.title = `Total API cost across all agents`;
+        }
+
+        // Tokens tooltip
+        const tokensEl = document.getElementById('total-tokens');
+        if (tokensEl) {
+            const input = usage.input_tokens || 0;
+            const output = usage.output_tokens || 0;
+            tokensEl.title = `Total tokens used\nInput: ${input.toLocaleString()}\nOutput: ${output.toLocaleString()}`;
         }
 
         // Messages tooltip

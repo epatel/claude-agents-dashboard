@@ -76,6 +76,17 @@ class ClarificationResponse(BaseModel):
     response: str
 
 
+class TokenUsage(BaseModel):
+    id: int
+    item_id: str
+    session_id: Optional[str]
+    input_tokens: Optional[int]
+    output_tokens: Optional[int]
+    total_tokens: Optional[int]
+    cost_usd: Optional[float]
+    completed_at: str
+
+
 class AgentConfig(BaseModel):
     system_prompt: Optional[str] = ""
     tools: Optional[str] = "[]"
