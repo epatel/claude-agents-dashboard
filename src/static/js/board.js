@@ -178,6 +178,51 @@ const Board = {
         }
     },
 
+    async rerunItem(itemId) {
+        try {
+            // Get the current item details
+            const originalItem = this.items[itemId];
+            if (!originalItem) {
+                console.error('Item not found:', itemId);
+                return;
+            }
+
+            // Create a new item with the same title, description, and model
+            const newItem = await Api.createItem(
+                originalItem.title,
+                originalItem.description,
+                originalItem.model
+            );
+
+            // Copy attachments from the original item to the new item
+            try {
+                const attachments = await Api.getAttachments(itemId);
+                for (const attachment of attachments) {
+                    // Get the attachment data and create it for the new item
+                    const response = await fetch(`/api/assets/${attachment.asset_path.split('/').pop()}`);
+                    const blob = await response.blob();
+
+                    // Convert to base64 data URL
+                    const reader = new FileReader();
+                    reader.onloadend = async () => {
+                        try {
+                            await Api.createAttachment(newItem.id, attachment.filename, reader.result);
+                        } catch (attachErr) {
+                            console.error('Failed to copy attachment:', attachErr);
+                        }
+                    };
+                    reader.readAsDataURL(blob);
+                }
+            } catch (attachmentErr) {
+                console.error('Failed to copy attachments:', attachmentErr);
+                // Continue even if attachments fail - the item is still created
+            }
+
+        } catch (err) {
+            console.error('Failed to re-run item:', err);
+        }
+    },
+
     // --- Re-rendering ---
 
     renderCard(item) {
@@ -214,7 +259,8 @@ const Board = {
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')">↩</button>
                 <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelReview('${item.id}')">✕</button>`;
         } else if (col === 'done') {
-            actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;
+            actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.rerunItem('${item.id}')" title="↻ Re-run">↻ Re-run</button>
+                <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;
         }
 
         div.innerHTML = `
