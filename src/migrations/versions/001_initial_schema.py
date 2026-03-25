@@ -106,7 +106,7 @@ class InitialSchemaMigration(Migration):
                 tools           TEXT,
                 model           TEXT DEFAULT 'claude-sonnet-4-20250514',
                 project_context TEXT,
-                mcp_servers     TEXT DEFAULT '[]',
+                mcp_servers     TEXT DEFAULT '{}',
                 mcp_enabled     INTEGER DEFAULT 0,
                 plugins         TEXT DEFAULT '[]',
                 updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
