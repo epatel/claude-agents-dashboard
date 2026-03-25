@@ -47,6 +47,7 @@ your-project/agents-lab/
 - **Live work log** — streaming agent output via WebSocket (messages, thinking, tool use)
 - **Review & merge** — tabbed dialog with description, diff viewer, and work log; approve or request changes
 - **Clarification flow** — agents can ask the user questions mid-task via custom MCP tool
+- **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items
 - **Session persistence** — request changes resumes the agent's conversation with full context
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
@@ -58,7 +59,7 @@ your-project/agents-lab/
 
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket
-- **Agent**: Claude Agent SDK (`claude-agent-sdk`)
+- **Agent**: Claude Agent SDK (`claude-agent-sdk` v0.1.50+)
 - **Security**: Localhost only, no authentication
 
 ## Requirements
@@ -75,6 +76,7 @@ your-project/agents-lab/
 - **Code refactoring**: "Extract payment logic to service" → agent reorganizes code while preserving functionality
 - **Documentation**: "Update API docs" → agent reviews code and updates documentation files
 - **Testing**: "Add unit tests for user service" → agent analyzes code and writes comprehensive tests
+- **Task breakdown**: Agents can create follow-up todos like "Add integration tests" or "Update documentation" as they discover related work
 
 ## Troubleshooting
 

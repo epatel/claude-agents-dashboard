@@ -12,9 +12,9 @@ path/to/claude-agents-dashboard/run.sh
 ./run.sh /path/to/target-project
 ```
 
-`run.sh` creates the venv if needed, installs deps, and launches `python -m src.main <target>`. Server binds to 127.0.0.1:8000 (auto-increments if busy).
+`run.sh` creates the venv if needed, installs deps from `requirements.txt`, and launches `python -m src.main <target>`. Server binds to 127.0.0.1:8000 (auto-increments if busy). Requires Python 3.12+.
 
-**No test suite exists yet.** To verify changes, start the server against a test git repo and exercise the UI.
+**No automated test suite exists yet.** To verify changes, start the server against a test git repo and exercise the UI manually, including testing agent workflows, clarification flows, and todo creation features.
 
 ## Architecture
 
@@ -42,6 +42,8 @@ Browser ←HTTP→ FastAPI routes (routes.py)
 
 - **Clarification uses asyncio.Event**: When an agent calls the `ask_user` MCP tool, the orchestrator's `_on_clarify` callback moves the item to "Clarify", broadcasts to the frontend, and `await`s an `asyncio.Event`. The HTTP endpoint `submit_clarification` sets the event, unblocking the agent.
 
+- **Todo creation via MCP**: Agents can create new todo items via the `create_todo` MCP tool. This flows through `_on_create_todo` callback, creates new items in the database with proper positioning, and broadcasts real-time updates to the frontend.
+
 - **Session resumption**: `ResultMessage.session_id` is stored in the DB. When requesting changes, the agent resumes its previous session via `ClaudeAgentOptions(resume=session_id, continue_conversation=True)` so it retains full conversation context.
 
 - **Diff includes uncommitted changes**: `get_diff()` and `get_changed_files()` accept a `worktree_path` parameter. When provided, they combine committed branch diff + uncommitted changes + untracked files, since agents don't always commit their work.
@@ -56,7 +58,7 @@ Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card render
 
 ### Database
 
-SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + git metadata), `work_log` (agent activity stream), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config). New columns are added via migration in `Database.initialize()` for existing databases.
+SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + git metadata), `work_log` (agent activity stream), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column. New columns are added via migration in `Database.initialize()` for existing databases.
 
 ## Important patterns
 
@@ -71,6 +73,8 @@ SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + gi
 - Attachments are stored as PNG files in `agents-lab/assets/` and referenced in the `attachments` table. Cleaned up on item delete.
 - The annotation canvas (`annotate.js`) is a self-contained component: `Annotate.init(canvasEl)` to start, `Annotate.toDataURL()` to export. Supports image drop, scale (wheel + corner handles), and annotation tools.
 - Card action buttons use `event.stopPropagation()` on individual buttons, not on the wrapper div, to avoid click blind spots.
+- MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` for user response, todo creation immediately returns success and broadcasts updates.
+- Agent-created items are indistinguishable from manually created ones in the database and UI — they follow the same lifecycle and support all features.
 
 ## Development workflows
 
@@ -80,7 +84,7 @@ SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + gi
 
 2. **Frontend changes**: Add HTML in templates (`web/static/`), update JavaScript modules, handle WebSocket events in `app.js`, broadcast state changes from backend.
 
-3. **Agent capabilities**: Extend the system prompt in `AgentOrchestrator.create_agent()`, add MCP tools via the agent config UI, or modify `ask_user` clarification flows.
+3. **Agent capabilities**: Extend the system prompt in `AgentOrchestrator.create_agent()`, add MCP tools via the agent config UI, or modify `ask_user` clarification flows or `create_todo` workflows.
 
 ### Testing changes
 
@@ -88,8 +92,10 @@ Since no automated test suite exists, manually verify changes by:
 - Starting the server against a test git repository
 - Creating board items and testing the full agent workflow
 - Testing edge cases: git conflicts, agent failures, clarification flows
-- Checking WebSocket updates in browser dev tools
+- Testing agent MCP tools: clarification prompts, todo creation
+- Checking WebSocket updates in browser dev tools for real-time features
 - Verifying git worktree cleanup after item completion
+- Testing todo creation: ensure agents can create items that appear properly positioned
 
 ### Debugging
 
@@ -117,3 +123,10 @@ sqlite3 agents-lab/dashboard.db "SELECT * FROM items;"
 2. Update agent config via the UI to include your MCP server
 3. Test via the agent clarification flow or direct tool use
 4. Document new tools in the agent system prompt if they require specific usage patterns
+
+### Built-in MCP tools
+
+The system includes several built-in MCP tools for agents:
+
+- **`ask_user`** (clarification): Allows agents to ask users questions and wait for responses. Moves items to "Clarify" column and resumes when answered.
+- **`create_todo`** (todo creation): Enables agents to create new todo items with title and optional description. Items are automatically positioned in the todo column and broadcast to all connected clients.
