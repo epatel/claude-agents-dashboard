@@ -38,6 +38,15 @@ def run_tests(args):
             "tests/unit/migrations/test_migration_runner.py",
             "tests/integration/test_orchestrator_lifecycle.py"
         ]
+    elif args.suite == "p1":
+        # Run P1 priority tests (git ops + API routes + path validation + MCP tools)
+        cmd = base_cmd + [
+            "tests/unit/test_git_operations.py",
+            "tests/unit/test_api_routes.py",
+            "tests/unit/test_path_validation.py",
+            "tests/integration/test_mcp_tool_callbacks.py",
+            "tests/unit/test_websocket_manager.py"
+        ]
     elif args.suite == "smoke":
         cmd = base_cmd + ["-m", "smoke"]
     else:
@@ -98,7 +107,7 @@ def main():
     # Test suite selection
     parser.add_argument(
         "suite",
-        choices=["all", "unit", "integration", "p0", "smoke"],
+        choices=["all", "unit", "integration", "p0", "p1", "smoke"],
         help="Test suite to run"
     )
 
