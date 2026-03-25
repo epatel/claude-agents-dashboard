@@ -393,7 +393,6 @@ class AgentOrchestrator:
             )
         else:
             await self._log(item_id, "system", f"Merge conflict: {message}")
-            await self._update_item(item_id, status="resolving_conflicts")
             # TODO: spawn merge resolution agent
             return await self._update_item(item_id, status="resolving_conflicts")
 
