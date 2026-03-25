@@ -537,14 +537,25 @@ async def get_stats(request: Request):
     return await _get_optimized_stats(db, orchestrator)
 
 
+@router.get("/api/websocket/stats")
+async def get_websocket_stats(request: Request):
+    """Get WebSocket connection statistics for monitoring."""
+    ws_manager = request.app.state.ws_manager
+    return ws_manager.get_connection_stats()
+
+
 # --- WebSocket ---
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     manager = websocket.app.state.ws_manager
-    await manager.connect(websocket)
     try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        await manager.connect(websocket)
+        try:
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            manager.disconnect(websocket)
+    except HTTPException:
+        # Rate limit exceeded - connection was already closed in manager
+        pass

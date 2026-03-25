@@ -32,6 +32,11 @@ GIT_OPERATION_TIMEOUT = 300  # 5 minutes for most git operations
 GIT_MERGE_TIMEOUT = 600      # 10 minutes for merge operations (can be slow on large repos)
 HTTP_REQUEST_TIMEOUT = 660   # 11 minutes for HTTP requests (slightly longer than git merge timeout)
 
+# WebSocket rate limiting
+WEBSOCKET_MAX_CONNECTIONS_PER_IP = 5  # Max concurrent connections per IP
+WEBSOCKET_RATE_LIMIT_WINDOW = 60      # Rate limit window in seconds
+WEBSOCKET_MAX_CONNECTIONS_PER_WINDOW = 10  # Max connection attempts per window per IP
+
 # Default agent config
 DEFAULT_AGENT_CONFIG = {
     "system_prompt": "",
