@@ -1,6 +1,8 @@
 import base64
 import uuid
 from pathlib import Path
+import time
+from typing import Optional
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
@@ -11,6 +13,161 @@ from ..models import ItemCreate, ItemUpdate, ItemMove, ClarificationResponse, Ag
 from ..git.operations import get_diff, get_changed_files, get_file_content
 
 router = APIRouter()
+
+# Simple cache for stats to avoid frequent DB queries
+_stats_cache = {"data": None, "timestamp": 0, "ttl": 30}  # 30 second TTL
+
+
+async def _get_optimized_stats(db, orchestrator):
+    """Get stats using optimized combined queries and caching."""
+    current_time = time.time()
+
+    # Check cache first
+    if (_stats_cache["data"] is not None and
+        current_time - _stats_cache["timestamp"] < _stats_cache["ttl"]):
+        # Update active agents count (changes frequently)
+        _stats_cache["data"]["activity"]["active_agents"] = len(orchestrator.sessions)
+        return _stats_cache["data"]
+
+    async with db.connect() as conn:
+        # Combined query using CTEs to get most stats in a single roundtrip
+        cursor = await conn.execute("""
+            WITH token_stats AS (
+                SELECT
+                    COALESCE(SUM(cost_usd), 0) as total_cost,
+                    COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+                    COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+                    COALESCE(SUM(total_tokens), 0) as total_tokens
+                FROM token_usage
+            ),
+            work_log_stats AS (
+                SELECT
+                    entry_type,
+                    COUNT(*) as count,
+                    -- Count completed today
+                    SUM(CASE
+                        WHEN entry_type = 'system'
+                        AND content LIKE 'Agent completed%'
+                        AND DATE(timestamp) = DATE('now')
+                        THEN 1 ELSE 0
+                    END) as completed_today,
+                    -- Fallback cost calculation from work log
+                    SUM(CASE
+                        WHEN entry_type = 'system' AND content LIKE 'Agent completed (cost: $%' THEN
+                            CAST(
+                                SUBSTR(
+                                    SUBSTR(content, INSTR(content, '$') + 1),
+                                    1,
+                                    INSTR(SUBSTR(content, INSTR(content, '$') + 1), ')') - 1
+                                ) AS REAL
+                            )
+                        ELSE 0
+                    END) as fallback_cost
+                FROM work_log
+                GROUP BY entry_type
+            ),
+            item_stats AS (
+                SELECT
+                    column_name,
+                    COUNT(*) as count
+                FROM items
+                WHERE column_name != 'archive'
+                GROUP BY column_name
+            )
+            SELECT
+                -- Token stats
+                ts.total_cost,
+                ts.total_input_tokens,
+                ts.total_output_tokens,
+                ts.total_tokens,
+                -- Work log aggregates
+                SUM(wls.fallback_cost) as fallback_total_cost,
+                MAX(wls.completed_today) as completed_today,
+                SUM(wls.count) as total_messages,
+                SUM(CASE WHEN wls.entry_type = 'agent_message' THEN wls.count ELSE 0 END) as agent_messages,
+                SUM(CASE WHEN wls.entry_type = 'tool_use' THEN wls.count ELSE 0 END) as tool_calls
+            FROM token_stats ts
+            CROSS JOIN work_log_stats wls
+        """)
+
+        main_row = await cursor.fetchone()
+
+        # Get message counts breakdown
+        cursor = await conn.execute("""
+            SELECT entry_type, COUNT(*) as count
+            FROM work_log
+            GROUP BY entry_type
+        """)
+        message_counts = {row[0]: row[1] for row in await cursor.fetchall()}
+
+        # Get item counts by status
+        cursor = await conn.execute("""
+            SELECT column_name, COUNT(*) as count
+            FROM items
+            WHERE column_name != 'archive'
+            GROUP BY column_name
+        """)
+        item_counts = {row[0]: row[1] for row in await cursor.fetchall()}
+
+        # Get recent activity (this changes frequently, so we query it separately)
+        cursor = await conn.execute("""
+            SELECT entry_type, content, timestamp
+            FROM work_log
+            ORDER BY timestamp DESC
+            LIMIT 10
+        """)
+        recent_activity = [
+            {
+                "type": row[0],
+                "content": row[1][:100] + "..." if len(row[1]) > 100 else row[1],
+                "timestamp": row[2]
+            }
+            for row in await cursor.fetchall()
+        ]
+
+        # Use token_usage data if available, otherwise fallback to work log parsing
+        if main_row and main_row[0] is not None and main_row[0] > 0:
+            total_cost_usd = main_row[0]
+            total_input_tokens = main_row[1]
+            total_output_tokens = main_row[2]
+            total_tokens = main_row[3]
+        else:
+            total_cost_usd = main_row[4] if main_row else 0.0  # fallback_total_cost
+            total_input_tokens = 0
+            total_output_tokens = 0
+            total_tokens = 0
+
+        # Build response
+        stats_data = {
+            "usage": {
+                "total_cost_usd": round(total_cost_usd or 0.0, 4),
+                "total_messages": main_row[7] if main_row else sum(message_counts.values()),
+                "agent_messages": main_row[8] if main_row else message_counts.get('agent_message', 0),
+                "tool_calls": main_row[9] if main_row else message_counts.get('tool_use', 0),
+                "completed_today": main_row[6] if main_row else 0,
+                "total_tokens": total_tokens,
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens
+            },
+            "activity": {
+                "active_agents": len(orchestrator.sessions),
+                "items_by_status": item_counts,
+                "recent": recent_activity
+            },
+            "breakdown": message_counts
+        }
+
+        # Cache the result
+        _stats_cache["data"] = stats_data
+        _stats_cache["timestamp"] = current_time
+
+        return stats_data
+
+
+def _invalidate_stats_cache():
+    """Invalidate the stats cache when data changes."""
+    _stats_cache["data"] = None
+    _stats_cache["timestamp"] = 0
 
 
 # --- Board page ---
@@ -69,6 +226,7 @@ async def create_item(request: Request, body: ItemCreate):
         item = dict(await cursor.fetchone())
 
     await request.app.state.ws_manager.broadcast("item_created", item)
+    _invalidate_stats_cache()  # New item affects stats
     return item
 
 
@@ -105,7 +263,9 @@ async def update_item(request: Request, item_id: str, body: ItemUpdate):
 @router.delete("/api/items/{item_id}")
 async def delete_item(request: Request, item_id: str):
     orchestrator = request.app.state.orchestrator
-    return await orchestrator.delete_item(item_id)
+    result = await orchestrator.delete_item(item_id)
+    _invalidate_stats_cache()  # Item deletion affects stats
+    return result
 
 
 @router.post("/api/items/{item_id}/move")
@@ -127,6 +287,7 @@ async def move_item(request: Request, item_id: str, body: ItemMove):
         item = dict(await cursor.fetchone())
 
     await request.app.state.ws_manager.broadcast("item_moved", item)
+    _invalidate_stats_cache()  # Item status change affects stats
     return item
 
 
@@ -149,7 +310,9 @@ async def get_work_log(request: Request, item_id: str):
 @router.post("/api/items/{item_id}/start")
 async def start_agent(request: Request, item_id: str):
     orchestrator = request.app.state.orchestrator
-    return await orchestrator.start_agent(item_id)
+    result = await orchestrator.start_agent(item_id)
+    _invalidate_stats_cache()  # Agent start affects stats
+    return result
 
 
 @router.post("/api/items/{item_id}/cancel")
@@ -218,7 +381,9 @@ async def get_pending_clarification(request: Request, item_id: str):
 @router.post("/api/items/{item_id}/approve")
 async def approve_item(request: Request, item_id: str):
     orchestrator = request.app.state.orchestrator
-    return await orchestrator.approve_item(item_id)
+    result = await orchestrator.approve_item(item_id)
+    _invalidate_stats_cache()  # Item approval affects stats
+    return result
 
 
 class RequestChangesBody(BaseModel):
@@ -349,124 +514,11 @@ async def delete_attachment(request: Request, attachment_id: int):
 
 @router.get("/api/stats")
 async def get_stats(request: Request):
-    """Get usage and activity statistics."""
+    """Get usage and activity statistics (optimized with caching)."""
     db = request.app.state.db
     orchestrator = request.app.state.orchestrator
 
-    async with db.connect() as conn:
-        # Get usage statistics from token_usage table (preferred) and fallback to work log
-        cursor = await conn.execute("""
-            SELECT
-                SUM(COALESCE(cost_usd, 0)) as total_cost,
-                SUM(COALESCE(input_tokens, 0)) as total_input_tokens,
-                SUM(COALESCE(output_tokens, 0)) as total_output_tokens,
-                SUM(COALESCE(total_tokens, 0)) as total_tokens
-            FROM token_usage
-        """)
-        row = await cursor.fetchone()
-
-        # Use token_usage table data if available
-        if row and row[0] is not None:
-            total_cost_usd = row[0] or 0.0
-            total_input_tokens = row[1] or 0
-            total_output_tokens = row[2] or 0
-            total_tokens = row[3] or 0
-        else:
-            # Fallback to parsing work log entries for cost
-            cursor = await conn.execute("""
-                SELECT SUM(
-                    CASE
-                        WHEN content LIKE 'Agent completed (cost: $%' THEN
-                            CAST(
-                                SUBSTR(
-                                    SUBSTR(content, INSTR(content, '$') + 1),
-                                    1,
-                                    INSTR(SUBSTR(content, INSTR(content, '$') + 1), ')') - 1
-                                ) AS REAL
-                            )
-                        ELSE 0
-                    END
-                ) as total_cost
-                FROM work_log
-                WHERE entry_type = 'system' AND content LIKE 'Agent completed%'
-            """)
-            row = await cursor.fetchone()
-            total_cost_usd = row[0] if row and row[0] else 0.0
-            total_input_tokens = 0
-            total_output_tokens = 0
-            total_tokens = 0
-
-        # Count total messages by type
-        cursor = await conn.execute("""
-            SELECT entry_type, COUNT(*) as count
-            FROM work_log
-            GROUP BY entry_type
-        """)
-        message_counts = {row[0]: row[1] for row in await cursor.fetchall()}
-
-        # Count tool calls
-        tool_calls = message_counts.get('tool_use', 0)
-
-        # Count agent messages
-        agent_messages = message_counts.get('agent_message', 0)
-
-        # Count active agents
-        active_agents = len(orchestrator.sessions)
-
-        # Count items by status
-        cursor = await conn.execute("""
-            SELECT column_name, COUNT(*) as count
-            FROM items
-            WHERE column_name != 'archive'
-            GROUP BY column_name
-        """)
-        item_counts = {row[0]: row[1] for row in await cursor.fetchall()}
-
-        # Count completed items today
-        cursor = await conn.execute("""
-            SELECT COUNT(*) as count
-            FROM work_log
-            WHERE entry_type = 'system'
-            AND content LIKE 'Agent completed%'
-            AND DATE(timestamp) = DATE('now')
-        """)
-        row = await cursor.fetchone()
-        completed_today = row[0] if row else 0
-
-        # Get recent activity (last 10 entries)
-        cursor = await conn.execute("""
-            SELECT entry_type, content, timestamp
-            FROM work_log
-            ORDER BY timestamp DESC
-            LIMIT 10
-        """)
-        recent_activity = [
-            {
-                "type": row[0],
-                "content": row[1][:100] + "..." if len(row[1]) > 100 else row[1],
-                "timestamp": row[2]
-            }
-            for row in await cursor.fetchall()
-        ]
-
-    return {
-        "usage": {
-            "total_cost_usd": round(total_cost_usd, 4),
-            "total_messages": sum(message_counts.values()),
-            "agent_messages": agent_messages,
-            "tool_calls": tool_calls,
-            "completed_today": completed_today,
-            "total_tokens": total_tokens,
-            "input_tokens": total_input_tokens,
-            "output_tokens": total_output_tokens
-        },
-        "activity": {
-            "active_agents": active_agents,
-            "items_by_status": item_counts,
-            "recent": recent_activity
-        },
-        "breakdown": message_counts
-    }
+    return await _get_optimized_stats(db, orchestrator)
 
 
 # --- WebSocket ---
