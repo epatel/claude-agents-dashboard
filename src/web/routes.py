@@ -380,10 +380,26 @@ async def get_pending_clarification(request: Request, item_id: str):
 
 @router.post("/api/items/{item_id}/approve")
 async def approve_item(request: Request, item_id: str):
+    from ..config import HTTP_REQUEST_TIMEOUT
+    import asyncio
+
     orchestrator = request.app.state.orchestrator
-    result = await orchestrator.approve_item(item_id)
-    _invalidate_stats_cache()  # Item approval affects stats
-    return result
+
+    try:
+        # Add HTTP-level timeout that's slightly longer than git merge timeout
+        result = await asyncio.wait_for(
+            orchestrator.approve_item(item_id),
+            timeout=HTTP_REQUEST_TIMEOUT
+        )
+        _invalidate_stats_cache()  # Item approval affects stats
+        return result
+    except asyncio.TimeoutError:
+        # Return error response for HTTP timeout
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=504,
+            detail="Request timed out - merge operation took too long"
+        )
 
 
 class RequestChangesBody(BaseModel):

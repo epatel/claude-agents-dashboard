@@ -2,21 +2,47 @@ import asyncio
 import subprocess
 from pathlib import Path
 import os.path
+from ..config import GIT_OPERATION_TIMEOUT, GIT_MERGE_TIMEOUT
 
 
-async def run_git(cwd: Path, *args: str) -> str:
-    proc = await asyncio.create_subprocess_exec(
-        "git", *args,
-        cwd=str(cwd),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        raise subprocess.CalledProcessError(
-            proc.returncode, ["git", *args], stdout, stderr
+async def run_git(cwd: Path, *args: str, timeout: float | None = None) -> str:
+    """Run a git command with optional timeout.
+
+    Args:
+        cwd: Working directory for git command
+        *args: Git command arguments
+        timeout: Optional timeout in seconds (defaults to GIT_OPERATION_TIMEOUT)
+
+    Raises:
+        subprocess.CalledProcessError: If git command fails
+        asyncio.TimeoutError: If command times out
+    """
+    if timeout is None:
+        timeout = GIT_MERGE_TIMEOUT if args and args[0] == "merge" else GIT_OPERATION_TIMEOUT
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", *args,
+            cwd=str(cwd),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-    return stdout.decode().strip()
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(
+                proc.returncode, ["git", *args], stdout, stderr
+            )
+        return stdout.decode().strip()
+    except asyncio.TimeoutError:
+        # Kill the process if it's still running
+        if proc.returncode is None:
+            try:
+                proc.terminate()
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+        raise asyncio.TimeoutError(f"Git command timed out after {timeout}s: git {' '.join(args)}")
 
 
 async def get_main_branch(repo: Path) -> str:
@@ -224,23 +250,31 @@ async def merge_branch(repo: Path, branch: str, base: str | None = None,
     if base is None:
         base = await get_main_branch(repo)
 
-    # Commit uncommitted changes in the worktree first
-    if worktree_path and worktree_path.exists():
-        msg = commit_message or f"Agent work on {branch}"
-        committed = await commit_worktree_changes(worktree_path, msg)
-
-    # Checkout base in the main repo
-    await run_git(repo, "checkout", base)
-
     try:
+        # Commit uncommitted changes in the worktree first
+        if worktree_path and worktree_path.exists():
+            msg = commit_message or f"Agent work on {branch}"
+            committed = await commit_worktree_changes(worktree_path, msg)
+
+        # Checkout base in the main repo
+        await run_git(repo, "checkout", base)
+
+        # Perform the merge with explicit timeout
         merge_msg = commit_message or f"Merge {branch} into {base}"
         output = await run_git(repo, "merge", branch, "--no-ff",
-                               "-m", merge_msg)
+                               "-m", merge_msg, timeout=GIT_MERGE_TIMEOUT)
         return True, output
-    except subprocess.CalledProcessError as e:
-        # Conflict — abort the merge
+    except asyncio.TimeoutError as e:
+        # Timeout during merge operation
         try:
             await run_git(repo, "merge", "--abort")
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, asyncio.TimeoutError):
+            pass
+        return False, f"Merge operation timed out: {str(e)}"
+    except subprocess.CalledProcessError as e:
+        # Conflict or other git error — abort the merge
+        try:
+            await run_git(repo, "merge", "--abort")
+        except (subprocess.CalledProcessError, asyncio.TimeoutError):
             pass
         return False, e.stderr.decode() if e.stderr else str(e)

@@ -388,32 +388,42 @@ class AgentOrchestrator:
         branch = item["branch_name"]
         worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
         commit_msg = item.get("commit_message")
-        success, message = await merge_branch(
-            self.target_project, branch, worktree_path=worktree_path,
-            commit_message=commit_msg,
-        )
 
-        if success:
-            await self._log(item_id, "system", f"Merged {branch} into main")
-
-            # Clean up worktree
-            worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
-            if worktree_path:
-                try:
-                    await cleanup_worktree(self.target_project, worktree_path, branch)
-                except Exception as e:
-                    logger.warning(f"Worktree cleanup failed: {e}")
-
-            return await self._update_item(
-                item_id,
-                column_name="done",
-                status=None,
-                worktree_path=None,
+        try:
+            success, message = await merge_branch(
+                self.target_project, branch, worktree_path=worktree_path,
+                commit_message=commit_msg,
             )
-        else:
-            await self._log(item_id, "system", f"Merge conflict: {message}")
-            # TODO: spawn merge resolution agent
-            return await self._update_item(item_id, status="resolving_conflicts")
+
+            if success:
+                await self._log(item_id, "system", f"Merged {branch} into main")
+
+                # Clean up worktree
+                if worktree_path:
+                    try:
+                        await cleanup_worktree(self.target_project, worktree_path, branch)
+                    except Exception as e:
+                        logger.warning(f"Worktree cleanup failed: {e}")
+
+                return await self._update_item(
+                    item_id,
+                    column_name="done",
+                    status=None,
+                    worktree_path=None,
+                )
+            else:
+                await self._log(item_id, "system", f"Merge conflict: {message}")
+                # TODO: spawn merge resolution agent
+                return await self._update_item(item_id, status="resolving_conflicts")
+
+        except asyncio.TimeoutError as e:
+            # Handle timeout during merge operation
+            await self._log(item_id, "system", f"Merge operation timed out: {str(e)}")
+            return await self._update_item(item_id, status="merge_timeout")
+        except Exception as e:
+            # Handle other unexpected errors
+            await self._log(item_id, "system", f"Unexpected error during merge: {str(e)}")
+            return await self._update_item(item_id, status="merge_error")
 
     async def request_changes(self, item_id: str, comments: list[str]) -> dict:
         """Send review comments back to the agent."""

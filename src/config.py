@@ -27,6 +27,11 @@ DATA_DIR_NAME = "agents-lab"
 DEFAULT_PORT = 8000
 MAX_PORT_TRIES = 20
 
+# Git operation timeouts (in seconds)
+GIT_OPERATION_TIMEOUT = 300  # 5 minutes for most git operations
+GIT_MERGE_TIMEOUT = 600      # 10 minutes for merge operations (can be slow on large repos)
+HTTP_REQUEST_TIMEOUT = 660   # 11 minutes for HTTP requests (slightly longer than git merge timeout)
+
 # Default agent config
 DEFAULT_AGENT_CONFIG = {
     "system_prompt": "",
