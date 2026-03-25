@@ -8,6 +8,7 @@ from ..web.websocket import ConnectionManager
 from ..git.worktree import create_worktree, remove_worktree, cleanup_worktree
 from ..git.operations import get_main_branch, merge_branch
 from .session import AgentSession, AgentResult
+from .commit_message import create_commit_message_server
 from ..models import new_id
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,8 @@ class AgentOrchestrator:
         self.sessions: dict[str, AgentSession] = {}
         self._clarify_events: dict[str, asyncio.Event] = {}
         self._clarify_responses: dict[str, str] = {}
+        self._last_agent_messages: dict[str, str] = {}  # item_id -> last agent text
+        self._commit_messages: dict[str, str] = {}  # item_id -> commit message from tool
 
     async def _on_clarify(self, item_id: str, prompt: str, choices: list[str] | None) -> str:
         """Called when agent uses ask_user tool. Blocks until user responds."""
@@ -100,6 +103,12 @@ class AgentOrchestrator:
 
         return item
 
+    async def _on_set_commit_message(self, item_id: str, message: str) -> str:
+        """Called when agent uses set_commit_message tool."""
+        self._commit_messages[item_id] = message
+        await self._log(item_id, "system", f"Commit message set: {message}")
+        return f"Commit message saved: {message}"
+
     def _format_tool_use(self, name: str, inp: dict) -> str:
         """Format tool use for readable work log display."""
         if name == "Write":
@@ -123,6 +132,9 @@ class AgentOrchestrator:
         elif name == "create_todo":
             title = inp.get("title", "")
             return f"**Create Todo** {title}"
+        elif name == "set_commit_message":
+            msg = inp.get("message", "")
+            return f"**Commit Message** {msg}"
         elif name == "ask_user":
             question = inp.get("question", "")
             if len(question) > 100:
@@ -227,11 +239,15 @@ class AgentOrchestrator:
         model = item.get("model") or config.get("model")
 
         # Create session with callbacks
+        async def _on_message(text: str, iid: str = item_id):
+            self._last_agent_messages[iid] = text
+            await self._log(iid, "agent_message", text)
+
         session = AgentSession(
             worktree_path=worktree_path,
             system_prompt=system_prompt,
             model=model,
-            on_message=lambda text, iid=item_id: self._log(iid, "agent_message", text),
+            on_message=_on_message,
             on_tool_use=lambda name, inp, iid=item_id: self._log(
                 iid, "tool_use", self._format_tool_use(name, inp), json.dumps(inp)
             ),
@@ -240,6 +256,7 @@ class AgentOrchestrator:
             on_error=lambda err, iid=item_id: self._on_agent_error(iid, err),
             on_clarify=lambda prompt, choices, iid=item_id: self._on_clarify(iid, prompt, choices),
             on_create_todo=lambda title, desc, iid=item_id: self._on_create_todo(iid, title, desc),
+            on_set_commit_message=lambda msg, iid=item_id: self._on_set_commit_message(iid, msg),
         )
 
         self.sessions[item_id] = session
@@ -263,16 +280,24 @@ class AgentOrchestrator:
     async def _on_agent_complete(self, item_id: str, result: AgentResult):
         """Called when agent finishes."""
         self.sessions.pop(item_id, None)
+        self._last_agent_messages.pop(item_id, None)
 
         if result.success:
             await self._log(item_id, "system",
                            f"Agent completed (cost: ${result.cost_usd:.4f})" if result.cost_usd else "Agent completed")
-            await self._update_item(
-                item_id,
+
+            # Use commit message set via the set_commit_message tool
+            commit_message = self._commit_messages.pop(item_id, None)
+
+            update_kwargs = dict(
                 column_name="review",
                 status=None,
                 session_id=result.session_id,
             )
+            if commit_message:
+                update_kwargs["commit_message"] = commit_message
+
+            await self._update_item(item_id, **update_kwargs)
         else:
             await self._log(item_id, "error", f"Agent failed: {result.error}")
             await self._update_item(item_id, status="failed")
@@ -334,8 +359,10 @@ class AgentOrchestrator:
 
         branch = item["branch_name"]
         worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
+        commit_msg = item.get("commit_message")
         success, message = await merge_branch(
-            self.target_project, branch, worktree_path=worktree_path
+            self.target_project, branch, worktree_path=worktree_path,
+            commit_message=commit_msg,
         )
 
         if success:
@@ -393,11 +420,15 @@ class AgentOrchestrator:
         system_prompt = config.get("system_prompt", "") or ""
         worktree_path = Path(item["worktree_path"])
 
+        async def _on_message(text: str, iid: str = item_id):
+            self._last_agent_messages[iid] = text
+            await self._log(iid, "agent_message", text)
+
         session = AgentSession(
             worktree_path=worktree_path,
             system_prompt=system_prompt,
             model=config.get("model"),
-            on_message=lambda text, iid=item_id: self._log(iid, "agent_message", text),
+            on_message=_on_message,
             on_tool_use=lambda name, inp, iid=item_id: self._log(
                 iid, "tool_use", self._format_tool_use(name, inp), json.dumps(inp)
             ),
@@ -406,6 +437,7 @@ class AgentOrchestrator:
             on_error=lambda err, iid=item_id: self._on_agent_error(iid, err),
             on_clarify=lambda prompt, choices, iid=item_id: self._on_clarify(iid, prompt, choices),
             on_create_todo=lambda title, desc, iid=item_id: self._on_create_todo(iid, title, desc),
+            on_set_commit_message=lambda msg, iid=item_id: self._on_set_commit_message(iid, msg),
         )
 
         self.sessions[item_id] = session
