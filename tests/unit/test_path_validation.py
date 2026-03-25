@@ -124,7 +124,7 @@ class TestPathTraversalPrevention:
         """Test validation of extremely long filenames."""
         # Most filesystems have limits (255 chars for filename, 4096 for path)
         very_long_filename = "a" * 1000
-        very_long_path = "/".join(["part"] * 100)  # Very deep path
+        very_long_path = "/".join(["part"] * 250)  # Very deep path
 
         # Should validate lengths
         assert len(very_long_filename) > 255

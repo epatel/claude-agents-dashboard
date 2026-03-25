@@ -229,9 +229,7 @@ stateDiagram-v2
 
 #### Medium Priority
 
-1. **Migration class discovery** uses string name comparison (runner.py:65)
-   - `any(base.__name__ == 'Migration' for base in attr.__bases__)` won't match deeper inheritance
-   - **Recommendation**: Use `issubclass(attr, Migration)` with proper import
+1. ~~**Migration class discovery**~~ ✅ Resolved — uses `__mro__` name check to handle different import paths in dynamically loaded migration files. `issubclass` fails here because `from migration import Migration` and `from src.migrations.migration import Migration` create distinct class objects.
 
 2. **Orchestrator is growing** (652 lines)
    - Handles agent lifecycle, DB writes, WebSocket broadcasts, and git coordination
@@ -246,15 +244,13 @@ stateDiagram-v2
    - Handles modals, config, plugins, and multiple dialog types
    - **Recommendation**: Split into dialog-specific modules
 
-5. **No request timeout** for agent operations
-   - `start_agent` HTTP endpoint returns immediately, but `approve_item` blocks on git merge
-   - Long-running merges could time out the HTTP request
+5. ~~**No request timeout**~~ ✅ Resolved — `approve_item` route now uses `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT`.
 
 ---
 
 ## Test Coverage
 
-**Current state**: No automated tests exist.
+**Current state**: 73 automated tests (smoke, unit, integration) via `./run-tests.sh`.
 
 ### Recommended Test Plan
 

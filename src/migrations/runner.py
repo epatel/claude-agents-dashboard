@@ -57,12 +57,14 @@ class MigrationRunner:
                 spec.loader.exec_module(module)
 
                 # Find Migration class in module
+                # Check by class name to handle different import paths
+                # (e.g., "from migration import Migration" vs "from src.migrations.migration import Migration")
                 migration_class = None
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
                     if (isinstance(attr, type) and
-                        issubclass(attr, Migration) and
-                        attr != Migration):
+                        attr.__name__ != 'Migration' and
+                        any(base.__name__ == 'Migration' for base in attr.__mro__)):
                         migration_class = attr
                         break
 
