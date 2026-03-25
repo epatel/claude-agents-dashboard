@@ -1,4 +1,5 @@
 from pathlib import Path
+from .constants import DEFAULT_MODEL
 
 # Directory where the dashboard source lives
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent
@@ -30,7 +31,7 @@ MAX_PORT_TRIES = 20
 DEFAULT_AGENT_CONFIG = {
     "system_prompt": "",
     "tools": [],
-    "model": "claude-sonnet-4-20250514",
+    "model": DEFAULT_MODEL,
     "project_context": "",
     "mcp_servers": {},
     "mcp_enabled": False,
