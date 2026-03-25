@@ -277,8 +277,8 @@
                     </label>
                 </div>
                 <div class="form-group">
-                    <label for="config-mcp-servers">MCP Servers <span class="tooltip" data-tip-html="<b>JSON array of MCP server configs.</b><br><br><b>Example:</b><pre style='margin:6px 0;font-size:11px;background:rgba(255,255,255,0.1);padding:6px;border-radius:4px'>[{<br>  &quot;name&quot;: &quot;filesystem&quot;,<br>  &quot;command&quot;: &quot;npx&quot;,<br>  &quot;args&quot;: [&quot;-y&quot;,<br>    &quot;@modelcontextprotocol/server-filesystem&quot;,<br>    &quot;/path/to/data&quot;]<br>}]</pre><b>Common servers:</b><br>filesystem, github, postgres, puppeteer, brave-search">?</span></label>
-                    <textarea id="config-mcp-servers" rows="6" placeholder='[{"name": "filesystem", "command": "mcp-server-filesystem", "args": ["--path", "/path/to/data"]}]'></textarea>
+                    <label for="config-mcp-servers">MCP Servers <span class="tooltip" data-tip-html="<b>JSON object mapping server names to configs.</b><br><br><b>Example:</b><pre style='margin:6px 0;font-size:11px;background:rgba(255,255,255,0.1);padding:6px;border-radius:4px'>{<br>  &quot;filesystem&quot;: {<br>    &quot;command&quot;: &quot;npx&quot;,<br>    &quot;args&quot;: [&quot;-y&quot;,<br>      &quot;@modelcontextprotocol/server-filesystem&quot;,<br>      &quot;/path/to/data&quot;]<br>  }<br>}</pre><b>Common servers:</b><br>filesystem, github, postgres, puppeteer, brave-search">?</span></label>
+                    <textarea id="config-mcp-servers" rows="6" placeholder='{"filesystem": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/data"]}}'></textarea>
                 </div>
             </div>
             <!-- Plugins tab -->
