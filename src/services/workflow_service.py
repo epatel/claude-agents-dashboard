@@ -145,9 +145,60 @@ class WorkflowService:
                 worktree_path=None,
             )
         else:
-            await self._log_and_notify(item_id, "system", f"Merge conflict: {message}")
-            # TODO: spawn merge resolution agent
-            item = await self.db.update_item(item_id, status="resolving_conflicts")
+            await self._log_and_notify(item_id, "system",
+                f"Merge conflict detected — capturing diff and retrying with updated base")
+
+            # Capture the agent's work as a diff before resetting
+            try:
+                from ..git.operations import run_git, get_current_branch
+                agent_diff = await run_git(worktree_path, "diff", "HEAD~1", "HEAD")
+                if not agent_diff.strip():
+                    # Try diff against base
+                    base = base_branch or await get_current_branch(self.git.target_project)
+                    agent_diff = await run_git(worktree_path, "diff", base, "HEAD")
+            except Exception:
+                agent_diff = ""
+
+            if agent_diff and worktree_path:
+                # Reset worktree to latest base branch
+                try:
+                    base = base_branch or await get_current_branch(self.git.target_project)
+                    await run_git(worktree_path, "fetch", "origin", base)
+                    await run_git(worktree_path, "reset", "--hard", base)
+                    await self._log_and_notify(item_id, "system",
+                        f"Reset worktree to latest {base}, restarting agent with previous diff")
+                except Exception as e:
+                    logger.warning(f"Failed to reset worktree: {e}")
+
+                # Restart agent with the diff as context
+                item = await self.db.update_item(item_id, column_name="doing", status="running")
+                await self.notifications.broadcast_item_updated(item)
+
+                config = await self.db.get_agent_config()
+                model = item.get("model") or config.get("model")
+                session = await self.sessions.create_session(
+                    item_id, worktree_path, config, model,
+                    on_message=self._create_on_message_callback(item_id),
+                    on_tool_use=self._create_on_tool_use_callback(item_id),
+                    on_thinking=self._create_on_thinking_callback(item_id),
+                    on_complete=self._create_on_complete_callback(item_id),
+                    on_error=self._create_on_error_callback(item_id),
+                    on_clarify=self._create_on_clarify_callback(item_id),
+                    on_create_todo=self._create_on_create_todo_callback(item_id),
+                    on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
+                )
+
+                conflict_prompt = (
+                    f"Your previous changes caused a merge conflict. The base branch has been updated.\n\n"
+                    f"Here is the diff of your previous work — please reapply these changes to the "
+                    f"updated codebase, resolving any conflicts:\n\n```diff\n{agent_diff}\n```\n\n"
+                    f"Original task: {item['title']}\n\n{item['description']}"
+                )
+                await self.sessions.start_session_task(item_id, session, conflict_prompt)
+                return item
+
+            # Fallback: no diff captured, show conflict status
+            item = await self.db.update_item(item_id, status="conflict")
 
         await self.notifications.broadcast_item_updated(item)
         return item

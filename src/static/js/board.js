@@ -258,6 +258,7 @@ const Board = {
                 running: '<span class="spinner"></span> Running',
                 failed: '✕ Failed',
                 cancelled: '⊘ Cancelled',
+                conflict: '⚠ Merge conflict',
                 resolving_conflicts: '<span class="spinner"></span> Resolving conflicts',
             };
             statusHtml = `<div class="card-status card-status-${item.status}">${labels[item.status] || item.status}</div>`;

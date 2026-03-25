@@ -164,6 +164,10 @@
     color: var(--text-muted);
 }
 
+.card-status-conflict {
+    color: var(--warning);
+}
+
 .card-status-resolving_conflicts {
     color: var(--warning);
 }
