@@ -16,6 +16,11 @@ const Dialogs = {
     close(id) {
         const dialog = document.getElementById(id);
         if (dialog && dialog.open) dialog.close();
+
+        // Clear current item ID when closing item-specific dialogs
+        if (id === 'detail-dialog' || id === 'review-dialog') {
+            this._currentItemId = null;
+        }
     },
 
     // --- Custom confirm dialog ---
@@ -308,6 +313,8 @@ const Dialogs = {
             this.openRequestChanges(itemId);
         };
 
+        // Track current item ID for work log filtering
+        this._currentItemId = itemId;
         this.open('review-dialog');
     },
 
