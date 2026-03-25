@@ -62,4 +62,16 @@ const Api = {
     getWorkLog(id) {
         return this.request('GET', `/api/items/${id}/log`);
     },
+
+    getAttachments(id) {
+        return this.request('GET', `/api/items/${id}/attachments`);
+    },
+
+    createAttachment(itemId, filename, data) {
+        return this.request('POST', `/api/items/${itemId}/attachments`, {
+            item_id: itemId,
+            filename: filename,
+            data: data,
+        });
+    },
 };
