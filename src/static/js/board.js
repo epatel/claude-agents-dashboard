@@ -187,10 +187,17 @@ const Board = {
                 return;
             }
 
+            // Validate required fields before creating new item
+            if (!originalItem.title || originalItem.title.trim() === '') {
+                console.error('Item has no valid title:', originalItem);
+                alert('Cannot re-run item: missing or empty title');
+                return;
+            }
+
             // Create a new item with the same title, description, and model
             const newItem = await Api.createItem(
-                originalItem.title,
-                originalItem.description,
+                originalItem.title.trim(),
+                originalItem.description || '',
                 originalItem.model
             );
 
