@@ -37,6 +37,10 @@ const Annotate = {
     _setupEvents() {
         const c = this.canvas;
 
+        // Prevent duplicate listeners on repeated init() calls
+        if (this._eventsAttached) return;
+        this._eventsAttached = true;
+
         c.addEventListener('mousedown', (e) => this._onMouseDown(e));
         c.addEventListener('mousemove', (e) => this._onMouseMove(e));
         c.addEventListener('mouseup', (e) => this._onMouseUp(e));
@@ -46,8 +50,14 @@ const Annotate = {
         c.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
         c.addEventListener('drop', (e) => this._onDrop(e));
 
-        // Paste images
-        c.addEventListener('paste', (e) => this._onPaste(e));
+        // Paste images — listen on document because canvas elements don't
+        // reliably receive paste events, even when focused.
+        document.addEventListener('paste', (e) => {
+            // Only handle paste when the annotate dialog is open
+            const dialog = document.getElementById('annotate-dialog');
+            if (!dialog || !dialog.open) return;
+            this._onPaste(e);
+        });
 
         // Keyboard
         // Mouse wheel to scale selected image
