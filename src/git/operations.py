@@ -59,6 +59,11 @@ async def get_main_branch(repo: Path) -> str:
             return (await run_git(repo, "rev-parse", "--abbrev-ref", "HEAD"))
 
 
+async def get_current_branch(repo: Path) -> str:
+    """Get the currently checked-out branch name."""
+    return (await run_git(repo, "rev-parse", "--abbrev-ref", "HEAD")).strip()
+
+
 async def get_diff(repo: Path, branch: str, base: str | None = None, worktree_path: Path | None = None) -> str:
     """Get diff including both committed and uncommitted changes.
 
@@ -248,7 +253,7 @@ async def merge_branch(repo: Path, branch: str, base: str | None = None,
     If commit_message is provided, it is used instead of the default generic message.
     """
     if base is None:
-        base = await get_main_branch(repo)
+        base = await get_current_branch(repo)
 
     try:
         # Commit uncommitted changes in the worktree first

@@ -145,7 +145,7 @@ def mock_git_operations():
     import src.git.operations as operations_module
 
     # Mock worktree operations
-    create_worktree_mock = AsyncMock(return_value=Path("/mock/worktree"))
+    create_worktree_mock = AsyncMock(return_value=(Path("/mock/worktree"), "main"))
     remove_worktree_mock = AsyncMock()
     cleanup_worktree_mock = AsyncMock()
 

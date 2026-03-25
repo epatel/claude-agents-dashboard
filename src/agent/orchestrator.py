@@ -6,7 +6,7 @@ from pathlib import Path
 from ..database import Database
 from ..web.websocket import ConnectionManager
 from ..git.worktree import create_worktree, remove_worktree, cleanup_worktree
-from ..git.operations import get_main_branch, merge_branch
+from ..git.operations import merge_branch
 from .session import AgentSession, AgentResult
 from .commit_message import create_commit_message_server
 from ..models import new_id
@@ -225,6 +225,7 @@ class AgentOrchestrator:
         branch_name = f"agent/{item_id}"
 
         # Reuse existing worktree if it exists, otherwise create new
+        base_branch = item.get("base_branch")  # Preserve from previous run
         worktree_path = self.worktree_dir / branch_name.replace("/", "-")
         if item.get("worktree_path") and Path(item["worktree_path"]).exists():
             worktree_path = Path(item["worktree_path"])
@@ -237,7 +238,7 @@ class AgentOrchestrator:
                 await run_git(self.target_project, "branch", "-D", branch_name)
             except Exception:
                 pass
-            worktree_path = await create_worktree(
+            worktree_path, base_branch = await create_worktree(
                 self.target_project, self.worktree_dir, branch_name
             )
 
@@ -248,6 +249,7 @@ class AgentOrchestrator:
             status="running",
             branch_name=branch_name,
             worktree_path=str(worktree_path),
+            base_branch=base_branch,
         )
 
         await self._log(item_id, "system", "Agent started")
@@ -380,23 +382,26 @@ class AgentOrchestrator:
         return await self.start_agent(item_id)
 
     async def approve_item(self, item_id: str) -> dict:
-        """Approve a reviewed item — merge into main."""
+        """Approve a reviewed item — merge back into the base branch."""
         async with self.db.connect() as conn:
             cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
             item = dict(await cursor.fetchone())
 
         branch = item["branch_name"]
+        base_branch = item.get("base_branch")  # Branch the worktree was created from
         worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
         commit_msg = item.get("commit_message")
 
         try:
             success, message = await merge_branch(
-                self.target_project, branch, worktree_path=worktree_path,
+                self.target_project, branch, base=base_branch,
+                worktree_path=worktree_path,
                 commit_message=commit_msg,
             )
 
             if success:
-                await self._log(item_id, "system", f"Merged {branch} into main")
+                target = base_branch or "current branch"
+                await self._log(item_id, "system", f"Merged {branch} into {target}")
 
                 # Clean up worktree
                 if worktree_path:

@@ -1,14 +1,18 @@
 from pathlib import Path
-from .operations import run_git, get_main_branch
+from .operations import run_git, get_current_branch
 
 
-async def create_worktree(repo: Path, worktree_dir: Path, branch_name: str) -> Path:
-    """Create a git worktree with a new branch off main."""
-    main = await get_main_branch(repo)
+async def create_worktree(repo: Path, worktree_dir: Path, branch_name: str) -> tuple[Path, str]:
+    """Create a git worktree with a new branch off the current branch.
+
+    Returns (worktree_path, base_branch) so the caller can record which
+    branch the worktree was created from.
+    """
+    current = await get_current_branch(repo)
     worktree_path = worktree_dir / branch_name.replace("/", "-")
 
-    await run_git(repo, "worktree", "add", str(worktree_path), "-b", branch_name, main)
-    return worktree_path
+    await run_git(repo, "worktree", "add", str(worktree_path), "-b", branch_name, current)
+    return worktree_path, current
 
 
 async def remove_worktree(repo: Path, worktree_path: Path) -> None:
