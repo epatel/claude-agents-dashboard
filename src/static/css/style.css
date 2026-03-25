@@ -301,6 +301,16 @@ body {
     margin-bottom: 12px;
 }
 
+.detail-model-info {
+    margin-top: 16px;
+    padding: 8px 12px;
+    background: var(--bg-hover);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--primary);
+    font-size: 0.9em;
+    color: var(--text-muted);
+}
+
 .detail-log {
     border-top: 1px solid var(--border-light);
     padding: 12px 20px;

@@ -235,7 +235,27 @@ const Dialogs = {
         document.getElementById('detail-title').textContent = item.title;
 
         const body = document.getElementById('detail-body');
-        body.innerHTML = this.renderMarkdown(item.description || '(no description)');
+
+        // Build content with description and model info
+        let content = this.renderMarkdown(item.description || '(no description)');
+
+        // Add model information if available
+        if (item.model) {
+            const modelDisplayName = this._getModelDisplayName(item.model);
+            content += `<div class="detail-model-info"><strong>Model:</strong> ${modelDisplayName}</div>`;
+        } else {
+            // Show default model from config
+            try {
+                const config = await Api.request('GET', '/api/config');
+                const defaultModel = config.model || 'claude-sonnet-4-20250514';
+                const modelDisplayName = this._getModelDisplayName(defaultModel);
+                content += `<div class="detail-model-info"><strong>Model:</strong> ${modelDisplayName} (default)</div>`;
+            } catch (err) {
+                console.warn('Failed to fetch config for default model display:', err);
+            }
+        }
+
+        body.innerHTML = content;
 
         // Header actions based on item state
         const editBtn = document.getElementById('detail-edit-btn');
