@@ -130,15 +130,15 @@
     min-height: 0;
     min-width: 0;
     position: relative;
-    padding-bottom: 44px;
 }
 
 /* Font size controls */
 
 .file-font-controls {
-    position: absolute;
+    position: sticky;
     bottom: 8px;
-    right: 12px;
+    float: right;
+    margin-right: 12px;
     display: flex;
     gap: 2px;
     z-index: 10;
@@ -267,7 +267,6 @@
     flex: 1;
     overflow: auto;
     min-height: 0;
-    padding-bottom: 48px;
 }
 
 .file-empty-state {
@@ -290,12 +289,11 @@
 .file-code-viewer {
     margin: 0;
     padding: 12px;
-    padding-bottom: 48px;
+    padding-bottom: 44px;
     font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 13px;
     line-height: 1.5;
     overflow-x: auto;
-    min-height: 100%;
     background: var(--bg-primary) !important;
     box-sizing: border-box;
 }
