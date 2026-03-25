@@ -102,7 +102,7 @@ class AgentSession:
 
         # Allow all tools from external MCP servers (using wildcard for each server)
         for server_name, server_config in mcp_servers.items():
-            if server_name not in ["clarification", "todo"]:  # Skip our built-in servers
+            if server_name not in ["clarification", "todo", "commit_message"]:  # Skip our built-in servers
                 allowed_tools.append(f"mcp__{server_name}__*")
                 logger.info(f"Allowing all tools from external MCP server: {server_name}")
 

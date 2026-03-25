@@ -56,6 +56,16 @@ Browser ←HTTP→ FastAPI routes (routes.py)
 
 - **Cost tracking**: Agent completion logs USD cost via `result.cost_usd` from the Claude SDK, displayed in the work log.
 
+- **Retry reuses worktree**: `retry_agent()` cancels any existing session, reuses the existing worktree if present, and starts a fresh agent run. It does not resume the previous session.
+
+- **Delete cleans up everything**: Deleting an item stops any running agent, removes the git worktree and branch, deletes attachment files from disk, and cascades deletes to `work_log`, `review_comments`, `clarifications`, and `attachments` tables.
+
+- **External MCP tool allowance**: External MCP servers loaded from `mcp-config.json` get wildcard tool permissions (`mcp__{server_name}__*`). Built-in servers (`clarification`, `todo`, `commit_message`) get explicit individual tool permissions instead.
+
+- **Work log tool formatting**: `_format_tool_use()` renders human-readable summaries for common tools (Write, Edit, Read, Bash, Glob, Grep, ask_user, create_todo, set_commit_message). Unknown tools show a truncated input summary.
+
+- **Last agent message tracking**: `_last_agent_messages` dict tracks the latest text message per item for quick access without querying the work log.
+
 ### Frontend
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2; JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
@@ -65,6 +75,8 @@ Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card render
 ### Database
 
 SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 4 migrations: 001 initial schema, 002 MCP support, 003 per-item model, 004 commit messages). Tables: `items` (board cards + git metadata + model + commit_message), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+
+Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested under items) since attachments have their own integer IDs.
 
 #### Migration System
 
@@ -87,7 +99,7 @@ SQLite via aiosqlite with a versioned migration system. Migration files are in `
 - Attachments are stored as PNG files in `agents-lab/assets/` and referenced in the `attachments` table. Cleaned up on item delete.
 - The annotation canvas (`annotate.js`) is a self-contained component: `Annotate.init(canvasEl)` to start, `Annotate.toDataURL()` to export. Supports image drop, scale (wheel + corner handles), and annotation tools.
 - Card action buttons use `event.stopPropagation()` on individual buttons, not on the wrapper div, to avoid click blind spots.
-- MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` for user response, todo creation immediately returns success and broadcasts updates, commit message stores to DB and returns confirmation.
+- MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` for user response, todo creation immediately returns success and broadcasts updates, commit message stores in-memory (`_commit_messages` dict) and persists to DB on agent completion.
 - Agent-created items are indistinguishable from manually created ones in the database and UI — they follow the same lifecycle and support all features.
 - Port auto-discovery scans 8000–8019 (`MAX_PORT_TRIES = 20` in `config.py`).
 
