@@ -125,14 +125,19 @@ const App = {
                 Board.updateCard(data);
 
                 // Auto-transition: if the detail dialog is open for this item
-                // and the item just moved to "review", switch to the review dialog
-                if (data.id && data.column_name === 'review' && Dialogs._currentItemId === data.id) {
+                // and the task ended (moved column or status changed), transition
+                // to the appropriate dialog (review, clarify, or refreshed detail)
+                if (data.id && Dialogs._currentItemId === data.id) {
                     const detailDialog = document.getElementById('detail-dialog');
                     if (detailDialog && detailDialog.open) {
-                        // Save item ID before close() clears it
                         const itemId = data.id;
-                        Dialogs.close('detail-dialog');
-                        Dialogs.showReview(itemId);
+                        const movedOut = data.column_name && data.column_name !== 'doing';
+                        const ended = data.status && data.status !== 'running' && data.status !== 'resolving_conflicts';
+                        if (movedOut || ended) {
+                            Dialogs.close('detail-dialog');
+                            // showDetail auto-routes to review/clarify dialogs based on column
+                            Dialogs.showDetail(itemId);
+                        }
                     }
                 }
                 break;
