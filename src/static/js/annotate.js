@@ -570,9 +570,11 @@ const Annotate = {
         for (let i = this.annotations.length - 1; i >= 0; i--) {
             const a = this.annotations[i];
             if (a.type === 'text') {
-                this.ctx.font = `${a.fontSize}px sans-serif`;
+                this.ctx.font = `${a.fontSize || this.fontSize}px sans-serif`;
                 const m = this.ctx.measureText(a.text);
-                if (x >= a.x && x <= a.x + m.width && y >= a.y - a.fontSize && y <= a.y) return a;
+                const fontSize = a.fontSize || this.fontSize;
+                // Use consistent hit testing with new text baseline
+                if (x >= a.x && x <= a.x + m.width && y >= a.y && y <= a.y + fontSize) return a;
             } else if (a.type === 'arrow') {
                 const dist = this._distToLine(x, y, a.x1, a.y1, a.x2, a.y2);
                 if (dist < 10) return a;
@@ -642,26 +644,43 @@ const Annotate = {
             }
         }
 
-        // Draw annotations
+        // Draw annotations in layers to prevent overlap issues
+        // First draw shapes (arrows, circles, rectangles)
         for (const a of this.annotations) {
-            this._drawShape(a);
-            if (a.selected) {
-                ctx.strokeStyle = '#0071e3';
-                ctx.lineWidth = 1;
-                ctx.setLineDash([4, 3]);
-                if (a.type === 'text') {
-                    ctx.font = `${a.fontSize}px sans-serif`;
-                    const m = ctx.measureText(a.text);
-                    ctx.strokeRect(a.x - 2, a.y - a.fontSize - 2, m.width + 4, a.fontSize + 6);
-                } else if (a.type === 'arrow') {
-                    ctx.strokeRect(Math.min(a.x1, a.x2) - 5, Math.min(a.y1, a.y2) - 5,
-                        Math.abs(a.x2 - a.x1) + 10, Math.abs(a.y2 - a.y1) + 10);
-                } else if (a.type === 'circle') {
-                    ctx.strokeRect(a.x - a.rx - 3, a.y - a.ry - 3, a.rx * 2 + 6, a.ry * 2 + 6);
-                } else if (a.type === 'rect') {
-                    ctx.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
+            if (a.type !== 'text') {
+                this._drawShape(a);
+                if (a.selected) {
+                    ctx.strokeStyle = '#0071e3';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 3]);
+                    if (a.type === 'arrow') {
+                        ctx.strokeRect(Math.min(a.x1, a.x2) - 5, Math.min(a.y1, a.y2) - 5,
+                            Math.abs(a.x2 - a.x1) + 10, Math.abs(a.y2 - a.y1) + 10);
+                    } else if (a.type === 'circle') {
+                        ctx.strokeRect(a.x - a.rx - 3, a.y - a.ry - 3, a.rx * 2 + 6, a.ry * 2 + 6);
+                    } else if (a.type === 'rect') {
+                        ctx.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
+                    }
+                    ctx.setLineDash([]);
                 }
-                ctx.setLineDash([]);
+            }
+        }
+
+        // Then draw text annotations on top to prevent overlap
+        for (const a of this.annotations) {
+            if (a.type === 'text') {
+                this._drawShape(a);
+                if (a.selected) {
+                    ctx.strokeStyle = '#0071e3';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 3]);
+                    ctx.font = `${a.fontSize || this.fontSize}px sans-serif`;
+                    const m = ctx.measureText(a.text);
+                    const padding = 2;
+                    // Use consistent text baseline for selection box
+                    ctx.strokeRect(a.x - padding, a.y - padding, m.width + (padding * 2), (a.fontSize || this.fontSize) + (padding * 2));
+                    ctx.setLineDash([]);
+                }
             }
         }
 
@@ -708,7 +727,29 @@ const Annotate = {
             const h = s.h ?? Math.abs(s.y2 - s.y1);
             ctx.strokeRect(x, y, w, h);
         } else if (s.type === 'text') {
-            ctx.font = `${s.fontSize || this.fontSize}px sans-serif`;
+            const fontSize = s.fontSize || this.fontSize;
+            ctx.font = `${fontSize}px sans-serif`;
+            ctx.textBaseline = 'top';
+
+            // Add text background to prevent overlap with lines/shapes
+            const metrics = ctx.measureText(s.text);
+            const padding = 4; // Increased padding for better clearance
+            const bgX = s.x - padding;
+            const bgY = s.y - padding;
+            const bgW = metrics.width + (padding * 2);
+            const bgH = fontSize + (padding * 2);
+
+            // Draw solid background with border to prevent overlap
+            ctx.fillStyle = 'rgba(255, 255, 255, 1)'; // Made fully opaque
+            ctx.fillRect(bgX, bgY, bgW, bgH);
+
+            // Add subtle border for better definition
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(bgX, bgY, bgW, bgH);
+
+            // Draw text with original color
+            ctx.fillStyle = s.color || this.color;
             ctx.fillText(s.text, s.x, s.y);
         }
     },

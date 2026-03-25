@@ -493,10 +493,28 @@ body {
     margin-left: auto;
 }
 
+/* Fix for annotation text rendering overlaps */
+.annotate-canvas-wrap canvas {
+    /* Additional properties to prevent rendering artifacts */
+    backface-visibility: hidden;
+    perspective: 1000;
+}
+
+/* Prevent text selection conflicts with canvas drawing */
+.annotate-canvas-wrap {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
 .annotate-canvas-wrap {
     padding: 12px 20px;
     overflow: auto;
     max-height: 60vh;
+    position: relative;
+    z-index: 1;
+    background: var(--bg-primary); /* Ensure clean background */
 }
 
 .annotate-canvas-wrap canvas {
@@ -504,6 +522,15 @@ body {
     border-radius: var(--radius-sm);
     display: block;
     cursor: crosshair;
+    position: relative;
+    z-index: 10; /* Increased z-index to prevent overlap */
+    /* Prevent canvas scaling issues that cause misalignment */
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    /* Ensure crisp rendering without blur */
+    transform: translateZ(0);
 }
 
 /* Clarification dialog */
