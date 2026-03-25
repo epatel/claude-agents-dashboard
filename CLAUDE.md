@@ -44,7 +44,7 @@ Browser ←HTTP→ FastAPI routes (routes.py)
 
 - **Todo creation via MCP**: Agents can create new todo items via the `create_todo` MCP tool. This flows through `_on_create_todo` callback, creates new items in the database with proper positioning, and broadcasts real-time updates to the frontend.
 
-- **Per-item model selection**: Items can have an individual `model` field (migration 003). `start_agent()` uses `item.get("model") or config.get("model")`, falling back to the global agent config default (`claude-sonnet-4-20250514`).
+- **Per-item model selection**: Items can have an individual `model` field. `start_agent()` uses `item.get("model") or config.get("model")`, falling back to the global agent config default (`claude-sonnet-4-20250514`). Available models: Claude Sonnet 4 (`claude-sonnet-4-20250514`) and Claude Opus 4.6 (`claude-opus-4-6`).
 
 - **Session resumption**: `ResultMessage.session_id` is stored in the DB. When requesting changes, the agent resumes its previous session via `ClaudeAgentOptions(resume=session_id, continue_conversation=True)` so it retains full conversation context.
 
@@ -68,6 +68,10 @@ Browser ←HTTP→ FastAPI routes (routes.py)
 
 - **External MCP tool allowance**: External MCP servers loaded from `mcp-config.json` get wildcard tool permissions (`mcp__{server_name}__*`). Built-in servers (`clarification`, `todo`, `commit_message`) get explicit individual tool permissions instead.
 
+- **Plugin support**: Agents can load local Claude Code plugins via directory paths. Plugins are configured in the agent config UI (Plugins tab) and stored as a JSON array of paths in `agent_config.plugins`. The orchestrator's `_parse_plugins()` normalizes entries into `{"type": "local", "path": "..."}` dicts passed to the SDK.
+
+- **Save & Start**: The new item dialog has a "▶ Save & Start" button that creates an item and immediately launches an agent in one action, skipping the manual start step.
+
 - **Work log tool formatting**: `_format_tool_use()` renders human-readable summaries for common tools (Write, Edit, Read, Bash, Glob, Grep, ask_user, create_todo, set_commit_message). Unknown tools show a truncated input summary.
 
 - **Last agent message tracking**: `_last_agent_messages` dict tracks the latest text message per item for quick access without querying the work log.
@@ -76,18 +80,18 @@ Browser ←HTTP→ FastAPI routes (routes.py)
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2; JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
 
-Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card rendering), `dialogs.js` (all modals + custom confirm), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates).
+Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card rendering), `dialogs.js` (all modals + custom confirm + plugin management), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates).
 
 ### Database
 
-SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 5 migrations: 001 initial schema, 002 MCP support, 003 per-item model, 004 commit messages, 005 token usage tracking). Tables: `items` (board cards + git metadata + model + commit_message), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 1 consolidated migration: `001_initial_schema.py` creates the complete schema). Tables: `items` (board cards + git metadata + model + commit_message), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
 
 Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested under items) since attachments have their own integer IDs.
 
 #### Migration System
 
 - **Migration runner**: `src/migrations/runner.py` manages applying/rolling back migrations
-- **Migration files**: `src/migrations/versions/XXX_description.py` contain versioned schema changes
+- **Migration files**: `src/migrations/versions/XXX_description.py` contain versioned schema changes (currently consolidated into single `001_initial_schema.py`)
 - **Schema tracking**: `schema_migrations` table tracks which migrations have been applied
 - **CLI management**: `python -m src.manage` for migration commands
 - **Auto-migration**: Database automatically runs pending migrations on startup
@@ -107,6 +111,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 - Card action buttons use `event.stopPropagation()` on individual buttons, not on the wrapper div, to avoid click blind spots.
 - MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` for user response, todo creation immediately returns success and broadcasts updates, commit message stores in-memory (`_commit_messages` dict) and persists to DB on agent completion.
 - Agent-created items are indistinguishable from manually created ones in the database and UI — they follow the same lifecycle and support all features.
+- The agent config dialog has three tabs: General (system prompt, model, project context), MCP (server JSON config, enable/disable toggle), and Plugins (local plugin directory paths with add/remove UI).
 - Port auto-discovery scans 8000–8019 (`MAX_PORT_TRIES = 20` in `config.py`).
 
 ## Development workflows
@@ -127,7 +132,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 
 3. **Frontend changes**: Add HTML in templates (`web/static/`), update JavaScript modules, handle WebSocket events in `app.js`, broadcast state changes from backend.
 
-4. **Agent capabilities**: Extend the system prompt in `AgentOrchestrator.create_agent()`, add MCP tools via the agent config UI, or modify `ask_user` clarification flows or `create_todo` workflows.
+4. **Agent capabilities**: Extend the system prompt in `AgentOrchestrator.create_agent()`, add MCP tools via the agent config UI, configure plugins via the Plugins tab, or modify `ask_user` clarification flows or `create_todo` workflows.
 
 ### Testing changes
 
