@@ -257,6 +257,8 @@ class AgentOrchestrator:
             on_clarify=lambda prompt, choices, iid=item_id: self._on_clarify(iid, prompt, choices),
             on_create_todo=lambda title, desc, iid=item_id: self._on_create_todo(iid, title, desc),
             on_set_commit_message=lambda msg, iid=item_id: self._on_set_commit_message(iid, msg),
+            mcp_servers=config.get("mcp_servers"),
+            mcp_enabled=config.get("mcp_enabled", False),
         )
 
         self.sessions[item_id] = session
@@ -450,6 +452,8 @@ class AgentOrchestrator:
             on_clarify=lambda prompt, choices, iid=item_id: self._on_clarify(iid, prompt, choices),
             on_create_todo=lambda title, desc, iid=item_id: self._on_create_todo(iid, title, desc),
             on_set_commit_message=lambda msg, iid=item_id: self._on_set_commit_message(iid, msg),
+            mcp_servers=config.get("mcp_servers"),
+            mcp_enabled=config.get("mcp_enabled", False),
         )
 
         self.sessions[item_id] = session
