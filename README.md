@@ -180,7 +180,7 @@ stateDiagram-v2
 
 - **Python 3.12+** (tested on macOS, Linux, and Windows with WSL)
 - **Git** (any modern version)
-- **Claude API key** - set the `ANTHROPIC_API_KEY` environment variable
+- **Claude Code** - must be installed and logged in (`claude` CLI). The dashboard uses the Claude Agent SDK which authenticates through your Claude Code session — no API key needed
 - **Internet connection** - for Claude API calls
 
 ## Example use cases
@@ -371,10 +371,10 @@ python -m src.manage status --db-path /path/to/custom/database.db
 
 **Port already in use**: The server auto-increments ports (8000 → 8001 → 8002...), but if all ports in range are busy, restart the conflicting services or wait a moment.
 
-**API key not found**: Ensure `ANTHROPIC_API_KEY` is set in your shell environment:
+**Agent fails to start**: Ensure Claude Code is installed and you're logged in:
 ```bash
-export ANTHROPIC_API_KEY=your_api_key_here
-echo $ANTHROPIC_API_KEY  # Should print your key
+claude --version  # Should show version
+claude            # Opens interactive mode — log in if prompted
 ```
 
 **Git worktree errors**: If you see git worktree issues, check that your project has at least one commit on the main/master branch:
