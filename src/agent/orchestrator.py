@@ -358,8 +358,6 @@ class AgentOrchestrator:
 
         await self._log(item_id, "system", "Agent retrying")
 
-        # Resume from previous session if possible
-        resume_id = item.get("session_id")
         return await self.start_agent(item_id)
 
     async def approve_item(self, item_id: str) -> dict:
