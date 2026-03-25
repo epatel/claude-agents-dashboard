@@ -13,6 +13,7 @@ from claude_agent_sdk import (
     ResultMessage,
     StreamEvent,
     TextBlock,
+    ImageBlock,
     ToolUseBlock,
     ToolResultBlock,
     ThinkingBlock,
@@ -70,8 +71,8 @@ class AgentSession:
         self._task: asyncio.Task | None = None
         self._cancelled = False
 
-    async def start(self, prompt: str, resume_session_id: str | None = None) -> None:
-        """Start the agent with a prompt."""
+    async def start(self, prompt: str, attachments: list[dict] | None = None, resume_session_id: str | None = None) -> None:
+        """Start the agent with a prompt and optional image attachments."""
         from .clarification import create_clarification_server
         from .todo import create_todo_server
         from .commit_message import create_commit_message_server
@@ -159,7 +160,53 @@ class AgentSession:
         self.client = ClaudeSDKClient(options=options)
         await self.client.connect()
         self._task = asyncio.create_task(self._receive_loop())
-        await self.client.query(prompt)
+
+        # Create message with text and optional images
+        message_content = [TextBlock(text=prompt)]
+
+        # Add image attachments if provided
+        if attachments:
+            import base64
+            for attachment in attachments:
+                try:
+                    # Read the image file and encode as base64
+                    asset_path = Path(attachment["asset_path"])
+                    if asset_path.exists():
+                        image_data = base64.b64encode(asset_path.read_bytes()).decode('utf-8')
+                        # Detect image format from file extension
+                        format_map = {
+                            '.png': 'image/png',
+                            '.jpg': 'image/jpeg',
+                            '.jpeg': 'image/jpeg',
+                            '.gif': 'image/gif',
+                            '.webp': 'image/webp'
+                        }
+                        media_type = format_map.get(asset_path.suffix.lower(), 'image/png')
+
+                        message_content.append(ImageBlock(
+                            source={
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": image_data
+                            },
+                            alt_text=f"Attached image: {attachment['filename']}"
+                        ))
+                        logger.info(f"Added attachment to message: {attachment['filename']}")
+                except Exception as e:
+                    logger.warning(f"Failed to attach image {attachment.get('filename', 'unknown')}: {e}")
+
+        # Send the message with text and images
+        if len(message_content) == 1:
+            # Text-only case, use existing query method
+            await self.client.query(prompt)
+        else:
+            # Text with images - try sending content directly
+            try:
+                await self.client.query(message_content)
+            except Exception as e:
+                # Fallback to text-only if image sending fails
+                logger.warning(f"Failed to send images to agent: {e}")
+                await self.client.query(prompt)
 
     async def _receive_loop(self) -> None:
         """Process messages from the agent."""

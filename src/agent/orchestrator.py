@@ -263,16 +263,28 @@ class AgentOrchestrator:
         # Build the prompt from item description
         prompt = f"Task: {item['title']}\n\n{item['description']}"
 
+        # Fetch attachments for this item
+        attachments = []
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT * FROM attachments WHERE item_id = ? ORDER BY created_at",
+                (item_id,),
+            )
+            rows = await cursor.fetchall()
+            attachments = [dict(row) for row in rows]
+            if attachments:
+                await self._log(item_id, "system", f"Found {len(attachments)} image attachment(s) for agent")
+
         # Launch agent in background so HTTP response returns immediately
-        task = asyncio.create_task(self._run_agent(item_id, session, prompt))
+        task = asyncio.create_task(self._run_agent(item_id, session, prompt, attachments))
         self._agent_tasks[item_id] = task
 
         return item
 
-    async def _run_agent(self, item_id: str, session: AgentSession, prompt: str, resume_session_id: str | None = None):
+    async def _run_agent(self, item_id: str, session: AgentSession, prompt: str, attachments: list[dict] | None = None, resume_session_id: str | None = None):
         """Run agent session in background."""
         try:
-            await session.start(prompt, resume_session_id=resume_session_id)
+            await session.start(prompt, attachments=attachments, resume_session_id=resume_session_id)
         except Exception as e:
             logger.exception(f"Agent failed to start for {item_id}")
             await self._on_agent_error(item_id, str(e))
@@ -442,9 +454,19 @@ class AgentOrchestrator:
 
         self.sessions[item_id] = session
 
+        # Fetch attachments for this item (in case they're needed for context)
+        attachments = []
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT * FROM attachments WHERE item_id = ? ORDER BY created_at",
+                (item_id,),
+            )
+            rows = await cursor.fetchall()
+            attachments = [dict(row) for row in rows]
+
         # Resume conversation with feedback in background
         resume_id = item.get("session_id")
-        task = asyncio.create_task(self._run_agent(item_id, session, feedback, resume_session_id=resume_id))
+        task = asyncio.create_task(self._run_agent(item_id, session, feedback, attachments, resume_session_id=resume_id))
         self._agent_tasks[item_id] = task
 
         return item
