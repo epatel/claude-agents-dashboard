@@ -157,6 +157,16 @@ class AgentOrchestrator:
 
     async def _update_item(self, item_id: str, **kwargs):
         async with self.db.connect() as conn:
+            # If column_name is being changed, assign next position in target column
+            if "column_name" in kwargs and "position" not in kwargs:
+                target_column = kwargs["column_name"]
+                cursor = await conn.execute(
+                    "SELECT COALESCE(MAX(position), -1) + 1 FROM items WHERE column_name = ?",
+                    (target_column,)
+                )
+                row = await cursor.fetchone()
+                kwargs["position"] = row[0]
+
             sets = ", ".join(f"{k} = ?" for k in kwargs)
             vals = list(kwargs.values()) + [item_id]
             await conn.execute(
