@@ -6,6 +6,30 @@
 
 A standalone scrum board that orchestrates Claude agents working on your project. Each board item becomes a task for an AI agent that works in its own git worktree, keeping changes isolated until you approve and merge them.
 
+## Quick start
+
+From your project repository:
+
+```bash
+path/to/claude-agents-dashboard/run.sh
+```
+
+Or pass the project path explicitly:
+
+```bash
+path/to/claude-agents-dashboard/run.sh /path/to/your/project
+```
+
+The server starts at `http://127.0.0.1:8000` (auto-increments ports 8000-8019 if busy). Your project must be a git repository. Requires Python 3.12+.
+
+### Running tests
+
+```bash
+./run-tests.sh
+```
+
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`.
+
 ## How it works
 
 ```mermaid
@@ -25,30 +49,6 @@ graph LR
 3. **Watch progress** in real-time via the work log (thinking, tool use, messages)
 4. **Review changes** — browse the diff, approve to merge into main, or request changes
 5. **Agent remembers** — when you request changes, it resumes its session with full context
-
-## Quick start
-
-From your project repository:
-
-```bash
-path/to/claude-agents-dashboard/run.sh
-```
-
-Or pass the project path explicitly:
-
-```bash
-path/to/claude-agents-dashboard/run.sh /path/to/your/project
-```
-
-The server starts at `http://127.0.0.1:8000` (auto-increments ports 8000-8019 if busy). Your project must be a git repository.
-
-### Running tests
-
-```bash
-./run-tests.sh
-```
-
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`.
 
 ## What it creates
 
