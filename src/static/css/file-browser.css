@@ -129,6 +129,53 @@
     flex-direction: column;
     min-height: 0;
     min-width: 0;
+    position: relative;
+}
+
+/* Font size controls */
+
+.file-font-controls {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.file-font-controls:hover {
+    opacity: 1;
+}
+
+.file-font-controls button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.file-font-controls button:first-child {
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.file-font-controls button:last-child {
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    border-left: none;
+}
+
+.file-font-controls button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
 }
 
 /* Tabs */
@@ -241,12 +288,14 @@
 .file-code-viewer {
     margin: 0;
     padding: 12px;
+    padding-bottom: 48px;
     font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 13px;
     line-height: 1.5;
     overflow-x: auto;
     min-height: 100%;
     background: var(--bg-primary) !important;
+    box-sizing: border-box;
 }
 
 .file-code-viewer code {
@@ -287,7 +336,7 @@
 /* Markdown Viewer */
 
 .file-markdown-viewer {
-    padding: 20px 24px;
+    padding: 20px 24px 48px 24px;
     font-size: 14px;
     line-height: 1.6;
     color: var(--text-primary);

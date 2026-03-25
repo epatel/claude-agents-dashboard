@@ -4,6 +4,7 @@ const FileBrowser = {
     _activeTab: -1,
     _expandedDirs: new Set(),
     _maxTabs: 10,
+    _fontSize: 13,
 
     init() {
         const filterInput = document.getElementById('file-tree-filter');
@@ -67,6 +68,12 @@ const FileBrowser = {
     close() {
         const dialog = document.getElementById('file-browser-dialog');
         if (dialog) dialog.close();
+    },
+
+    changeFontSize(delta) {
+        this._fontSize = Math.max(9, Math.min(24, this._fontSize + delta));
+        const viewers = document.querySelectorAll('.file-code-viewer, .file-markdown-viewer');
+        viewers.forEach(el => { el.style.fontSize = this._fontSize + 'px'; });
     },
 
     async _loadTree(path) {
@@ -351,6 +358,7 @@ const FileBrowser = {
 
     _renderContent() {
         const contentEl = document.getElementById('file-content');
+        const fontControls = document.getElementById('file-font-controls');
 
         if (this._activeTab < 0) {
             contentEl.innerHTML = `
@@ -358,6 +366,7 @@ const FileBrowser = {
                     <div class="file-empty-icon">📂</div>
                     <p>Select a file from the tree to view it</p>
                 </div>`;
+            if (fontControls) fontControls.style.display = 'none';
             return;
         }
 
@@ -370,6 +379,7 @@ const FileBrowser = {
                     <div class="file-binary-icon">🔒</div>
                     <p>Hidden for security</p>
                 </div>`;
+            if (fontControls) fontControls.style.display = 'none';
             return;
         }
 
@@ -380,6 +390,7 @@ const FileBrowser = {
                     <img src="${tab.content}" alt="${this._escapeHtml(tab.name)}">
                     <div class="file-image-info">${this._formatSize(tab.size)}</div>
                 </div>`;
+            if (fontControls) fontControls.style.display = 'none';
             return;
         }
 
@@ -390,17 +401,20 @@ const FileBrowser = {
                     <div class="file-binary-icon">📦</div>
                     <p>Binary file — ${this._formatSize(tab.size)}</p>
                 </div>`;
+            if (fontControls) fontControls.style.display = 'none';
             return;
         }
 
         // Markdown
         if (tab.language === 'markdown') {
             this._renderMarkdown(contentEl, tab);
+            if (fontControls) fontControls.style.display = 'flex';
             return;
         }
 
         // Code / text
         this._renderCode(contentEl, tab);
+        if (fontControls) fontControls.style.display = 'flex';
     },
 
     _renderCode(container, tab) {
@@ -410,7 +424,8 @@ const FileBrowser = {
         }
 
         const langClass = tab.language ? `language-${tab.language}` : 'language-none';
-        html += `<pre class="file-code-viewer line-numbers"><code class="${langClass}">${this._escapeHtml(tab.content)}</code></pre>`;
+        const fontStyle = this._fontSize !== 13 ? ` style="font-size:${this._fontSize}px"` : '';
+        html += `<pre class="file-code-viewer line-numbers"${fontStyle}><code class="${langClass}">${this._escapeHtml(tab.content)}</code></pre>`;
         container.innerHTML = html;
 
         // Trigger Prism highlighting
