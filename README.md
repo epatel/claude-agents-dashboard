@@ -51,8 +51,10 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Clarification flow** — agents can ask the user questions mid-task via custom MCP tool
 - **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items
 - **Custom commit messages** — agents set meaningful commit messages via MCP tool, used when merging
-- **Cost tracking** — agent completion logs USD cost for each task
+- **Stats dashboard** — real-time header bar showing total cost, token usage, active agents, and items completed today; auto-refreshes every 10 seconds and on WebSocket events
+- **Cost & token tracking** — agent completion logs USD cost and token consumption (input/output/total) per task, persisted to a dedicated `token_usage` table
 - **Retry & cancel** — cancel a running agent or retry a failed one; retries reuse the existing worktree
+- **Cancel review** — discard changes during review, clean up worktree/branch, and move item back to Todo
 - **Session persistence** — request changes resumes the agent's conversation with full context
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
@@ -67,7 +69,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket
-- **Agent**: Claude Agent SDK (`claude-agent-sdk` v0.1.50+), default model: `claude-sonnet-4-20250514`
+- **Agent**: Claude Agent SDK (`claude-agent-sdk`), default model: `claude-sonnet-4-20250514`
 - **Security**: Localhost only, no authentication
 
 ## Requirements
