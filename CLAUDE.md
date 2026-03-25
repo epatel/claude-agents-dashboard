@@ -44,13 +44,17 @@ Browser ←HTTP→ FastAPI routes (routes.py)
 
 - **Todo creation via MCP**: Agents can create new todo items via the `create_todo` MCP tool. This flows through `_on_create_todo` callback, creates new items in the database with proper positioning, and broadcasts real-time updates to the frontend.
 
-- **Per-item model selection**: Items can have an individual `model` field (migration 003). `start_agent()` uses `item.get("model") or config.get("model")`, falling back to the global agent config default.
+- **Per-item model selection**: Items can have an individual `model` field (migration 003). `start_agent()` uses `item.get("model") or config.get("model")`, falling back to the global agent config default (`claude-sonnet-4-20250514`).
 
 - **Session resumption**: `ResultMessage.session_id` is stored in the DB. When requesting changes, the agent resumes its previous session via `ClaudeAgentOptions(resume=session_id, continue_conversation=True)` so it retains full conversation context.
 
 - **Diff includes uncommitted changes**: `get_diff()` and `get_changed_files()` accept a `worktree_path` parameter. When provided, they combine committed branch diff + uncommitted changes + untracked files, since agents don't always commit their work.
 
-- **Merge commits worktree first**: `merge_branch()` calls `commit_worktree_changes()` before merging, handling agents that leave uncommitted work.
+- **Merge commits worktree first**: `merge_branch()` calls `commit_worktree_changes()` before merging, handling agents that leave uncommitted work. Uses agent-provided commit messages when available (via `set_commit_message` MCP tool).
+
+- **Merge conflict handling**: If a merge conflict occurs, the item moves to `resolving_conflicts` status and the merge is aborted, keeping the worktree intact.
+
+- **Cost tracking**: Agent completion logs USD cost via `result.cost_usd` from the Claude SDK, displayed in the work log.
 
 ### Frontend
 
@@ -60,7 +64,7 @@ Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card render
 
 ### Database
 
-SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/`. Tables: `items` (board cards + git metadata), `work_log` (agent activity stream), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 4 migrations: 001 initial schema, 002 MCP support, 003 per-item model, 004 commit messages). Tables: `items` (board cards + git metadata + model + commit_message), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
 
 #### Migration System
 
@@ -75,7 +79,7 @@ SQLite via aiosqlite with a versioned migration system. Migration files are in `
 - All state changes broadcast via `ws_manager.broadcast(event_type, data)` for real-time UI updates.
 - The `_update_item` helper in orchestrator updates DB + broadcasts in one call.
 - `Starlette TemplateResponse` requires `request` as first kwarg: `TemplateResponse(request=request, name="...", context={...})`.
-- Agent's `cwd` is set to the worktree path, and the system prompt explicitly tells the agent its working directory. `add_dirs` is also set to allow file operations there. Agent sessions use `permission_mode="bypassPermissions"` so agents can operate autonomously.
+- Agent's `cwd` is set to the worktree path, and the system prompt explicitly tells the agent its working directory. `add_dirs` is also set to allow file operations there. Agent sessions use `permission_mode="acceptEdits"` for targeted autonomy (more restricted than `bypassPermissions`).
 - Extended thinking is enabled (`thinking={"type": "enabled", "budget_tokens": 10000}`) for richer agent reasoning.
 - Never use browser `confirm()` or `prompt()` in dialogs — they block and conflict with `<dialog>` modals. Use `Dialogs.confirm()` which returns a Promise.
 - Tooltips use JS positioning (`position: fixed`, appended to the nearest open `<dialog>` or `document.body`) so they appear above modal dialogs. Use `data-tip` for plain text, `data-tip-html` for rich formatted tooltips.
@@ -83,8 +87,9 @@ SQLite via aiosqlite with a versioned migration system. Migration files are in `
 - Attachments are stored as PNG files in `agents-lab/assets/` and referenced in the `attachments` table. Cleaned up on item delete.
 - The annotation canvas (`annotate.js`) is a self-contained component: `Annotate.init(canvasEl)` to start, `Annotate.toDataURL()` to export. Supports image drop, scale (wheel + corner handles), and annotation tools.
 - Card action buttons use `event.stopPropagation()` on individual buttons, not on the wrapper div, to avoid click blind spots.
-- MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` for user response, todo creation immediately returns success and broadcasts updates.
+- MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` for user response, todo creation immediately returns success and broadcasts updates, commit message stores to DB and returns confirmation.
 - Agent-created items are indistinguishable from manually created ones in the database and UI — they follow the same lifecycle and support all features.
+- Port auto-discovery scans 8000–8019 (`MAX_PORT_TRIES = 20` in `config.py`).
 
 ## Development workflows
 
@@ -157,3 +162,4 @@ The system includes several built-in MCP tools for agents:
 
 - **`ask_user`** (clarification): Allows agents to ask users questions and wait for responses. Moves items to "Clarify" column and resumes when answered.
 - **`create_todo`** (todo creation): Enables agents to create new todo items with title and optional description. Items are automatically positioned in the todo column and broadcast to all connected clients.
+- **`set_commit_message`** (commit message): Allows agents to set a custom commit message for their work. Stored in the database and used during merge instead of the generic "Agent work on agent/xxx" message.

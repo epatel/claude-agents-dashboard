@@ -26,7 +26,7 @@ Or pass the project path explicitly:
 path/to/claude-agents-dashboard/run.sh /path/to/your/project
 ```
 
-The server starts at `http://127.0.0.1:8000` (auto-increments if the port is busy). Your project must be a git repository.
+The server starts at `http://127.0.0.1:8000` (auto-increments ports 8000–8019 if busy). Your project must be a git repository.
 
 ## What it creates
 
@@ -50,6 +50,8 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Review & merge** — tabbed dialog with description, diff viewer, and work log; approve or request changes
 - **Clarification flow** — agents can ask the user questions mid-task via custom MCP tool
 - **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items
+- **Custom commit messages** — agents set meaningful commit messages via MCP tool, used when merging
+- **Cost tracking** — agent completion logs USD cost for each task
 - **Session persistence** — request changes resumes the agent's conversation with full context
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
@@ -62,7 +64,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket
-- **Agent**: Claude Agent SDK (`claude-agent-sdk` v0.1.50+)
+- **Agent**: Claude Agent SDK (`claude-agent-sdk` v0.1.50+), default model: `claude-sonnet-4-20250514`
 - **Security**: Localhost only, no authentication
 
 ## Requirements
