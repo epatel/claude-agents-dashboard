@@ -300,4 +300,33 @@
         </form>
     </div>
 </dialog>
+<!-- File Browser Dialog -->
+<dialog id="file-browser-dialog" class="modal">
+    <div class="modal-content file-browser-modal">
+        <div class="modal-header">
+            <h3>Files</h3>
+            <button class="btn-close" onclick="FileBrowser.close()">&times;</button>
+        </div>
+        <div class="file-browser-container">
+            <div class="file-tree-panel">
+                <div class="file-tree-search">
+                    <input type="text" placeholder="Filter files..." id="file-tree-filter">
+                </div>
+                <div class="file-tree" id="file-tree">
+                    <div class="file-tree-loading">Loading...</div>
+                </div>
+            </div>
+            <div class="file-viewer-panel">
+                <div class="file-tabs" id="file-tabs"></div>
+                <div class="file-breadcrumb" id="file-breadcrumb"></div>
+                <div class="file-content" id="file-content">
+                    <div class="file-empty-state">
+                        <div class="file-empty-icon">📂</div>
+                        <p>Select a file from the tree to view it</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</dialog>
 {% endblock %}
