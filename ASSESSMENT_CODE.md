@@ -2,13 +2,13 @@
 
 **Date**: 2026-03-25
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 4 — Reassessment after service layer extraction and dialog modularization.
+**Revision**: 5 — Reassessment after merge conflict auto-resolution feature.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. Since the previous assessment, **both medium and low priority refactoring recommendations have been addressed**: the monolithic orchestrator has been decomposed into 5 focused service classes, and the oversized `dialogs.js` has been split into 10 specialized dialog modules. The architecture now follows clean separation of concerns throughout both backend and frontend. The test suite maintains **78 automated tests** across smoke, unit, and integration tiers.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 10 specialized dialog modules on the frontend. Since the previous assessment, **merge conflict auto-resolution** has been added — when approval encounters a merge conflict, the system captures the agent's diff, resets the worktree to the latest base, and restarts the agent with the previous diff as context. The test suite maintains **78 automated tests** across smoke, unit, and integration tiers.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -107,11 +107,11 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 355 | A | Core workflow coordination with clean callback factory pattern |
-| `services/database_service.py` | 182 | A | All DB operations extracted; parameterized queries throughout |
-| `services/notification_service.py` | 96 | A | WebSocket broadcasting + tool formatting; clean separation |
-| `services/git_service.py` | 94 | A | Git worktree and merge operations with proper error handling |
-| `services/session_service.py` | 153 | A | Session lifecycle, commit messages, plugin parsing |
+| `services/workflow_service.py` | 405 | A | Core workflow coordination with callback factory pattern and merge conflict auto-resolution |
+| `services/database_service.py` | 181 | A | All DB operations extracted; parameterized queries throughout |
+| `services/notification_service.py` | 95 | A | WebSocket broadcasting + tool formatting; clean separation |
+| `services/git_service.py` | 93 | A | Git worktree and merge operations with proper error handling |
+| `services/session_service.py` | 152 | A | Session lifecycle, commit messages, plugin parsing |
 
 ### Backend Python — Core
 
@@ -119,21 +119,21 @@ graph TB
 |--------|-------|---------|-------|
 | `main.py` | 81 | A | Clean entry point, proper git validation, port discovery |
 | `config.py` | 49 | A | Well-organized constants; timeouts, WS rate limiting, and defaults |
-| `constants.py` | 13 | A | Centralized `AVAILABLE_MODELS` dict and `DEFAULT_MODEL` |
+| `constants.py` | 12 | A | Centralized `AVAILABLE_MODELS` dict and `DEFAULT_MODEL` |
 | `models.py` | 98 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 46 | A | Proper lifespan management, clean factory pattern |
 | `web/routes.py` | 566 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
-| `agent/orchestrator.py` | 111 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
+| `agent/orchestrator.py` | 110 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
 | `agent/session.py` | 295 | A- | Clean SDK wrapper; good token extraction with fallbacks |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
-| `agent/todo.py` | 57 | A | Clean MCP tool definition |
+| `agent/todo.py` | 56 | A | Clean MCP tool definition |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
 | `git/operations.py` | 285 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
 | `git/worktree.py` | 54 | A | Simple and correct; returns base branch for tracking |
-| `migrations/runner.py` | 199 | A- | Solid migration system; class discovery uses string comparison (justified) |
-| `migrations/migration.py` | 29 | A | Clean base class |
+| `migrations/runner.py` | 198 | A- | Solid migration system; class discovery uses string comparison (justified) |
+| `migrations/migration.py` | 28 | A | Clean base class |
 | `migrations/versions/001_initial_schema.py` | 158 | A | Complete initial schema with all 8 tables |
 | `migrations/versions/002_add_base_branch.py` | 32 | A | Adds `base_branch` column to items table |
 
@@ -142,30 +142,30 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
 | `app.js` | 387 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
-| `board.js` | 345 | B+ | Drag-drop works well; card rendering could use templating |
+| `board.js` | 346 | B+ | Drag-drop works well; card rendering could use templating |
 | `dialogs.js` | 83 | A | Clean coordinator pattern — delegates to 10 specialized modules |
-| `dialog-core.js` | 54 | A | Core dialog open/close/confirm utilities |
-| `dialog-utils.js` | 28 | A | Shared utilities (markdown rendering, model display names) |
-| `item-dialog.js` | 191 | A- | New/edit item forms with attachment handling |
-| `detail-dialog.js` | 189 | A- | Item detail view with tabbed interface |
-| `review-dialog.js` | 103 | A | Review dialog with diff viewer and work log |
-| `config-dialog.js` | 88 | A | Agent configuration (system prompt, MCP, plugins) |
-| `clarification-dialog.js` | 51 | A | Clean clarification prompt/response UI |
-| `request-changes-dialog.js` | 25 | A | Focused request-changes form |
-| `attachments.js` | 44 | A | Attachment viewing and deletion |
-| `annotation-canvas.js` | 53 | A | Canvas annotation integration bridge |
+| `dialog-core.js` | 53 | A | Core dialog open/close/confirm utilities |
+| `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
+| `item-dialog.js` | 190 | A- | New/edit item forms with attachment handling |
+| `detail-dialog.js` | 188 | A- | Item detail view with tabbed interface |
+| `review-dialog.js` | 102 | A | Review dialog with diff viewer and work log |
+| `config-dialog.js` | 87 | A | Agent configuration (system prompt, MCP, plugins) |
+| `clarification-dialog.js` | 50 | A | Clean clarification prompt/response UI |
+| `request-changes-dialog.js` | 24 | A | Focused request-changes form |
+| `attachments.js` | 43 | A | Attachment viewing and deletion |
+| `annotation-canvas.js` | 52 | A | Canvas annotation integration bridge |
 | `annotate.js` | 771 | A- | Self-contained canvas component |
 | `api.js` | 77 | A | Clean HTTP helpers |
 | `diff.js` | 61 | A- | Functional diff viewer |
 | `theme.js` | 24 | A | Simple, correct theme toggle |
-| `stats.js` | 185 | A- | Good auto-refresh and WebSocket update pattern |
+| `stats.js` | 184 | A- | Good auto-refresh and WebSocket update pattern |
 
 ### Frontend CSS
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `style.css` | 756 | A- | Main styles with CSS variables |
-| `board.css` | 217 | A | Board-specific layout and card styles |
+| `board.css` | 221 | A | Board-specific layout and card styles |
 | `dialog.css` | 74 | A | Dialog component styles |
 | `theme.css` | 66 | A | Light/dark theme definitions |
 
@@ -214,6 +214,13 @@ sequenceDiagram
     WorkflowService->>GitService: merge_agent_work + cleanup_worktree_and_branch
     WorkflowService->>DBService: Update item (done)
     WorkflowService-->>Frontend: WebSocket: item_updated
+
+    alt Merge conflict
+        GitService-->>WorkflowService: (False, conflict message)
+        WorkflowService->>GitService: Capture agent diff
+        WorkflowService->>GitService: Reset worktree to latest base
+        WorkflowService->>SessionService: Restart agent with diff as context
+    end
 ```
 
 ---
@@ -235,7 +242,7 @@ stateDiagram-v2
     Done --> Archive: Archive
     Todo --> [*]: Delete
     Doing --> Todo: Cancel agent
-    Review --> ResolvingConflicts: Merge conflict
+    Review --> Doing: Merge conflict (auto-retry)
 ```
 
 ---
@@ -278,7 +285,7 @@ stateDiagram-v2
 | 10 | No WebSocket rate limiting | ✅ Per-IP rate limiting with concurrent connection limits and windowed attempt tracking |
 | 11 | No request timeout for blocking operations | ✅ `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT` on approve route |
 | 12 | Migration class discovery uses string comparison | ✅ Justified — `issubclass` fails with dynamic module loading |
-| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (355), DatabaseService (182), NotificationService (96), GitService (94), SessionService (153). Orchestrator now 111-line facade |
+| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (405), DatabaseService (181), NotificationService (95), GitService (93), SessionService (152). Orchestrator now 110-line facade |
 | 14 | `dialogs.js` too large (801 lines) | ✅ Split into 10 specialized modules with coordinator pattern. Largest module is `item-dialog.js` at 191 lines |
 
 ### Remaining Issues
@@ -359,6 +366,7 @@ graph LR
 15. **Base branch tracking**: Worktree creation returns and stores the base branch for reliable merge targeting
 16. **Configurable git timeouts**: Separate timeouts for operations (5min) and merges (10min) prevent hung processes
 17. **Template decomposition**: Base template extracted with card partial for consistent rendering
+18. **Merge conflict auto-resolution**: On conflict, captures agent's diff, resets worktree to latest base, and restarts agent with previous diff as context — fully automated recovery
 
 ---
 
@@ -366,11 +374,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 22 | ~3,428 |
-| JavaScript frontend | 18 | ~2,759 |
-| CSS styles | 4 | ~1,113 |
-| Tests | 7 | ~1,970 |
-| **Grand total** | **51** | **~9,270** |
+| Python backend (src/) | 24 | ~3,447 |
+| JavaScript frontend | 18 | ~2,749 |
+| CSS styles | 4 | ~1,117 |
+| HTML templates | 3 | ~419 |
+| Tests | 7 | ~1,968 |
+| **Grand total** | **56** | **~9,700** |
 
 ---
 
