@@ -230,41 +230,11 @@ class AgentOrchestrator:
 
         await self._log(item_id, "system", "Agent started")
 
-        # Build system prompt
-        system_prompt = config.get("system_prompt", "") or ""
-        project_context = config.get("project_context", "") or ""
-        if project_context:
-            system_prompt = f"{system_prompt}\n\nProject context:\n{project_context}"
-
         # Determine which model to use: item-specific model, or fall back to global config
         model = item.get("model") or config.get("model")
 
-        # Create session with callbacks
-        async def _on_message(text: str, iid: str = item_id):
-            self._last_agent_messages[iid] = text
-            await self._log(iid, "agent_message", text)
-
-        # Parse plugins from config
-        plugins = self._parse_plugins(config.get("plugins"))
-
-        session = AgentSession(
-            worktree_path=worktree_path,
-            system_prompt=system_prompt,
-            model=model,
-            on_message=_on_message,
-            on_tool_use=lambda name, inp, iid=item_id: self._log(
-                iid, "tool_use", self._format_tool_use(name, inp), json.dumps(inp)
-            ),
-            on_thinking=lambda text, iid=item_id: self._log(iid, "thinking", text),
-            on_complete=lambda result, iid=item_id: self._on_agent_complete(iid, result),
-            on_error=lambda err, iid=item_id: self._on_agent_error(iid, err),
-            on_clarify=lambda prompt, choices, iid=item_id: self._on_clarify(iid, prompt, choices),
-            on_create_todo=lambda title, desc, iid=item_id: self._on_create_todo(iid, title, desc),
-            on_set_commit_message=lambda msg, iid=item_id: self._on_set_commit_message(iid, msg),
-            mcp_servers=config.get("mcp_servers"),
-            mcp_enabled=config.get("mcp_enabled", False),
-            plugins=plugins,
-        )
+        # Create session using helper method
+        session = self._create_session(item_id, worktree_path, config, model)
 
         self.sessions[item_id] = session
 
@@ -458,34 +428,10 @@ class AgentOrchestrator:
 
         # Start new agent session with feedback
         config = await self._get_agent_config()
-        system_prompt = config.get("system_prompt", "") or ""
         worktree_path = Path(item["worktree_path"])
 
-        async def _on_message(text: str, iid: str = item_id):
-            self._last_agent_messages[iid] = text
-            await self._log(iid, "agent_message", text)
-
-        # Parse plugins from config
-        plugins = self._parse_plugins(config.get("plugins"))
-
-        session = AgentSession(
-            worktree_path=worktree_path,
-            system_prompt=system_prompt,
-            model=config.get("model"),
-            on_message=_on_message,
-            on_tool_use=lambda name, inp, iid=item_id: self._log(
-                iid, "tool_use", self._format_tool_use(name, inp), json.dumps(inp)
-            ),
-            on_thinking=lambda text, iid=item_id: self._log(iid, "thinking", text),
-            on_complete=lambda result, iid=item_id: self._on_agent_complete(iid, result),
-            on_error=lambda err, iid=item_id: self._on_agent_error(iid, err),
-            on_clarify=lambda prompt, choices, iid=item_id: self._on_clarify(iid, prompt, choices),
-            on_create_todo=lambda title, desc, iid=item_id: self._on_create_todo(iid, title, desc),
-            on_set_commit_message=lambda msg, iid=item_id: self._on_set_commit_message(iid, msg),
-            mcp_servers=config.get("mcp_servers"),
-            mcp_enabled=config.get("mcp_enabled", False),
-            plugins=plugins,
-        )
+        # Create session using helper method
+        session = self._create_session(item_id, worktree_path, config)
 
         self.sessions[item_id] = session
 
@@ -542,6 +488,44 @@ class AgentOrchestrator:
 
         # The _on_clarify callback handles moving item back to doing
         return {"ok": True}
+
+    def _create_session(self, item_id: str, worktree_path: Path, config: dict, model: str | None = None) -> AgentSession:
+        """Create an AgentSession with standard callbacks and configuration."""
+        # Use provided model or fall back to config model
+        session_model = model or config.get("model")
+
+        # Build system prompt with project context
+        system_prompt = config.get("system_prompt", "") or ""
+        project_context = config.get("project_context", "") or ""
+        if project_context:
+            system_prompt = f"{system_prompt}\n\nProject context:\n{project_context}"
+
+        # Create message callback
+        async def _on_message(text: str, iid: str = item_id):
+            self._last_agent_messages[iid] = text
+            await self._log(iid, "agent_message", text)
+
+        # Parse plugins from config
+        plugins = self._parse_plugins(config.get("plugins"))
+
+        return AgentSession(
+            worktree_path=worktree_path,
+            system_prompt=system_prompt,
+            model=session_model,
+            on_message=_on_message,
+            on_tool_use=lambda name, inp, iid=item_id: self._log(
+                iid, "tool_use", self._format_tool_use(name, inp), json.dumps(inp)
+            ),
+            on_thinking=lambda text, iid=item_id: self._log(iid, "thinking", text),
+            on_complete=lambda result, iid=item_id: self._on_agent_complete(iid, result),
+            on_error=lambda err, iid=item_id: self._on_agent_error(iid, err),
+            on_clarify=lambda prompt, choices, iid=item_id: self._on_clarify(iid, prompt, choices),
+            on_create_todo=lambda title, desc, iid=item_id: self._on_create_todo(iid, title, desc),
+            on_set_commit_message=lambda msg, iid=item_id: self._on_set_commit_message(iid, msg),
+            mcp_servers=config.get("mcp_servers"),
+            mcp_enabled=config.get("mcp_enabled", False),
+            plugins=plugins,
+        )
 
     def _parse_plugins(self, plugins_json: str | None) -> list[dict] | None:
         """Parse plugins JSON string from config into a list of plugin configs."""
