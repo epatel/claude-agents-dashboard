@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from ..config import COLUMNS
 from ..models import ItemCreate, ItemUpdate, ItemMove, ClarificationResponse, AgentConfig, new_id
-from ..git.operations import get_diff, get_changed_files, get_file_content
+from ..git.operations import get_diff, get_changed_files, get_file_content, get_current_branch
 
 router = APIRouter()
 
@@ -182,6 +182,9 @@ async def board_page(request: Request):
         rows = await cursor.fetchall()
         items = [dict(row) for row in rows]
 
+    # Get current git branch name
+    current_branch = await get_current_branch(request.app.state.target_project.path)
+
     return request.app.state.templates.TemplateResponse(
         request=request,
         name="board.html",
@@ -189,6 +192,7 @@ async def board_page(request: Request):
             "columns": COLUMNS,
             "items": items,
             "project_name": request.app.state.target_project.name,
+            "current_branch": current_branch,
         },
     )
 
