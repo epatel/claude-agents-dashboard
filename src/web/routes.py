@@ -183,7 +183,7 @@ async def board_page(request: Request):
         items = [dict(row) for row in rows]
 
     # Get current git branch name
-    current_branch = await get_current_branch(request.app.state.target_project.path)
+    current_branch = await get_current_branch(request.app.state.target_project)
 
     return request.app.state.templates.TemplateResponse(
         request=request,
