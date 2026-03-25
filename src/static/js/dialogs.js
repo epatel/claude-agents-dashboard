@@ -300,6 +300,19 @@ const Dialogs = {
             actionsEl.insertBefore(playBtn, editBtn);
         }
 
+        // Add re-run button in Done
+        if (item.column_name === 'done') {
+            const rerunBtn = document.createElement('button');
+            rerunBtn.id = 'detail-rerun-btn';
+            rerunBtn.className = 'btn btn-sm btn-primary';
+            rerunBtn.textContent = '↻ Re-run';
+            rerunBtn.onclick = async () => {
+                await Board.rerunItem(item.id);
+                this.close('detail-dialog');
+            };
+            actionsEl.insertBefore(rerunBtn, editBtn);
+        }
+
         // Load work log
         const logEl = document.getElementById('detail-log');
         try {
