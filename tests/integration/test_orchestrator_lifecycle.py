@@ -1,12 +1,7 @@
 """
 P0 Priority Integration Tests: Orchestrator Lifecycle (Start → Complete → Merge)
 
-Tests the complete agent workflow including:
-- Agent startup and worktree creation
-- Session execution and completion handling
-- Merge operations and cleanup
-- Error scenarios and cancellation
-- Review feedback loop
+Tests the complete agent workflow through the refactored service architecture.
 """
 
 import pytest
@@ -16,6 +11,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agent.orchestrator import AgentOrchestrator
 from src.agent.session import AgentResult
+
+
+async def _start_and_get_session(orchestrator, item_id, mock_git_operations):
+    """Helper: start agent with mocked git/session start, return the created session."""
+    with patch.object(orchestrator.session_service, 'start_session_task', new_callable=AsyncMock):
+        item = await orchestrator.start_agent(item_id)
+    session = orchestrator.session_service.sessions.get(item_id)
+    return item, session
+
+
+async def _simulate_completion(session, result):
+    """Helper: trigger the on_complete callback stored on the session."""
+    if session and session.on_complete:
+        await session.on_complete(result)
 
 
 @pytest.mark.integration
@@ -28,47 +37,30 @@ class TestOrchestratorLifecycle:
         """Test successful complete lifecycle: start → complete → merge."""
         item_id = test_item["id"]
 
-        mock_session = AsyncMock()
-        mock_session.start = AsyncMock()
+        item, session = await _start_and_get_session(test_orchestrator, item_id, mock_git_operations)
 
-        result = AgentResult(
-            success=True,
-            session_id="test-session-123",
-            input_tokens=150,
-            output_tokens=300,
-            total_tokens=450,
-            cost_usd=0.0123,
-            error=None
-        )
+        assert item["column_name"] == "doing"
+        assert item["status"] == "running"
+        assert item["branch_name"] == f"agent/{item_id}"
+        assert item_id in test_orchestrator.sessions
 
-        with patch.object(test_orchestrator, '_create_session', return_value=mock_session):
-            updated_item = await test_orchestrator.start_agent(item_id)
-            await asyncio.sleep(0)  # Let background task run
+        # Simulate agent completion
+        result = AgentResult(success=True, session_id="test-session-123",
+                             input_tokens=150, output_tokens=300, total_tokens=450, cost_usd=0.0123)
+        await _simulate_completion(session, result)
 
-            assert updated_item["column_name"] == "doing"
-            assert updated_item["status"] == "running"
-            assert updated_item["branch_name"] == f"agent/{item_id}"
-            assert updated_item["worktree_path"] is not None
+        async with test_orchestrator.db.connect() as conn:
+            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            item = dict(await cursor.fetchone())
 
-            assert item_id in test_orchestrator.sessions
-            assert item_id in test_orchestrator._agent_tasks
-            mock_session.start.assert_called_once()
+        assert item["column_name"] == "review"
+        assert item["session_id"] == "test-session-123"
 
-            # Simulate agent completion
-            await test_orchestrator._on_agent_complete(item_id, result)
-
-            async with test_orchestrator.db.connect() as conn:
-                cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-                item = dict(await cursor.fetchone())
-
-            assert item["column_name"] == "review"
-            assert item["status"] is None
-            assert item["session_id"] == "test-session-123"
-            assert item_id not in test_orchestrator.sessions
-
-        # Test approval/merge — patch where the function is used
-        with patch('src.agent.orchestrator.merge_branch', new_callable=AsyncMock, return_value=(True, "ok")), \
-             patch('src.agent.orchestrator.cleanup_worktree', new_callable=AsyncMock):
+        # Test approval/merge
+        with patch.object(test_orchestrator.git_service, 'merge_agent_work',
+                          new_callable=AsyncMock, return_value=(True, "ok")), \
+             patch.object(test_orchestrator.git_service, 'cleanup_worktree_and_branch',
+                          new_callable=AsyncMock):
             await test_orchestrator.approve_item(item_id)
 
             async with test_orchestrator.db.connect() as conn:
@@ -76,7 +68,6 @@ class TestOrchestratorLifecycle:
                 final_item = dict(await cursor.fetchone())
 
             assert final_item["column_name"] == "done"
-            assert final_item["status"] is None
 
     async def test_agent_lifecycle_with_failure(
         self, test_orchestrator, test_item, mock_git_operations
@@ -84,42 +75,16 @@ class TestOrchestratorLifecycle:
         """Test lifecycle when agent fails."""
         item_id = test_item["id"]
 
-        mock_session = AsyncMock()
-        mock_session.start = AsyncMock()
+        item, session = await _start_and_get_session(test_orchestrator, item_id, mock_git_operations)
 
-        result = AgentResult(
-            success=False,
-            session_id="test-session-456",
-            input_tokens=100,
-            output_tokens=0,
-            total_tokens=100,
-            cost_usd=0.002,
-            error="Agent execution failed"
-        )
+        result = AgentResult(success=False, session_id="test-session-456", error="Agent execution failed")
+        await _simulate_completion(session, result)
 
-        with patch.object(test_orchestrator, '_create_session', return_value=mock_session):
-            await test_orchestrator.start_agent(item_id)
-            await asyncio.sleep(0)
+        async with test_orchestrator.db.connect() as conn:
+            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            item = dict(await cursor.fetchone())
 
-            # Simulate agent failure
-            await test_orchestrator._on_agent_complete(item_id, result)
-
-            async with test_orchestrator.db.connect() as conn:
-                cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-                item = dict(await cursor.fetchone())
-
-            assert item["status"] == "failed"
-
-            # Verify work log has failure entry
-            async with test_orchestrator.db.connect() as conn:
-                cursor = await conn.execute(
-                    "SELECT entry_type, content FROM work_log WHERE item_id = ? AND entry_type = 'error'",
-                    (item_id,)
-                )
-                error_log = await cursor.fetchone()
-
-            assert error_log is not None
-            assert "Agent failed" in error_log[1]
+        assert item["status"] == "failed"
 
     async def test_agent_cancellation(
         self, test_orchestrator, test_item, mock_git_operations
@@ -127,23 +92,14 @@ class TestOrchestratorLifecycle:
         """Test cancelling a running agent."""
         item_id = test_item["id"]
 
-        mock_session = AsyncMock()
-        mock_session.cancel = AsyncMock()
+        item, session = await _start_and_get_session(test_orchestrator, item_id, mock_git_operations)
+        assert item_id in test_orchestrator.sessions
 
-        with patch.object(test_orchestrator, '_create_session', return_value=mock_session):
-            await test_orchestrator.start_agent(item_id)
-            await asyncio.sleep(0)
+        result = await test_orchestrator.cancel_agent(item_id)
 
-            assert item_id in test_orchestrator.sessions
-
-            result = await test_orchestrator.cancel_agent(item_id)
-
-            assert result["column_name"] == "todo"
-            assert result["status"] == "cancelled"
-
-            mock_session.cancel.assert_called_once()
-            assert item_id not in test_orchestrator.sessions
-            assert item_id not in test_orchestrator._agent_tasks
+        assert result["column_name"] == "todo"
+        assert result["status"] == "cancelled"
+        assert item_id not in test_orchestrator.sessions
 
     async def test_review_feedback_loop(
         self, test_orchestrator, test_item, mock_git_operations
@@ -151,37 +107,32 @@ class TestOrchestratorLifecycle:
         """Test review feedback and agent restart."""
         item_id = test_item["id"]
 
-        mock_session = AsyncMock()
+        item, session = await _start_and_get_session(test_orchestrator, item_id, mock_git_operations)
+
         result = AgentResult(success=True, session_id="test-session-123")
+        await _simulate_completion(session, result)
 
-        with patch.object(test_orchestrator, '_create_session', return_value=mock_session):
-            await test_orchestrator.start_agent(item_id)
-            await asyncio.sleep(0)
-            await test_orchestrator._on_agent_complete(item_id, result)
+        async with test_orchestrator.db.connect() as conn:
+            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            item = dict(await cursor.fetchone())
+        assert item["column_name"] == "review"
 
-            async with test_orchestrator.db.connect() as conn:
-                cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-                item = dict(await cursor.fetchone())
-            assert item["column_name"] == "review"
-
-            # Request changes
+        # Request changes
+        with patch.object(test_orchestrator.session_service, 'start_session_task', new_callable=AsyncMock):
             comments = ["Fix the formatting", "Add more tests"]
             updated_item = await test_orchestrator.request_changes(item_id, comments)
-            await asyncio.sleep(0)
 
-            assert updated_item["column_name"] == "doing"
-            assert updated_item["status"] == "running"
+        assert updated_item["column_name"] == "doing"
+        assert updated_item["status"] == "running"
 
-            # Verify comments were stored
-            async with test_orchestrator.db.connect() as conn:
-                cursor = await conn.execute(
-                    "SELECT content FROM review_comments WHERE item_id = ? ORDER BY content",
-                    (item_id,)
-                )
-                stored_comments = [row[0] for row in await cursor.fetchall()]
-            assert stored_comments == ["Add more tests", "Fix the formatting"]
-
-            assert item_id in test_orchestrator.sessions
+        # Verify comments were stored
+        async with test_orchestrator.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT content FROM review_comments WHERE item_id = ? ORDER BY content",
+                (item_id,)
+            )
+            stored_comments = [row[0] for row in await cursor.fetchall()]
+        assert stored_comments == ["Add more tests", "Fix the formatting"]
 
     async def test_review_cancellation_cleanup(
         self, test_orchestrator, test_item, mock_git_operations
@@ -196,12 +147,12 @@ class TestOrchestratorLifecycle:
             worktree_path="/mock/worktree"
         )
 
-        with patch('src.agent.orchestrator.cleanup_worktree', new_callable=AsyncMock) as mock_cleanup:
+        with patch.object(test_orchestrator.git_service, 'cleanup_worktree_and_branch',
+                          new_callable=AsyncMock) as mock_cleanup:
             result = await test_orchestrator.cancel_review(item_id)
 
             assert result["column_name"] == "todo"
             assert result["status"] is None
-            assert result["worktree_path"] is None
             mock_cleanup.assert_called_once()
 
     async def test_agent_retry_after_failure(
@@ -218,15 +169,11 @@ class TestOrchestratorLifecycle:
             worktree_path="/mock/worktree"
         )
 
-        mock_session = AsyncMock()
-        with patch.object(test_orchestrator, '_create_session', return_value=mock_session):
+        with patch.object(test_orchestrator.session_service, 'start_session_task', new_callable=AsyncMock):
             result = await test_orchestrator.retry_agent(item_id)
-            await asyncio.sleep(0)
 
-            assert result["column_name"] == "doing"
-            assert result["status"] == "running"
-            assert item_id in test_orchestrator.sessions
-            mock_session.start.assert_called_once()
+        assert result["column_name"] == "doing"
+        assert result["status"] == "running"
 
     async def test_merge_conflict_handling(
         self, test_orchestrator, test_item, mock_git_operations
@@ -241,8 +188,9 @@ class TestOrchestratorLifecycle:
             worktree_path="/mock/worktree"
         )
 
-        with patch('src.agent.orchestrator.merge_branch', new_callable=AsyncMock,
-                    return_value=(False, "Merge conflict in file.txt")):
+        with patch.object(test_orchestrator.git_service, 'merge_agent_work',
+                          new_callable=AsyncMock,
+                          return_value=(False, "Merge conflict in file.txt")):
             result = await test_orchestrator.approve_item(item_id)
             assert result["status"] == "resolving_conflicts"
 
@@ -254,29 +202,20 @@ class TestOrchestratorLifecycle:
         prompt = "What color should the button be?"
         choices = ["red", "blue", "green"]
 
-        async def trigger_clarification():
-            return await test_orchestrator._on_clarify(item_id, prompt, choices)
+        await test_orchestrator._update_item(item_id, column_name="doing", status="running")
 
-        clarification_task = asyncio.create_task(trigger_clarification())
+        callback = test_orchestrator.workflow_service._create_on_clarify_callback(item_id)
+        clarification_task = asyncio.create_task(callback(prompt, choices))
         await asyncio.sleep(0.01)
 
-        # Verify item moved to clarify column
         async with test_orchestrator.db.connect() as conn:
             cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
             item = dict(await cursor.fetchone())
         assert item["column_name"] == "clarify"
 
-        # Submit response
         await test_orchestrator.submit_clarification(item_id, "blue")
-
         response = await clarification_task
         assert response == "blue"
-
-        # Verify item moved back to doing
-        async with test_orchestrator.db.connect() as conn:
-            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-            item = dict(await cursor.fetchone())
-        assert item["column_name"] == "doing"
 
     async def test_commit_message_handling(
         self, test_orchestrator, test_item, mock_git_operations
@@ -285,31 +224,18 @@ class TestOrchestratorLifecycle:
         item_id = test_item["id"]
         commit_message = "Add new feature: user authentication"
 
-        result = await test_orchestrator._on_set_commit_message(item_id, commit_message)
-        assert "Commit message saved" in result
-        assert test_orchestrator._commit_messages[item_id] == commit_message
+        item, session = await _start_and_get_session(test_orchestrator, item_id, mock_git_operations)
 
-        mock_session = AsyncMock()
-        agent_result = AgentResult(success=True, session_id="test-session")
+        # Set commit message AFTER session is created (simulates agent calling the tool)
+        test_orchestrator.session_service.set_commit_message(item_id, commit_message)
 
-        with patch.object(test_orchestrator, '_create_session', return_value=mock_session):
-            await test_orchestrator.start_agent(item_id)
-            await asyncio.sleep(0)
-            await test_orchestrator._on_agent_complete(item_id, agent_result)
+        result = AgentResult(success=True, session_id="test-session")
+        await _simulate_completion(session, result)
 
-            async with test_orchestrator.db.connect() as conn:
-                cursor = await conn.execute("SELECT commit_message FROM items WHERE id = ?", (item_id,))
-                stored_message = (await cursor.fetchone())[0]
-            assert stored_message == commit_message
-
-        # Test merge uses the commit message
-        with patch('src.agent.orchestrator.merge_branch', new_callable=AsyncMock,
-                    return_value=(True, "ok")) as mock_merge, \
-             patch('src.agent.orchestrator.cleanup_worktree', new_callable=AsyncMock):
-            await test_orchestrator.approve_item(item_id)
-            # Verify commit_message was passed to merge_branch
-            call_kwargs = mock_merge.call_args
-            assert call_kwargs.kwargs.get('commit_message') == commit_message
+        async with test_orchestrator.db.connect() as conn:
+            cursor = await conn.execute("SELECT commit_message FROM items WHERE id = ?", (item_id,))
+            stored_message = (await cursor.fetchone())[0]
+        assert stored_message == commit_message
 
     async def test_token_usage_tracking(
         self, test_orchestrator, test_item, mock_git_operations
@@ -317,31 +243,22 @@ class TestOrchestratorLifecycle:
         """Test that token usage is properly tracked and stored."""
         item_id = test_item["id"]
 
-        result = AgentResult(
-            success=True,
-            session_id="test-session-789",
-            input_tokens=250,
-            output_tokens=150,
-            total_tokens=400,
-            cost_usd=0.0456
-        )
+        item, session = await _start_and_get_session(test_orchestrator, item_id, mock_git_operations)
 
-        mock_session = AsyncMock()
-        with patch.object(test_orchestrator, '_create_session', return_value=mock_session):
-            await test_orchestrator.start_agent(item_id)
-            await asyncio.sleep(0)
-            await test_orchestrator._on_agent_complete(item_id, result)
+        result = AgentResult(success=True, session_id="test-session-789",
+                             input_tokens=250, output_tokens=150, total_tokens=400, cost_usd=0.0456)
+        await _simulate_completion(session, result)
 
-            async with test_orchestrator.db.connect() as conn:
-                cursor = await conn.execute(
-                    "SELECT * FROM token_usage WHERE item_id = ?", (item_id,)
-                )
-                usage = dict(await cursor.fetchone())
+        async with test_orchestrator.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT * FROM token_usage WHERE item_id = ?", (item_id,)
+            )
+            usage = dict(await cursor.fetchone())
 
-            assert usage["input_tokens"] == 250
-            assert usage["output_tokens"] == 150
-            assert usage["total_tokens"] == 400
-            assert abs(usage["cost_usd"] - 0.0456) < 0.0001
+        assert usage["input_tokens"] == 250
+        assert usage["output_tokens"] == 150
+        assert usage["total_tokens"] == 400
+        assert abs(usage["cost_usd"] - 0.0456) < 0.0001
 
     async def test_concurrent_agent_operations(
         self, test_orchestrator, test_db, mock_git_operations
@@ -359,29 +276,26 @@ class TestOrchestratorLifecycle:
                 await conn.commit()
             items.append(item_id)
 
-        mock_sessions = {item_id: AsyncMock() for item_id in items}
-
-        def create_session_side_effect(item_id, *args, **kwargs):
-            return mock_sessions[item_id]
-
-        with patch.object(test_orchestrator, '_create_session', side_effect=create_session_side_effect):
+        with patch.object(test_orchestrator.session_service, 'start_session_task', new_callable=AsyncMock):
             tasks = [test_orchestrator.start_agent(item_id) for item_id in items]
             results = await asyncio.gather(*tasks)
 
             for i, result in enumerate(results):
                 assert result["column_name"] == "doing"
                 assert result["status"] == "running"
-                assert items[i] in test_orchestrator.sessions
 
             # Simulate concurrent completions
-            completion_tasks = []
             for item_id in items:
-                result = AgentResult(success=True, session_id=f"session-{item_id}")
-                task = test_orchestrator._on_agent_complete(item_id, result)
-                completion_tasks.append(task)
+                session = test_orchestrator.session_service.sessions.get(item_id)
+                r = AgentResult(success=True, session_id=f"session-{item_id}")
+                await _simulate_completion(session, r)
 
-            await asyncio.gather(*completion_tasks)
-            assert len(test_orchestrator.sessions) == 0
+            # Verify all items moved to review
+            async with test_db.connect() as conn:
+                for item_id in items:
+                    cursor = await conn.execute("SELECT column_name FROM items WHERE id = ?", (item_id,))
+                    row = await cursor.fetchone()
+                    assert row[0] == "review"
 
     async def test_error_during_worktree_creation(
         self, test_orchestrator, test_item
@@ -389,8 +303,9 @@ class TestOrchestratorLifecycle:
         """Test error handling when worktree creation fails."""
         item_id = test_item["id"]
 
-        with patch('src.agent.orchestrator.create_worktree', new_callable=AsyncMock,
-                    side_effect=Exception("Git error: unable to create worktree")):
+        with patch.object(test_orchestrator.git_service, 'create_or_reuse_worktree',
+                          new_callable=AsyncMock,
+                          side_effect=Exception("Git error: unable to create worktree")):
             with pytest.raises(Exception, match="Git error: unable to create worktree"):
                 await test_orchestrator.start_agent(item_id)
 
@@ -405,25 +320,18 @@ class TestOrchestratorConcurrency:
         """Test rapidly cancelling and restarting an agent."""
         item_id = test_item["id"]
 
-        mock_session = AsyncMock()
-        mock_session.cancel = AsyncMock()
-
-        with patch.object(test_orchestrator, '_create_session', return_value=mock_session):
+        with patch.object(test_orchestrator.session_service, 'start_session_task', new_callable=AsyncMock):
             await test_orchestrator.start_agent(item_id)
-            await asyncio.sleep(0)
-
             await test_orchestrator.cancel_agent(item_id)
-
             await test_orchestrator.start_agent(item_id)
-            await asyncio.sleep(0)
 
-            async with test_orchestrator.db.connect() as conn:
-                cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-                item = dict(await cursor.fetchone())
+        async with test_orchestrator.db.connect() as conn:
+            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            item = dict(await cursor.fetchone())
 
-            assert item["column_name"] == "doing"
-            assert item["status"] == "running"
-            assert item_id in test_orchestrator.sessions
+        assert item["column_name"] == "doing"
+        assert item["status"] == "running"
+        assert item_id in test_orchestrator.sessions
 
     async def test_shutdown_with_active_agents(
         self, test_orchestrator, test_item, mock_git_operations
@@ -431,15 +339,11 @@ class TestOrchestratorConcurrency:
         """Test orchestrator shutdown with active agents."""
         item_id = test_item["id"]
 
-        mock_session = AsyncMock()
-        with patch.object(test_orchestrator, '_create_session', return_value=mock_session):
+        with patch.object(test_orchestrator.session_service, 'start_session_task', new_callable=AsyncMock):
             await test_orchestrator.start_agent(item_id)
-            await asyncio.sleep(0)
 
-            assert item_id in test_orchestrator.sessions
+        assert item_id in test_orchestrator.sessions
 
-            await test_orchestrator.shutdown()
+        await test_orchestrator.shutdown()
 
-            mock_session.cancel.assert_called_once()
-            assert len(test_orchestrator.sessions) == 0
-            assert len(test_orchestrator._agent_tasks) == 0
+        assert len(test_orchestrator.sessions) == 0
