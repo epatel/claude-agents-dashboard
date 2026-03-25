@@ -1,3 +1,4 @@
+// To enable debugging: window.ANNOTATE_DEBUG = true; in browser console
 const Annotate = {
     canvas: null,
     ctx: null,
@@ -34,6 +35,15 @@ const Annotate = {
         this.render();
     },
 
+    cleanup() {
+        // Remove document-level event listener to prevent memory leaks
+        if (this._pasteHandler) {
+            document.removeEventListener('paste', this._pasteHandler);
+            this._pasteHandler = null;
+        }
+        this._eventsAttached = false;
+    },
+
     _setupEvents() {
         const c = this.canvas;
 
@@ -52,12 +62,43 @@ const Annotate = {
 
         // Paste images — listen on document because canvas elements don't
         // reliably receive paste events, even when focused.
-        document.addEventListener('paste', (e) => {
+        // Remove any existing paste listener to prevent duplicates
+        if (this._pasteHandler) {
+            document.removeEventListener('paste', this._pasteHandler);
+        }
+        this._pasteHandler = (e) => {
             // Only handle paste when the annotate dialog is open
             const dialog = document.getElementById('annotate-dialog');
-            if (!dialog || !dialog.open) return;
+            if (!dialog) {
+                if (window.ANNOTATE_DEBUG) console.log('Paste: Dialog not found');
+                return;
+            }
+
+            // Multiple checks for dialog state to handle browser inconsistencies
+            const isOpen = dialog.open ||
+                          dialog.hasAttribute('open') ||
+                          dialog.style.display !== 'none' ||
+                          dialog.offsetParent !== null;
+
+            if (window.ANNOTATE_DEBUG) {
+                console.log('Paste event:', {
+                    dialogOpen: dialog.open,
+                    hasOpenAttr: dialog.hasAttribute('open'),
+                    notHidden: dialog.style.display !== 'none',
+                    hasParent: dialog.offsetParent !== null,
+                    finalIsOpen: isOpen
+                });
+            }
+
+            if (!isOpen) {
+                if (window.ANNOTATE_DEBUG) console.log('Paste: Dialog not open');
+                return;
+            }
+
+            if (window.ANNOTATE_DEBUG) console.log('Paste: Processing image from clipboard');
             this._onPaste(e);
-        });
+        };
+        document.addEventListener('paste', this._pasteHandler);
 
         // Keyboard
         // Mouse wheel to scale selected image
@@ -126,18 +167,33 @@ const Annotate = {
 
     _onPaste(e) {
         e.preventDefault();
+        if (window.ANNOTATE_DEBUG) console.log('_onPaste called');
+
         const items = e.clipboardData?.items;
-        if (!items) return;
+        if (!items) {
+            if (window.ANNOTATE_DEBUG) console.log('No clipboard items found');
+            return;
+        }
+
+        if (window.ANNOTATE_DEBUG) console.log(`Found ${items.length} clipboard items`);
 
         for (const item of items) {
+            if (window.ANNOTATE_DEBUG) console.log('Item type:', item.type);
             if (item.type.startsWith('image/')) {
                 const file = item.getAsFile();
-                if (!file) continue;
+                if (!file) {
+                    if (window.ANNOTATE_DEBUG) console.log('Failed to get file from item');
+                    continue;
+                }
+
+                if (window.ANNOTATE_DEBUG) console.log('Processing image file:', file.name || 'unnamed', file.type, file.size);
 
                 const reader = new FileReader();
                 reader.onload = (ev) => {
+                    if (window.ANNOTATE_DEBUG) console.log('FileReader loaded image data');
                     const img = new Image();
                     img.onload = () => {
+                        if (window.ANNOTATE_DEBUG) console.log('Image loaded:', img.width, 'x', img.height);
                         // Scale to fit canvas width if needed
                         let w = img.width, h = img.height;
                         const maxW = this.canvas.width * 0.8;
@@ -161,8 +217,15 @@ const Annotate = {
                         });
                         this.annotations.forEach(a => a.selected = false);
                         this.render();
+                        if (window.ANNOTATE_DEBUG) console.log('Image successfully pasted and rendered');
+                    };
+                    img.onerror = (err) => {
+                        if (window.ANNOTATE_DEBUG) console.error('Image loading error:', err);
                     };
                     img.src = ev.target.result;
+                };
+                reader.onerror = (err) => {
+                    if (window.ANNOTATE_DEBUG) console.error('FileReader error:', err);
                 };
                 reader.readAsDataURL(file);
                 break; // Only handle the first image

@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paste Functionality Debug Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .debug-log {
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        canvas {
+            border: 2px solid #ddd;
+            background: #f9f9f9;
+            display: block;
+            margin: 10px 0;
+        }
+        dialog {
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            padding: 0;
+            width: min(800px, 90vw);
+            max-height: 90vh;
+        }
+        .dialog-content {
+            padding: 20px;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            background: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #f0f0f0;
+        }
+        button.primary {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-pass { background: #28a745; }
+        .status-fail { background: #dc3545; }
+        .status-unknown { background: #6c757d; }
+        .test-controls {
+            margin: 15px 0;
+        }
+        .clipboard-test {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            margin: 10px 0;
+            text-align: center;
+            background: #fafafa;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Paste Functionality Debug Test</h1>
+    <p>This test helps identify issues with paste functionality in annotation dialogs.</p>
+
+    <div class="test-section">
+        <h2>🚀 Quick Tests</h2>
+        <div class="test-controls">
+            <button onclick="testDialogDetection()">Test Dialog Detection</button>
+            <button onclick="testClipboardAccess()">Test Clipboard Access</button>
+            <button onclick="testPasteEvents()">Test Paste Events</button>
+            <button onclick="openTestDialog()">Open Test Dialog</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>📊 Test Results</h2>
+        <div id="test-results">
+            <div><span class="status-indicator status-unknown"></span>Dialog API Support: <span id="dialog-support">Testing...</span></div>
+            <div><span class="status-indicator status-unknown"></span>Clipboard API Support: <span id="clipboard-support">Testing...</span></div>
+            <div><span class="status-indicator status-unknown"></span>Paste Event Support: <span id="paste-support">Testing...</span></div>
+            <div><span class="status-indicator status-unknown"></span>Dialog Open Detection: <span id="dialog-detection">Testing...</span></div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>📋 Clipboard Test Area</h2>
+        <div class="clipboard-test">
+            <p>Copy an image to your clipboard and click here or press Ctrl+V/Cmd+V</p>
+            <p><strong>Focus this area first, then paste!</strong></p>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>🖼️ Test Canvas</h2>
+        <canvas id="test-canvas" width="600" height="300"></canvas>
+        <p>Images pasted successfully will appear on this canvas.</p>
+    </div>
+
+    <div class="test-section">
+        <h2>📝 Debug Log</h2>
+        <div id="debug-log" class="debug-log"></div>
+    </div>
+
+    <!-- Test Dialog -->
+    <dialog id="test-dialog">
+        <div class="dialog-content">
+            <h3>Test Annotation Dialog</h3>
+            <p>This simulates the annotation dialog. Try pasting an image while this is open.</p>
+            <canvas id="dialog-canvas" width="400" height="200"></canvas>
+            <div style="margin-top: 15px;">
+                <button onclick="closeTestDialog()">Close</button>
+                <button class="primary" onclick="testPasteInDialog()">Test Paste Here</button>
+            </div>
+        </div>
+    </dialog>
+
+    <script>
+        let debugLog = [];
+        let testCanvas, testCtx, dialogCanvas, dialogCtx;
+        let pasteEventCount = 0;
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] [${type.toUpperCase()}] ${message}`;
+            debugLog.push(logEntry);
+
+            // Update debug log display
+            const logEl = document.getElementById('debug-log');
+            logEl.textContent = debugLog.slice(-50).join('\n'); // Keep last 50 entries
+            logEl.scrollTop = logEl.scrollHeight;
+
+            // Also log to browser console
+            console.log(logEntry);
+        }
+
+        function clearLog() {
+            debugLog = [];
+            document.getElementById('debug-log').textContent = '';
+            log('Debug log cleared');
+        }
+
+        function updateTestStatus(testId, status, message) {
+            const element = document.getElementById(testId);
+            const indicator = element.parentElement.querySelector('.status-indicator');
+
+            element.textContent = message;
+            indicator.classList.remove('status-unknown', 'status-pass', 'status-fail');
+            indicator.classList.add(`status-${status}`);
+        }
+
+        // Initialize canvases
+        function initCanvases() {
+            testCanvas = document.getElementById('test-canvas');
+            testCtx = testCanvas.getContext('2d');
+            dialogCanvas = document.getElementById('dialog-canvas');
+            dialogCtx = dialogCanvas.getContext('2d');
+
+            // Add checkerboard background
+            drawCheckerboard(testCtx, testCanvas.width, testCanvas.height);
+            drawCheckerboard(dialogCtx, dialogCanvas.width, dialogCanvas.height);
+        }
+
+        function drawCheckerboard(ctx, width, height) {
+            const size = 20;
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, width, height);
+            ctx.fillStyle = '#e0e0e0';
+            for (let y = 0; y < height; y += size) {
+                for (let x = 0; x < width; x += size) {
+                    if ((Math.floor(x / size) + Math.floor(y / size)) % 2) {
+                        ctx.fillRect(x, y, size, size);
+                    }
+                }
+            }
+        }
+
+        // Test 1: Dialog Detection
+        function testDialogDetection() {
+            log('Testing dialog detection...');
+
+            try {
+                const dialog = document.getElementById('test-dialog');
+
+                // Test basic dialog properties
+                log(`Dialog element found: ${!!dialog}`);
+                log(`Dialog open property: ${dialog.open}`);
+                log(`Dialog showModal method: ${typeof dialog.showModal}`);
+                log(`Dialog close method: ${typeof dialog.close}`);
+
+                // Test opening and checking
+                dialog.showModal();
+                log(`Dialog open after showModal(): ${dialog.open}`);
+
+                setTimeout(() => {
+                    log(`Dialog open after 100ms: ${dialog.open}`);
+                    dialog.close();
+                    log(`Dialog open after close(): ${dialog.open}`);
+
+                    updateTestStatus('dialog-detection', 'pass', 'Dialog API working correctly');
+                }, 100);
+
+            } catch (error) {
+                log(`Dialog detection error: ${error.message}`, 'error');
+                updateTestStatus('dialog-detection', 'fail', `Error: ${error.message}`);
+            }
+        }
+
+        // Test 2: Clipboard Access
+        async function testClipboardAccess() {
+            log('Testing clipboard access...');
+
+            try {
+                // Check if Clipboard API is available
+                if (!navigator.clipboard) {
+                    throw new Error('Clipboard API not available');
+                }
+
+                log('Clipboard API available');
+
+                // Test read permission
+                try {
+                    const permission = await navigator.permissions.query({ name: 'clipboard-read' });
+                    log(`Clipboard read permission: ${permission.state}`);
+                } catch (e) {
+                    log('Could not check clipboard permission (may not be supported)');
+                }
+
+                // Test reading clipboard (this might fail due to user gesture requirements)
+                try {
+                    const clipboardItems = await navigator.clipboard.read();
+                    log(`Clipboard items found: ${clipboardItems.length}`);
+
+                    for (let i = 0; i < clipboardItems.length; i++) {
+                        const item = clipboardItems[i];
+                        log(`Item ${i}: types = ${Array.from(item.types).join(', ')}`);
+                    }
+
+                    updateTestStatus('clipboard-support', 'pass', 'Clipboard API accessible');
+                } catch (readError) {
+                    log(`Clipboard read error (expected without user gesture): ${readError.message}`);
+                    updateTestStatus('clipboard-support', 'pass', 'Clipboard API available (read requires user gesture)');
+                }
+
+            } catch (error) {
+                log(`Clipboard access error: ${error.message}`, 'error');
+                updateTestStatus('clipboard-support', 'fail', `Error: ${error.message}`);
+            }
+        }
+
+        // Test 3: Paste Events
+        function testPasteEvents() {
+            log('Testing paste event handling...');
+
+            // Add temporary paste listener to document
+            const testPasteHandler = (e) => {
+                pasteEventCount++;
+                log(`Paste event #${pasteEventCount} detected on document`);
+                log(`Event target: ${e.target.tagName} ${e.target.id ? '#' + e.target.id : ''}`);
+                log(`Clipboard data items: ${e.clipboardData?.items.length || 'none'}`);
+
+                if (e.clipboardData?.items) {
+                    for (let i = 0; i < e.clipboardData.items.length; i++) {
+                        const item = e.clipboardData.items[i];
+                        log(`  Item ${i}: ${item.type} (kind: ${item.kind})`);
+                    }
+                }
+
+                updateTestStatus('paste-support', 'pass', `${pasteEventCount} paste events detected`);
+            };
+
+            document.addEventListener('paste', testPasteHandler);
+
+            // Remove after 30 seconds
+            setTimeout(() => {
+                document.removeEventListener('paste', testPasteHandler);
+                log('Paste event test handler removed');
+            }, 30000);
+
+            log('Paste event listener attached. Try pasting something!');
+        }
+
+        // Test Dialog Functions
+        function openTestDialog() {
+            const dialog = document.getElementById('test-dialog');
+            dialog.showModal();
+            log('Test dialog opened');
+        }
+
+        function closeTestDialog() {
+            const dialog = document.getElementById('test-dialog');
+            dialog.close();
+            log('Test dialog closed');
+        }
+
+        function testPasteInDialog() {
+            log('Testing paste functionality in dialog...');
+            // This will trigger the paste event handler if one is active
+        }
+
+        // Enhanced paste handler that mimics the original annotate.js behavior
+        function handlePaste(e) {
+            const dialog = document.getElementById('test-dialog');
+
+            log(`Paste event received`);
+            log(`Dialog exists: ${!!dialog}`);
+            log(`Dialog open: ${dialog?.open}`);
+
+            // Mimic the original condition
+            if (!dialog || !dialog.open) {
+                log('Paste ignored - dialog not open');
+                return;
+            }
+
+            log('Processing paste event...');
+            e.preventDefault();
+
+            const items = e.clipboardData?.items;
+            if (!items) {
+                log('No clipboard items found', 'error');
+                return;
+            }
+
+            log(`Found ${items.length} clipboard items`);
+
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                log(`Processing item ${i}: ${item.type} (${item.kind})`);
+
+                if (item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    if (!file) {
+                        log('Could not get file from clipboard item', 'error');
+                        continue;
+                    }
+
+                    log(`Got image file: ${file.type}, ${file.size} bytes`);
+
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        log('Image loaded, creating img element...');
+                        const img = new Image();
+                        img.onload = () => {
+                            log(`Image dimensions: ${img.width}x${img.height}`);
+
+                            // Draw to both canvases
+                            drawImageToCanvas(img, testCtx, testCanvas);
+                            drawImageToCanvas(img, dialogCtx, dialogCanvas);
+
+                            log('Image successfully pasted to canvases!');
+                        };
+                        img.onerror = () => {
+                            log('Error loading pasted image', 'error');
+                        };
+                        img.src = ev.target.result;
+                    };
+                    reader.onerror = () => {
+                        log('Error reading clipboard file', 'error');
+                    };
+                    reader.readAsDataURL(file);
+                    break; // Only handle first image
+                }
+            }
+        }
+
+        function drawImageToCanvas(img, ctx, canvas) {
+            // Scale to fit canvas
+            let w = img.width, h = img.height;
+            const maxW = canvas.width * 0.8;
+            const maxH = canvas.height * 0.8;
+
+            if (w > maxW || h > maxH) {
+                const scaleW = maxW / w;
+                const scaleH = maxH / h;
+                const scale = Math.min(scaleW, scaleH);
+                w *= scale;
+                h *= scale;
+            }
+
+            // Clear and redraw checkerboard
+            drawCheckerboard(ctx, canvas.width, canvas.height);
+
+            // Center the image
+            const x = (canvas.width - w) / 2;
+            const y = (canvas.height - h) / 2;
+
+            ctx.drawImage(img, x, y, w, h);
+        }
+
+        // Initialize everything
+        window.addEventListener('load', () => {
+            log('Initializing paste debug test...');
+            initCanvases();
+
+            // Add our enhanced paste handler
+            document.addEventListener('paste', handlePaste);
+
+            // Run initial tests
+            setTimeout(() => {
+                // Test dialog support
+                try {
+                    const dialog = document.createElement('dialog');
+                    const hasShowModal = typeof dialog.showModal === 'function';
+                    updateTestStatus('dialog-support', hasShowModal ? 'pass' : 'fail',
+                        hasShowModal ? 'Native dialog API supported' : 'Dialog API not supported');
+                } catch (e) {
+                    updateTestStatus('dialog-support', 'fail', 'Dialog creation failed');
+                }
+
+                // Test clipboard API
+                const hasClipboard = !!navigator.clipboard;
+                updateTestStatus('clipboard-support', hasClipboard ? 'pass' : 'fail',
+                    hasClipboard ? 'Clipboard API available' : 'Clipboard API not available');
+
+                log('Initial tests completed');
+            }, 100);
+
+            // Focus the clipboard test area to make paste events more likely
+            document.querySelector('.clipboard-test').addEventListener('click', () => {
+                log('Clipboard test area focused');
+            });
+        });
+
+        // Additional debugging for focus issues
+        document.addEventListener('focus', (e) => {
+            log(`Focus on: ${e.target.tagName}${e.target.id ? '#' + e.target.id : ''}`);
+        }, true);
+
+        document.addEventListener('blur', (e) => {
+            log(`Blur from: ${e.target.tagName}${e.target.id ? '#' + e.target.id : ''}`);
+        }, true);
+    </script>
+</body>
+</html>

@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paste Compatibility & Timing Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .test-panel {
+            background: white;
+            margin: 15px 0;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        .browser-info {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .test-result.pass { background: #d4edda; border: 1px solid #c3e6cb; }
+        .test-result.fail { background: #f8d7da; border: 1px solid #f5c6cb; }
+        .test-result.warn { background: #fff3cd; border: 1px solid #ffeaa7; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: 1px solid #dee2e6;
+            background: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #f8f9fa; }
+        button.primary { background: #007bff; color: white; border-color: #007bff; }
+        button.danger { background: #dc3545; color: white; border-color: #dc3545; }
+        dialog {
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            padding: 20px;
+            width: min(600px, 90vw);
+        }
+        .timing-test {
+            border: 2px dashed #6c757d;
+            padding: 20px;
+            margin: 15px 0;
+            text-align: center;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .debug-output {
+            background: #212529;
+            color: #28a745;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            height: 300px;
+            overflow-y: auto;
+            white-space: pre;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Paste Compatibility & Timing Tests</h1>
+    <p>This test identifies browser-specific issues, timing problems, and compatibility concerns with paste functionality.</p>
+
+    <div class="test-panel">
+        <h2>📊 Browser Environment</h2>
+        <div id="browser-info" class="browser-info">Loading browser information...</div>
+    </div>
+
+    <div class="test-panel">
+        <h2>⚡ Timing Tests</h2>
+        <p>These tests check for timing issues with dialog state and paste event handling:</p>
+        <button onclick="testDialogTimingIssues()">Test Dialog State Timing</button>
+        <button onclick="testPasteEventTiming()">Test Paste Event Timing</button>
+        <button onclick="testAsyncClipboardTiming()">Test Async Clipboard Timing</button>
+        <div id="timing-results"></div>
+    </div>
+
+    <div class="test-panel">
+        <h2>🔧 Compatibility Workarounds</h2>
+        <p>Test different approaches to fix paste functionality:</p>
+        <button onclick="testMethodA()">Method A: Multiple Dialog Checks</button>
+        <button onclick="testMethodB()">Method B: Event Delegation</button>
+        <button onclick="testMethodC()">Method C: Focus Management</button>
+        <button onclick="testMethodD()">Method D: Polling Approach</button>
+        <div id="compatibility-results"></div>
+    </div>
+
+    <div class="test-panel">
+        <h2>📋 Live Paste Testing</h2>
+        <div class="timing-test" tabindex="0" id="paste-target">
+            <p><strong>Click here and paste an image (Ctrl+V / Cmd+V)</strong></p>
+            <p>This area will capture paste events and test different handling methods</p>
+        </div>
+        <button onclick="openTimingDialog()">Open Test Dialog</button>
+        <button onclick="closeTimingDialog()">Close Test Dialog</button>
+        <button class="danger" onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <div class="test-panel">
+        <h2>📝 Debug Output</h2>
+        <div id="debug-output" class="debug-output"></div>
+    </div>
+
+    <!-- Test Dialog -->
+    <dialog id="timing-dialog">
+        <h3>Timing Test Dialog</h3>
+        <p>This dialog tests timing-related paste issues. Try pasting while this is open.</p>
+        <div style="margin-top: 15px;">
+            <button onclick="closeTimingDialog()">Close</button>
+        </div>
+    </dialog>
+
+    <script>
+        let debugOutput = [];
+        let testResults = [];
+        let dialogOpenTime = 0;
+
+        function log(message, level = 'INFO') {
+            const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+            const logLine = `[${timestamp}] [${level}] ${message}`;
+            debugOutput.push(logLine);
+
+            const outputEl = document.getElementById('debug-output');
+            if (outputEl) {
+                outputEl.textContent = debugOutput.slice(-100).join('\n');
+                outputEl.scrollTop = outputEl.scrollHeight;
+            }
+
+            console.log(logLine);
+        }
+
+        function addTestResult(testName, status, details, containerId = 'timing-results') {
+            const result = { testName, status, details, timestamp: Date.now() };
+            testResults.push(result);
+
+            const container = document.getElementById(containerId);
+            const resultEl = document.createElement('div');
+            resultEl.className = `test-result ${status}`;
+            resultEl.innerHTML = `<strong>${testName}:</strong> ${details}`;
+            container.appendChild(resultEl);
+
+            log(`TEST ${status.toUpperCase()}: ${testName} - ${details}`, status.toUpperCase());
+        }
+
+        // Browser environment detection
+        function detectBrowserEnvironment() {
+            const info = {
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                language: navigator.language,
+                cookieEnabled: navigator.cookieEnabled,
+                onLine: navigator.onLine,
+                hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
+
+                // Clipboard API support
+                clipboardAPI: !!navigator.clipboard,
+                clipboardRead: !!(navigator.clipboard && navigator.clipboard.read),
+                clipboardWrite: !!(navigator.clipboard && navigator.clipboard.write),
+
+                // Dialog support
+                dialogSupported: !!document.createElement('dialog').showModal,
+
+                // Event support
+                pasteEventSupported: 'onpaste' in document,
+
+                // Permissions API
+                permissionsAPI: !!navigator.permissions,
+
+                // Secure context
+                secureContext: window.isSecureContext,
+
+                // Viewport
+                viewportWidth: window.innerWidth,
+                viewportHeight: window.innerHeight,
+            };
+
+            // Browser detection
+            const ua = navigator.userAgent;
+            if (ua.includes('Chrome')) info.browser = 'Chrome';
+            else if (ua.includes('Firefox')) info.browser = 'Firefox';
+            else if (ua.includes('Safari') && !ua.includes('Chrome')) info.browser = 'Safari';
+            else if (ua.includes('Edge')) info.browser = 'Edge';
+            else info.browser = 'Unknown';
+
+            return info;
+        }
+
+        function displayBrowserInfo() {
+            const info = detectBrowserEnvironment();
+            const container = document.getElementById('browser-info');
+
+            let html = '';
+            for (const [key, value] of Object.entries(info)) {
+                html += `${key}: ${value}\n`;
+            }
+            container.textContent = html;
+
+            log('Browser environment detected');
+        }
+
+        // Test 1: Dialog State Timing Issues
+        async function testDialogTimingIssues() {
+            log('Starting dialog timing tests...');
+            const dialog = document.getElementById('timing-dialog');
+
+            // Test 1A: Immediate state check
+            dialog.showModal();
+            const immediateState = dialog.open;
+
+            // Test 1B: Delayed state check
+            setTimeout(() => {
+                const delayedState = dialog.open;
+                dialog.close();
+
+                if (immediateState && delayedState) {
+                    addTestResult('Dialog State Consistency', 'pass', 'Dialog state is immediately and consistently available');
+                } else if (!immediateState && delayedState) {
+                    addTestResult('Dialog State Timing Issue', 'warn', 'Dialog.open is false immediately after showModal but true after delay');
+                } else {
+                    addTestResult('Dialog State Problem', 'fail', `Immediate: ${immediateState}, Delayed: ${delayedState}`);
+                }
+            }, 50);
+
+            // Test 1C: Multiple checks with different timing
+            const timingTests = [10, 25, 50, 100, 200];
+            dialog.showModal();
+            dialogOpenTime = Date.now();
+
+            timingTests.forEach(delay => {
+                setTimeout(() => {
+                    const state = dialog.open;
+                    log(`Dialog state at ${delay}ms: ${state}`);
+                }, delay);
+            });
+
+            setTimeout(() => dialog.close(), 300);
+        }
+
+        // Test 2: Paste Event Timing
+        function testPasteEventTiming() {
+            log('Testing paste event timing...');
+
+            let pasteEventReceived = false;
+            let eventDetails = null;
+
+            const testHandler = (e) => {
+                pasteEventReceived = true;
+                eventDetails = {
+                    timestamp: Date.now(),
+                    target: e.target.tagName,
+                    hasClipboardData: !!e.clipboardData,
+                    itemCount: e.clipboardData?.items?.length || 0
+                };
+                log(`Paste event captured: target=${eventDetails.target}, items=${eventDetails.itemCount}`);
+            };
+
+            document.addEventListener('paste', testHandler);
+
+            // Simulate paste event
+            const pasteEvent = new ClipboardEvent('paste', {
+                clipboardData: new DataTransfer()
+            });
+
+            document.dispatchEvent(pasteEvent);
+
+            setTimeout(() => {
+                document.removeEventListener('paste', testHandler);
+
+                if (pasteEventReceived) {
+                    addTestResult('Paste Event Timing', 'pass', `Event received on ${eventDetails.target} with ${eventDetails.itemCount} items`);
+                } else {
+                    addTestResult('Paste Event Timing', 'fail', 'Simulated paste event was not received');
+                }
+            }, 100);
+        }
+
+        // Test 3: Async Clipboard Timing
+        async function testAsyncClipboardTiming() {
+            log('Testing async clipboard timing...');
+
+            if (!navigator.clipboard) {
+                addTestResult('Async Clipboard', 'fail', 'Clipboard API not available');
+                return;
+            }
+
+            const startTime = Date.now();
+
+            try {
+                // Test clipboard read timing
+                const clipboardItems = await navigator.clipboard.read();
+                const readTime = Date.now() - startTime;
+
+                addTestResult('Clipboard Read Timing', 'pass', `Read completed in ${readTime}ms, found ${clipboardItems.length} items`);
+
+            } catch (error) {
+                const failTime = Date.now() - startTime;
+                addTestResult('Clipboard Read Timing', 'warn', `Failed in ${failTime}ms: ${error.message} (likely needs user gesture)`);
+            }
+        }
+
+        // Compatibility Method A: Multiple Dialog Checks
+        function testMethodA() {
+            log('Testing Method A: Multiple Dialog Checks');
+
+            const testPasteA = (e) => {
+                const dialog = document.getElementById('timing-dialog');
+
+                // Multiple ways to check if dialog is open
+                const checks = {
+                    openProperty: dialog?.open,
+                    hasOpenAttribute: dialog?.hasAttribute('open'),
+                    computedDisplay: dialog ? getComputedStyle(dialog).display !== 'none' : false,
+                    offsetParent: dialog ? !!dialog.offsetParent : false,
+                    boundingRect: dialog ? (dialog.getBoundingClientRect().width > 0) : false
+                };
+
+                log(`Method A checks: ${JSON.stringify(checks)}`);
+
+                const isOpen = checks.openProperty || checks.hasOpenAttribute || (checks.computedDisplay && checks.offsetParent);
+
+                if (isOpen) {
+                    log('Method A: Dialog detected as open');
+                    addTestResult('Method A (Multiple Checks)', 'pass', 'Successfully detected open dialog state', 'compatibility-results');
+                } else {
+                    log('Method A: Dialog detected as closed');
+                }
+            };
+
+            document.addEventListener('paste', testPasteA);
+            setTimeout(() => document.removeEventListener('paste', testPasteA), 10000);
+
+            log('Method A paste handler attached for 10 seconds');
+        }
+
+        // Compatibility Method B: Event Delegation
+        function testMethodB() {
+            log('Testing Method B: Event Delegation');
+
+            const testPasteB = (e) => {
+                // Check if we're in the context of the annotation dialog
+                const dialogElement = e.target.closest('#timing-dialog') ||
+                                    document.querySelector('#timing-dialog[open]');
+
+                if (dialogElement) {
+                    log('Method B: Paste detected via event delegation');
+                    addTestResult('Method B (Event Delegation)', 'pass', 'Successfully detected paste in dialog context', 'compatibility-results');
+                }
+            };
+
+            document.addEventListener('paste', testPasteB, true); // Use capture phase
+            setTimeout(() => document.removeEventListener('paste', testPasteB, true), 10000);
+
+            log('Method B event delegation handler attached for 10 seconds');
+        }
+
+        // Compatibility Method C: Focus Management
+        function testMethodC() {
+            log('Testing Method C: Focus Management');
+
+            let dialogHasFocus = false;
+
+            const focusIn = (e) => {
+                if (e.target.closest('#timing-dialog')) {
+                    dialogHasFocus = true;
+                    log('Method C: Dialog gained focus');
+                }
+            };
+
+            const focusOut = (e) => {
+                if (dialogHasFocus && !e.relatedTarget?.closest('#timing-dialog')) {
+                    dialogHasFocus = false;
+                    log('Method C: Dialog lost focus');
+                }
+            };
+
+            const testPasteC = (e) => {
+                if (dialogHasFocus) {
+                    log('Method C: Paste detected with dialog focus');
+                    addTestResult('Method C (Focus Management)', 'pass', 'Successfully detected paste with focus tracking', 'compatibility-results');
+                }
+            };
+
+            document.addEventListener('focusin', focusIn);
+            document.addEventListener('focusout', focusOut);
+            document.addEventListener('paste', testPasteC);
+
+            setTimeout(() => {
+                document.removeEventListener('focusin', focusIn);
+                document.removeEventListener('focusout', focusOut);
+                document.removeEventListener('paste', testPasteC);
+            }, 10000);
+
+            log('Method C focus management handlers attached for 10 seconds');
+        }
+
+        // Compatibility Method D: Polling Approach
+        function testMethodD() {
+            log('Testing Method D: Polling Approach');
+
+            let dialogWasOpen = false;
+
+            const pollDialogState = () => {
+                const dialog = document.getElementById('timing-dialog');
+                const isOpen = dialog?.open || dialog?.hasAttribute('open');
+
+                if (isOpen !== dialogWasOpen) {
+                    dialogWasOpen = isOpen;
+                    log(`Method D: Dialog state changed to ${isOpen ? 'open' : 'closed'}`);
+                }
+            };
+
+            const pollInterval = setInterval(pollDialogState, 100); // Poll every 100ms
+
+            const testPasteD = (e) => {
+                if (dialogWasOpen) {
+                    log('Method D: Paste detected with polling');
+                    addTestResult('Method D (Polling)', 'pass', 'Successfully detected paste with state polling', 'compatibility-results');
+                }
+            };
+
+            document.addEventListener('paste', testPasteD);
+
+            setTimeout(() => {
+                clearInterval(pollInterval);
+                document.removeEventListener('paste', testPasteD);
+            }, 10000);
+
+            log('Method D polling approach active for 10 seconds');
+        }
+
+        // Dialog controls
+        function openTimingDialog() {
+            const dialog = document.getElementById('timing-dialog');
+            dialog.showModal();
+            dialogOpenTime = Date.now();
+            log('Timing dialog opened');
+        }
+
+        function closeTimingDialog() {
+            const dialog = document.getElementById('timing-dialog');
+            dialog.close();
+            log('Timing dialog closed');
+        }
+
+        function clearResults() {
+            document.getElementById('timing-results').innerHTML = '';
+            document.getElementById('compatibility-results').innerHTML = '';
+            testResults = [];
+            debugOutput = [];
+            document.getElementById('debug-output').textContent = '';
+            log('Results cleared');
+        }
+
+        // Enhanced paste handler for live testing
+        document.getElementById('paste-target').addEventListener('paste', (e) => {
+            log('Live paste event captured!');
+
+            const dialog = document.getElementById('timing-dialog');
+            const isDialogOpen = dialog?.open;
+
+            log(`Dialog state during paste: ${isDialogOpen}`);
+
+            if (e.clipboardData?.items) {
+                log(`Clipboard items: ${e.clipboardData.items.length}`);
+                for (let i = 0; i < e.clipboardData.items.length; i++) {
+                    const item = e.clipboardData.items[i];
+                    log(`Item ${i}: ${item.type} (${item.kind})`);
+                }
+            }
+        });
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            displayBrowserInfo();
+            log('Paste compatibility tests initialized');
+
+            // Make the paste target focusable
+            document.getElementById('paste-target').focus();
+        });
+    </script>
+</body>
+</html>
