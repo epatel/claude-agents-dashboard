@@ -301,12 +301,6 @@ class AgentOrchestrator:
         if session is None:
             return
 
-        # Ensure the subprocess is terminated
-        try:
-            await session.cancel()
-        except Exception:
-            pass
-
         # Save token usage statistics
         await self._save_token_usage(item_id, result)
 
