@@ -98,13 +98,21 @@ The SQLite database uses a versioned migration system to manage schema changes s
 graph TB
     subgraph Frontend["Frontend (Vanilla JS, No Build Step)"]
         Browser["Browser"]
-        JS["app.js | board.js | dialogs.js<br/>api.js | diff.js | annotate.js<br/>theme.js | stats.js"]
+        JS["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js"]
+        Dlg["dialogs.js (coordinator)<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog<br/>request-changes-dialog | attachments<br/>dialog-core | dialog-utils | annotation-canvas"]
     end
 
     subgraph Backend["Backend (Python 3.12+ / FastAPI)"]
         Routes["routes.py — HTTP + WS endpoints"]
         WSMgr["ConnectionManager — WebSocket + Rate Limiting"]
-        Orch["AgentOrchestrator — lifecycle mgmt"]
+        Orch["AgentOrchestrator — facade"]
+        subgraph Svc["Service Layer"]
+            WF["WorkflowService"]
+            DBS["DatabaseService"]
+            NS["NotificationService"]
+            GS["GitService"]
+            SS["SessionService"]
+        end
         Sess["AgentSession — Claude SDK wrapper"]
         DB["Database — aiosqlite + migrations"]
     end
@@ -122,23 +130,27 @@ graph TB
 
     Browser <-->|"HTTP + WebSocket"| Routes
     Routes --> Orch
-    Orch --> Sess
-    Orch --> DB
-    Orch --> GitOps
-    Orch --> WT
-    Orch --> WSMgr
+    Orch --> WF
+    WF --> DBS
+    WF --> GS
+    WF --> NS
+    WF --> SS
+    SS --> Sess
+    DBS --> DB
+    NS --> WSMgr
     WSMgr <-->|"Real-time events"| Browser
     Sess -->|"Claude Agent SDK"| Ask
     Sess --> TodoTool
     Sess --> CommitTool
     DB -->|SQLite| DB
-    GitOps --> WT
+    GS --> GitOps
+    GS --> WT
 ```
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session)
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (10 specialized modules)
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
