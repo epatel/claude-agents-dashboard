@@ -71,12 +71,14 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Session persistence** — request changes resumes the agent's conversation with full context
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
-- **Per-item model selection** — choose between Claude Sonnet 4 and Claude Opus 4.6 per item (falls back to global config)
+- **Per-item model selection** — choose between Claude Sonnet 4, Claude Opus 3, and Claude Haiku 3 per item (falls back to global config)
 - **Agent config** — set system prompt, model, project context, MCP servers, and plugins
 - **MCP support** — connect external tools and data sources via Model Context Protocol
 - **Plugin support** — load local Claude Code plugins via directory paths
 - **Merge conflict detection** — merge conflicts abort cleanly, keeping the worktree intact for resolution
 - **Item cleanup** — deleting an item stops running agents, removes worktrees and branches, and cleans up attachment files
+- **WebSocket reconnection** — automatic reconnection with exponential backoff, visibility-aware, manual reconnect via status indicator
+- **Stats caching** — server-side stats caching with 30s TTL, invalidated on mutations for fresh data
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture
@@ -126,9 +128,9 @@ graph TB
 
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket
-- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 4.6
+- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3
 - **Database**: SQLite with versioned migrations
-- **Security**: Localhost only, no authentication
+- **Security**: Localhost only, no authentication, path traversal protection
 
 ### Item lifecycle
 
