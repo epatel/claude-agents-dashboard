@@ -8,6 +8,7 @@ from ..web.websocket import ConnectionManager
 from ..git.worktree import create_worktree, remove_worktree, cleanup_worktree
 from ..git.operations import get_main_branch, merge_branch
 from .session import AgentSession, AgentResult
+from ..models import new_id
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,37 @@ class AgentOrchestrator:
 
         return response
 
+    async def _on_create_todo(self, item_id: str, title: str, description: str) -> dict:
+        """Called when agent uses create_todo tool. Creates a new todo item."""
+        todo_id = new_id()
+
+        # Get next position in todo column
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM items WHERE column_name = 'todo'"
+            )
+            row = await cursor.fetchone()
+            position = row[0] if row else 0
+
+            # Create new todo item
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, 'todo', ?)",
+                (todo_id, title, description, position),
+            )
+            await conn.commit()
+
+            # Get the created item
+            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (todo_id,))
+            item = dict(await cursor.fetchone())
+
+        # Log the creation
+        await self._log(item_id, "system", f"Created todo item: {title}")
+
+        # Broadcast to frontend
+        await self.ws_manager.broadcast("item_created", item)
+
+        return item
+
     def _format_tool_use(self, name: str, inp: dict) -> str:
         """Format tool use for readable work log display."""
         if name == "Write":
@@ -88,6 +120,14 @@ class AgentOrchestrator:
             return f"**Glob** `{inp.get('pattern', '')}`"
         elif name == "Grep":
             return f"**Grep** `{inp.get('pattern', '')}` in `{inp.get('path', '.')}`"
+        elif name == "create_todo":
+            title = inp.get("title", "")
+            return f"**Create Todo** {title}"
+        elif name == "ask_user":
+            question = inp.get("question", "")
+            if len(question) > 100:
+                question = question[:100] + "..."
+            return f"**Ask User** {question}"
         else:
             summary = str(inp)
             if len(summary) > 100:
@@ -186,6 +226,7 @@ class AgentOrchestrator:
             on_complete=lambda result, iid=item_id: self._on_agent_complete(iid, result),
             on_error=lambda err, iid=item_id: self._on_agent_error(iid, err),
             on_clarify=lambda prompt, choices, iid=item_id: self._on_clarify(iid, prompt, choices),
+            on_create_todo=lambda title, desc, iid=item_id: self._on_create_todo(iid, title, desc),
         )
 
         self.sessions[item_id] = session
@@ -351,6 +392,7 @@ class AgentOrchestrator:
             on_complete=lambda result, iid=item_id: self._on_agent_complete(iid, result),
             on_error=lambda err, iid=item_id: self._on_agent_error(iid, err),
             on_clarify=lambda prompt, choices, iid=item_id: self._on_clarify(iid, prompt, choices),
+            on_create_todo=lambda title, desc, iid=item_id: self._on_create_todo(iid, title, desc),
         )
 
         self.sessions[item_id] = session

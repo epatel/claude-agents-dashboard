@@ -43,16 +43,18 @@ class AgentSession:
         on_complete=None,
         on_error=None,
         on_clarify=None,
+        on_create_todo=None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
         self.model = model
-        self.on_message = on_message      # async callback(text: str)
-        self.on_tool_use = on_tool_use    # async callback(tool_name: str, input: dict)
-        self.on_thinking = on_thinking    # async callback(thinking: str)
-        self.on_complete = on_complete    # async callback(result: AgentResult)
-        self.on_error = on_error          # async callback(error: str)
-        self.on_clarify = on_clarify      # async callback(prompt: str, choices: list|None) -> str
+        self.on_message = on_message        # async callback(text: str)
+        self.on_tool_use = on_tool_use      # async callback(tool_name: str, input: dict)
+        self.on_thinking = on_thinking      # async callback(thinking: str)
+        self.on_complete = on_complete      # async callback(result: AgentResult)
+        self.on_error = on_error            # async callback(error: str)
+        self.on_clarify = on_clarify        # async callback(prompt: str, choices: list|None) -> str
+        self.on_create_todo = on_create_todo  # async callback(title: str, description: str) -> dict
         self.client: ClaudeSDKClient | None = None
         self._task: asyncio.Task | None = None
         self._cancelled = False
@@ -60,10 +62,13 @@ class AgentSession:
     async def start(self, prompt: str, resume_session_id: str | None = None) -> None:
         """Start the agent with a prompt."""
         from .clarification import create_clarification_server
+        from .todo import create_todo_server
 
         mcp_servers = {}
         if self.on_clarify:
             mcp_servers["clarification"] = create_clarification_server(self.on_clarify)
+        if self.on_create_todo:
+            mcp_servers["todo"] = create_todo_server(self.on_create_todo)
 
         # Ensure agent knows to work in the worktree directory
         cwd_note = f"\n\nIMPORTANT: Your working directory is {self.worktree_path}. All file operations must be within this directory."
