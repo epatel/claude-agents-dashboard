@@ -53,6 +53,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Session persistence** — request changes resumes the agent's conversation with full context
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
+- **Per-item model selection** — override the default model on individual items (falls back to global config)
 - **Agent config** — set system prompt, model, project context, and MCP servers
 - **MCP support** — connect external tools and data sources via Model Context Protocol
 - **Light/dark mode** — respects system preference with manual toggle

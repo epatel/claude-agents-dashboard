@@ -70,16 +70,42 @@ class AgentSession:
         if self.on_create_todo:
             mcp_servers["todo"] = create_todo_server(self.on_create_todo)
 
+        # Load external MCP servers from mcp-config.json
+        mcp_config_path = self.worktree_path / "mcp-config.json"
+        if mcp_config_path.exists():
+            try:
+                with open(mcp_config_path, 'r') as f:
+                    external_config = json.load(f)
+                    external_servers = external_config.get("mcpServers", {})
+                    mcp_servers.update(external_servers)
+                    logger.info(f"Loaded {len(external_servers)} external MCP servers from config")
+            except Exception as e:
+                logger.warning(f"Failed to load MCP config: {e}")
+
         # Ensure agent knows to work in the worktree directory
         cwd_note = f"\n\nIMPORTANT: Your working directory is {self.worktree_path}. All file operations must be within this directory."
         full_system_prompt = (self.system_prompt or "") + cwd_note
+
+        # Configure allowed MCP tools
+        allowed_tools = []
+        if "clarification" in mcp_servers:
+            allowed_tools.append("mcp__clarification__ask_user")
+        if "todo" in mcp_servers:
+            allowed_tools.append("mcp__todo__create_todo")
+
+        # Allow all tools from external MCP servers (using wildcard for each server)
+        for server_name, server_config in mcp_servers.items():
+            if server_name not in ["clarification", "todo"]:  # Skip our built-in servers
+                allowed_tools.append(f"mcp__{server_name}__*")
+                logger.info(f"Allowing all tools from external MCP server: {server_name}")
 
         options = ClaudeAgentOptions(
             cwd=self.worktree_path,
             system_prompt=full_system_prompt,
             model=self.model,
-            permission_mode="bypassPermissions",
+            permission_mode="acceptEdits",  # More targeted than bypassPermissions
             mcp_servers=mcp_servers if mcp_servers else None,
+            allowed_tools=allowed_tools if allowed_tools else None,
             add_dirs=[str(self.worktree_path)],
             thinking={"type": "enabled", "budget_tokens": 10000},
         )

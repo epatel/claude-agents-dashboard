@@ -44,6 +44,8 @@ Browser ←HTTP→ FastAPI routes (routes.py)
 
 - **Todo creation via MCP**: Agents can create new todo items via the `create_todo` MCP tool. This flows through `_on_create_todo` callback, creates new items in the database with proper positioning, and broadcasts real-time updates to the frontend.
 
+- **Per-item model selection**: Items can have an individual `model` field (migration 003). `start_agent()` uses `item.get("model") or config.get("model")`, falling back to the global agent config default.
+
 - **Session resumption**: `ResultMessage.session_id` is stored in the DB. When requesting changes, the agent resumes its previous session via `ClaudeAgentOptions(resume=session_id, continue_conversation=True)` so it retains full conversation context.
 
 - **Diff includes uncommitted changes**: `get_diff()` and `get_changed_files()` accept a `worktree_path` parameter. When provided, they combine committed branch diff + uncommitted changes + untracked files, since agents don't always commit their work.
@@ -54,7 +56,7 @@ Browser ←HTTP→ FastAPI routes (routes.py)
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2; JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
 
-Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card rendering), `dialogs.js` (all modals + custom confirm), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas).
+Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card rendering), `dialogs.js` (all modals + custom confirm), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle).
 
 ### Database
 
@@ -73,7 +75,7 @@ SQLite via aiosqlite with a versioned migration system. Migration files are in `
 - All state changes broadcast via `ws_manager.broadcast(event_type, data)` for real-time UI updates.
 - The `_update_item` helper in orchestrator updates DB + broadcasts in one call.
 - `Starlette TemplateResponse` requires `request` as first kwarg: `TemplateResponse(request=request, name="...", context={...})`.
-- Agent's `cwd` is set to the worktree path, and the system prompt explicitly tells the agent its working directory. `add_dirs` is also set to allow file operations there.
+- Agent's `cwd` is set to the worktree path, and the system prompt explicitly tells the agent its working directory. `add_dirs` is also set to allow file operations there. Agent sessions use `permission_mode="bypassPermissions"` so agents can operate autonomously.
 - Extended thinking is enabled (`thinking={"type": "enabled", "budget_tokens": 10000}`) for richer agent reasoning.
 - Never use browser `confirm()` or `prompt()` in dialogs — they block and conflict with `<dialog>` modals. Use `Dialogs.confirm()` which returns a Promise.
 - Tooltips use JS positioning (`position: fixed`, appended to the nearest open `<dialog>` or `document.body`) so they appear above modal dialogs. Use `data-tip` for plain text, `data-tip-html` for rich formatted tooltips.
