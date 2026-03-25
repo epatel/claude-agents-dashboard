@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Sanitization Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .test-input { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 3px; }
+        .test-output { background: #e8f5e8; padding: 10px; margin: 10px 0; border-radius: 3px; border: 1px solid #28a745; }
+        .dangerous { background: #f8d7da; border-color: #dc3545; }
+        pre { white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Work Log Markdown Sanitization Test</h1>
+    <p>This test demonstrates that the markdown rendering now properly sanitizes potentially dangerous HTML/JavaScript content.</p>
+
+    <div class="test-section">
+        <h2>Test 1: Basic Markdown (Safe)</h2>
+        <div class="test-input">
+            <strong>Input:</strong><br>
+            <pre># Hello World
+This is **bold** text and *italic* text.
+- List item 1
+- List item 2</pre>
+        </div>
+        <div class="test-output">
+            <strong>Sanitized Output:</strong><br>
+            <div id="test1-output"></div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Malicious Script Tag (Dangerous - Should be Sanitized)</h2>
+        <div class="test-input dangerous">
+            <strong>Input:</strong><br>
+            <pre>This looks innocent but contains: &lt;script&gt;alert('XSS Attack!')&lt;/script&gt;</pre>
+        </div>
+        <div class="test-output">
+            <strong>Sanitized Output:</strong><br>
+            <div id="test2-output"></div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Malicious Event Handler (Dangerous - Should be Sanitized)</h2>
+        <div class="test-input dangerous">
+            <strong>Input:</strong><br>
+            <pre>Click here: &lt;img src="x" onerror="alert('Image XSS')" /&gt;</pre>
+        </div>
+        <div class="test-output">
+            <strong>Sanitized Output:</strong><br>
+            <div id="test3-output"></div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 4: Malicious Link (Dangerous - Should be Sanitized)</h2>
+        <div class="test-input dangerous">
+            <strong>Input:</strong><br>
+            <pre>[Click me](javascript:alert('Link XSS'))</pre>
+        </div>
+        <div class="test-output">
+            <strong>Sanitized Output:</strong><br>
+            <div id="test4-output"></div>
+        </div>
+    </div>
+
+    <!-- Load required libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
+
+    <script>
+        // Simulate the Dialogs.renderMarkdown function from the actual code
+        function renderMarkdown(text) {
+            if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+                const html = marked.parse(text || '');
+                return DOMPurify.sanitize(html);
+            }
+            // Fallback: escape HTML and convert newlines
+            const d = document.createElement('div');
+            d.textContent = text || '';
+            return d.innerHTML.replace(/\n/g, '<br>');
+        }
+
+        // Test cases
+        const tests = [
+            {
+                id: 'test1-output',
+                input: `# Hello World
+This is **bold** text and *italic* text.
+- List item 1
+- List item 2`
+            },
+            {
+                id: 'test2-output',
+                input: 'This looks innocent but contains: <script>alert(\'XSS Attack!\')</script>'
+            },
+            {
+                id: 'test3-output',
+                input: 'Click here: <img src="x" onerror="alert(\'Image XSS\')" />'
+            },
+            {
+                id: 'test4-output',
+                input: '[Click me](javascript:alert(\'Link XSS\'))'
+            }
+        ];
+
+        // Run tests
+        tests.forEach(test => {
+            const output = renderMarkdown(test.input);
+            document.getElementById(test.id).innerHTML = output;
+        });
+
+        // Log results to console for inspection
+        console.log('Markdown Sanitization Test Results:');
+        tests.forEach((test, index) => {
+            const output = renderMarkdown(test.input);
+            console.log(`Test ${index + 1}:`);
+            console.log('Input:', test.input);
+            console.log('Sanitized Output:', output);
+            console.log('---');
+        });
+    </script>
+</body>
+</html>
