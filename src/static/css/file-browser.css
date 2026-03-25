@@ -135,10 +135,9 @@
 /* Font size controls */
 
 .file-font-controls {
-    position: sticky;
-    bottom: 8px;
-    float: right;
-    margin-right: 12px;
+    position: absolute;
+    bottom: 32px;
+    right: 12px;
     display: flex;
     gap: 2px;
     z-index: 10;
@@ -289,7 +288,7 @@
 .file-code-viewer {
     margin: 0;
     padding: 12px;
-    padding-bottom: 44px;
+    padding-bottom: 48px !important;
     font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 13px;
     line-height: 1.5;
