@@ -1,95 +1,48 @@
 import aiosqlite
+import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
+try:
+    from .migrations import MigrationRunner
+except ImportError:
+    # Handle direct execution case
+    import sys
+    from pathlib import Path
+    sys.path.append(str(Path(__file__).parent))
+    from migrations import MigrationRunner
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS items (
-    id            TEXT PRIMARY KEY,
-    title         TEXT NOT NULL,
-    description   TEXT NOT NULL DEFAULT '',
-    column_name   TEXT NOT NULL DEFAULT 'todo',
-    position      INTEGER NOT NULL DEFAULT 0,
-    status        TEXT DEFAULT NULL,
-    branch_name   TEXT DEFAULT NULL,
-    worktree_path TEXT DEFAULT NULL,
-    session_id    TEXT DEFAULT NULL,
-    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS work_log (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id    TEXT NOT NULL REFERENCES items(id),
-    timestamp  TEXT NOT NULL DEFAULT (datetime('now')),
-    entry_type TEXT NOT NULL,
-    content    TEXT NOT NULL,
-    metadata   TEXT
-);
-
-CREATE TABLE IF NOT EXISTS review_comments (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id     TEXT NOT NULL REFERENCES items(id),
-    file_path   TEXT,
-    line_number INTEGER,
-    content     TEXT NOT NULL,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS clarifications (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id     TEXT NOT NULL REFERENCES items(id),
-    prompt      TEXT NOT NULL,
-    choices     TEXT,
-    allow_text  INTEGER NOT NULL DEFAULT 1,
-    response    TEXT,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    answered_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS attachments (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id     TEXT NOT NULL REFERENCES items(id),
-    filename    TEXT NOT NULL,
-    asset_path  TEXT NOT NULL,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS agent_config (
-    id              INTEGER PRIMARY KEY CHECK (id = 1),
-    system_prompt   TEXT,
-    tools           TEXT,
-    model           TEXT DEFAULT 'claude-sonnet-4-20250514',
-    project_context TEXT,
-    mcp_servers     TEXT DEFAULT '[]',
-    mcp_enabled     INTEGER DEFAULT 0,
-    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
-);
-"""
+logger = logging.getLogger(__name__)
 
 
 class Database:
     def __init__(self, db_path: Path):
         self.db_path = db_path
+        # Initialize migration runner
+        migrations_dir = Path(__file__).parent / "migrations" / "versions"
+        self.migration_runner = MigrationRunner(migrations_dir)
 
     async def initialize(self):
+        """Initialize database and run any pending migrations."""
         async with self.connect() as db:
-            await db.executescript(SCHEMA)
+            # Run migrations to set up or update schema
+            await self.migration_runner.migrate_up(db)
+            await db.commit()
 
-            # Add MCP columns if they don't exist (migration for existing databases)
-            try:
-                await db.execute("ALTER TABLE agent_config ADD COLUMN mcp_servers TEXT DEFAULT '[]'")
-            except:
-                pass  # Column already exists
+    async def get_migration_status(self):
+        """Get current migration status information."""
+        async with self.connect() as db:
+            return await self.migration_runner.get_status(db)
 
-            try:
-                await db.execute("ALTER TABLE agent_config ADD COLUMN mcp_enabled INTEGER DEFAULT 0")
-            except:
-                pass  # Column already exists
+    async def migrate_to_version(self, version: str):
+        """Migrate database to a specific version."""
+        async with self.connect() as db:
+            await self.migration_runner.migrate_up(db, version)
+            await db.commit()
 
-            # Ensure default agent config row exists
-            await db.execute(
-                "INSERT OR IGNORE INTO agent_config (id) VALUES (1)"
-            )
+    async def rollback_to_version(self, version: str):
+        """Rollback database to a specific version."""
+        async with self.connect() as db:
+            await self.migration_runner.migrate_down(db, version)
             await db.commit()
 
     @asynccontextmanager

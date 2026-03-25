@@ -1,0 +1,62 @@
+"""Template for creating new database migrations.
+
+Copy this file to create a new migration:
+1. Copy this file to a new file with format: XXX_description.py (e.g., 003_add_user_table.py)
+2. Update the version number and description in __init__
+3. Implement the up() method to apply your changes
+4. Implement the down() method to rollback your changes
+5. Test thoroughly before deploying
+"""
+
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+
+from migration import Migration
+import aiosqlite
+
+
+class TemplateMigration(Migration):
+    """Template migration - replace with your actual migration."""
+
+    def __init__(self):
+        super().__init__(
+            version="XXX",  # Change to next sequential number (e.g., "003")
+            description="Your migration description"  # Describe what this migration does
+        )
+
+    async def up(self, db: aiosqlite.Connection) -> None:
+        """Apply the migration changes."""
+
+        # Example: Create a new table
+        # await db.execute("""
+        #     CREATE TABLE new_table (
+        #         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #         name TEXT NOT NULL,
+        #         created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        #     )
+        # """)
+
+        # Example: Add a column
+        # await db.execute("""
+        #     ALTER TABLE existing_table
+        #     ADD COLUMN new_column TEXT DEFAULT NULL
+        # """)
+
+        # Example: Create an index
+        # await db.execute("""
+        #     CREATE INDEX idx_table_column ON table_name (column_name)
+        # """)
+
+        pass  # Replace with your migration code
+
+    async def down(self, db: aiosqlite.Connection) -> None:
+        """Rollback the migration changes."""
+
+        # Example: Drop table
+        # await db.execute("DROP TABLE IF EXISTS new_table")
+
+        # Example: Remove column (SQLite doesn't support DROP COLUMN directly)
+        # You'll need to recreate the table without the column, similar to 002_add_mcp_support.py
+
+        pass  # Replace with your rollback code
