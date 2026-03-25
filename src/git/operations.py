@@ -65,7 +65,7 @@ async def get_diff(repo: Path, branch: str, base: str | None = None, worktree_pa
                 if not f.strip():
                     continue
                 try:
-                    content = (worktree_path / f).read_text()
+                    content = await asyncio.to_thread((worktree_path / f).read_text)
                     new_files_diff += f"diff --git a/{f} b/{f}\nnew file mode 100644\n--- /dev/null\n+++ b/{f}\n"
                     lines = content.split("\n")
                     new_files_diff += f"@@ -0,0 +1,{len(lines)} @@\n"
