@@ -262,9 +262,11 @@ const Dialogs = {
         const deleteBtn = document.getElementById('detail-delete-btn');
         const actionsEl = document.getElementById('detail-header-actions');
 
-        // Remove any previously added play button
+        // Remove any previously added play/rerun buttons
         const oldPlay = document.getElementById('detail-play-btn');
         if (oldPlay) oldPlay.remove();
+        const oldRerun = document.getElementById('detail-rerun-btn');
+        if (oldRerun) oldRerun.remove();
 
         const isRunning = item.status === 'running' || item.status === 'resolving_conflicts';
 
