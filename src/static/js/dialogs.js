@@ -470,6 +470,15 @@ const Dialogs = {
 
     // --- Config dialog ---
 
+    switchConfigTab(tabName) {
+        document.querySelectorAll('#config-dialog .review-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.tab === tabName);
+        });
+        document.querySelectorAll('#config-dialog .config-tab-content').forEach(c => {
+            c.style.display = c.dataset.configTab === tabName ? '' : 'none';
+        });
+    },
+
     // --- Plugins state ---
     _configPlugins: [],
 
@@ -490,6 +499,7 @@ const Dialogs = {
             }
             this._renderPluginsList();
 
+            this.switchConfigTab('general');
             this.open('config-dialog');
         } catch (err) {
             console.error('Failed to load config:', err);
