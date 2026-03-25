@@ -1,0 +1,88 @@
+/**
+ * Configuration dialog functionality
+ */
+const ConfigDialog = {
+    // Plugins state
+    _configPlugins: [],
+
+    switchConfigTab(tabName) {
+        document.querySelectorAll('#config-dialog .review-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.tab === tabName);
+        });
+        document.querySelectorAll('#config-dialog .config-tab-content').forEach(c => {
+            c.style.display = c.dataset.configTab === tabName ? '' : 'none';
+        });
+    },
+
+    async openConfig() {
+        try {
+            const config = await Api.request('GET', '/api/config');
+            document.getElementById('config-model').value = config.model || 'claude-sonnet-4-20250514';
+            document.getElementById('config-system-prompt').value = config.system_prompt || '';
+            document.getElementById('config-project-context').value = config.project_context || '';
+            document.getElementById('config-mcp-enabled').checked = config.mcp_enabled || false;
+            document.getElementById('config-mcp-servers').value = config.mcp_servers || '{}';
+
+            // Load plugins
+            try {
+                this._configPlugins = JSON.parse(config.plugins || '[]');
+            } catch {
+                this._configPlugins = [];
+            }
+            this._renderPluginsList();
+
+            this.switchConfigTab('general');
+            DialogCore.open('config-dialog');
+        } catch (err) {
+            console.error('Failed to load config:', err);
+        }
+    },
+
+    _renderPluginsList() {
+        const container = document.getElementById('config-plugins-list');
+        if (this._configPlugins.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0;">No plugins configured. Add plugin directory paths below.</div>';
+            return;
+        }
+        container.innerHTML = this._configPlugins.map((p, i) => {
+            const path = typeof p === 'string' ? p : p.path;
+            return `<div class="plugin-entry" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:4px;">
+                <span style="font-family:var(--font-mono);font-size:12px;flex:1;word-break:break-all;">${path}</span>
+                <button type="button" class="btn btn-xs" onclick="ConfigDialog.removePlugin(${i})" title="Remove plugin" style="opacity:0.6;min-width:auto;">&#10005;</button>
+            </div>`;
+        }).join('');
+    },
+
+    addPlugin() {
+        const input = document.getElementById('config-plugin-path-input');
+        const path = input.value.trim();
+        if (!path) return;
+
+        this._configPlugins.push({ path });
+        this._renderPluginsList();
+        input.value = '';
+    },
+
+    removePlugin(index) {
+        this._configPlugins.splice(index, 1);
+        this._renderPluginsList();
+    },
+
+    async submitConfig(event) {
+        event.preventDefault();
+        const config = {
+            model: document.getElementById('config-model').value,
+            system_prompt: document.getElementById('config-system-prompt').value,
+            project_context: document.getElementById('config-project-context').value,
+            mcp_enabled: document.getElementById('config-mcp-enabled').checked,
+            mcp_servers: document.getElementById('config-mcp-servers').value,
+            plugins: JSON.stringify(this._configPlugins),
+        };
+        try {
+            await Api.request('PUT', '/api/config', config);
+            DialogCore.close('config-dialog');
+        } catch (err) {
+            console.error('Failed to save config:', err);
+        }
+    },
+};
