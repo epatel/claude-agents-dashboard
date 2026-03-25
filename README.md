@@ -86,7 +86,10 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Merge conflict detection** — merge conflicts abort cleanly, keeping the worktree intact for resolution
 - **Item cleanup** — deleting an item stops running agents, removes worktrees and branches, and cleans up attachment files
 - **WebSocket reconnection** — automatic reconnection with exponential backoff, visibility-aware, manual reconnect via status indicator
+- **WebSocket rate limiting** — per-IP connection limits (5 concurrent, 10 per 60s window) prevent resource exhaustion
 - **Stats caching** — server-side stats caching with 30s TTL, invalidated on mutations for fresh data
+- **Git operation timeouts** — configurable timeouts for git operations (5min), merges (10min), and HTTP requests (11min)
+- **Base branch tracking** — worktrees record which branch they were created from for reliable merge targeting
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture
@@ -100,7 +103,7 @@ graph TB
 
     subgraph Backend["Backend (Python 3.12+ / FastAPI)"]
         Routes["routes.py — HTTP + WS endpoints"]
-        WSMgr["ConnectionManager — WebSocket"]
+        WSMgr["ConnectionManager — WebSocket + Rate Limiting"]
         Orch["AgentOrchestrator — lifecycle mgmt"]
         Sess["AgentSession — Claude SDK wrapper"]
         DB["Database — aiosqlite + migrations"]
@@ -138,7 +141,7 @@ graph TB
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3
 - **Database**: SQLite with versioned migrations
-- **Security**: Localhost only, no authentication, path traversal protection
+- **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
 
 ### Item lifecycle
 

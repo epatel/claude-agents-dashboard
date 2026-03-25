@@ -1,0 +1,355 @@
+"""Workflow service for coordinating agent workflows and state transitions."""
+
+import asyncio
+import json
+import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from ..agent.session import AgentResult
+from .database_service import DatabaseService
+from .git_service import GitService
+from .notification_service import NotificationService
+from .session_service import SessionService
+
+logger = logging.getLogger(__name__)
+
+
+class WorkflowService:
+    """Coordinates workflows and state transitions between services."""
+
+    def __init__(self, db_service: DatabaseService, git_service: GitService,
+                 notification_service: NotificationService, session_service: SessionService):
+        self.db = db_service
+        self.git = git_service
+        self.notifications = notification_service
+        self.sessions = session_service
+
+        # State for clarification handling
+        self._clarify_events: Dict[str, asyncio.Event] = {}
+        self._clarify_responses: Dict[str, str] = {}
+
+    async def start_agent(self, item_id: str) -> Dict[str, Any]:
+        """Start an agent for an item. Creates worktree, launches agent."""
+        # Clean up any existing session for this item
+        await self.sessions.cleanup_session(item_id)
+
+        # Get item and config
+        item = await self.db.get_item(item_id)
+        if not item:
+            raise ValueError(f"Item {item_id} not found")
+
+        config = await self.db.get_agent_config()
+
+        # Setup git worktree
+        worktree_path, branch_name, base_branch = await self.git.create_or_reuse_worktree(
+            item_id, item.get("worktree_path"), item.get("branch_name")
+        )
+
+        # Update item state
+        item = await self.db.update_item(
+            item_id,
+            column_name="doing",
+            status="running",
+            branch_name=branch_name,
+            worktree_path=str(worktree_path),
+            base_branch=base_branch,
+        )
+        await self.notifications.broadcast_item_updated(item)
+
+        await self._log_and_notify(item_id, "system", "Agent started")
+
+        # Create session
+        model = item.get("model") or config.get("model")
+        session = await self.sessions.create_session(
+            item_id, worktree_path, config, model,
+            on_message=self._create_on_message_callback(item_id),
+            on_tool_use=self._create_on_tool_use_callback(item_id),
+            on_thinking=self._create_on_thinking_callback(item_id),
+            on_complete=self._create_on_complete_callback(item_id),
+            on_error=self._create_on_error_callback(item_id),
+            on_clarify=self._create_on_clarify_callback(item_id),
+            on_create_todo=self._create_on_create_todo_callback(item_id),
+            on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
+        )
+
+        # Build prompt and fetch attachments
+        prompt = f"Task: {item['title']}\n\n{item['description']}"
+        attachments = await self.db.get_attachments(item_id)
+        if attachments:
+            await self._log_and_notify(item_id, "system", f"Found {len(attachments)} image attachment(s) for agent")
+
+        # Start session in background
+        await self.sessions.start_session_task(item_id, session, prompt, attachments)
+
+        return item
+
+    async def cancel_agent(self, item_id: str) -> Dict[str, Any]:
+        """Cancel a running agent."""
+        await self.sessions.cleanup_session(item_id)
+
+        await self._log_and_notify(item_id, "system", "Agent cancelled by user")
+        item = await self.db.update_item(item_id, column_name="todo", status="cancelled")
+        await self.notifications.broadcast_item_updated(item)
+        return item
+
+    async def retry_agent(self, item_id: str) -> Dict[str, Any]:
+        """Retry a failed agent — restart from scratch in existing worktree."""
+        await self.sessions.cleanup_session(item_id)
+
+        item = await self.db.get_item(item_id)
+        if not item:
+            raise ValueError(f"Item {item_id} not found")
+
+        # Ensure worktree exists
+        worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
+        if not worktree_path or not worktree_path.exists():
+            branch_name = item.get("branch_name") or f"agent/{item_id}"
+            worktree_path, _, _ = await self.git.create_or_reuse_worktree(item_id, None, branch_name)
+            await self.db.update_item(
+                item_id,
+                branch_name=branch_name,
+                worktree_path=str(worktree_path),
+            )
+
+        await self._log_and_notify(item_id, "system", "Agent retrying")
+        return await self.start_agent(item_id)
+
+    async def approve_item(self, item_id: str) -> Dict[str, Any]:
+        """Approve a reviewed item — merge back into the base branch."""
+        item = await self.db.get_item(item_id)
+        if not item:
+            raise ValueError(f"Item {item_id} not found")
+
+        branch = item["branch_name"]
+        base_branch = item.get("base_branch")
+        worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
+        commit_msg = item.get("commit_message")
+
+        success, message = await self.git.merge_agent_work(
+            branch, base_branch, worktree_path, commit_msg
+        )
+
+        if success:
+            target = base_branch or "current branch"
+            await self._log_and_notify(item_id, "system", f"Merged {branch} into {target}")
+
+            # Clean up worktree
+            if worktree_path:
+                await self.git.cleanup_worktree_and_branch(worktree_path, branch)
+
+            item = await self.db.update_item(
+                item_id,
+                column_name="done",
+                status=None,
+                worktree_path=None,
+            )
+        else:
+            await self._log_and_notify(item_id, "system", f"Merge conflict: {message}")
+            # TODO: spawn merge resolution agent
+            item = await self.db.update_item(item_id, status="resolving_conflicts")
+
+        await self.notifications.broadcast_item_updated(item)
+        return item
+
+    async def request_changes(self, item_id: str, comments: List[str]) -> Dict[str, Any]:
+        """Send review comments back to the agent."""
+        await self.sessions.cleanup_session(item_id)
+
+        # Store comments and get item
+        await self.db.store_review_comments(item_id, comments)
+        item = await self.db.get_item(item_id)
+
+        # Build feedback prompt
+        feedback = "Review feedback — please address these comments:\n\n"
+        feedback += "\n".join(f"- {c}" for c in comments)
+
+        await self._log_and_notify(item_id, "user_action", f"Review changes requested: {'; '.join(comments)}")
+
+        # Update item to doing
+        item = await self.db.update_item(item_id, column_name="doing", status="running")
+        await self.notifications.broadcast_item_updated(item)
+
+        # Start new agent session with feedback
+        config = await self.db.get_agent_config()
+        worktree_path = Path(item["worktree_path"])
+
+        session = await self.sessions.create_session(
+            item_id, worktree_path, config,
+            on_message=self._create_on_message_callback(item_id),
+            on_tool_use=self._create_on_tool_use_callback(item_id),
+            on_thinking=self._create_on_thinking_callback(item_id),
+            on_complete=self._create_on_complete_callback(item_id),
+            on_error=self._create_on_error_callback(item_id),
+            on_clarify=self._create_on_clarify_callback(item_id),
+            on_create_todo=self._create_on_create_todo_callback(item_id),
+            on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
+        )
+
+        # Fetch attachments for context
+        attachments = await self.db.get_attachments(item_id)
+
+        # Resume conversation with feedback
+        resume_id = item.get("session_id")
+        await self.sessions.start_session_task(item_id, session, feedback, attachments, resume_id)
+
+        return item
+
+    async def cancel_review(self, item_id: str) -> Dict[str, Any]:
+        """Cancel a review - discard changes and move item back to todo."""
+        await self.sessions.cleanup_session(item_id)
+
+        item = await self.db.get_item(item_id)
+        if not item:
+            raise ValueError(f"Item {item_id} not found")
+
+        # Clean up worktree
+        await self.git.cleanup_item_resources(item.get("worktree_path"), item.get("branch_name"))
+        await self._log_and_notify(item_id, "user_action", "Review cancelled - work discarded")
+
+        # Move item back to todo
+        item = await self.db.update_item(
+            item_id,
+            column_name="todo",
+            status=None,
+            worktree_path=None,
+        )
+        await self.notifications.broadcast_item_updated(item)
+        return item
+
+    async def submit_clarification(self, item_id: str, response: str) -> Dict[str, Any]:
+        """Submit a clarification response to a waiting agent."""
+        await self.db.update_clarification_response(item_id, response)
+
+        # Signal the waiting clarify callback
+        self._clarify_responses[item_id] = response
+        event = self._clarify_events.get(item_id)
+        if event:
+            event.set()
+
+        return {"ok": True}
+
+    async def delete_item(self, item_id: str) -> Dict[str, Any]:
+        """Delete an item and clean up all associated resources."""
+        await self.sessions.cleanup_session(item_id)
+
+        # Delete from database and get info for cleanup
+        item = await self.db.delete_item_and_related(item_id)
+
+        # Clean up git resources
+        if item:
+            await self.git.cleanup_item_resources(item.get("worktree_path"), item.get("branch_name"))
+
+        # Broadcast deletion
+        await self.notifications.broadcast_item_deleted(item_id)
+        return {"ok": True}
+
+    async def shutdown(self):
+        """Gracefully stop all running agents."""
+        await self.sessions.cleanup_all_sessions()
+
+    # Callback creators
+    def _create_on_message_callback(self, item_id: str):
+        async def on_message(text: str):
+            await self._log_and_notify(item_id, "agent_message", text)
+        return on_message
+
+    def _create_on_tool_use_callback(self, item_id: str):
+        async def on_tool_use(name: str, inp: Dict[str, Any]):
+            formatted = self.notifications.format_tool_use(name, inp)
+            await self._log_and_notify(item_id, "tool_use", formatted, json.dumps(inp))
+        return on_tool_use
+
+    def _create_on_thinking_callback(self, item_id: str):
+        async def on_thinking(text: str):
+            await self._log_and_notify(item_id, "thinking", text)
+        return on_thinking
+
+    def _create_on_complete_callback(self, item_id: str):
+        async def on_complete(result: AgentResult):
+            # Save token usage
+            await self.db.save_token_usage(item_id, result)
+
+            if result.success:
+                # Create log message with cost and token info
+                log_message = self.notifications.format_completion_log(
+                    result.cost_usd, result.total_tokens, result.input_tokens, result.output_tokens
+                )
+                await self._log_and_notify(item_id, "system", log_message)
+
+                # Use commit message from session
+                commit_message = self.sessions.get_commit_message(item_id)
+
+                update_kwargs = dict(
+                    column_name="review",
+                    status=None,
+                    session_id=result.session_id,
+                )
+                if commit_message:
+                    update_kwargs["commit_message"] = commit_message
+
+                item = await self.db.update_item(item_id, **update_kwargs)
+                await self.notifications.broadcast_item_updated(item)
+            else:
+                await self._log_and_notify(item_id, "error", f"Agent failed: {result.error}")
+                item = await self.db.update_item(item_id, status="failed")
+                await self.notifications.broadcast_item_updated(item)
+
+        return on_complete
+
+    def _create_on_error_callback(self, item_id: str):
+        async def on_error(error: str):
+            await self._log_and_notify(item_id, "error", f"Agent error: {error}")
+            item = await self.db.update_item(item_id, status="failed")
+            await self.notifications.broadcast_item_updated(item)
+        return on_error
+
+    def _create_on_clarify_callback(self, item_id: str):
+        async def on_clarify(prompt: str, choices: Optional[List[str]]) -> str:
+            # Move item to clarify
+            item = await self.db.update_item(item_id, column_name="clarify", status=None)
+            await self.notifications.broadcast_item_updated(item)
+            await self._log_and_notify(item_id, "system", f"Agent needs clarification: {prompt}")
+
+            # Store clarification
+            await self.db.store_clarification(item_id, prompt, choices)
+
+            # Broadcast to frontend
+            await self.notifications.broadcast_clarification_requested(item_id, prompt, choices)
+
+            # Wait for user response
+            event = asyncio.Event()
+            self._clarify_events[item_id] = event
+            await event.wait()
+
+            response = self._clarify_responses.pop(item_id, "")
+            self._clarify_events.pop(item_id, None)
+
+            # Move back to doing
+            item = await self.db.update_item(item_id, column_name="doing", status="running")
+            await self.notifications.broadcast_item_updated(item)
+            await self._log_and_notify(item_id, "system", f"User responded: {response}")
+
+            return response
+
+        return on_clarify
+
+    def _create_on_create_todo_callback(self, item_id: str):
+        async def on_create_todo(title: str, description: str) -> Dict[str, Any]:
+            item = await self.db.create_todo_item(title, description)
+            await self._log_and_notify(item_id, "system", f"Created todo item: {title}")
+            await self.notifications.broadcast_item_created(item)
+            return item
+        return on_create_todo
+
+    def _create_on_set_commit_message_callback(self, item_id: str):
+        async def on_set_commit_message(message: str) -> str:
+            result = self.sessions.set_commit_message(item_id, message)
+            await self._log_and_notify(item_id, "system", f"Commit message set: {message}")
+            return result
+        return on_set_commit_message
+
+    async def _log_and_notify(self, item_id: str, entry_type: str, content: str, metadata: Optional[str] = None):
+        """Log entry to database and broadcast notification."""
+        await self.db.log_entry(item_id, entry_type, content, metadata)
+        await self.notifications.broadcast_agent_log(item_id, entry_type, content)

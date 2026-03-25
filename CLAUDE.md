@@ -17,12 +17,12 @@ path/to/claude-agents-dashboard/run.sh
 ## Running tests
 
 ```bash
-./run-tests.sh              # Run all 54 tests
+./run-tests.sh              # Run all 78 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ```
 
-Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (imports, DB basics), unit (migration runner), integration (orchestrator lifecycle). See `tests/README.md` for details.
+Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (imports, DB basics), unit (path validation, git timeouts, migration runner, migration edge cases), integration (orchestrator lifecycle). See `tests/README.md` for details.
 
 ## Architecture
 
@@ -40,7 +40,7 @@ graph TB
 
     subgraph Backend["Backend (Python / FastAPI)"]
         R["routes.py<br/>HTTP + WebSocket"]
-        WSM["ConnectionManager<br/>websocket.py"]
+        WSM["ConnectionManager<br/>websocket.py (rate limiting)"]
         O["AgentOrchestrator<br/>orchestrator.py"]
         S["AgentSession<br/>session.py"]
         D["Database<br/>database.py"]
@@ -128,7 +128,7 @@ sequenceDiagram
 
 - **Agent start is non-blocking**: `start_agent` launches the agent via `asyncio.create_task(_run_agent(...))` so the HTTP response returns immediately. The agent streams progress via WebSocket.
 
-- **One worktree per item**: Each agent task gets a git worktree (`agents-lab/worktrees/agent-{item_id}`) branched off main. This allows multiple agents to run simultaneously without conflicts.
+- **One worktree per item**: Each agent task gets a git worktree (`agents-lab/worktrees/agent-{item_id}`) branched off the current branch. `create_worktree()` returns a `(worktree_path, base_branch)` tuple, and the base branch is stored in the item's `base_branch` column (added in migration 002) for reliable merge targeting. This allows multiple agents to run simultaneously without conflicts.
 
 - **Clarification uses asyncio.Event**: When an agent calls the `ask_user` MCP tool, the orchestrator's `_on_clarify` callback moves the item to "Clarify", broadcasts to the frontend, and `await`s an `asyncio.Event`. The HTTP endpoint `submit_clarification` sets the event, unblocking the agent.
 
@@ -159,6 +159,10 @@ sequenceDiagram
 - **Cancel review**: `cancel_review()` discards review changes by cleaning up the worktree and branch, then moves the item back to "Todo" status with cleared git metadata. Route: `POST /api/items/{item_id}/cancel-review`.
 
 - **Delete cleans up everything**: Deleting an item stops any running agent, removes the git worktree and branch, deletes attachment files from disk, and cascades deletes to `work_log`, `review_comments`, `clarifications`, and `attachments` tables.
+
+- **WebSocket rate limiting**: `ConnectionManager` in `websocket.py` enforces per-IP connection limits (`WEBSOCKET_MAX_CONNECTIONS_PER_IP = 5` concurrent, `WEBSOCKET_MAX_CONNECTIONS_PER_WINDOW = 10` attempts per 60s window). Tracks connections by IP with `connections_by_ip` dict and `connection_attempts` deque. Rate-limited clients receive code 4008 close. `get_connection_stats()` provides monitoring data. Config constants are in `config.py`.
+
+- **Git operation timeouts**: All git operations use configurable timeouts from `config.py`: `GIT_OPERATION_TIMEOUT` (300s / 5min) for most operations, `GIT_MERGE_TIMEOUT` (600s / 10min) for merges, and `HTTP_REQUEST_TIMEOUT` (660s / 11min) for HTTP endpoints wrapping git operations. Prevents hung processes.
 
 - **External MCP tool allowance**: External MCP servers loaded from `mcp-config.json` get wildcard tool permissions (`mcp__{server_name}__*`). Built-in servers (`clarification`, `todo`, `commit_message`) get explicit individual tool permissions instead.
 
@@ -211,14 +215,14 @@ erDiagram
     }
 ```
 
-SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 1 consolidated migration: `001_initial_schema.py` creates the complete schema). Tables: `items` (board cards + git metadata + model + commit_message), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 2 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking to items). Tables: `items` (board cards + git metadata + model + commit_message + base_branch), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
 
 Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested under items) since attachments have their own integer IDs.
 
 #### Migration System
 
 - **Migration runner**: `src/migrations/runner.py` manages applying/rolling back migrations
-- **Migration files**: `src/migrations/versions/XXX_description.py` contain versioned schema changes (currently consolidated into single `001_initial_schema.py`)
+- **Migration files**: `src/migrations/versions/XXX_description.py` contain versioned schema changes (`001_initial_schema.py` for base schema, `002_add_base_branch.py` for base branch tracking)
 - **Schema tracking**: `schema_migrations` table tracks which migrations have been applied
 - **CLI management**: `python -m src.manage` for migration commands
 - **Auto-migration**: Database automatically runs pending migrations on startup
@@ -246,7 +250,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 ```
 src/
 +-- main.py                           # Entry point, port discovery
-+-- config.py                         # Column definitions, default config
++-- config.py                         # Column definitions, timeouts, rate limits, default config
 +-- constants.py                      # AVAILABLE_MODELS, DEFAULT_MODEL
 +-- models.py                         # Pydantic models
 +-- database.py                       # DB connection + migration init
@@ -254,7 +258,7 @@ src/
 +-- web/
 |   +-- app.py                       # FastAPI factory + lifespan
 |   +-- routes.py                    # All HTTP/WS endpoints
-|   +-- websocket.py                 # ConnectionManager
+|   +-- websocket.py                 # ConnectionManager + rate limiting
 +-- agent/
 |   +-- orchestrator.py              # Agent lifecycle management
 |   +-- session.py                   # Claude SDK wrapper
@@ -268,7 +272,8 @@ src/
 |   +-- migration.py                 # Base class
 |   +-- runner.py                    # Migration engine
 |   +-- versions/
-|       +-- 001_initial_schema.py    # Complete schema
+|       +-- 001_initial_schema.py    # Complete schema (8 tables)
+|       +-- 002_add_base_branch.py  # Base branch tracking
 +-- static/
 |   +-- js/                          # Frontend modules
 |   +-- css/                         # Styles (CSS variables)
@@ -299,7 +304,14 @@ src/
 
 ### Testing changes
 
-Since no automated test suite exists, manually verify changes by:
+Run the automated test suite (78 tests):
+```bash
+./run-tests.sh              # All tests
+./run-tests.sh tests/smoke/ # Smoke tests only
+./run-tests.sh -k "test_path" # Filter by name
+```
+
+For manual verification of UI and agent features:
 - Starting the server against a test git repository
 - Creating board items and testing the full agent workflow
 - Testing edge cases: git conflicts, agent failures, clarification flows

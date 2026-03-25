@@ -182,6 +182,9 @@ class AgentSession:
 
     async def _receive_loop(self) -> None:
         """Process messages from the agent."""
+        # Capture client reference so finally block can disconnect even if
+        # on_complete callback nulls self.client (e.g., via cancel())
+        client_ref = self.client
         try:
             async for message in self.client.receive_messages():
                 if self._cancelled:
@@ -240,15 +243,22 @@ class AgentSession:
             if self.on_error:
                 await self.on_error(str(e))
         finally:
-            # Clean up client connection within the correct task context
-            # (cancel() may have already set self.client = None)
-            client = self.client
+            # Clean up client connection — use captured reference since
+            # self.client may have been set to None by cancel()
             self.client = None
-            if client:
+            if client_ref:
                 try:
-                    await client.disconnect()
+                    await client_ref.disconnect()
                 except Exception:
-                    # Ignore disconnect errors during cleanup
+                    pass
+                # Fallback: directly kill the subprocess if it's still alive
+                try:
+                    transport = getattr(client_ref, '_transport', None)
+                    process = getattr(transport, '_process', None) if transport else None
+                    if process and process.returncode is None:
+                        logger.warning("Subprocess still alive after disconnect, terminating")
+                        process.terminate()
+                except Exception:
                     pass
 
     async def send_message(self, text: str) -> None:
