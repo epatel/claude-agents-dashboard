@@ -29,7 +29,7 @@ graph TB
     subgraph Backend["Backend (Python / FastAPI)"]
         Routes[routes.py<br/>HTTP + WebSocket endpoints]
         WSManager[ConnectionManager<br/>websocket.py]
-        Orchestrator[AgentOrchestrator<br/>orchestrator.py (facade)]
+        Orchestrator[AgentOrchestrator<br/>orchestrator.py facade]
         subgraph Services["Service Layer"]
             Workflow[WorkflowService<br/>workflow_service.py]
             DBService[DatabaseService<br/>database_service.py]
