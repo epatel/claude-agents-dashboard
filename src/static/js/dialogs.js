@@ -59,6 +59,9 @@ const Dialogs = {
         this._pendingAttachments = [];
         this._renderFormAttachments();
         await this._updateDefaultModelDisplay();
+        // Show play button for new items
+        const playBtn = document.getElementById('item-play-btn');
+        if (playBtn) playBtn.style.display = '';
         this.open('item-dialog');
         document.getElementById('item-form-title').focus();
     },
@@ -76,6 +79,9 @@ const Dialogs = {
             this._loadFormAttachments(item.id);
         }
         await this._updateDefaultModelDisplay();
+        // Hide play button for existing items
+        const playBtn = document.getElementById('item-play-btn');
+        if (playBtn) playBtn.style.display = 'none';
         this.open('item-dialog');
         document.getElementById('item-form-title').focus();
     },
@@ -165,6 +171,48 @@ const Dialogs = {
             this.close('item-dialog');
         } catch (err) {
             console.error('Failed to save item:', err);
+        }
+    },
+
+    async submitItemAndStart(event) {
+        event.preventDefault();
+        const id = document.getElementById('item-form-id').value;
+        const title = document.getElementById('item-form-title').value.trim();
+        const description = document.getElementById('item-form-desc').value;
+        const model = document.getElementById('item-form-model').value || null;
+
+        if (!title) return;
+
+        try {
+            let itemId = id;
+            if (id) {
+                // For existing items, just update
+                const updateData = { title, description };
+                if (model !== null) updateData.model = model;
+                await Api.updateItem(id, updateData);
+            } else {
+                // For new items, create first
+                const item = await Api.createItem(title, description, model);
+                itemId = item.id;
+            }
+
+            // Upload pending attachments
+            for (const a of this._pendingAttachments) {
+                await Api.request('POST', `/api/items/${itemId}/attachments`, {
+                    item_id: itemId,
+                    filename: a.filename,
+                    data: a.dataUrl,
+                });
+            }
+            this._pendingAttachments = [];
+
+            // Move to doing column and start agent (this works for both new and existing items)
+            await Api.moveItem(itemId, 'doing', 0);
+            await Api.startAgent(itemId);
+
+            this.close('item-dialog');
+        } catch (err) {
+            console.error('Failed to save and start item:', err);
         }
     },
 
