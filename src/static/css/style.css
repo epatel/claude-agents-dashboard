@@ -36,6 +36,53 @@ body {
     align-items: center;
 }
 
+/* Stats Bar */
+.stats-bar {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    padding: 4px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.stat-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.stat-value {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Responsive stats - hide some on smaller screens */
+@media (max-width: 768px) {
+    .stats-bar {
+        gap: 12px;
+    }
+    .stats-bar .stat-item:nth-child(3),
+    .stats-bar .stat-item:nth-child(4) {
+        display: none;
+    }
+}
+
+@media (max-width: 600px) {
+    .stats-bar .stat-item:nth-child(2),
+    .stats-bar .stat-item:nth-child(5) {
+        display: none;
+    }
+}
+
 /* Buttons */
 .btn {
     padding: 6px 14px;

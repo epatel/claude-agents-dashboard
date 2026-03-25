@@ -13,6 +13,31 @@
 <body>
     <header class="top-bar">
         <h1 class="project-title">{{ project_name }}</h1>
+
+        <!-- Stats Display -->
+        <div class="stats-bar" id="stats-bar">
+            <div class="stat-item">
+                <span class="stat-label">Cost:</span>
+                <span class="stat-value" id="total-cost">$0.00</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Messages:</span>
+                <span class="stat-value" id="total-messages">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Tools:</span>
+                <span class="stat-value" id="tool-calls">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Active:</span>
+                <span class="stat-value" id="active-agents">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Today:</span>
+                <span class="stat-value" id="completed-today">0</span>
+            </div>
+        </div>
+
         <div class="top-bar-actions">
             <button id="new-item-btn" class="btn btn-primary" title="New item">+ New</button>
             <button id="config-btn" class="btn btn-icon" title="Agent config">⚙</button>
@@ -31,6 +56,7 @@
     <script src="/static/js/diff.js"></script>
     <script src="/static/js/annotate.js"></script>
     <script src="/static/js/dialogs.js"></script>
+    <script src="/static/js/stats.js"></script>
     <script src="/static/js/board.js"></script>
     <script src="/static/js/app.js"></script>
 </body>

@@ -140,6 +140,11 @@ const App = {
             default:
                 console.log('Unknown event:', type, data);
         }
+
+        // Update stats for relevant events
+        if (window.statsManager) {
+            window.statsManager.handleRealtimeUpdate(type, data);
+        }
     },
 
     appendLog(data) {

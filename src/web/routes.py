@@ -372,6 +372,106 @@ async def delete_attachment(request: Request, attachment_id: int):
     return {"ok": True}
 
 
+# --- Stats ---
+
+@router.get("/api/stats")
+async def get_stats(request: Request):
+    """Get usage and activity statistics."""
+    db = request.app.state.db
+    orchestrator = request.app.state.orchestrator
+
+    async with db.connect() as conn:
+        # Get total cost from work log entries
+        cursor = await conn.execute("""
+            SELECT SUM(
+                CASE
+                    WHEN content LIKE 'Agent completed (cost: $%' THEN
+                        CAST(
+                            SUBSTR(
+                                SUBSTR(content, INSTR(content, '$') + 1),
+                                1,
+                                INSTR(SUBSTR(content, INSTR(content, '$') + 1), ')') - 1
+                            ) AS REAL
+                        )
+                    ELSE 0
+                END
+            ) as total_cost
+            FROM work_log
+            WHERE entry_type = 'system' AND content LIKE 'Agent completed%'
+        """)
+        row = await cursor.fetchone()
+        total_cost_usd = row[0] if row and row[0] else 0.0
+
+        # Count total messages by type
+        cursor = await conn.execute("""
+            SELECT entry_type, COUNT(*) as count
+            FROM work_log
+            GROUP BY entry_type
+        """)
+        message_counts = {row[0]: row[1] for row in await cursor.fetchall()}
+
+        # Count tool calls
+        tool_calls = message_counts.get('tool_use', 0)
+
+        # Count agent messages
+        agent_messages = message_counts.get('agent_message', 0)
+
+        # Count active agents
+        active_agents = len(orchestrator.sessions)
+
+        # Count items by status
+        cursor = await conn.execute("""
+            SELECT column_name, COUNT(*) as count
+            FROM items
+            WHERE column_name != 'archive'
+            GROUP BY column_name
+        """)
+        item_counts = {row[0]: row[1] for row in await cursor.fetchall()}
+
+        # Count completed items today
+        cursor = await conn.execute("""
+            SELECT COUNT(*) as count
+            FROM work_log
+            WHERE entry_type = 'system'
+            AND content LIKE 'Agent completed%'
+            AND DATE(timestamp) = DATE('now')
+        """)
+        row = await cursor.fetchone()
+        completed_today = row[0] if row else 0
+
+        # Get recent activity (last 10 entries)
+        cursor = await conn.execute("""
+            SELECT entry_type, content, timestamp
+            FROM work_log
+            ORDER BY timestamp DESC
+            LIMIT 10
+        """)
+        recent_activity = [
+            {
+                "type": row[0],
+                "content": row[1][:100] + "..." if len(row[1]) > 100 else row[1],
+                "timestamp": row[2]
+            }
+            for row in await cursor.fetchall()
+        ]
+
+    return {
+        "usage": {
+            "total_cost_usd": round(total_cost_usd, 4),
+            "total_messages": sum(message_counts.values()),
+            "agent_messages": agent_messages,
+            "tool_calls": tool_calls,
+            "completed_today": completed_today
+        },
+        "activity": {
+            "active_agents": active_agents,
+            "items_by_status": item_counts,
+            "recent": recent_activity
+        },
+        "breakdown": message_counts
+    }
+
+
 # --- WebSocket ---
 
 @router.websocket("/ws")
