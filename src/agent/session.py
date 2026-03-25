@@ -160,6 +160,14 @@ class AgentSession:
             logger.exception("Agent session error")
             if self.on_error:
                 await self.on_error(str(e))
+        finally:
+            # Clean up client connection within the correct task context
+            if self.client:
+                try:
+                    await self.client.disconnect()
+                except Exception:
+                    # Ignore disconnect errors during cleanup
+                    pass
 
     async def send_message(self, text: str) -> None:
         """Send a follow-up message to the agent (e.g., clarification response)."""
@@ -169,17 +177,26 @@ class AgentSession:
     async def cancel(self) -> None:
         """Cancel the running agent."""
         self._cancelled = True
-        if self.client:
-            try:
-                await self.client.interrupt()
-            except Exception:
-                pass
-            await self.client.disconnect()
+
+        # First, cancel the receive loop task if it's running
+        # This allows the _receive_loop to handle client cleanup in its own task context
         if self._task and not self._task.done():
             self._task.cancel()
             try:
                 await self._task
             except (asyncio.CancelledError, Exception):
+                pass
+
+        # If the client is still connected after task cancellation, disconnect it
+        if self.client:
+            try:
+                await self.client.interrupt()
+            except Exception:
+                pass
+            try:
+                await self.client.disconnect()
+            except Exception:
+                # Ignore disconnect errors - the task cancellation may have already handled this
                 pass
 
     async def disconnect(self) -> None:
