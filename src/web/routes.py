@@ -2,7 +2,7 @@ import base64
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
@@ -190,8 +190,15 @@ async def get_item_file(request: Request, item_id: str, file_path: str):
         cursor = await conn.execute("SELECT branch_name FROM items WHERE id = ?", (item_id,))
         item = dict(await cursor.fetchone())
 
-    content = await get_file_content(request.app.state.target_project, item["branch_name"], file_path)
-    return {"content": content}
+    try:
+        content = await get_file_content(request.app.state.target_project, item["branch_name"], file_path)
+        return {"content": content}
+    except ValueError as e:
+        # Path validation error - return 400 Bad Request
+        raise HTTPException(status_code=400, detail=f"Invalid file path: {str(e)}")
+    except Exception as e:
+        # Other errors (e.g., file not found, git errors) - return 404
+        raise HTTPException(status_code=404, detail="File not found or inaccessible")
 
 
 @router.get("/api/items/{item_id}/clarification")
