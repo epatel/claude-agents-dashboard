@@ -21,7 +21,7 @@ class TemplateMigration(Migration):
 
     def __init__(self):
         super().__init__(
-            version="XXX",  # Change to next sequential number (e.g., "003")
+            version="XXX",  # Change to next sequential number (e.g., "002")
             description="Your migration description"  # Describe what this migration does
         )
 

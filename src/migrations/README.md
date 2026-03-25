@@ -112,8 +112,6 @@ SQLite doesn't support `ALTER TABLE DROP COLUMN`. To remove columns:
 2. Copy data from old table to new table
 3. Drop old table and rename new table
 
-See `002_add_mcp_support.py` for an example.
-
 ### Limited ALTER TABLE Support
 SQLite only supports:
 - `ADD COLUMN`
@@ -163,8 +161,7 @@ If a migration file is missing but marked as applied in `schema_migrations`:
 
 ## Existing Migrations
 
-- **001_initial_schema**: Creates all core tables (items, work_log, etc.)
-- **002_add_mcp_support**: Adds MCP (Model Context Protocol) support columns
+- **001_initial_schema**: Creates the complete schema (items, work_log, review_comments, clarifications, attachments, agent_config, token_usage)
 
 ## Schema Migrations Table
 
