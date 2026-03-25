@@ -180,23 +180,17 @@ const Board = {
 
     async rerunItem(itemId) {
         try {
-            // Get the current item details
-            const originalItem = this.items[itemId];
+            // Fetch fresh item data from the API (cache may only have {id})
+            const items = await Api.getItems();
+            const originalItem = items.find(i => i.id === itemId);
             if (!originalItem) {
                 console.error('Item not found:', itemId);
                 return;
             }
 
-            // Validate required fields before creating new item
-            if (!originalItem.title || originalItem.title.trim() === '') {
-                console.error('Item has no valid title:', originalItem);
-                alert('Cannot re-run item: missing or empty title');
-                return;
-            }
-
             // Create a new item with the same title, description, and model
             const newItem = await Api.createItem(
-                originalItem.title.trim(),
+                originalItem.title,
                 originalItem.description || '',
                 originalItem.model
             );
@@ -237,6 +231,18 @@ const Board = {
     },
 
     // --- Re-rendering ---
+
+    async loadAndRender() {
+        const items = await Api.getItems();
+        this.items = {};
+        // Clear all column cards
+        document.querySelectorAll('.column-cards').forEach(col => {
+            col.querySelectorAll('.card').forEach(card => card.remove());
+        });
+        for (const item of items) {
+            this.updateCard(item);
+        }
+    },
 
     renderCard(item) {
         const div = document.createElement('div');
