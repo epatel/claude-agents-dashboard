@@ -39,6 +39,8 @@ your-project/agents-lab/
   worktrees/          # Git worktrees for active agent tasks
 ```
 
+The SQLite database uses a versioned migration system to manage schema changes safely.
+
 ## Features
 
 - **Kanban board** with drag-and-drop (smooth card spacing), create/edit/delete items
@@ -77,6 +79,47 @@ your-project/agents-lab/
 - **Documentation**: "Update API docs" → agent reviews code and updates documentation files
 - **Testing**: "Add unit tests for user service" → agent analyzes code and writes comprehensive tests
 - **Task breakdown**: Agents can create follow-up todos like "Add integration tests" or "Update documentation" as they discover related work
+
+## Database Management
+
+The project uses a SQLite database with a versioned migration system for safe schema updates.
+
+### Migration Commands
+
+From the project root directory:
+
+```bash
+# Show current migration status
+python -m src.manage status
+
+# Run all pending migrations (also runs automatically on startup)
+python -m src.manage migrate
+
+# Migrate to a specific version
+python -m src.manage migrate --to 002
+
+# Rollback to a specific version
+python -m src.manage rollback 001
+
+# Initialize a fresh database
+python -m src.manage init
+```
+
+### Database Location
+
+The SQLite database is created at `your-project/agents-lab/dashboard.db`. You can specify a different location:
+
+```bash
+python -m src.manage status --db-path /path/to/custom/database.db
+```
+
+### Creating Migrations
+
+1. Copy the migration template: `src/migrations/versions/000_template.py.example`
+2. Rename to format: `XXX_description.py` (e.g., `003_add_user_settings.py`)
+3. Update version number and description
+4. Implement `up()` method (apply changes) and `down()` method (rollback changes)
+5. Test thoroughly before deploying
 
 ## Troubleshooting
 

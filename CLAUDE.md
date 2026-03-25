@@ -58,7 +58,15 @@ Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card render
 
 ### Database
 
-SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + git metadata), `work_log` (agent activity stream), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column. New columns are added via migration in `Database.initialize()` for existing databases.
+SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/`. Tables: `items` (board cards + git metadata), `work_log` (agent activity stream), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+
+#### Migration System
+
+- **Migration runner**: `src/migrations/runner.py` manages applying/rolling back migrations
+- **Migration files**: `src/migrations/versions/XXX_description.py` contain versioned schema changes
+- **Schema tracking**: `schema_migrations` table tracks which migrations have been applied
+- **CLI management**: `python -m src.manage` for migration commands
+- **Auto-migration**: Database automatically runs pending migrations on startup
 
 ## Important patterns
 
@@ -80,11 +88,21 @@ SQLite via aiosqlite. Schema in `database.py`. Tables: `items` (board cards + gi
 
 ### Adding new features
 
-1. **Backend changes**: Update models in `models.py`, add database columns in `Database.initialize()`, implement business logic in `orchestrator.py`, add HTTP endpoints in `routes.py`.
+1. **Backend changes**:
+   - Update models in `models.py`
+   - Create database migration in `src/migrations/versions/` for schema changes
+   - Implement business logic in `orchestrator.py`
+   - Add HTTP endpoints in `routes.py`
 
-2. **Frontend changes**: Add HTML in templates (`web/static/`), update JavaScript modules, handle WebSocket events in `app.js`, broadcast state changes from backend.
+2. **Database changes**:
+   - Copy `src/migrations/versions/000_template.py.example` to `XXX_description.py`
+   - Update version number sequentially (e.g., `003`, `004`, etc.)
+   - Implement `up()` method for schema changes and `down()` method for rollback
+   - Test migration with `python -m src.manage migrate` and rollback with `python -m src.manage rollback`
 
-3. **Agent capabilities**: Extend the system prompt in `AgentOrchestrator.create_agent()`, add MCP tools via the agent config UI, or modify `ask_user` clarification flows or `create_todo` workflows.
+3. **Frontend changes**: Add HTML in templates (`web/static/`), update JavaScript modules, handle WebSocket events in `app.js`, broadcast state changes from backend.
+
+4. **Agent capabilities**: Extend the system prompt in `AgentOrchestrator.create_agent()`, add MCP tools via the agent config UI, or modify `ask_user` clarification flows or `create_todo` workflows.
 
 ### Testing changes
 
@@ -113,6 +131,13 @@ git worktree remove agents-lab/worktrees/agent-XXXXX
 ```bash
 sqlite3 agents-lab/dashboard.db ".schema"
 sqlite3 agents-lab/dashboard.db "SELECT * FROM items;"
+```
+
+**Migration issues**: Use the migration CLI to debug schema problems:
+```bash
+python -m src.manage status  # Check current state
+python -m src.manage migrate  # Apply pending migrations
+python -m src.manage rollback 001  # Rollback to version 001
 ```
 
 **Performance**: The app is designed for localhost use. For large repositories, git operations may be slow. Consider shallow clones for worktrees if needed.
