@@ -33,16 +33,24 @@ This is a standalone scrum board tool that orchestrates Claude agents working on
 ```mermaid
 graph TB
     subgraph Frontend["Frontend (Vanilla JS)"]
-        UI["board.html + Jinja2 Templates"]
+        UI["board.html + base.html + Jinja2"]
         WS["WebSocket Client"]
-        Modules["app.js | board.js | dialogs.js<br/>api.js | diff.js | annotate.js<br/>theme.js | stats.js"]
+        Modules["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js"]
+        DlgModules["dialogs.js (coordinator)<br/>dialog-core | dialog-utils<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog<br/>request-changes-dialog | attachments | annotation-canvas"]
     end
 
     subgraph Backend["Backend (Python / FastAPI)"]
         R["routes.py<br/>HTTP + WebSocket"]
         WSM["ConnectionManager<br/>websocket.py (rate limiting)"]
-        O["AgentOrchestrator<br/>orchestrator.py"]
-        S["AgentSession<br/>session.py"]
+        O["AgentOrchestrator<br/>orchestrator.py (facade)"]
+        subgraph SvcLayer["Service Layer"]
+            WF["WorkflowService"]
+            DBS["DatabaseService"]
+            NS["NotificationService"]
+            GS["GitService"]
+            SS["SessionService"]
+        end
+        Sess["AgentSession<br/>session.py"]
         D["Database<br/>database.py"]
         M["MigrationRunner<br/>runner.py"]
     end
@@ -61,15 +69,20 @@ graph TB
     UI <-->|"HTTP"| R
     WS <-->|"WebSocket"| WSM
     R --> O
-    O --> S
-    O --> D
-    O --> GO
-    O --> GW
-    O --> WSM
-    S --> C
-    S --> T
-    S --> CM
+    O --> WF
+    WF --> DBS
+    WF --> GS
+    WF --> NS
+    WF --> SS
+    SS --> Sess
+    Sess --> C
+    Sess --> T
+    Sess --> CM
+    DBS --> D
+    NS --> WSM
     D --> M
+    GS --> GO
+    GS --> GW
 ```
 
 ### Request flow
@@ -78,10 +91,14 @@ graph TB
 Browser <-WebSocket-> ConnectionManager (websocket.py)
 Browser <-HTTP-> FastAPI routes (routes.py)
                 |
-         AgentOrchestrator (orchestrator.py)
-           |              |
-    AgentSession      Git operations
-    (session.py)      (git/operations.py, git/worktree.py)
+         AgentOrchestrator (facade, orchestrator.py)
+                |
+         WorkflowService (workflow_service.py)
+           |         |         |           |
+    SessionService  GitService  DBService  NotificationService
+         |              |          |            |
+    AgentSession    Git ops    SQLite DB    WebSocket broadcast
+    (session.py)    (git/)     (database.py)
          |
     ClaudeSDKClient (claude-agent-sdk)
 ```
@@ -126,17 +143,24 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Agent start is non-blocking**: `start_agent` launches the agent via `asyncio.create_task(_run_agent(...))` so the HTTP response returns immediately. The agent streams progress via WebSocket.
+- **Service layer architecture**: The orchestrator is a thin facade (111 lines) that delegates to 5 focused services:
+  - `WorkflowService` (355 lines): Coordinates agent workflows, state transitions, and callback creation
+  - `DatabaseService` (182 lines): All database operations (items, logs, config, attachments, token usage)
+  - `NotificationService` (96 lines): WebSocket broadcasting and tool use formatting
+  - `GitService` (94 lines): Worktree management, merge operations, and cleanup
+  - `SessionService` (153 lines): Agent session lifecycle, commit messages, plugin parsing
 
-- **One worktree per item**: Each agent task gets a git worktree (`agents-lab/worktrees/agent-{item_id}`) branched off the current branch. `create_worktree()` returns a `(worktree_path, base_branch)` tuple, and the base branch is stored in the item's `base_branch` column (added in migration 002) for reliable merge targeting. This allows multiple agents to run simultaneously without conflicts.
+- **Agent start is non-blocking**: `WorkflowService.start_agent()` creates a session via `SessionService.create_session()` and launches it via `SessionService.start_session_task()` which uses `asyncio.create_task()` so the HTTP response returns immediately. The agent streams progress via WebSocket.
 
-- **Clarification uses asyncio.Event**: When an agent calls the `ask_user` MCP tool, the orchestrator's `_on_clarify` callback moves the item to "Clarify", broadcasts to the frontend, and `await`s an `asyncio.Event`. The HTTP endpoint `submit_clarification` sets the event, unblocking the agent.
+- **One worktree per item**: Each agent task gets a git worktree (`agents-lab/worktrees/agent-{item_id}`) branched off the current branch. `GitService.create_or_reuse_worktree()` returns a `(worktree_path, branch_name, base_branch)` tuple, and the base branch is stored in the item's `base_branch` column (added in migration 002) for reliable merge targeting. This allows multiple agents to run simultaneously without conflicts.
 
-- **Todo creation via MCP**: Agents can create new todo items via the `create_todo` MCP tool. This flows through `_on_create_todo` callback, creates new items in the database with proper positioning, and broadcasts real-time updates to the frontend.
+- **Clarification uses asyncio.Event**: When an agent calls the `ask_user` MCP tool, the `WorkflowService._create_on_clarify_callback()` moves the item to "Clarify", broadcasts to the frontend, and `await`s an `asyncio.Event`. The HTTP endpoint `submit_clarification` sets the event, unblocking the agent.
 
-- **Per-item model selection**: Items can have an individual `model` field. `start_agent()` uses `item.get("model") or config.get("model")`, falling back to the global agent config default (`claude-sonnet-4-20250514`). Available models are centralized in `constants.py` as `AVAILABLE_MODELS`: Claude Sonnet 4 (`claude-sonnet-4-20250514`), Claude Opus 3 (`claude-3-opus-20240229`), and Claude Haiku 3 (`claude-3-haiku-20240307`).
+- **Todo creation via MCP**: Agents can create new todo items via the `create_todo` MCP tool. This flows through `WorkflowService._create_on_create_todo_callback()`, creates items via `DatabaseService.create_todo_item()` with proper positioning, and broadcasts real-time updates via `NotificationService`.
 
-- **Session creation**: The `_create_session()` helper in orchestrator.py centralizes AgentSession construction with standard callbacks. Both `start_agent()` and `request_changes()` use this helper to avoid duplication.
+- **Per-item model selection**: Items can have an individual `model` field. `WorkflowService.start_agent()` uses `item.get("model") or config.get("model")`, falling back to the global agent config default (`claude-sonnet-4-20250514`). Available models are centralized in `constants.py` as `AVAILABLE_MODELS`: Claude Sonnet 4 (`claude-sonnet-4-20250514`), Claude Opus 3 (`claude-3-opus-20240229`), and Claude Haiku 3 (`claude-3-haiku-20240307`).
+
+- **Session creation**: `SessionService.create_session()` centralizes AgentSession construction with standard callbacks, system prompt building, and plugin parsing. Both `start_agent()` and `request_changes()` in WorkflowService use this to avoid duplication.
 
 - **Session resumption**: `ResultMessage.session_id` is stored in the DB. When requesting changes, the agent resumes its previous session via `ClaudeAgentOptions(resume=session_id, continue_conversation=True)` so it retains full conversation context.
 
@@ -148,17 +172,17 @@ sequenceDiagram
 
 - **Merge commits worktree first**: `merge_branch()` calls `commit_worktree_changes()` before merging, handling agents that leave uncommitted work. Uses agent-provided commit messages when available (via `set_commit_message` MCP tool).
 
-- **Merge conflict handling**: If a merge conflict occurs, the item moves to `resolving_conflicts` status and the merge is aborted, keeping the worktree intact.
+- **Merge conflict handling**: If a merge conflict occurs, `GitService.merge_agent_work()` returns `(False, message)` and `WorkflowService` moves the item to `resolving_conflicts` status, keeping the worktree intact.
 
-- **Cost & token tracking**: Agent completion logs USD cost and token usage (input/output/total) via `AgentResult`. Token data is persisted to the `token_usage` table by `_save_token_usage()`. The completion message includes both cost and token count: `"Agent completed (cost: $X.XXXX, tokens: N)"`.
+- **Cost & token tracking**: Agent completion logs USD cost and token usage (input/output/total) via `AgentResult`. Token data is persisted to the `token_usage` table by `DatabaseService.save_token_usage()`. Completion formatting uses `NotificationService.format_completion_log()`.
 
 - **Stats dashboard**: The `/api/stats` endpoint aggregates token usage, cost, message counts, tool calls, item status distribution, and recent activity. Server-side stats caching with 30s TTL (`_stats_cache` in routes.py) reduces DB load, with cache invalidation on mutations (create, delete, move, start, approve). The frontend `StatsManager` (in `stats.js`) renders a stats bar in the header, auto-refreshes every 10 seconds, and updates on WebSocket events (item_created, item_updated, item_moved, agent_log) with debouncing. Stats bar is hidden on small screens (< 768px).
 
-- **Retry reuses worktree**: `retry_agent()` cancels any existing session, reuses the existing worktree if present, and starts a fresh agent run. It does not resume the previous session.
+- **Retry reuses worktree**: `WorkflowService.retry_agent()` cleans up any existing session via `SessionService`, reuses the existing worktree via `GitService.create_or_reuse_worktree()` if present, and starts a fresh agent run. It does not resume the previous session.
 
-- **Cancel review**: `cancel_review()` discards review changes by cleaning up the worktree and branch, then moves the item back to "Todo" status with cleared git metadata. Route: `POST /api/items/{item_id}/cancel-review`.
+- **Cancel review**: `WorkflowService.cancel_review()` discards review changes by cleaning up the worktree and branch via `GitService`, then moves the item back to "Todo" status with cleared git metadata. Route: `POST /api/items/{item_id}/cancel-review`.
 
-- **Delete cleans up everything**: Deleting an item stops any running agent, removes the git worktree and branch, deletes attachment files from disk, and cascades deletes to `work_log`, `review_comments`, `clarifications`, and `attachments` tables.
+- **Delete cleans up everything**: `WorkflowService.delete_item()` stops any running agent via `SessionService`, deletes DB records via `DatabaseService.delete_item_and_related()` (cascades to `work_log`, `review_comments`, `clarifications`, `attachments`), removes the git worktree and branch via `GitService`, and cleans up attachment files from disk.
 
 - **WebSocket rate limiting**: `ConnectionManager` in `websocket.py` enforces per-IP connection limits (`WEBSOCKET_MAX_CONNECTIONS_PER_IP = 5` concurrent, `WEBSOCKET_MAX_CONNECTIONS_PER_WINDOW = 10` attempts per 60s window). Tracks connections by IP with `connections_by_ip` dict and `connection_attempts` deque. Rate-limited clients receive code 4008 close. `get_connection_stats()` provides monitoring data. Config constants are in `config.py`.
 
@@ -170,15 +194,31 @@ sequenceDiagram
 
 - **Save & Start**: The new item dialog has a "Save & Start" button that creates an item and immediately launches an agent in one action, skipping the manual start step.
 
-- **Work log tool formatting**: `_format_tool_use()` renders human-readable summaries for common tools (Write, Edit, Read, Bash, Glob, Grep, ask_user, create_todo, set_commit_message). Unknown tools show a truncated input summary.
+- **Work log tool formatting**: `NotificationService.format_tool_use()` renders human-readable summaries for common tools (Write, Edit, Read, Bash, Glob, Grep, ask_user, create_todo, set_commit_message). Unknown tools show a truncated input summary.
 
-- **Last agent message tracking**: `_last_agent_messages` dict tracks the latest text message per item for quick access without querying the work log.
+- **Last agent message tracking**: `SessionService._last_agent_messages` dict tracks the latest text message per item for quick access without querying the work log.
+
+- **Commit message storage**: `SessionService._commit_messages` dict stores commit messages set by agents via MCP tool. Retrieved via `get_commit_message()` and persisted to DB on agent completion by `WorkflowService._create_on_complete_callback()`.
 
 ### Frontend
 
-Vanilla JS with no build step. Server-renders the initial board via Jinja2; JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
+Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base template + board template + card partial); JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
 
-Key JS modules: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering), `dialogs.js` (all modals + custom confirm + plugin management), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates).
+**Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates).
+
+**Dialog modules** (modular architecture): `dialogs.js` is a thin coordinator that delegates to 10 specialized modules:
+- `dialog-core.js` — open/close/confirm utilities
+- `dialog-utils.js` — markdown rendering, model display names
+- `item-dialog.js` — new/edit item forms with attachments
+- `detail-dialog.js` — item detail view with tabbed interface
+- `review-dialog.js` — review dialog with diff viewer and work log
+- `config-dialog.js` — agent configuration (system prompt, MCP, plugins)
+- `clarification-dialog.js` — clarification prompt/response UI
+- `request-changes-dialog.js` — request changes form
+- `attachments.js` — attachment viewing and deletion
+- `annotation-canvas.js` — canvas annotation integration bridge
+
+**CSS modules**: `style.css` (main styles with CSS variables), `board.css` (board layout and cards), `dialog.css` (dialog components), `theme.css` (light/dark theme definitions).
 
 ### Database
 
@@ -229,8 +269,8 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 
 ## Important patterns
 
-- All state changes broadcast via `ws_manager.broadcast(event_type, data)` for real-time UI updates.
-- The `_update_item` helper in orchestrator updates DB + broadcasts in one call.
+- All state changes broadcast via `NotificationService` methods (`broadcast_item_updated`, `broadcast_item_created`, etc.) for real-time UI updates.
+- The `WorkflowService._log_and_notify()` helper centralizes DB logging + WebSocket broadcast in one call.
 - `Starlette TemplateResponse` requires `request` as first kwarg: `TemplateResponse(request=request, name="...", context={...})`.
 - Agent's `cwd` is set to the worktree path, and the system prompt explicitly tells the agent its working directory. `add_dirs` is also set to allow file operations there. Agent sessions use `permission_mode="acceptEdits"` for targeted autonomy (more restricted than `bypassPermissions`).
 - Extended thinking is enabled (`thinking={"type": "enabled", "budget_tokens": 10000}`) for richer agent reasoning.
@@ -240,9 +280,9 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 - Attachments are stored as PNG files in `agents-lab/assets/` and referenced in the `attachments` table. Cleaned up on item delete.
 - The annotation canvas (`annotate.js`) is a self-contained component: `Annotate.init(canvasEl)` to start, `Annotate.toDataURL()` to export. Supports image drop, scale (wheel + corner handles), and annotation tools.
 - Card action buttons use `event.stopPropagation()` on individual buttons, not on the wrapper div, to avoid click blind spots.
-- MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` for user response, todo creation immediately returns success and broadcasts updates, commit message stores in-memory (`_commit_messages` dict) and persists to DB on agent completion.
+- MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` in `WorkflowService` for user response, todo creation immediately returns success and broadcasts via `NotificationService`, commit message stores in-memory (`SessionService._commit_messages` dict) and persists to DB on agent completion.
 - Agent-created items are indistinguishable from manually created ones in the database and UI — they follow the same lifecycle and support all features.
-- The agent config dialog has three tabs: General (system prompt, model, project context), MCP (server JSON config, enable/disable toggle), and Plugins (local plugin directory paths with add/remove UI).
+- The agent config dialog (`config-dialog.js`) has three tabs: General (system prompt, model, project context), MCP (server JSON config, enable/disable toggle), and Plugins (local plugin directory paths with add/remove UI).
 - Port auto-discovery scans 8000-8019 (`MAX_PORT_TRIES = 20` in `config.py`).
 
 ## Project structure
@@ -260,11 +300,18 @@ src/
 |   +-- routes.py                    # All HTTP/WS endpoints
 |   +-- websocket.py                 # ConnectionManager + rate limiting
 +-- agent/
-|   +-- orchestrator.py              # Agent lifecycle management
+|   +-- orchestrator.py              # Facade — delegates to services
 |   +-- session.py                   # Claude SDK wrapper
 |   +-- clarification.py             # ask_user MCP tool
 |   +-- todo.py                      # create_todo MCP tool
 |   +-- commit_message.py            # set_commit_message MCP tool
++-- services/
+|   +-- __init__.py                  # Re-exports all services
+|   +-- workflow_service.py          # Agent workflow coordination + state transitions
+|   +-- database_service.py          # All database operations
+|   +-- notification_service.py      # WebSocket broadcasting + tool formatting
+|   +-- git_service.py              # Git worktree + merge operations
+|   +-- session_service.py          # Agent session lifecycle + commit messages
 +-- git/
 |   +-- operations.py                # diff, merge, commit
 |   +-- worktree.py                  # worktree CRUD
@@ -275,11 +322,35 @@ src/
 |       +-- 001_initial_schema.py    # Complete schema (8 tables)
 |       +-- 002_add_base_branch.py  # Base branch tracking
 +-- static/
-|   +-- js/                          # Frontend modules
-|   +-- css/                         # Styles (CSS variables)
+|   +-- js/
+|   |   +-- app.js                   # WebSocket + init
+|   |   +-- board.js                 # Drag-drop + card rendering
+|   |   +-- dialogs.js               # Dialog coordinator
+|   |   +-- dialog-core.js           # Open/close/confirm
+|   |   +-- dialog-utils.js          # Shared utilities
+|   |   +-- item-dialog.js           # New/edit item
+|   |   +-- detail-dialog.js         # Item detail view
+|   |   +-- review-dialog.js         # Review + diff
+|   |   +-- config-dialog.js         # Agent config
+|   |   +-- clarification-dialog.js  # Clarification UI
+|   |   +-- request-changes-dialog.js # Request changes form
+|   |   +-- attachments.js           # Attachment management
+|   |   +-- annotation-canvas.js     # Canvas bridge
+|   |   +-- annotate.js              # Canvas component
+|   |   +-- api.js                   # HTTP helpers
+|   |   +-- diff.js                  # Diff viewer
+|   |   +-- stats.js                 # Stats bar
+|   |   +-- theme.js                 # Theme toggle
+|   +-- css/
+|       +-- style.css                # Main styles (CSS variables)
+|       +-- board.css                # Board layout + cards
+|       +-- dialog.css               # Dialog components
+|       +-- theme.css                # Light/dark themes
 +-- templates/
-    +-- board.html                   # Main template
-    +-- partials/                    # Modal templates
+    +-- base.html                    # Base template
+    +-- board.html                   # Board template
+    +-- partials/
+        +-- card.html                # Card partial
 ```
 
 ## Development workflows
@@ -289,7 +360,7 @@ src/
 1. **Backend changes**:
    - Update models in `models.py`
    - Create database migration in `src/migrations/versions/` for schema changes
-   - Implement business logic in `orchestrator.py`
+   - Implement business logic in the appropriate service (`services/workflow_service.py` for workflows, `services/database_service.py` for DB operations, etc.)
    - Add HTTP endpoints in `routes.py`
 
 2. **Database changes**:
@@ -298,9 +369,9 @@ src/
    - Implement `up()` method for schema changes and `down()` method for rollback
    - Test migration with `python -m src.manage migrate` and rollback with `python -m src.manage rollback`
 
-3. **Frontend changes**: Add HTML in templates (`web/static/`), update JavaScript modules, handle WebSocket events in `app.js`, broadcast state changes from backend.
+3. **Frontend changes**: Add HTML in templates, update the appropriate dialog module (or create a new one following the modular pattern), handle WebSocket events in `app.js`, broadcast state changes from `NotificationService`.
 
-4. **Agent capabilities**: Extend the system prompt in `AgentOrchestrator.create_agent()`, add MCP tools via the agent config UI, configure plugins via the Plugins tab, or modify `ask_user` clarification flows or `create_todo` workflows.
+4. **Agent capabilities**: Extend the system prompt in `SessionService.create_session()`, add MCP tools via the agent config UI, configure plugins via the Plugins tab, or modify `ask_user` clarification flows or `create_todo` workflows in `WorkflowService`.
 
 ### Testing changes
 
