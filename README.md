@@ -91,6 +91,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **WebSocket rate limiting** — per-IP connection limits (5 concurrent, 10 per 60s window) prevent resource exhaustion
 - **Stats caching** — server-side stats caching with 30s TTL, invalidated on mutations for fresh data
 - **Git operation timeouts** — configurable timeouts for git operations (5min), merges (10min), and HTTP requests (11min)
+- **File browser** — browse the target project's source code in a full-featured dialog with directory tree, tabbed file viewer, Prism.js syntax highlighting, rendered markdown with mermaid diagrams, inline image previews, secret file hiding, file filter, keyboard navigation, and breadcrumb navigation
 - **Base branch tracking** — worktrees record which branch they were created from for reliable merge targeting
 - **Light/dark mode** — respects system preference with manual toggle
 
@@ -100,12 +101,13 @@ The SQLite database uses a versioned migration system to manage schema changes s
 graph TB
     subgraph Frontend["Frontend (Vanilla JS, No Build Step)"]
         Browser["Browser"]
-        JS["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js"]
+        JS["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js"]
         Dlg["dialogs.js (coordinator)<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog<br/>request-changes-dialog | attachments<br/>dialog-core | dialog-utils | annotation-canvas"]
     end
 
     subgraph Backend["Backend (Python 3.12+ / FastAPI)"]
         Routes["routes.py — HTTP + WS endpoints"]
+        FileRoutes["file_routes.py — File browser API"]
         WSMgr["ConnectionManager — WebSocket + Rate Limiting"]
         Orch["AgentOrchestrator — facade"]
         subgraph Svc["Service Layer"]
@@ -152,7 +154,7 @@ graph TB
 ### Technology stack
 
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session)
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (10 specialized modules)
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (10 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -352,6 +354,8 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `GET` | `/api/assets/{filename}` | Serve uploaded files |
 | `GET/PUT` | `/api/config` | Agent configuration |
 | `GET` | `/api/stats` | Usage & activity stats |
+| `GET` | `/api/files/tree` | Directory tree (lazy, depth-limited) |
+| `GET` | `/api/files/content` | File content (text, image, binary) |
 | `WebSocket` | `/ws` | Real-time event stream |
 
 ### WebSocket Events

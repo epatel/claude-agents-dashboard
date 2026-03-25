@@ -17,12 +17,12 @@ path/to/claude-agents-dashboard/run.sh
 ## Running tests
 
 ```bash
-./run-tests.sh              # Run all 78 tests
+./run-tests.sh              # Run all 108 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ```
 
-Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (imports, DB basics), unit (path validation, git timeouts, migration runner, migration edge cases), integration (orchestrator lifecycle). See `tests/README.md` for details.
+Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (imports, DB basics), unit (path validation, git timeouts, migration runner, migration edge cases, file browser routes), integration (orchestrator lifecycle). See `tests/README.md` for details.
 
 ## Architecture
 
@@ -35,12 +35,13 @@ graph TB
     subgraph Frontend["Frontend (Vanilla JS)"]
         UI["board.html + base.html + Jinja2"]
         WS["WebSocket Client"]
-        Modules["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js"]
+        Modules["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js"]
         DlgModules["dialogs.js (coordinator)<br/>dialog-core | dialog-utils<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog<br/>request-changes-dialog | attachments | annotation-canvas"]
     end
 
     subgraph Backend["Backend (Python / FastAPI)"]
         R["routes.py<br/>HTTP + WebSocket"]
+        FR["file_routes.py<br/>File browser API"]
         WSM["ConnectionManager<br/>websocket.py (rate limiting)"]
         O["AgentOrchestrator<br/>orchestrator.py (facade)"]
         subgraph SvcLayer["Service Layer"]
@@ -89,7 +90,7 @@ graph TB
 
 ```
 Browser <-WebSocket-> ConnectionManager (websocket.py)
-Browser <-HTTP-> FastAPI routes (routes.py)
+Browser <-HTTP-> FastAPI routes (routes.py) + file_routes.py
                 |
          AgentOrchestrator (facade, orchestrator.py)
                 |
@@ -200,6 +201,8 @@ sequenceDiagram
 
 - **Plugin support**: Agents can load local Claude Code plugins via directory paths. Plugins are configured in the agent config UI (Plugins tab) and stored as a JSON array of paths in `agent_config.plugins`. The orchestrator's `_parse_plugins()` normalizes entries into `{"type": "local", "path": "..."}` dicts passed to the SDK.
 
+- **File browser**: `file_routes.py` provides `/api/files/tree` and `/api/files/content` endpoints for browsing the target project. Tree scanning uses `os.scandir` via `asyncio.to_thread()` with configurable depth limits (`FILE_BROWSER_TREE_DEPTH = 2`) for lazy loading. Path validation (`validate_file_browser_path()`) blocks absolute paths, `..` traversal, null bytes, control characters, and symlink escapes. Secret files (`.env`, `*.key`, `*.pem`, credentials, SSH keys) are hidden via `is_secret_file()` using configurable patterns. Binary detection falls back to `UnicodeDecodeError`. Images (PNG, JPG, GIF, SVG, WebP) are returned as base64 data URIs. Text files are truncated at 1MB. Language detection maps file extensions to Prism.js identifiers. All constants are centralized in `config.py`. The frontend `file-browser.js` provides a tabbed viewer with tree navigation, filter, keyboard navigation (arrow keys + Enter), breadcrumbs, markdown rendering with mermaid diagram support, and Prism.js syntax highlighting.
+
 - **Save & Start**: The new item dialog has a "Save & Start" button that creates an item and immediately launches an agent in one action, skipping the manual start step.
 
 - **Work log tool formatting**: `NotificationService.format_tool_use()` renders human-readable summaries for common tools (Write, Edit, Read, Bash, Glob, Grep, ask_user, create_todo, set_commit_message). Unknown tools show a truncated input summary.
@@ -212,7 +215,7 @@ sequenceDiagram
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base template + board template + card partial); JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
 
-**Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates).
+**Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates), `file-browser.js` (project file browser with tree, tabs, syntax highlighting, markdown/mermaid rendering).
 
 **Dialog modules** (modular architecture): `dialogs.js` is a thin coordinator that delegates to 10 specialized modules:
 - `dialog-core.js` — open/close/confirm utilities
@@ -226,7 +229,7 @@ Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base
 - `attachments.js` — attachment viewing and deletion
 - `annotation-canvas.js` — canvas annotation integration bridge
 
-**CSS modules**: `style.css` (main styles with CSS variables), `board.css` (board layout and cards), `dialog.css` (dialog components), `theme.css` (light/dark theme definitions).
+**CSS modules**: `style.css` (main styles with CSS variables), `board.css` (board layout and cards), `dialog.css` (dialog components), `file-browser.css` (file browser layout, tree, tabs, viewer, Prism.js light theme overrides), `theme.css` (light/dark theme definitions).
 
 ### Database
 
@@ -298,7 +301,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 ```
 src/
 +-- main.py                           # Entry point, port discovery
-+-- config.py                         # Column definitions, timeouts, rate limits, default config
++-- config.py                         # Column definitions, timeouts, rate limits, default config, file browser settings
 +-- constants.py                      # AVAILABLE_MODELS, DEFAULT_MODEL
 +-- models.py                         # Pydantic models
 +-- database.py                       # DB connection + migration init
@@ -306,6 +309,7 @@ src/
 +-- web/
 |   +-- app.py                       # FastAPI factory + lifespan
 |   +-- routes.py                    # All HTTP/WS endpoints
+|   +-- file_routes.py              # File browser API (tree + content)
 |   +-- websocket.py                 # ConnectionManager + rate limiting
 +-- agent/
 |   +-- orchestrator.py              # Facade — delegates to services
@@ -345,6 +349,7 @@ src/
 |   |   +-- attachments.js           # Attachment management
 |   |   +-- annotation-canvas.js     # Canvas bridge
 |   |   +-- annotate.js              # Canvas component
+|   |   +-- file-browser.js         # Project file browser
 |   |   +-- api.js                   # HTTP helpers
 |   |   +-- diff.js                  # Diff viewer
 |   |   +-- stats.js                 # Stats bar
@@ -353,6 +358,7 @@ src/
 |       +-- style.css                # Main styles (CSS variables)
 |       +-- board.css                # Board layout + cards
 |       +-- dialog.css               # Dialog components
+|       +-- file-browser.css        # File browser styles
 |       +-- theme.css                # Light/dark themes
 +-- templates/
     +-- base.html                    # Base template
@@ -383,7 +389,7 @@ src/
 
 ### Testing changes
 
-Run the automated test suite (78 tests):
+Run the automated test suite (108 tests):
 ```bash
 ./run-tests.sh              # All tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
