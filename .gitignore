@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 .DS_Store
 agents-lab/
+
+# Exclude annotation images
+annotation_*.png
+annotation_*.jpg
+annotation_*.jpeg
+annotation_*.gif
+annotation_*.webp
