@@ -46,6 +46,9 @@ const Annotate = {
         c.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
         c.addEventListener('drop', (e) => this._onDrop(e));
 
+        // Paste images
+        c.addEventListener('paste', (e) => this._onPaste(e));
+
         // Keyboard
         // Mouse wheel to scale selected image
         c.addEventListener('wheel', (e) => {
@@ -106,6 +109,54 @@ const Annotate = {
                 img.src = ev.target.result;
             };
             reader.readAsDataURL(file);
+        }
+    },
+
+    // --- Paste images ---
+
+    _onPaste(e) {
+        e.preventDefault();
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        for (const item of items) {
+            if (item.type.startsWith('image/')) {
+                const file = item.getAsFile();
+                if (!file) continue;
+
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        // Scale to fit canvas width if needed
+                        let w = img.width, h = img.height;
+                        const maxW = this.canvas.width * 0.8;
+                        if (w > maxW) {
+                            const scale = maxW / w;
+                            w *= scale;
+                            h *= scale;
+                        }
+                        // Center the pasted image on canvas
+                        const centerX = this.canvas.width / 2;
+                        const centerY = this.canvas.height / 2;
+                        this.images.push({
+                            img,
+                            x: centerX - w / 2,
+                            y: centerY - h / 2,
+                            w, h, selected: true, // Select the newly pasted image
+                        });
+                        // Deselect all other images and annotations
+                        this.images.forEach((im, idx) => {
+                            if (idx !== this.images.length - 1) im.selected = false;
+                        });
+                        this.annotations.forEach(a => a.selected = false);
+                        this.render();
+                    };
+                    img.src = ev.target.result;
+                };
+                reader.readAsDataURL(file);
+                break; // Only handle the first image
+            }
         }
     },
 
