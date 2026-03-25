@@ -1,5 +1,7 @@
 <a href="https://claude.ai"><img src="made-with-claude.png" height="32" alt="Made with Claude"></a>
 
+<img src="screenshot.jpg" height="420" alt="Screenshot">
+
 # Claude Agents Dashboard
 
 A standalone scrum board that orchestrates Claude agents working on your project. Each board item becomes a task for an AI agent that works in its own git worktree, keeping changes isolated until you approve and merge them.
