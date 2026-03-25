@@ -4,13 +4,13 @@
     padding: 0;
 }
 
-/* Fix numbered list alignment */
-ol {
+/* Fix numbered and bulleted list alignment */
+ol, ul {
     margin-left: 0;
     padding-left: 20px;
 }
 
-ol li {
+ol li, ul li {
     margin-left: 0;
     padding-left: 4px;
 }
