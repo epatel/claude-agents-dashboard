@@ -459,11 +459,19 @@ const FileBrowser = {
 
     _showError(message, path) {
         const contentEl = document.getElementById('file-content');
-        contentEl.innerHTML = `
-            <div class="file-error">
-                <p>${this._escapeHtml(message)}</p>
-                ${path ? `<button onclick="FileBrowser._openFile('${path}', '${path.split('/').pop()}')">Retry</button>` : ''}
-            </div>`;
+        contentEl.innerHTML = '';
+        const div = document.createElement('div');
+        div.className = 'file-error';
+        const p = document.createElement('p');
+        p.textContent = message;
+        div.appendChild(p);
+        if (path) {
+            const btn = document.createElement('button');
+            btn.textContent = 'Retry';
+            btn.addEventListener('click', () => this._openFile(path, path.split('/').pop()));
+            div.appendChild(btn);
+        }
+        contentEl.appendChild(div);
     },
 
     _updateTreeHighlight() {
