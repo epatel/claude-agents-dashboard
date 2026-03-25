@@ -44,6 +44,7 @@ class AgentSession:
         on_error=None,
         on_clarify=None,
         on_create_todo=None,
+        on_set_commit_message=None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
@@ -55,6 +56,7 @@ class AgentSession:
         self.on_error = on_error            # async callback(error: str)
         self.on_clarify = on_clarify        # async callback(prompt: str, choices: list|None) -> str
         self.on_create_todo = on_create_todo  # async callback(title: str, description: str) -> dict
+        self.on_set_commit_message = on_set_commit_message  # async callback(message: str) -> str
         self.client: ClaudeSDKClient | None = None
         self._task: asyncio.Task | None = None
         self._cancelled = False
@@ -63,12 +65,15 @@ class AgentSession:
         """Start the agent with a prompt."""
         from .clarification import create_clarification_server
         from .todo import create_todo_server
+        from .commit_message import create_commit_message_server
 
         mcp_servers = {}
         if self.on_clarify:
             mcp_servers["clarification"] = create_clarification_server(self.on_clarify)
         if self.on_create_todo:
             mcp_servers["todo"] = create_todo_server(self.on_create_todo)
+        if self.on_set_commit_message:
+            mcp_servers["commit_message"] = create_commit_message_server(self.on_set_commit_message)
 
         # Load external MCP servers from mcp-config.json
         mcp_config_path = self.worktree_path / "mcp-config.json"
@@ -92,6 +97,8 @@ class AgentSession:
             allowed_tools.append("mcp__clarification__ask_user")
         if "todo" in mcp_servers:
             allowed_tools.append("mcp__todo__create_todo")
+        if "commit_message" in mcp_servers:
+            allowed_tools.append("mcp__commit_message__set_commit_message")
 
         # Allow all tools from external MCP servers (using wildcard for each server)
         for server_name, server_config in mcp_servers.items():

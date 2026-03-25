@@ -160,19 +160,20 @@ async def commit_worktree_changes(worktree_path: Path, message: str) -> bool:
 
 
 async def merge_branch(repo: Path, branch: str, base: str | None = None,
-                       worktree_path: Path | None = None) -> tuple[bool, str]:
+                       worktree_path: Path | None = None,
+                       commit_message: str | None = None) -> tuple[bool, str]:
     """Merge branch into base. Returns (success, message).
 
     If worktree_path is given, first commits any uncommitted changes there.
+    If commit_message is provided, it is used instead of the default generic message.
     """
     if base is None:
         base = await get_main_branch(repo)
 
     # Commit uncommitted changes in the worktree first
     if worktree_path and worktree_path.exists():
-        committed = await commit_worktree_changes(
-            worktree_path, f"Agent work on {branch}"
-        )
+        msg = commit_message or f"Agent work on {branch}"
+        committed = await commit_worktree_changes(worktree_path, msg)
 
     # Checkout base in the main repo
     await run_git(repo, "checkout", base)
