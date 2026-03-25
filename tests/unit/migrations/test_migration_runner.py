@@ -19,7 +19,7 @@ from src.migrations.migration import Migration
 from src.migrations.runner import MigrationRunner
 
 
-class TestMigration001(Migration):
+class SampleMigration001(Migration):
     """Test migration for unit testing."""
 
     def __init__(self):
@@ -32,7 +32,7 @@ class TestMigration001(Migration):
         await db.execute("DROP TABLE IF EXISTS test_table")
 
 
-class TestMigration002(Migration):
+class SampleMigration002(Migration):
     """Second test migration."""
 
     def __init__(self):
@@ -49,7 +49,7 @@ class TestMigration002(Migration):
         await db.execute("ALTER TABLE test_table_new RENAME TO test_table")
 
 
-class TestMigrationFailure(Migration):
+class SampleMigrationFailure(Migration):
     """Migration that fails for error testing."""
 
     def __init__(self):
@@ -121,7 +121,7 @@ class TestMigrationRunner:
 
     async def test_apply_single_migration(self, raw_db, runner):
         """Test applying a single migration."""
-        migration = TestMigration001()
+        migration = SampleMigration001()
         await runner.apply_migration(raw_db, migration)
 
         cursor = await raw_db.execute(
@@ -138,7 +138,7 @@ class TestMigrationRunner:
 
     async def test_rollback_single_migration(self, raw_db, runner):
         """Test rolling back a single migration."""
-        migration = TestMigration001()
+        migration = SampleMigration001()
         await runner.apply_migration(raw_db, migration)
         await runner.rollback_migration(raw_db, migration)
 
@@ -157,8 +157,8 @@ class TestMigrationRunner:
     async def test_apply_multiple_migrations_up(self, raw_db, runner):
         """Test applying multiple migrations in sequence."""
         runner._migrations = {
-            "001": TestMigration001(),
-            "002": TestMigration002()
+            "001": SampleMigration001(),
+            "002": SampleMigration002()
         }
         runner._discovered = True
 
@@ -180,8 +180,8 @@ class TestMigrationRunner:
     async def test_rollback_multiple_migrations_down(self, raw_db, runner):
         """Test rolling back multiple migrations."""
         runner._migrations = {
-            "001": TestMigration001(),
-            "002": TestMigration002()
+            "001": SampleMigration001(),
+            "002": SampleMigration002()
         }
         runner._discovered = True
 
@@ -196,7 +196,7 @@ class TestMigrationRunner:
 
     async def test_migration_failure_handling(self, raw_db, runner):
         """Test that failed migrations are handled correctly."""
-        migration = TestMigrationFailure()
+        migration = SampleMigrationFailure()
 
         with pytest.raises(Exception):
             await runner.apply_migration(raw_db, migration)
@@ -210,8 +210,8 @@ class TestMigrationRunner:
     async def test_get_migration_status(self, raw_db, runner):
         """Test getting migration status information."""
         runner._migrations = {
-            "001": TestMigration001(),
-            "002": TestMigration002()
+            "001": SampleMigration001(),
+            "002": SampleMigration002()
         }
         runner._discovered = True
 
@@ -230,8 +230,8 @@ class TestMigrationRunner:
     async def test_target_version_migration_up(self, raw_db, runner):
         """Test migrating up to a specific target version."""
         runner._migrations = {
-            "001": TestMigration001(),
-            "002": TestMigration002()
+            "001": SampleMigration001(),
+            "002": SampleMigration002()
         }
         runner._discovered = True
 
@@ -246,8 +246,8 @@ class TestMigrationRunner:
     async def test_no_pending_migrations(self, raw_db, runner):
         """Test behavior when no migrations are pending."""
         runner._migrations = {
-            "001": TestMigration001(),
-            "002": TestMigration002()
+            "001": SampleMigration001(),
+            "002": SampleMigration002()
         }
         runner._discovered = True
 
@@ -260,7 +260,7 @@ class TestMigrationRunner:
     async def test_rollback_to_nonexistent_version(self, raw_db, runner):
         """Test rollback to version that doesn't exist rolls back everything."""
         runner._migrations = {
-            "001": TestMigration001(),
+            "001": SampleMigration001(),
         }
         runner._discovered = True
 
@@ -279,19 +279,19 @@ class TestMigrationBase:
 
     def test_migration_initialization(self):
         """Test migration object initialization."""
-        migration = TestMigration001()
+        migration = SampleMigration001()
         assert migration.version == "001"
         assert migration.description == "Test migration for unit tests"
 
     def test_migration_string_representation(self):
         """Test string representation of migration."""
-        migration = TestMigration001()
+        migration = SampleMigration001()
         assert str(migration) == "Migration 001: Test migration for unit tests"
         assert repr(migration) == "Migration(version='001', description='Test migration for unit tests')"
 
     def test_migration_up_down_methods_exist(self):
         """Test that up and down methods are properly implemented."""
-        migration = TestMigration001()
+        migration = SampleMigration001()
         assert hasattr(migration, 'up')
         assert hasattr(migration, 'down')
         assert callable(migration.up)
