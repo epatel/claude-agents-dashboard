@@ -236,8 +236,8 @@ const Dialogs = {
         this._currentItemId = itemId;
         await this._loadAttachments(itemId);
 
-        // Preselect Work Log tab if agent is running, otherwise show description tab
-        const defaultTab = isRunning ? 'detail-wlog' : 'detail-desc';
+        // Preselect Work Log tab if agent is running or item is done, otherwise show description tab
+        const defaultTab = (isRunning || item.column_name === 'done') ? 'detail-wlog' : 'detail-desc';
         this.switchDetailTab(defaultTab);
 
         this.open('detail-dialog');
@@ -295,8 +295,8 @@ const Dialogs = {
             diffContainer.innerHTML = `<p>Error loading diff: ${err.message}</p>`;
         }
 
-        // Reset to description tab
-        this.switchReviewTab('description');
+        // Preselect Work Log tab for review
+        this.switchReviewTab('log');
 
         // Wire up buttons
         document.getElementById('review-approve-btn').onclick = async () => {
@@ -381,9 +381,9 @@ const Dialogs = {
             }
         } catch { logEl.innerHTML = ''; }
 
-        // Preselect Work Log tab if agent is running, otherwise show description tab
+        // Preselect Work Log tab if agent is running or item is done, otherwise show description tab
         const isRunning = item.status === 'running' || item.status === 'resolving_conflicts';
-        const defaultTab = isRunning ? 'detail-wlog' : 'detail-desc';
+        const defaultTab = (isRunning || item.column_name === 'done') ? 'detail-wlog' : 'detail-desc';
         this.switchDetailTab(defaultTab);
 
         this.open('detail-dialog');
