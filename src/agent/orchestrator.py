@@ -244,6 +244,9 @@ class AgentOrchestrator:
             self._last_agent_messages[iid] = text
             await self._log(iid, "agent_message", text)
 
+        # Parse plugins from config
+        plugins = self._parse_plugins(config.get("plugins"))
+
         session = AgentSession(
             worktree_path=worktree_path,
             system_prompt=system_prompt,
@@ -260,6 +263,7 @@ class AgentOrchestrator:
             on_set_commit_message=lambda msg, iid=item_id: self._on_set_commit_message(iid, msg),
             mcp_servers=config.get("mcp_servers"),
             mcp_enabled=config.get("mcp_enabled", False),
+            plugins=plugins,
         )
 
         self.sessions[item_id] = session
@@ -461,6 +465,9 @@ class AgentOrchestrator:
             self._last_agent_messages[iid] = text
             await self._log(iid, "agent_message", text)
 
+        # Parse plugins from config
+        plugins = self._parse_plugins(config.get("plugins"))
+
         session = AgentSession(
             worktree_path=worktree_path,
             system_prompt=system_prompt,
@@ -477,6 +484,7 @@ class AgentOrchestrator:
             on_set_commit_message=lambda msg, iid=item_id: self._on_set_commit_message(iid, msg),
             mcp_servers=config.get("mcp_servers"),
             mcp_enabled=config.get("mcp_enabled", False),
+            plugins=plugins,
         )
 
         self.sessions[item_id] = session
@@ -534,6 +542,26 @@ class AgentOrchestrator:
 
         # The _on_clarify callback handles moving item back to doing
         return {"ok": True}
+
+    def _parse_plugins(self, plugins_json: str | None) -> list[dict] | None:
+        """Parse plugins JSON string from config into a list of plugin configs."""
+        if not plugins_json:
+            return None
+        try:
+            plugins = json.loads(plugins_json) if isinstance(plugins_json, str) else plugins_json
+            if not isinstance(plugins, list) or len(plugins) == 0:
+                return None
+            # Normalize: each entry can be a string (path) or dict with "path" key
+            result = []
+            for entry in plugins:
+                if isinstance(entry, str) and entry.strip():
+                    result.append({"type": "local", "path": entry.strip()})
+                elif isinstance(entry, dict) and entry.get("path"):
+                    result.append({"type": "local", "path": entry["path"]})
+            return result if result else None
+        except Exception as e:
+            logger.warning(f"Failed to parse plugins config: {e}")
+            return None
 
     async def _save_token_usage(self, item_id: str, result: AgentResult):
         """Save token usage statistics to the database."""

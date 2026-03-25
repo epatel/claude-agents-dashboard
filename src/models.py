@@ -94,3 +94,4 @@ class AgentConfig(BaseModel):
     project_context: Optional[str] = ""
     mcp_servers: Optional[str] = "[]"
     mcp_enabled: bool = False
+    plugins: Optional[str] = "[]"
