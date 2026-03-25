@@ -41,6 +41,15 @@
                 <textarea id="item-form-desc" rows="10" placeholder="Describe what the agent should do..."></textarea>
             </div>
             <div class="form-group">
+                <label for="item-form-model">Model <span class="tooltip" data-tip="The Claude model to use for this specific task. Leave empty to use the global default model. Sonnet is fast and capable, Opus is most powerful, Haiku is cheapest.">?</span></label>
+                <select id="item-form-model">
+                    <option value="">Use Global Default</option>
+                    <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                    <option value="claude-opus-4-6">Claude Opus 4.6</option>
+                    <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>Attachments <span class="tooltip" data-tip="Add annotated screenshots or reference images. The agent can see these when working on the task.">?</span></label>
                 <div id="item-form-attachments" class="attachments-grid"></div>
                 <button type="button" class="btn btn-sm" style="margin-top: 8px;" onclick="Dialogs.openAnnotateForNewItem()">+ Add Annotated Image</button>
