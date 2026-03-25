@@ -20,7 +20,7 @@ async def board_page(request: Request):
     db = request.app.state.db
     async with db.connect() as conn:
         cursor = await conn.execute(
-            "SELECT * FROM items WHERE column_name != 'archive' ORDER BY position"
+            "SELECT * FROM items WHERE column_name != 'archive' ORDER BY column_name, position"
         )
         rows = await cursor.fetchall()
         items = [dict(row) for row in rows]
@@ -42,7 +42,7 @@ async def board_page(request: Request):
 async def list_items(request: Request):
     db = request.app.state.db
     async with db.connect() as conn:
-        cursor = await conn.execute("SELECT * FROM items ORDER BY position")
+        cursor = await conn.execute("SELECT * FROM items ORDER BY column_name, position")
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
