@@ -124,13 +124,11 @@ class TestImportStructure:
 
     def test_core_imports(self):
         """Test importing core modules."""
-        # These should not raise ImportError
         from src.database import Database
         from src.migrations.runner import MigrationRunner
         from src.migrations.migration import Migration
         from src.agent.orchestrator import AgentOrchestrator
 
-        # Verify classes are callable
         assert callable(Database)
         assert callable(MigrationRunner)
         assert callable(Migration)
@@ -138,11 +136,11 @@ class TestImportStructure:
 
     def test_web_imports(self):
         """Test importing web-related modules."""
-        from src.web.app import app
+        from src.web.app import create_app
         from src.web.routes import router
         from src.web.websocket import ConnectionManager
 
-        assert app is not None
+        assert callable(create_app)
         assert router is not None
         assert callable(ConnectionManager)
 
@@ -151,7 +149,6 @@ class TestImportStructure:
         from src.git.operations import get_main_branch, merge_branch
         from src.git.worktree import create_worktree, cleanup_worktree
 
-        # Verify functions are callable
         assert callable(get_main_branch)
         assert callable(merge_branch)
         assert callable(create_worktree)
@@ -182,12 +179,9 @@ class TestConfigurationAndEnvironment:
         assert tests_dir.exists()
         assert tests_dir.is_dir()
 
-        # Check for key test directories
         assert (tests_dir / "unit").exists()
         assert (tests_dir / "integration").exists()
         assert (tests_dir / "smoke").exists()
-
-        # Check for conftest.py
         assert (tests_dir / "conftest.py").exists()
 
     def test_pytest_configuration(self):

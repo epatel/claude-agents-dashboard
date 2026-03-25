@@ -40,6 +40,14 @@ path/to/claude-agents-dashboard/run.sh /path/to/your/project
 
 The server starts at `http://127.0.0.1:8000` (auto-increments ports 8000-8019 if busy). Your project must be a git repository.
 
+### Running tests
+
+```bash
+./run-tests.sh
+```
+
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`.
+
 ## What it creates
 
 An `agents-lab/` directory in your project (auto-added to `.gitignore`):

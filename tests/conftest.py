@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 from typing import AsyncGenerator, Generator
 import pytest
+import pytest_asyncio
 import aiosqlite
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,22 +16,14 @@ from src.agent.orchestrator import AgentOrchestrator
 from src.web.websocket import ConnectionManager
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture
+@pytest_asyncio.fixture
 async def temp_dir() -> AsyncGenerator[Path, None]:
     """Create a temporary directory for tests."""
     with tempfile.TemporaryDirectory() as temp_path:
         yield Path(temp_path)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_db(temp_dir: Path) -> AsyncGenerator[Database, None]:
     """Create a test database instance."""
     db_path = temp_dir / "test.db"
@@ -41,18 +34,16 @@ async def test_db(temp_dir: Path) -> AsyncGenerator[Database, None]:
 
     yield db
 
-    await db.close()
 
-
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_db_connection(test_db: Database) -> AsyncGenerator[aiosqlite.Connection, None]:
     """Get a connection to the test database."""
     async with test_db.connect() as conn:
         yield conn
 
 
-@pytest.fixture
-def migration_runner(temp_dir: Path) -> MigrationRunner:
+@pytest_asyncio.fixture
+async def migration_runner(temp_dir: Path) -> MigrationRunner:
     """Create a migration runner with test migrations directory."""
     migrations_dir = temp_dir / "migrations"
     migrations_dir.mkdir(exist_ok=True)
@@ -67,15 +58,19 @@ def mock_websocket_manager() -> ConnectionManager:
     return manager
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_orchestrator(
     temp_dir: Path,
     test_db: Database,
     mock_websocket_manager: ConnectionManager
 ) -> AsyncGenerator[AgentOrchestrator, None]:
     """Create a test orchestrator instance."""
+    import subprocess
     target_project = temp_dir / "project"
     target_project.mkdir()
+    # Initialize as git repo so git operations don't fail
+    subprocess.run(["git", "init", str(target_project)], capture_output=True)
+    subprocess.run(["git", "-C", str(target_project), "commit", "--allow-empty", "-m", "init"], capture_output=True)
 
     data_dir = temp_dir / "data"
     data_dir.mkdir()
@@ -111,7 +106,7 @@ def test_item_data() -> dict:
     }
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_item(test_db: Database, test_item_data: dict) -> dict:
     """Create a test item in the database."""
     async with test_db.connect() as conn:

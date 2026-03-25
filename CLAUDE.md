@@ -14,7 +14,15 @@ path/to/claude-agents-dashboard/run.sh
 
 `run.sh` creates the venv if needed, installs deps from `requirements.txt`, and launches `python -m src.main <target>`. Server binds to 127.0.0.1:8000 (auto-increments if busy). Requires Python 3.12+.
 
-**No automated test suite exists yet.** To verify changes, start the server against a test git repo and exercise the UI manually, including testing agent workflows, clarification flows, and todo creation features.
+## Running tests
+
+```bash
+./run-tests.sh              # Run all 54 tests
+./run-tests.sh tests/smoke/ # Smoke tests only
+./run-tests.sh -k "test_cancel" # Filter by name
+```
+
+Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (imports, DB basics), unit (migration runner), integration (orchestrator lifecycle). See `tests/README.md` for details.
 
 ## Architecture
 
