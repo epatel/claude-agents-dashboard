@@ -6,6 +6,18 @@ A standalone scrum board that orchestrates Claude agents working on your project
 
 ## How it works
 
+```mermaid
+graph LR
+    A["1. Create Item"] --> B["2. Start Agent"]
+    B --> C["3. Agent Works<br/>(own worktree)"]
+    C --> D{"4. Review<br/>Changes"}
+    D -->|Approve| E["5. Merge to Main"]
+    D -->|Request Changes| C
+    D -->|Cancel| A
+    C -->|Needs Input| F["Clarify"]
+    F -->|User Responds| C
+```
+
 1. **Create items** on the kanban board (Todo → Doing → Clarify → Review → Done → Archive)
 2. **Start an agent** on a Todo item — it gets its own git worktree and runs autonomously
 3. **Watch progress** in real-time via the work log (thinking, tool use, messages)
@@ -26,7 +38,7 @@ Or pass the project path explicitly:
 path/to/claude-agents-dashboard/run.sh /path/to/your/project
 ```
 
-The server starts at `http://127.0.0.1:8000` (auto-increments ports 8000–8019 if busy). Your project must be a git repository.
+The server starts at `http://127.0.0.1:8000` (auto-increments ports 8000-8019 if busy). Your project must be a git repository.
 
 ## What it creates
 
@@ -69,10 +81,73 @@ The SQLite database uses a versioned migration system to manage schema changes s
 
 ## Architecture
 
+```mermaid
+graph TB
+    subgraph Frontend["Frontend (Vanilla JS, No Build Step)"]
+        Browser["Browser"]
+        JS["app.js | board.js | dialogs.js<br/>api.js | diff.js | annotate.js<br/>theme.js | stats.js"]
+    end
+
+    subgraph Backend["Backend (Python 3.12+ / FastAPI)"]
+        Routes["routes.py — HTTP + WS endpoints"]
+        WSMgr["ConnectionManager — WebSocket"]
+        Orch["AgentOrchestrator — lifecycle mgmt"]
+        Sess["AgentSession — Claude SDK wrapper"]
+        DB["Database — aiosqlite + migrations"]
+    end
+
+    subgraph MCP["Built-in MCP Tools"]
+        Ask["ask_user"]
+        TodoTool["create_todo"]
+        CommitTool["set_commit_message"]
+    end
+
+    subgraph GitLayer["Git Layer"]
+        GitOps["operations.py — diff, merge"]
+        WT["worktree.py — create, cleanup"]
+    end
+
+    Browser <-->|"HTTP + WebSocket"| Routes
+    Routes --> Orch
+    Orch --> Sess
+    Orch --> DB
+    Orch --> GitOps
+    Orch --> WT
+    Orch --> WSMgr
+    WSMgr <-->|"Real-time events"| Browser
+    Sess -->|"Claude Agent SDK"| Ask
+    Sess --> TodoTool
+    Sess --> CommitTool
+    DB -->|SQLite| DB
+    GitOps --> WT
+```
+
+### Technology stack
+
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 4.6
+- **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication
+
+### Item lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Todo: Create
+    Todo --> Doing: Start agent
+    Doing --> Clarify: Agent asks question
+    Clarify --> Doing: User responds
+    Doing --> Review: Agent completes
+    Doing --> Failed: Agent error
+    Failed --> Doing: Retry
+    Review --> Done: Approve (merge)
+    Review --> Doing: Request changes
+    Review --> Todo: Cancel review
+    Done --> Archive: Archive
+    Doing --> Todo: Cancel agent
+    Review --> ResolvingConflicts: Merge conflict
+```
 
 ## Requirements
 
@@ -93,6 +168,97 @@ The SQLite database uses a versioned migration system to manage schema changes s
 ## Database Management
 
 The project uses a SQLite database with a versioned migration system for safe schema updates. The schema is consolidated into a single migration (`001_initial_schema.py`) that creates all tables. Migrations run automatically on startup.
+
+### Database schema
+
+```mermaid
+erDiagram
+    items ||--o{ work_log : "has"
+    items ||--o{ review_comments : "has"
+    items ||--o{ clarifications : "has"
+    items ||--o{ attachments : "has"
+    items ||--o{ token_usage : "tracks"
+
+    items {
+        text id PK
+        text title
+        text description
+        text column_name
+        int position
+        text status
+        text branch_name
+        text worktree_path
+        text session_id
+        text model
+        text commit_message
+        text created_at
+        text updated_at
+    }
+
+    work_log {
+        int id PK
+        text item_id FK
+        text timestamp
+        text entry_type
+        text content
+        text metadata
+    }
+
+    token_usage {
+        int id PK
+        text item_id FK
+        text session_id
+        int input_tokens
+        int output_tokens
+        int total_tokens
+        real cost_usd
+        text completed_at
+    }
+
+    agent_config {
+        int id PK
+        text system_prompt
+        text model
+        text project_context
+        text mcp_servers
+        bool mcp_enabled
+        text plugins
+        text updated_at
+    }
+
+    clarifications {
+        int id PK
+        text item_id FK
+        text prompt
+        text choices
+        text response
+        text created_at
+        text answered_at
+    }
+
+    attachments {
+        int id PK
+        text item_id FK
+        text filename
+        text asset_path
+        text created_at
+    }
+
+    review_comments {
+        int id PK
+        text item_id FK
+        text file_path
+        int line_number
+        text content
+        text created_at
+    }
+
+    schema_migrations {
+        text version PK
+        text description
+        text applied_at
+    }
+```
 
 ### Migration Commands
 
@@ -130,6 +296,47 @@ python -m src.manage status --db-path /path/to/custom/database.db
 3. Update version number and description
 4. Implement `up()` method (apply changes) and `down()` method (rollback changes)
 5. Test thoroughly before deploying
+
+## API Reference
+
+### REST Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Board page (HTML) |
+| `GET` | `/api/items` | List all items |
+| `POST` | `/api/items` | Create item |
+| `PATCH` | `/api/items/{id}` | Update item |
+| `DELETE` | `/api/items/{id}` | Delete item (full cleanup) |
+| `POST` | `/api/items/{id}/move` | Drag-drop reposition |
+| `POST` | `/api/items/{id}/start` | Start agent |
+| `POST` | `/api/items/{id}/cancel` | Cancel agent |
+| `POST` | `/api/items/{id}/retry` | Retry failed agent |
+| `POST` | `/api/items/{id}/approve` | Approve & merge |
+| `POST` | `/api/items/{id}/request-changes` | Send feedback to agent |
+| `POST` | `/api/items/{id}/cancel-review` | Discard review changes |
+| `GET` | `/api/items/{id}/log` | Work log entries |
+| `GET` | `/api/items/{id}/diff` | Diff + changed files |
+| `GET` | `/api/items/{id}/files/{path}` | File content at branch |
+| `GET` | `/api/items/{id}/clarification` | Pending clarification |
+| `POST` | `/api/items/{id}/clarify` | Submit clarification response |
+| `GET/POST` | `/api/items/{id}/attachments` | List/upload attachments |
+| `DELETE` | `/api/attachments/{id}` | Delete attachment |
+| `GET` | `/api/assets/{filename}` | Serve uploaded files |
+| `GET/PUT` | `/api/config` | Agent configuration |
+| `GET` | `/api/stats` | Usage & activity stats |
+| `WebSocket` | `/ws` | Real-time event stream |
+
+### WebSocket Events
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `item_created` | Server → Client | New item added |
+| `item_updated` | Server → Client | Item fields changed |
+| `item_moved` | Server → Client | Item repositioned |
+| `item_deleted` | Server → Client | Item removed |
+| `agent_log` | Server → Client | Agent activity (message, tool use, thinking) |
+| `clarification_requested` | Server → Client | Agent needs user input |
 
 ## Troubleshooting
 

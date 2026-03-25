@@ -20,18 +20,100 @@ path/to/claude-agents-dashboard/run.sh
 
 This is a standalone scrum board tool that orchestrates Claude agents working on a **separate target project**. The server code lives here; the data directory (`agents-lab/`) is created in the target project.
 
+### System overview
+
+```mermaid
+graph TB
+    subgraph Frontend["Frontend (Vanilla JS)"]
+        UI["board.html + Jinja2 Templates"]
+        WS["WebSocket Client"]
+        Modules["app.js | board.js | dialogs.js<br/>api.js | diff.js | annotate.js<br/>theme.js | stats.js"]
+    end
+
+    subgraph Backend["Backend (Python / FastAPI)"]
+        R["routes.py<br/>HTTP + WebSocket"]
+        WSM["ConnectionManager<br/>websocket.py"]
+        O["AgentOrchestrator<br/>orchestrator.py"]
+        S["AgentSession<br/>session.py"]
+        D["Database<br/>database.py"]
+        M["MigrationRunner<br/>runner.py"]
+    end
+
+    subgraph MCPTools["Built-in MCP Tools"]
+        C["ask_user"]
+        T["create_todo"]
+        CM["set_commit_message"]
+    end
+
+    subgraph Git["Git Layer"]
+        GO["operations.py"]
+        GW["worktree.py"]
+    end
+
+    UI <-->|"HTTP"| R
+    WS <-->|"WebSocket"| WSM
+    R --> O
+    O --> S
+    O --> D
+    O --> GO
+    O --> GW
+    O --> WSM
+    S --> C
+    S --> T
+    S --> CM
+    D --> M
+```
+
 ### Request flow
 
 ```
-Browser ←WebSocket→ ConnectionManager (websocket.py)
-Browser ←HTTP→ FastAPI routes (routes.py)
-                ↓
+Browser <-WebSocket-> ConnectionManager (websocket.py)
+Browser <-HTTP-> FastAPI routes (routes.py)
+                |
          AgentOrchestrator (orchestrator.py)
-           ↓              ↓
+           |              |
     AgentSession      Git operations
     (session.py)      (git/operations.py, git/worktree.py)
-         ↓
+         |
     ClaudeSDKClient (claude-agent-sdk)
+```
+
+### Agent lifecycle
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Routes
+    participant Orchestrator
+    participant Session
+    participant SDK as Claude SDK
+    participant Git
+
+    User->>Routes: POST /api/items/{id}/start
+    Routes->>Orchestrator: start_agent(item_id)
+    Orchestrator->>Git: create_worktree()
+    Orchestrator->>Session: new AgentSession(callbacks)
+    Orchestrator-->>Routes: Return (non-blocking)
+
+    Note over Session,SDK: Background task via asyncio.create_task
+
+    loop Streaming Events
+        SDK-->>Session: AssistantMessage / ToolUse / Thinking
+        Session-->>Orchestrator: Callbacks
+        Orchestrator-->>User: WebSocket broadcast
+    end
+
+    alt Agent needs clarification
+        Session-->>Orchestrator: on_clarify(prompt)
+        Orchestrator-->>User: WebSocket: clarification_requested
+        User->>Routes: POST /api/items/{id}/clarify
+        Routes->>Orchestrator: submit_clarification(response)
+        Orchestrator-->>Session: asyncio.Event.set()
+    end
+
+    SDK-->>Session: ResultMessage
+    Session-->>Orchestrator: on_complete(AgentResult)
+    Orchestrator->>Orchestrator: Save token_usage, move to Review
 ```
 
 ### Key design decisions
@@ -70,7 +152,7 @@ Browser ←HTTP→ FastAPI routes (routes.py)
 
 - **Plugin support**: Agents can load local Claude Code plugins via directory paths. Plugins are configured in the agent config UI (Plugins tab) and stored as a JSON array of paths in `agent_config.plugins`. The orchestrator's `_parse_plugins()` normalizes entries into `{"type": "local", "path": "..."}` dicts passed to the SDK.
 
-- **Save & Start**: The new item dialog has a "▶ Save & Start" button that creates an item and immediately launches an agent in one action, skipping the manual start step.
+- **Save & Start**: The new item dialog has a "Save & Start" button that creates an item and immediately launches an agent in one action, skipping the manual start step.
 
 - **Work log tool formatting**: `_format_tool_use()` renders human-readable summaries for common tools (Write, Edit, Read, Bash, Glob, Grep, ask_user, create_todo, set_commit_message). Unknown tools show a truncated input summary.
 
@@ -83,6 +165,39 @@ Vanilla JS with no build step. Server-renders the initial board via Jinja2; Java
 Key JS modules: `app.js` (WebSocket + init), `board.js` (drag-drop + card rendering), `dialogs.js` (all modals + custom confirm + plugin management), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates).
 
 ### Database
+
+```mermaid
+erDiagram
+    items ||--o{ work_log : "activity"
+    items ||--o{ review_comments : "feedback"
+    items ||--o{ clarifications : "questions"
+    items ||--o{ attachments : "files"
+    items ||--o{ token_usage : "cost"
+
+    items {
+        text id PK
+        text title
+        text column_name
+        text status
+        text branch_name
+        text session_id
+        text model
+    }
+
+    agent_config {
+        int id PK
+        text system_prompt
+        text model
+        text mcp_servers
+        bool mcp_enabled
+        text plugins
+    }
+
+    schema_migrations {
+        text version PK
+        text applied_at
+    }
+```
 
 SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 1 consolidated migration: `001_initial_schema.py` creates the complete schema). Tables: `items` (board cards + git metadata + model + commit_message), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
 
@@ -112,7 +227,42 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 - MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` for user response, todo creation immediately returns success and broadcasts updates, commit message stores in-memory (`_commit_messages` dict) and persists to DB on agent completion.
 - Agent-created items are indistinguishable from manually created ones in the database and UI — they follow the same lifecycle and support all features.
 - The agent config dialog has three tabs: General (system prompt, model, project context), MCP (server JSON config, enable/disable toggle), and Plugins (local plugin directory paths with add/remove UI).
-- Port auto-discovery scans 8000–8019 (`MAX_PORT_TRIES = 20` in `config.py`).
+- Port auto-discovery scans 8000-8019 (`MAX_PORT_TRIES = 20` in `config.py`).
+
+## Project structure
+
+```
+src/
++-- main.py                           # Entry point, port discovery
++-- config.py                         # Constants, column definitions
++-- models.py                         # Pydantic models
++-- database.py                       # DB connection + migration init
++-- manage.py                         # CLI for migrations
++-- web/
+|   +-- app.py                       # FastAPI factory + lifespan
+|   +-- routes.py                    # All HTTP/WS endpoints
+|   +-- websocket.py                 # ConnectionManager
++-- agent/
+|   +-- orchestrator.py              # Agent lifecycle management
+|   +-- session.py                   # Claude SDK wrapper
+|   +-- clarification.py             # ask_user MCP tool
+|   +-- todo.py                      # create_todo MCP tool
+|   +-- commit_message.py            # set_commit_message MCP tool
++-- git/
+|   +-- operations.py                # diff, merge, commit
+|   +-- worktree.py                  # worktree CRUD
++-- migrations/
+|   +-- migration.py                 # Base class
+|   +-- runner.py                    # Migration engine
+|   +-- versions/
+|       +-- 001_initial_schema.py    # Complete schema
++-- static/
+|   +-- js/                          # Frontend modules
+|   +-- css/                         # Styles (CSS variables)
++-- templates/
+    +-- board.html                   # Main template
+    +-- partials/                    # Modal templates
+```
 
 ## Development workflows
 
