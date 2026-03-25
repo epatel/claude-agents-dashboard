@@ -2,13 +2,13 @@
 
 **Date**: 2026-03-25
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 5 — Reassessment after merge conflict auto-resolution feature.
+**Revision**: 6 — Reassessment after file browser feature.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 10 specialized dialog modules on the frontend. Since the previous assessment, **merge conflict auto-resolution** has been added — when approval encounters a merge conflict, the system captures the agent's diff, resets the worktree to the latest base, and restarts the agent with the previous diff as context. The test suite maintains **78 automated tests** across smoke, unit, and integration tiers.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 10 specialized dialog modules on the frontend. Since the previous assessment, a **file browser** has been added — a full-featured dialog for browsing the target project's source code with a directory tree, tabbed file viewer, syntax highlighting (Prism.js), markdown rendering with mermaid diagram support, image previews, secret file hiding, and keyboard navigation. The test suite has grown to **108 automated tests** across smoke, unit, and integration tiers.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -24,10 +24,12 @@ graph TB
         JS_Modules["app.js | board.js | stats.js<br/>api.js | diff.js | theme.js"]
         Dialog_Modules["dialogs.js (coordinator)<br/>dialog-core.js | dialog-utils.js<br/>item-dialog.js | detail-dialog.js<br/>review-dialog.js | config-dialog.js<br/>clarification-dialog.js<br/>request-changes-dialog.js<br/>attachments.js | annotation-canvas.js"]
         Annotate[annotate.js]
+        FileBrowser[file-browser.js]
     end
 
     subgraph Backend["Backend (Python / FastAPI)"]
         Routes[routes.py<br/>HTTP + WebSocket endpoints]
+        FileRoutes[file_routes.py<br/>File browser API]
         WSManager[ConnectionManager<br/>websocket.py]
         Orchestrator[AgentOrchestrator<br/>orchestrator.py facade]
         subgraph Services["Service Layer"]
@@ -118,12 +120,13 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `main.py` | 81 | A | Clean entry point, proper git validation, port discovery |
-| `config.py` | 49 | A | Well-organized constants; timeouts, WS rate limiting, and defaults |
+| `config.py` | 109 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
 | `constants.py` | 12 | A | Centralized `AVAILABLE_MODELS` dict and `DEFAULT_MODEL` |
 | `models.py` | 98 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 46 | A | Proper lifespan management, clean factory pattern |
 | `web/routes.py` | 566 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
+| `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 110 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
 | `agent/session.py` | 295 | A- | Clean SDK wrapper; good token extraction with fallbacks |
@@ -155,6 +158,7 @@ graph TB
 | `attachments.js` | 43 | A | Attachment viewing and deletion |
 | `annotation-canvas.js` | 52 | A | Canvas annotation integration bridge |
 | `annotate.js` | 771 | A- | Self-contained canvas component |
+| `file-browser.js` | 592 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering |
 | `api.js` | 77 | A | Clean HTTP helpers |
 | `diff.js` | 61 | A- | Functional diff viewer |
 | `theme.js` | 24 | A | Simple, correct theme toggle |
@@ -167,6 +171,7 @@ graph TB
 | `style.css` | 756 | A- | Main styles with CSS variables |
 | `board.css` | 221 | A | Board-specific layout and card styles |
 | `dialog.css` | 74 | A | Dialog component styles |
+| `file-browser.css` | 509 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 66 | A | Light/dark theme definitions |
 
 ---
@@ -254,9 +259,9 @@ stateDiagram-v2
 | Network binding | **Good** | Localhost only (127.0.0.1) |
 | Authentication | **None** | No auth — acceptable for localhost dev tool |
 | SQL injection | **Good** | Parameterized queries throughout (now centralized in DatabaseService) |
-| Path traversal | **Good** | `validate_file_path()` blocks `..`, absolute paths, null bytes, and control characters; `serve_asset` checks `is_relative_to` |
+| Path traversal | **Good** | `validate_file_path()` blocks `..`, absolute paths, null bytes, and control characters; `serve_asset` checks `is_relative_to`; `validate_file_browser_path()` adds symlink-escape detection |
 | Input validation | **Good** | Pydantic models validate API inputs |
-| Secret handling | **Good** | API key from env var, never logged |
+| Secret handling | **Good** | API key from env var, never logged; file browser hides `.env`, `*.key`, `*.pem`, credentials, and SSH keys |
 | Agent permissions | **Good** | `acceptEdits` mode, not `bypassPermissions` |
 | WebSocket rate limiting | **Good** | Per-IP connection limits (5 concurrent, 10 per 60s window), connection attempt tracking |
 | Git timeouts | **Good** | Configurable timeouts: operations (5min), merge (10min), HTTP requests (11min) |
@@ -302,17 +307,18 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 78 automated tests across 7 test files via `./run-tests.sh`.
+**Current state**: 108 automated tests across 8 test files via `./run-tests.sh`.
 
-| Test File | Type | Focus |
-|-----------|------|-------|
-| `tests/smoke/test_basic_functionality.py` | Smoke | Imports, DB basics, config |
-| `tests/unit/test_path_validation.py` | Unit | Path traversal prevention (14 cases) |
-| `tests/unit/test_git_timeout.py` | Unit | Git operation timeout behavior |
-| `tests/unit/migrations/test_migration_runner.py` | Unit | Migration engine |
-| `tests/unit/migrations/test_migration_edge_cases.py` | Unit | Migration edge cases |
-| `tests/integration/test_orchestrator_lifecycle.py` | Integration | Orchestrator lifecycle |
-| `tests/conftest.py` | Fixtures | Shared test fixtures |
+| Test File | Type | Tests | Focus |
+|-----------|------|-------|-------|
+| `tests/smoke/test_basic_functionality.py` | Smoke | 12 | Imports, DB basics, config |
+| `tests/unit/test_path_validation.py` | Unit | 14 | Path traversal prevention |
+| `tests/unit/test_git_timeout.py` | Unit | 5 | Git operation timeout behavior |
+| `tests/unit/test_file_routes.py` | Unit | 35 | File browser path validation, secret detection, language mapping, directory scanning, file content reading |
+| `tests/unit/migrations/test_migration_runner.py` | Unit | 14 | Migration engine |
+| `tests/unit/migrations/test_migration_edge_cases.py` | Unit | 14 | Migration edge cases |
+| `tests/integration/test_orchestrator_lifecycle.py` | Integration | 14 | Orchestrator lifecycle |
+| `tests/conftest.py` | Fixtures | — | Shared test fixtures |
 
 ### Recommended Additional Tests
 
@@ -367,6 +373,8 @@ graph LR
 16. **Configurable git timeouts**: Separate timeouts for operations (5min) and merges (10min) prevent hung processes
 17. **Template decomposition**: Base template extracted with card partial for consistent rendering
 18. **Merge conflict auto-resolution**: On conflict, captures agent's diff, resets worktree to latest base, and restarts agent with previous diff as context — fully automated recovery
+19. **File browser with defense in depth**: Path validation (null bytes, control chars, traversal, symlink escape), secret file hiding via configurable patterns, binary detection, configurable size limits, excluded dirs/files — all constants centralized in `config.py`
+20. **Lazy tree loading**: File browser loads directory children on-demand with configurable depth limit, reducing initial payload for large projects
 
 ---
 
@@ -374,12 +382,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 24 | ~3,447 |
-| JavaScript frontend | 18 | ~2,749 |
-| CSS styles | 4 | ~1,117 |
-| HTML templates | 3 | ~419 |
-| Tests | 7 | ~1,968 |
-| **Grand total** | **56** | **~9,700** |
+| Python backend (src/) | 32 | ~3,728 |
+| JavaScript frontend | 20 | ~3,341 |
+| CSS styles | 5 | ~1,626 |
+| HTML templates | 3 | ~457 |
+| Tests | 8 | ~2,206 |
+| **Grand total** | **68** | **~11,358** |
 
 ---
 
