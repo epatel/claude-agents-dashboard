@@ -244,43 +244,49 @@ const App = {
     },
 
     updateConnectionStatus() {
-        // Add/update connection status indicator
+        // Add/update connection status indicator as a colored dot
         let statusEl = document.getElementById('connection-status');
         if (!statusEl) {
             statusEl = document.createElement('div');
             statusEl.id = 'connection-status';
             statusEl.style.cssText = `
-                position: fixed;
-                top: 10px;
-                right: 10px;
-                padding: 8px 12px;
-                border-radius: 4px;
-                font-size: 12px;
-                font-weight: bold;
-                z-index: 1000;
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                margin-left: 8px;
                 transition: all 0.3s ease;
+                cursor: pointer;
             `;
-            document.body.appendChild(statusEl);
+
+            // Insert the dot after the theme toggle button
+            const themeToggle = document.getElementById('theme-toggle');
+            if (themeToggle && themeToggle.parentNode) {
+                themeToggle.parentNode.appendChild(statusEl);
+            } else {
+                // Fallback to body if theme toggle not found
+                document.body.appendChild(statusEl);
+            }
         }
 
         const states = {
-            'connecting': { text: 'Connecting...', color: '#ff9800', bg: '#fff3e0' },
-            'connected': { text: 'Connected', color: '#4caf50', bg: '#e8f5e8' },
-            'disconnected': { text: 'Disconnected', color: '#f44336', bg: '#ffebee' },
-            'error': { text: 'Connection Error', color: '#f44336', bg: '#ffebee' }
+            'connecting': { text: 'Connecting...', color: '#ff9800' },
+            'connected': { text: 'Connected', color: '#4caf50' },
+            'disconnected': { text: 'Disconnected', color: '#f44336' },
+            'error': { text: 'Connection Error', color: '#f44336' }
         };
 
         const state = states[this.connectionState] || states.disconnected;
-        statusEl.textContent = state.text;
-        statusEl.style.color = state.color;
-        statusEl.style.backgroundColor = state.bg;
-        statusEl.style.border = `1px solid ${state.color}`;
+        statusEl.style.backgroundColor = state.color;
+        statusEl.style.boxShadow = `0 0 4px ${state.color}40`;
 
-        // Hide the status indicator when connected after a delay
+        // Add tooltip for accessibility
+        statusEl.title = state.text;
+
+        // Fade the dot when connected after a delay
         if (this.connectionState === 'connected') {
             setTimeout(() => {
                 if (statusEl && this.connectionState === 'connected') {
-                    statusEl.style.opacity = '0.3';
+                    statusEl.style.opacity = '0.6';
                 }
             }, 2000);
         } else {
