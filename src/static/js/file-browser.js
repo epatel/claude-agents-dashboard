@@ -419,11 +419,33 @@ const FileBrowser = {
         }
     },
 
+    _renderMarkdownContent(mdDiv, content) {
+        if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+            mdDiv.innerHTML = DOMPurify.sanitize(marked.parse(content));
+        } else {
+            mdDiv.textContent = content;
+            return;
+        }
+        // Render mermaid diagrams
+        if (typeof mermaid !== 'undefined') {
+            const codeBlocks = mdDiv.querySelectorAll('code.language-mermaid');
+            codeBlocks.forEach((code, i) => {
+                const pre = code.parentElement;
+                const mermaidDiv = document.createElement('div');
+                mermaidDiv.className = 'mermaid';
+                mermaidDiv.textContent = code.textContent;
+                pre.replaceWith(mermaidDiv);
+            });
+            if (mdDiv.querySelectorAll('.mermaid').length > 0) {
+                mermaid.run({ nodes: mdDiv.querySelectorAll('.mermaid') });
+            }
+        }
+    },
+
     _renderMarkdown(container, tab) {
         const wrapper = document.createElement('div');
         wrapper.style.position = 'relative';
 
-        // Toggle button
         const toggle = document.createElement('button');
         toggle.className = 'file-markdown-toggle';
         toggle.textContent = 'Source';
@@ -431,11 +453,7 @@ const FileBrowser = {
 
         const mdDiv = document.createElement('div');
         mdDiv.className = 'file-markdown-viewer';
-        if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
-            mdDiv.innerHTML = DOMPurify.sanitize(marked.parse(tab.content));
-        } else {
-            mdDiv.textContent = tab.content;
-        }
+        this._renderMarkdownContent(mdDiv, tab.content);
 
         toggle.addEventListener('click', () => {
             showSource = !showSource;
@@ -445,9 +463,7 @@ const FileBrowser = {
                 mdDiv.className = '';
             } else {
                 mdDiv.className = 'file-markdown-viewer';
-                if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
-                    mdDiv.innerHTML = DOMPurify.sanitize(marked.parse(tab.content));
-                }
+                this._renderMarkdownContent(mdDiv, tab.content);
             }
         });
 

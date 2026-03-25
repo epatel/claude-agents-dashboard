@@ -1,16 +1,25 @@
 /* File Browser Dialog */
 
+#file-browser-dialog {
+    width: 95vw;
+    max-width: 1600px;
+}
+
+#file-browser-dialog .modal-content {
+    max-height: 88vh;
+}
+
 .file-browser-modal {
-    width: 90vw;
-    max-width: 1400px;
-    height: 85vh;
+    width: 95vw !important;
+    max-width: 1600px;
+    height: 88vh;
     display: flex;
     flex-direction: column;
 }
 
 .file-browser-container {
     display: grid;
-    grid-template-columns: minmax(200px, 300px) 1fr;
+    grid-template-columns: minmax(240px, 350px) 1fr;
     flex: 1;
     min-height: 0;
     overflow: hidden;
@@ -306,6 +315,28 @@
 
 .file-markdown-viewer a {
     color: var(--accent);
+}
+
+.file-markdown-viewer table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+}
+
+.file-markdown-viewer th,
+.file-markdown-viewer td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+}
+
+.file-markdown-viewer th {
+    background: var(--bg-secondary);
+    font-weight: 600;
+}
+
+.file-markdown-viewer tr:nth-child(even) {
+    background: var(--bg-hover);
 }
 
 .file-markdown-toggle {
