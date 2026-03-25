@@ -141,10 +141,10 @@ async def _get_optimized_stats(db, orchestrator):
         stats_data = {
             "usage": {
                 "total_cost_usd": round(total_cost_usd or 0.0, 4),
-                "total_messages": main_row[7] if main_row else sum(message_counts.values()),
-                "agent_messages": main_row[8] if main_row else message_counts.get('agent_message', 0),
-                "tool_calls": main_row[9] if main_row else message_counts.get('tool_use', 0),
-                "completed_today": main_row[6] if main_row else 0,
+                "total_messages": main_row[6] if main_row else sum(message_counts.values()),
+                "agent_messages": main_row[7] if main_row else message_counts.get('agent_message', 0),
+                "tool_calls": main_row[8] if main_row else message_counts.get('tool_use', 0),
+                "completed_today": main_row[5] if main_row else 0,
                 "total_tokens": total_tokens,
                 "input_tokens": total_input_tokens,
                 "output_tokens": total_output_tokens
