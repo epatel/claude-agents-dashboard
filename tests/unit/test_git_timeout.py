@@ -71,7 +71,7 @@ async def test_run_git_uses_default_timeout_for_other_operations():
 @pytest.mark.asyncio
 async def test_merge_branch_handles_timeout():
     """Test that merge_branch propagates timeout errors."""
-    with patch('src.git.operations.get_main_branch', return_value="main"):
+    with patch('src.git.operations.get_current_branch', return_value="main"):
         with patch('src.git.operations.run_git') as mock_run_git:
             # First call (checkout) succeeds, second call (merge) times out,
             # third call (merge --abort) succeeds
@@ -86,7 +86,7 @@ async def test_merge_branch_handles_timeout():
 @pytest.mark.asyncio
 async def test_merge_branch_aborts_on_timeout():
     """Test that merge_branch calls merge --abort when timeout occurs."""
-    with patch('src.git.operations.get_main_branch', return_value="main"):
+    with patch('src.git.operations.get_current_branch', return_value="main"):
         with patch('src.git.operations.run_git') as mock_run_git:
             # Checkout succeeds, merge times out, abort succeeds
             mock_run_git.side_effect = [

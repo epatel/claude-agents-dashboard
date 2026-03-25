@@ -341,8 +341,9 @@ async def get_item_diff(request: Request, item_id: str):
 
     repo = request.app.state.target_project
     wt = Path(item["worktree_path"]) if item.get("worktree_path") else None
-    diff = await get_diff(repo, item["branch_name"], worktree_path=wt)
-    files = await get_changed_files(repo, item["branch_name"], worktree_path=wt)
+    base = item.get("base_branch")
+    diff = await get_diff(repo, item["branch_name"], base=base, worktree_path=wt)
+    files = await get_changed_files(repo, item["branch_name"], base=base, worktree_path=wt)
     return {"diff": diff, "files": files}
 
 
