@@ -37,6 +37,25 @@ class AgentOrchestrator:
         self._last_agent_messages: dict[str, str] = {}  # item_id -> last agent text
         self._commit_messages: dict[str, str] = {}  # item_id -> commit message from tool
 
+    async def _cleanup_session(self, item_id: str) -> None:
+        """Cancel and clean up any running agent session for an item."""
+        session = self.sessions.pop(item_id, None)
+        agent_task = self._agent_tasks.pop(item_id, None)
+        self._last_agent_messages.pop(item_id, None)
+
+        if session:
+            try:
+                await session.cancel()
+            except Exception:
+                pass
+
+        if agent_task and not agent_task.done():
+            agent_task.cancel()
+            try:
+                await agent_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
     async def _on_clarify(self, item_id: str, prompt: str, choices: list[str] | None) -> str:
         """Called when agent uses ask_user tool. Blocks until user responds."""
         # Move item to clarify
@@ -194,6 +213,9 @@ class AgentOrchestrator:
 
     async def start_agent(self, item_id: str) -> dict:
         """Start an agent for an item. Creates worktree, launches agent."""
+        # Clean up any existing session for this item
+        await self._cleanup_session(item_id)
+
         # Get item
         async with self.db.connect() as conn:
             cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
@@ -311,19 +333,7 @@ class AgentOrchestrator:
 
     async def cancel_agent(self, item_id: str) -> dict:
         """Cancel a running agent."""
-        session = self.sessions.pop(item_id, None)
-        agent_task = self._agent_tasks.pop(item_id, None)
-
-        if session:
-            await session.cancel()
-
-        # Cancel the _run_agent background task to prevent error/complete callbacks
-        if agent_task and not agent_task.done():
-            agent_task.cancel()
-            try:
-                await agent_task
-            except (asyncio.CancelledError, Exception):
-                pass
+        await self._cleanup_session(item_id)
 
         await self._log(item_id, "system", "Agent cancelled by user")
         return await self._update_item(
@@ -334,10 +344,7 @@ class AgentOrchestrator:
 
     async def retry_agent(self, item_id: str) -> dict:
         """Retry a failed agent — restart from scratch in existing worktree."""
-        # Cancel any existing session
-        session = self.sessions.pop(item_id, None)
-        if session:
-            await session.cancel()
+        await self._cleanup_session(item_id)
 
         async with self.db.connect() as conn:
             cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
@@ -398,6 +405,9 @@ class AgentOrchestrator:
 
     async def request_changes(self, item_id: str, comments: list[str]) -> dict:
         """Send review comments back to the agent."""
+        # Clean up any existing session before starting a new one
+        await self._cleanup_session(item_id)
+
         async with self.db.connect() as conn:
             # Store comments
             for comment in comments:
@@ -441,6 +451,9 @@ class AgentOrchestrator:
 
     async def cancel_review(self, item_id: str) -> dict:
         """Cancel a review - discard changes and move item back to todo."""
+        # Clean up any running agent session (e.g., from request_changes)
+        await self._cleanup_session(item_id)
+
         async with self.db.connect() as conn:
             cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
             item = dict(await cursor.fetchone())
@@ -567,17 +580,9 @@ class AgentOrchestrator:
 
     async def shutdown(self):
         """Gracefully stop all running agents."""
-        for item_id, session in list(self.sessions.items()):
+        item_ids = list(set(list(self.sessions.keys()) + list(self._agent_tasks.keys())))
+        for item_id in item_ids:
             try:
-                await session.cancel()
+                await self._cleanup_session(item_id)
             except Exception:
                 pass
-        for item_id, task in list(self._agent_tasks.items()):
-            if not task.done():
-                task.cancel()
-                try:
-                    await task
-                except (asyncio.CancelledError, Exception):
-                    pass
-        self.sessions.clear()
-        self._agent_tasks.clear()

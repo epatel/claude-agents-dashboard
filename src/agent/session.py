@@ -222,9 +222,12 @@ class AgentSession:
                 await self.on_error(str(e))
         finally:
             # Clean up client connection within the correct task context
-            if self.client:
+            # (cancel() may have already set self.client = None)
+            client = self.client
+            self.client = None
+            if client:
                 try:
-                    await self.client.disconnect()
+                    await client.disconnect()
                 except Exception:
                     # Ignore disconnect errors during cleanup
                     pass
@@ -238,25 +241,23 @@ class AgentSession:
         """Cancel the running agent."""
         self._cancelled = True
 
-        # First, cancel the receive loop task if it's running
-        # This allows the _receive_loop to handle client cleanup in its own task context
+        # Disconnect the client FIRST to terminate the subprocess,
+        # before cancelling the receive loop task.
+        # This ensures the subprocess is killed even if task cancellation
+        # interferes with cleanup in the finally block.
+        if self.client:
+            try:
+                await self.client.disconnect()
+            except Exception:
+                pass
+            self.client = None
+
+        # Then cancel the receive loop task
         if self._task and not self._task.done():
             self._task.cancel()
             try:
                 await self._task
             except (asyncio.CancelledError, Exception):
-                pass
-
-        # If the client is still connected after task cancellation, disconnect it
-        if self.client:
-            try:
-                await self.client.interrupt()
-            except Exception:
-                pass
-            try:
-                await self.client.disconnect()
-            except Exception:
-                # Ignore disconnect errors - the task cancellation may have already handled this
                 pass
 
     async def disconnect(self) -> None:
