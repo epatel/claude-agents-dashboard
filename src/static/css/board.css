@@ -48,8 +48,6 @@
     padding: 1px 7px;
     border-radius: 10px;
     font-weight: 500;
-    position: relative;
-    z-index: 2;
 }
 
 .btn-plus {

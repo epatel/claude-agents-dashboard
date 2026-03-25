@@ -306,7 +306,7 @@ body {
     padding: 8px 12px;
     background: var(--bg-hover);
     border-radius: var(--radius-sm);
-    border-left: 3px solid var(--primary);
+    border-left: 3px solid var(--accent);
     font-size: 0.9em;
     color: var(--text-muted);
 }
@@ -662,6 +662,14 @@ body {
 .review-tab.active {
     color: var(--accent);
     border-bottom-color: var(--accent);
+}
+
+/* Ensure count badges inside tabs don't overlap with tab borders */
+.review-tab .column-count {
+    position: static;
+    z-index: auto;
+    vertical-align: middle;
+    margin-left: 4px;
 }
 
 .review-content {
