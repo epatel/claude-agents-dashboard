@@ -399,3 +399,7 @@ If agents seem stuck or unresponsive, check the work log in the UI for error mes
 ## Multiple projects
 
 Each project gets its own server instance. Run `run.sh` from different repos — ports auto-increment (8000, 8001, 8002, ...).
+
+## License
+
+[MIT](LICENSE)
