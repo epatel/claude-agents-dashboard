@@ -13,7 +13,6 @@ from claude_agent_sdk import (
     ResultMessage,
     StreamEvent,
     TextBlock,
-    ImageBlock,
     ToolUseBlock,
     ToolResultBlock,
     ThinkingBlock,
@@ -161,52 +160,25 @@ class AgentSession:
         await self.client.connect()
         self._task = asyncio.create_task(self._receive_loop())
 
-        # Create message with text and optional images
-        message_content = [TextBlock(text=prompt)]
-
-        # Add image attachments if provided
+        # Copy attachments into worktree and reference in prompt
         if attachments:
-            import base64
+            import shutil
+            attachment_refs = []
             for attachment in attachments:
                 try:
-                    # Read the image file and encode as base64
                     asset_path = Path(attachment["asset_path"])
                     if asset_path.exists():
-                        image_data = base64.b64encode(asset_path.read_bytes()).decode('utf-8')
-                        # Detect image format from file extension
-                        format_map = {
-                            '.png': 'image/png',
-                            '.jpg': 'image/jpeg',
-                            '.jpeg': 'image/jpeg',
-                            '.gif': 'image/gif',
-                            '.webp': 'image/webp'
-                        }
-                        media_type = format_map.get(asset_path.suffix.lower(), 'image/png')
-
-                        message_content.append(ImageBlock(
-                            source={
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": image_data
-                            },
-                            alt_text=f"Attached image: {attachment['filename']}"
-                        ))
-                        logger.info(f"Added attachment to message: {attachment['filename']}")
+                        dest = self.worktree_path / attachment["filename"]
+                        shutil.copy2(asset_path, dest)
+                        attachment_refs.append(str(dest))
+                        logger.info(f"Copied attachment to worktree: {attachment['filename']}")
                 except Exception as e:
-                    logger.warning(f"Failed to attach image {attachment.get('filename', 'unknown')}: {e}")
+                    logger.warning(f"Failed to copy attachment {attachment.get('filename', 'unknown')}: {e}")
+            if attachment_refs:
+                prompt += "\n\nAttached reference images (use Read tool to view):\n"
+                prompt += "\n".join(f"- {ref}" for ref in attachment_refs)
 
-        # Send the message with text and images
-        if len(message_content) == 1:
-            # Text-only case, use existing query method
-            await self.client.query(prompt)
-        else:
-            # Text with images - try sending content directly
-            try:
-                await self.client.query(message_content)
-            except Exception as e:
-                # Fallback to text-only if image sending fails
-                logger.warning(f"Failed to send images to agent: {e}")
-                await self.client.query(prompt)
+        await self.client.query(prompt)
 
     async def _receive_loop(self) -> None:
         """Process messages from the agent."""
