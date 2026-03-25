@@ -95,7 +95,7 @@
     height: 3px;
     background: var(--accent);
     border-radius: 2px;
-    margin: 2px 0 2px 4px;
+    margin: 2px 0 2px 0px;
     pointer-events: none;
     box-shadow: 0 0 4px var(--accent);
     z-index: 1;
