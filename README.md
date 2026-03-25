@@ -52,12 +52,15 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items
 - **Custom commit messages** — agents set meaningful commit messages via MCP tool, used when merging
 - **Cost tracking** — agent completion logs USD cost for each task
+- **Retry & cancel** — cancel a running agent or retry a failed one; retries reuse the existing worktree
 - **Session persistence** — request changes resumes the agent's conversation with full context
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
 - **Per-item model selection** — override the default model on individual items (falls back to global config)
 - **Agent config** — set system prompt, model, project context, and MCP servers
 - **MCP support** — connect external tools and data sources via Model Context Protocol
+- **Merge conflict detection** — merge conflicts abort cleanly, keeping the worktree intact for resolution
+- **Item cleanup** — deleting an item stops running agents, removes worktrees and branches, and cleans up attachment files
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture
