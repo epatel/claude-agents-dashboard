@@ -187,3 +187,52 @@ class TestScanDirectory:
         assert src["path"] == "src"
         main = next(c for c in src["children"] if c["name"] == "main.py")
         assert main["path"] == "src/main.py"
+
+
+class TestReadFileContent:
+    """Tests for file content reading."""
+
+    def test_reads_text_file(self, tmp_path):
+        from src.web.file_routes import read_file_content
+        (tmp_path / "hello.py").write_text("print('hello')")
+        result = read_file_content(tmp_path / "hello.py", "hello.py")
+        assert result["content"] == "print('hello')"
+        assert result["binary"] is False
+        assert result["language"] == "python"
+        assert result["lines"] == 1
+
+    def test_detects_binary_file(self, tmp_path):
+        from src.web.file_routes import read_file_content
+        (tmp_path / "data.bin").write_bytes(b"\x00\x01\x02\xff\xfe")
+        result = read_file_content(tmp_path / "data.bin", "data.bin")
+        assert result["binary"] is True
+        assert result["content"] is None
+
+    def test_reads_image_as_base64(self, tmp_path):
+        from src.web.file_routes import read_file_content
+        png_data = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+            b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00"
+            b"\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00"
+            b"\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        (tmp_path / "pixel.png").write_bytes(png_data)
+        result = read_file_content(tmp_path / "pixel.png", "pixel.png")
+        assert result["binary"] is True
+        assert result["content"].startswith("data:image/png;base64,")
+        assert result["mime_type"] == "image/png"
+
+    def test_truncates_large_text(self, tmp_path):
+        from src.web.file_routes import read_file_content
+        large = "x" * 2_000_000
+        (tmp_path / "big.txt").write_text(large)
+        result = read_file_content(tmp_path / "big.txt", "big.txt")
+        assert result["truncated"] is True
+        assert len(result["content"]) <= 1_000_001
+
+    def test_secret_file_hidden(self, tmp_path):
+        from src.web.file_routes import read_file_content
+        (tmp_path / ".env").write_text("SECRET_KEY=abc123")
+        result = read_file_content(tmp_path / ".env", ".env")
+        assert result["hidden"] is True
+        assert result["content"] is None

@@ -105,6 +105,59 @@ def scan_directory(dir_path: Path, project_root: Path, depth: int) -> list[dict]
     return entries
 
 
+# --- File content reading ---
+
+def read_file_content(file_path: Path, rel_path: str) -> dict:
+    """Read file content and return metadata."""
+    filename = file_path.name
+    size = file_path.stat().st_size
+
+    if is_secret_file(filename):
+        return {
+            "path": rel_path, "content": None, "size": size,
+            "language": None, "binary": False, "hidden": True,
+            "reason": "Hidden for security",
+        }
+
+    ext = file_path.suffix.lower()
+
+    if ext in FILE_BROWSER_IMAGE_EXTENSIONS:
+        mime_type = FILE_BROWSER_IMAGE_MIME_TYPES.get(ext, "application/octet-stream")
+        if size > FILE_BROWSER_MAX_IMAGE_SIZE:
+            return {
+                "path": rel_path, "content": None, "size": size,
+                "language": None, "binary": True, "mime_type": mime_type,
+            }
+        raw = file_path.read_bytes()
+        b64 = base64.b64encode(raw).decode("ascii")
+        return {
+            "path": rel_path, "content": f"data:{mime_type};base64,{b64}",
+            "size": size, "language": None, "binary": True, "mime_type": mime_type,
+        }
+
+    try:
+        raw = file_path.read_bytes()
+        text = raw.decode("utf-8")
+    except (UnicodeDecodeError, ValueError):
+        mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        return {
+            "path": rel_path, "content": None, "size": size,
+            "language": None, "binary": True, "mime_type": mime_type,
+        }
+
+    truncated = False
+    if len(text) > FILE_BROWSER_MAX_TEXT_SIZE:
+        text = text[:FILE_BROWSER_MAX_TEXT_SIZE]
+        truncated = True
+
+    return {
+        "path": rel_path, "content": text, "size": size,
+        "lines": text.count("\n") + (1 if text else 0),
+        "language": detect_language(filename), "binary": False,
+        "truncated": truncated,
+    }
+
+
 # --- Endpoints ---
 
 @file_router.get("/tree")
@@ -124,3 +177,23 @@ async def get_file_tree(request: Request, path: str = ""):
 
     tree = await asyncio.to_thread(scan_directory, scan_path, project_root, FILE_BROWSER_TREE_DEPTH)
     return {"root": str(project_root), "tree": tree}
+
+
+@file_router.get("/content")
+async def get_file_content(request: Request, path: str):
+    """Return the content of a file in the target project."""
+    project_root = Path(request.app.state.target_project)
+
+    try:
+        file_path = validate_file_browser_path(path, project_root)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    if not file_path.exists():
+        return JSONResponse({"error": f"File not found: {path}"}, status_code=404)
+
+    if not file_path.is_file():
+        return JSONResponse({"error": f"Not a file: {path}"}, status_code=400)
+
+    result = await asyncio.to_thread(read_file_content, file_path, path)
+    return result
