@@ -381,26 +381,47 @@ async def get_stats(request: Request):
     orchestrator = request.app.state.orchestrator
 
     async with db.connect() as conn:
-        # Get total cost from work log entries
+        # Get usage statistics from token_usage table (preferred) and fallback to work log
         cursor = await conn.execute("""
-            SELECT SUM(
-                CASE
-                    WHEN content LIKE 'Agent completed (cost: $%' THEN
-                        CAST(
-                            SUBSTR(
-                                SUBSTR(content, INSTR(content, '$') + 1),
-                                1,
-                                INSTR(SUBSTR(content, INSTR(content, '$') + 1), ')') - 1
-                            ) AS REAL
-                        )
-                    ELSE 0
-                END
-            ) as total_cost
-            FROM work_log
-            WHERE entry_type = 'system' AND content LIKE 'Agent completed%'
+            SELECT
+                SUM(COALESCE(cost_usd, 0)) as total_cost,
+                SUM(COALESCE(input_tokens, 0)) as total_input_tokens,
+                SUM(COALESCE(output_tokens, 0)) as total_output_tokens,
+                SUM(COALESCE(total_tokens, 0)) as total_tokens
+            FROM token_usage
         """)
         row = await cursor.fetchone()
-        total_cost_usd = row[0] if row and row[0] else 0.0
+
+        # Use token_usage table data if available
+        if row and row[0] is not None:
+            total_cost_usd = row[0] or 0.0
+            total_input_tokens = row[1] or 0
+            total_output_tokens = row[2] or 0
+            total_tokens = row[3] or 0
+        else:
+            # Fallback to parsing work log entries for cost
+            cursor = await conn.execute("""
+                SELECT SUM(
+                    CASE
+                        WHEN content LIKE 'Agent completed (cost: $%' THEN
+                            CAST(
+                                SUBSTR(
+                                    SUBSTR(content, INSTR(content, '$') + 1),
+                                    1,
+                                    INSTR(SUBSTR(content, INSTR(content, '$') + 1), ')') - 1
+                                ) AS REAL
+                            )
+                        ELSE 0
+                    END
+                ) as total_cost
+                FROM work_log
+                WHERE entry_type = 'system' AND content LIKE 'Agent completed%'
+            """)
+            row = await cursor.fetchone()
+            total_cost_usd = row[0] if row and row[0] else 0.0
+            total_input_tokens = 0
+            total_output_tokens = 0
+            total_tokens = 0
 
         # Count total messages by type
         cursor = await conn.execute("""
@@ -461,7 +482,10 @@ async def get_stats(request: Request):
             "total_messages": sum(message_counts.values()),
             "agent_messages": agent_messages,
             "tool_calls": tool_calls,
-            "completed_today": completed_today
+            "completed_today": completed_today,
+            "total_tokens": total_tokens,
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens
         },
         "activity": {
             "active_agents": active_agents,

@@ -282,9 +282,21 @@ class AgentOrchestrator:
         self.sessions.pop(item_id, None)
         self._last_agent_messages.pop(item_id, None)
 
+        # Save token usage statistics
+        await self._save_token_usage(item_id, result)
+
         if result.success:
-            await self._log(item_id, "system",
-                           f"Agent completed (cost: ${result.cost_usd:.4f})" if result.cost_usd else "Agent completed")
+            # Create enhanced log message with both cost and token info
+            log_parts = ["Agent completed"]
+            if result.cost_usd:
+                log_parts.append(f"cost: ${result.cost_usd:.4f}")
+            if result.total_tokens:
+                log_parts.append(f"tokens: {result.total_tokens:,}")
+            elif result.input_tokens and result.output_tokens:
+                log_parts.append(f"tokens: {result.input_tokens + result.output_tokens:,}")
+
+            log_message = f"{log_parts[0]} ({', '.join(log_parts[1:])})" if len(log_parts) > 1 else log_parts[0]
+            await self._log(item_id, "system", log_message)
 
             # Use commit message set via the set_commit_message tool
             commit_message = self._commit_messages.pop(item_id, None)
@@ -467,6 +479,27 @@ class AgentOrchestrator:
 
         # The _on_clarify callback handles moving item back to doing
         return {"ok": True}
+
+    async def _save_token_usage(self, item_id: str, result: AgentResult):
+        """Save token usage statistics to the database."""
+        # Only save if we have meaningful data
+        if not any([result.input_tokens, result.output_tokens, result.total_tokens, result.cost_usd]):
+            return
+
+        async with self.db.connect() as conn:
+            await conn.execute("""
+                INSERT INTO token_usage
+                (item_id, session_id, input_tokens, output_tokens, total_tokens, cost_usd)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                item_id,
+                result.session_id,
+                result.input_tokens,
+                result.output_tokens,
+                result.total_tokens,
+                result.cost_usd
+            ))
+            await conn.commit()
 
     async def shutdown(self):
         """Gracefully stop all running agents."""

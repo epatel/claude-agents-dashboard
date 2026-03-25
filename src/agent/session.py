@@ -27,6 +27,9 @@ class AgentResult:
     session_id: str | None = None
     error: str | None = None
     cost_usd: float | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
 
 
 class AgentSession:
@@ -152,11 +155,39 @@ class AgentSession:
                                 await self.on_tool_use(block.name, block.input)
 
                 elif isinstance(message, ResultMessage):
+                    # Extract token usage if available
+                    input_tokens = None
+                    output_tokens = None
+                    total_tokens = None
+
+                    # Try to get token data from different possible field names
+                    for field_name in ['input_tokens', 'input_token_count']:
+                        if hasattr(message, field_name):
+                            input_tokens = getattr(message, field_name)
+                            break
+
+                    for field_name in ['output_tokens', 'output_token_count']:
+                        if hasattr(message, field_name):
+                            output_tokens = getattr(message, field_name)
+                            break
+
+                    for field_name in ['total_tokens', 'total_token_count']:
+                        if hasattr(message, field_name):
+                            total_tokens = getattr(message, field_name)
+                            break
+
+                    # Calculate total if not provided but components are
+                    if total_tokens is None and input_tokens is not None and output_tokens is not None:
+                        total_tokens = input_tokens + output_tokens
+
                     result = AgentResult(
                         success=not message.is_error,
                         session_id=message.session_id,
                         cost_usd=message.total_cost_usd,
                         error=message.result if message.is_error else None,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        total_tokens=total_tokens,
                     )
                     if self.on_complete:
                         await self.on_complete(result)
