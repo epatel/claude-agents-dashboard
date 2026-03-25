@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Work Log Fix Test</title>
+    <style>
+        .test-section { margin: 20px; border: 1px solid #ccc; padding: 10px; }
+        .log-entry { margin: 5px 0; padding: 5px; background: #f5f5f5; }
+        .pass { color: green; font-weight: bold; }
+        .fail { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Work Log Cross-Contamination Fix Test</h1>
+
+    <div class="test-section">
+        <h2>Test Scenario</h2>
+        <p>This tests that work log updates only appear in dialogs for the correct item.</p>
+
+        <div id="results">
+            <h3>Test Results:</h3>
+            <ul id="test-results"></ul>
+        </div>
+
+        <button onclick="runTests()">Run Tests</button>
+    </div>
+
+    <div class="test-section">
+        <h2>Mock Dialog for Item A</h2>
+        <div id="detail-log"></div>
+        <div id="review-log"></div>
+    </div>
+
+    <script>
+        // Mock the Dialogs object with our fixed logic
+        const Dialogs = {
+            _currentItemId: null,
+            renderMarkdown: (text) => text // Simple mock
+        };
+
+        // Mock the fixed appendLog function from app.js
+        function appendLog(data) {
+            // Only append logs if they're for the currently open item
+            if (!data.item_id || !Dialogs._currentItemId || data.item_id !== Dialogs._currentItemId) {
+                return; // Skip logs for other items
+            }
+
+            // Append to detail dialog log if it's open for this item
+            const detailLogEl = document.getElementById('detail-log');
+            if (detailLogEl) {
+                const entry = document.createElement('div');
+                entry.className = `log-entry log-entry-${data.entry_type}`;
+                entry.innerHTML = `<span class="log-meta">[${data.entry_type}]</span> <div class="log-content">${Dialogs.renderMarkdown(data.content)}</div>`;
+                detailLogEl.appendChild(entry);
+            }
+
+            // Also append to review dialog log if it's open for this item
+            const reviewLogEl = document.getElementById('review-log');
+            if (reviewLogEl) {
+                const entry = document.createElement('div');
+                entry.className = `log-entry log-entry-${data.entry_type}`;
+                entry.innerHTML = `<span class="log-meta">[${data.entry_type}]</span> <div class="log-content">${Dialogs.renderMarkdown(data.content)}</div>`;
+                reviewLogEl.appendChild(entry);
+            }
+        }
+
+        function addResult(testName, passed, message) {
+            const li = document.createElement('li');
+            li.innerHTML = `<span class="${passed ? 'pass' : 'fail'}">${passed ? 'PASS' : 'FAIL'}</span> ${testName}: ${message}`;
+            document.getElementById('test-results').appendChild(li);
+        }
+
+        function runTests() {
+            // Clear previous results
+            document.getElementById('test-results').innerHTML = '';
+            document.getElementById('detail-log').innerHTML = '';
+            document.getElementById('review-log').innerHTML = '';
+
+            // Test 1: No dialog open - logs should be ignored
+            Dialogs._currentItemId = null;
+            appendLog({ item_id: 'item-123', entry_type: 'info', content: 'Test message 1' });
+
+            const logEmpty = document.getElementById('detail-log').children.length === 0;
+            addResult('No dialog open', logEmpty, 'Logs correctly ignored when no dialog is open');
+
+            // Test 2: Dialog open for different item - logs should be ignored
+            Dialogs._currentItemId = 'item-456';
+            appendLog({ item_id: 'item-123', entry_type: 'info', content: 'Test message 2' });
+
+            const logStillEmpty = document.getElementById('detail-log').children.length === 0;
+            addResult('Wrong item dialog', logStillEmpty, 'Logs correctly ignored for different item');
+
+            // Test 3: Dialog open for correct item - logs should appear
+            Dialogs._currentItemId = 'item-123';
+            appendLog({ item_id: 'item-123', entry_type: 'info', content: 'Test message 3' });
+
+            const logHasEntry = document.getElementById('detail-log').children.length === 1;
+            const logContent = logHasEntry && document.getElementById('detail-log').children[0].textContent.includes('Test message 3');
+            addResult('Correct item dialog', logHasEntry && logContent, 'Logs correctly appear for matching item');
+
+            // Test 4: Missing item_id in log data - should be ignored
+            appendLog({ entry_type: 'info', content: 'Test message 4 (no item_id)' });
+
+            const logStillOne = document.getElementById('detail-log').children.length === 1;
+            addResult('Missing item_id', logStillOne, 'Logs without item_id correctly ignored');
+
+            // Test 5: Both detail and review logs should receive the same entry
+            const reviewHasEntry = document.getElementById('review-log').children.length === 1;
+            const reviewContent = reviewHasEntry && document.getElementById('review-log').children[0].textContent.includes('Test message 3');
+            addResult('Both dialogs updated', reviewHasEntry && reviewContent, 'Both detail and review logs updated for correct item');
+        }
+    </script>
+</body>
+</html>
