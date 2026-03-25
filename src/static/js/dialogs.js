@@ -123,6 +123,11 @@ const Dialogs = {
         this.setAnnotateTool('select');
         this._annotateTarget = 'new-item';
         this.open('annotate-dialog');
+
+        // Focus canvas after a brief delay to ensure dialog is fully open
+        setTimeout(() => {
+            canvas.focus();
+        }, 100);
     },
 
     async submitItem(event) {
@@ -565,6 +570,11 @@ const Dialogs = {
         this.setAnnotateTool('select');
         this._annotateTarget = null;
         this.open('annotate-dialog');
+
+        // Focus canvas after a brief delay to ensure dialog is fully open
+        setTimeout(() => {
+            canvas.focus();
+        }, 100);
     },
 
     setAnnotateTool(tool) {

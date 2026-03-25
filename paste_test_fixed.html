@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fixed Paste Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        dialog {
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            padding: 0;
+            width: min(900px, 95vw);
+            max-height: 95vh;
+        }
+        .modal-content {
+            padding: 20px;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .btn-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .annotate-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .annotate-tools {
+            display: flex;
+            gap: 5px;
+        }
+        .annotate-options {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .annotate-hint {
+            font-size: 12px;
+            color: #666;
+        }
+        .btn {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            background: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .btn:hover {
+            background: #f0f0f0;
+        }
+        .btn.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 11px;
+        }
+        .annotate-tool {
+            min-width: 30px;
+        }
+        .annotate-canvas-wrap {
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+            margin-bottom: 15px;
+        }
+        canvas {
+            display: block;
+            background: #f9f9f9;
+        }
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        .btn-primary {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .debug-log {
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 11px;
+            height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-top: 20px;
+        }
+        .test-instructions {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .test-instructions h3 {
+            margin: 0 0 10px 0;
+            color: #0056b3;
+        }
+        .test-instructions ol {
+            margin: 10px 0 0 20px;
+        }
+        .test-instructions li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Fixed Paste Functionality Test</h1>
+
+        <div class="test-instructions">
+            <h3>Test Instructions:</h3>
+            <ol>
+                <li>Copy an image to your clipboard (right-click an image → Copy, or screenshot)</li>
+                <li>Click "Open Annotation Dialog" below</li>
+                <li>Try any of these paste methods:
+                    <ul>
+                        <li>Click the "📋 Paste" button</li>
+                        <li>Press Ctrl+V (or Cmd+V on Mac)</li>
+                        <li>Right-click and paste (if browser supports it)</li>
+                    </ul>
+                </li>
+                <li>Check the debug log below for detailed information</li>
+            </ol>
+        </div>
+
+        <button class="btn btn-primary" onclick="openTestDialog()">Open Annotation Dialog</button>
+        <button class="btn" onclick="clearLog()">Clear Debug Log</button>
+
+        <div class="debug-log" id="debug-log"></div>
+    </div>
+
+    <!-- Test annotation dialog with fixed paste functionality -->
+    <dialog id="annotate-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Annotate Image (Fixed)</h3>
+                <button class="btn-close" onclick="closeTestDialog()">&times;</button>
+            </div>
+            <div class="annotate-toolbar">
+                <div class="annotate-tools">
+                    <button class="btn btn-sm annotate-tool active" data-tool="select" onclick="setTool('select')" title="Select / Move">▶</button>
+                    <button class="btn btn-sm annotate-tool" data-tool="arrow" onclick="setTool('arrow')" title="Arrow">→</button>
+                    <button class="btn btn-sm annotate-tool" data-tool="circle" onclick="setTool('circle')" title="Circle">○</button>
+                    <button class="btn btn-sm annotate-tool" data-tool="rect" onclick="setTool('rect')" title="Rectangle">□</button>
+                    <button class="btn btn-sm annotate-tool" data-tool="text" onclick="setTool('text')" title="Text">T</button>
+                </div>
+                <div class="annotate-options">
+                    <input type="color" id="annotate-color" value="#ff3b30" onchange="Annotate.color = this.value" title="Color">
+                    <select id="annotate-line-width" onchange="Annotate.lineWidth = +this.value" title="Line width">
+                        <option value="2">Thin</option>
+                        <option value="3" selected>Medium</option>
+                        <option value="5">Thick</option>
+                    </select>
+                    <button class="btn btn-sm" onclick="Annotate.pasteFromClipboard()" title="Paste image from clipboard">📋 Paste</button>
+                </div>
+                <div class="annotate-hint">Drop images onto the canvas, paste from clipboard, or use the Paste button</div>
+            </div>
+            <div class="annotate-canvas-wrap">
+                <canvas id="annotate-canvas" width="850" height="400"></canvas>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn" onclick="Annotate.clear()">Clear</button>
+                <button type="button" class="btn" onclick="closeTestDialog()">Close</button>
+                <button type="button" class="btn btn-primary" onclick="saveAnnotation()">Save</button>
+            </div>
+        </div>
+    </dialog>
+
+    <script>
+        let debugMessages = [];
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] [${type.toUpperCase()}] ${message}`;
+            debugMessages.push(logEntry);
+
+            const logEl = document.getElementById('debug-log');
+            logEl.textContent = debugMessages.slice(-100).join('\n'); // Keep last 100 entries
+            logEl.scrollTop = logEl.scrollHeight;
+
+            console.log(logEntry);
+        }
+
+        function clearLog() {
+            debugMessages = [];
+            document.getElementById('debug-log').textContent = '';
+            log('Debug log cleared');
+        }
+
+        function openTestDialog() {
+            log('Opening annotation dialog...');
+            const canvas = document.getElementById('annotate-canvas');
+            Annotate.init(canvas);
+            setTool('select');
+
+            const dialog = document.getElementById('annotate-dialog');
+            dialog.showModal();
+
+            // Focus canvas after dialog opens
+            setTimeout(() => {
+                canvas.focus();
+                log('Dialog opened and canvas focused');
+            }, 100);
+        }
+
+        function closeTestDialog() {
+            log('Closing annotation dialog...');
+            const dialog = document.getElementById('annotate-dialog');
+            dialog.close();
+            Annotate.cleanup();
+        }
+
+        function setTool(tool) {
+            Annotate.tool = tool;
+            document.querySelectorAll('.annotate-tool').forEach(b => {
+                b.classList.toggle('active', b.dataset.tool === tool);
+            });
+            log(`Selected tool: ${tool}`);
+        }
+
+        function saveAnnotation() {
+            log('Saving annotation...');
+            const dataUrl = Annotate.toDataURL();
+            log(`Generated annotation data URL (length: ${dataUrl.length})`);
+            // In real app, this would upload the image
+            alert('Annotation saved! Check console for data URL.');
+        }
+
+        // Override console.log to also show in our debug area
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            if (args[0] && typeof args[0] === 'string' && args[0].includes('Paste')) {
+                log(args.join(' '), 'debug');
+            }
+        };
+
+        // Initialize
+        log('Test page loaded, ready to test paste functionality');
+    </script>
+
+    <!-- Include the fixed annotate.js -->
+    <script src="/static/js/annotate.js"></script>
+</body>
+</html>

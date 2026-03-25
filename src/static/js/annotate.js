@@ -27,6 +27,10 @@ const Annotate = {
         this.tool = 'select';
         this._setupEvents();
         this.render();
+
+        // Enable debugging by default to help troubleshoot paste issues
+        window.ANNOTATE_DEBUG = true;
+        if (window.ANNOTATE_DEBUG) console.log('Annotate canvas initialized, debugging enabled');
     },
 
     clear() {
@@ -42,6 +46,116 @@ const Annotate = {
             this._pasteHandler = null;
         }
         this._eventsAttached = false;
+    },
+
+    // Enhanced dialog detection that works across different browsers and states
+    _isAnnotateDialogOpen() {
+        const dialog = document.getElementById('annotate-dialog');
+        if (!dialog) {
+            if (window.ANNOTATE_DEBUG) console.log('Paste: Dialog element not found');
+            return false;
+        }
+
+        // Check multiple ways the dialog could be open
+        const isOpen = dialog.open ||
+                      dialog.hasAttribute('open') ||
+                      (dialog.style.display !== 'none' && dialog.style.display !== '') ||
+                      dialog.offsetParent !== null ||
+                      getComputedStyle(dialog).display !== 'none';
+
+        if (window.ANNOTATE_DEBUG) {
+            console.log('Dialog state check:', {
+                element: !!dialog,
+                open: dialog.open,
+                hasOpenAttr: dialog.hasAttribute('open'),
+                styleDisplay: dialog.style.display,
+                offsetParent: !!dialog.offsetParent,
+                computedDisplay: getComputedStyle(dialog).display,
+                finalIsOpen: isOpen
+            });
+        }
+
+        return isOpen;
+    },
+
+    // Manual paste function that can be called by a button
+    async pasteFromClipboard() {
+        if (window.ANNOTATE_DEBUG) console.log('Manual paste triggered');
+
+        try {
+            // Try modern Clipboard API first
+            if (navigator.clipboard && navigator.clipboard.read) {
+                if (window.ANNOTATE_DEBUG) console.log('Using modern Clipboard API');
+                const clipboardItems = await navigator.clipboard.read();
+
+                for (const item of clipboardItems) {
+                    if (window.ANNOTATE_DEBUG) console.log('Clipboard item types:', Array.from(item.types));
+
+                    for (const type of item.types) {
+                        if (type.startsWith('image/')) {
+                            const blob = await item.getType(type);
+                            this._processPastedImage(blob);
+                            return true; // Successfully processed image
+                        }
+                    }
+                }
+
+                // No images found
+                this._showPasteMessage('No images found in clipboard. Copy an image first.');
+                return false;
+            }
+        } catch (error) {
+            if (window.ANNOTATE_DEBUG) console.log('Clipboard API failed:', error);
+
+            // Fall back to instructing user to use Ctrl+V
+            this._showPasteMessage('Click here and press Ctrl+V (or Cmd+V) to paste image');
+
+            // Focus the canvas to receive keyboard events
+            this.canvas.focus();
+            return false;
+        }
+
+        this._showPasteMessage('Clipboard access not available. Use Ctrl+V or drag and drop instead.');
+        return false;
+    },
+
+    // Show a temporary message to the user
+    _showPasteMessage(message, duration = 3000) {
+        // Remove any existing message
+        const existing = document.getElementById('paste-message');
+        if (existing) existing.remove();
+
+        // Create message element
+        const msgEl = document.createElement('div');
+        msgEl.id = 'paste-message';
+        msgEl.textContent = message;
+        msgEl.style.cssText = `
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+            pointer-events: none;
+        `;
+
+        // Add to canvas container
+        const canvasWrap = document.querySelector('.annotate-canvas-wrap');
+        if (canvasWrap) {
+            canvasWrap.style.position = 'relative';
+            canvasWrap.appendChild(msgEl);
+
+            // Auto remove after duration
+            setTimeout(() => {
+                if (msgEl.parentNode) {
+                    msgEl.remove();
+                }
+            }, duration);
+        }
     },
 
     _setupEvents() {
@@ -68,29 +182,7 @@ const Annotate = {
         }
         this._pasteHandler = (e) => {
             // Only handle paste when the annotate dialog is open
-            const dialog = document.getElementById('annotate-dialog');
-            if (!dialog) {
-                if (window.ANNOTATE_DEBUG) console.log('Paste: Dialog not found');
-                return;
-            }
-
-            // Multiple checks for dialog state to handle browser inconsistencies
-            const isOpen = dialog.open ||
-                          dialog.hasAttribute('open') ||
-                          dialog.style.display !== 'none' ||
-                          dialog.offsetParent !== null;
-
-            if (window.ANNOTATE_DEBUG) {
-                console.log('Paste event:', {
-                    dialogOpen: dialog.open,
-                    hasOpenAttr: dialog.hasAttribute('open'),
-                    notHidden: dialog.style.display !== 'none',
-                    hasParent: dialog.offsetParent !== null,
-                    finalIsOpen: isOpen
-                });
-            }
-
-            if (!isOpen) {
+            if (!this._isAnnotateDialogOpen()) {
                 if (window.ANNOTATE_DEBUG) console.log('Paste: Dialog not open');
                 return;
             }
@@ -122,7 +214,23 @@ const Annotate = {
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 this._deleteSelected();
                 e.preventDefault();
+            } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                // Handle Ctrl+V / Cmd+V directly on canvas
+                e.preventDefault();
+                this.pasteFromClipboard();
             }
+        });
+
+        // Also listen for paste events directly on the canvas
+        c.addEventListener('paste', (e) => {
+            if (this._isAnnotateDialogOpen()) {
+                this._onPaste(e);
+            }
+        });
+
+        // Focus canvas when clicked to enable keyboard shortcuts
+        c.addEventListener('click', () => {
+            c.focus();
         });
     },
 
@@ -172,11 +280,13 @@ const Annotate = {
         const items = e.clipboardData?.items;
         if (!items) {
             if (window.ANNOTATE_DEBUG) console.log('No clipboard items found');
+            this._showPasteMessage('No clipboard data found');
             return;
         }
 
         if (window.ANNOTATE_DEBUG) console.log(`Found ${items.length} clipboard items`);
 
+        let foundImage = false;
         for (const item of items) {
             if (window.ANNOTATE_DEBUG) console.log('Item type:', item.type);
             if (item.type.startsWith('image/')) {
@@ -186,51 +296,73 @@ const Annotate = {
                     continue;
                 }
 
-                if (window.ANNOTATE_DEBUG) console.log('Processing image file:', file.name || 'unnamed', file.type, file.size);
-
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    if (window.ANNOTATE_DEBUG) console.log('FileReader loaded image data');
-                    const img = new Image();
-                    img.onload = () => {
-                        if (window.ANNOTATE_DEBUG) console.log('Image loaded:', img.width, 'x', img.height);
-                        // Scale to fit canvas width if needed
-                        let w = img.width, h = img.height;
-                        const maxW = this.canvas.width * 0.8;
-                        if (w > maxW) {
-                            const scale = maxW / w;
-                            w *= scale;
-                            h *= scale;
-                        }
-                        // Center the pasted image on canvas
-                        const centerX = this.canvas.width / 2;
-                        const centerY = this.canvas.height / 2;
-                        this.images.push({
-                            img,
-                            x: centerX - w / 2,
-                            y: centerY - h / 2,
-                            w, h, selected: true, // Select the newly pasted image
-                        });
-                        // Deselect all other images and annotations
-                        this.images.forEach((im, idx) => {
-                            if (idx !== this.images.length - 1) im.selected = false;
-                        });
-                        this.annotations.forEach(a => a.selected = false);
-                        this.render();
-                        if (window.ANNOTATE_DEBUG) console.log('Image successfully pasted and rendered');
-                    };
-                    img.onerror = (err) => {
-                        if (window.ANNOTATE_DEBUG) console.error('Image loading error:', err);
-                    };
-                    img.src = ev.target.result;
-                };
-                reader.onerror = (err) => {
-                    if (window.ANNOTATE_DEBUG) console.error('FileReader error:', err);
-                };
-                reader.readAsDataURL(file);
+                this._processPastedImage(file);
+                foundImage = true;
                 break; // Only handle the first image
             }
         }
+
+        if (!foundImage) {
+            this._showPasteMessage('No images found in clipboard. Copy an image first.');
+        }
+    },
+
+    // Common function to process pasted images (from clipboard events or API)
+    _processPastedImage(file) {
+        if (window.ANNOTATE_DEBUG) console.log('Processing pasted image:', file.name || 'unnamed', file.type, file.size || file.size);
+
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            if (window.ANNOTATE_DEBUG) console.log('FileReader loaded image data');
+            const img = new Image();
+            img.onload = () => {
+                if (window.ANNOTATE_DEBUG) console.log('Image loaded:', img.width, 'x', img.height);
+
+                // Scale to fit canvas width if needed
+                let w = img.width, h = img.height;
+                const maxW = this.canvas.width * 0.8;
+                const maxH = this.canvas.height * 0.8;
+
+                if (w > maxW || h > maxH) {
+                    const scaleW = maxW / w;
+                    const scaleH = maxH / h;
+                    const scale = Math.min(scaleW, scaleH);
+                    w *= scale;
+                    h *= scale;
+                }
+
+                // Center the pasted image on canvas
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height / 2;
+
+                // Deselect all existing items
+                this.images.forEach(im => im.selected = false);
+                this.annotations.forEach(a => a.selected = false);
+
+                // Add the new image (selected)
+                this.images.push({
+                    img,
+                    x: centerX - w / 2,
+                    y: centerY - h / 2,
+                    w, h, selected: true,
+                });
+
+                this.render();
+                this._showPasteMessage('Image pasted successfully!', 2000);
+
+                if (window.ANNOTATE_DEBUG) console.log('Image successfully pasted and rendered');
+            };
+            img.onerror = (err) => {
+                if (window.ANNOTATE_DEBUG) console.error('Image loading error:', err);
+                this._showPasteMessage('Error loading pasted image');
+            };
+            img.src = ev.target.result;
+        };
+        reader.onerror = (err) => {
+            if (window.ANNOTATE_DEBUG) console.error('FileReader error:', err);
+            this._showPasteMessage('Error reading pasted image');
+        };
+        reader.readAsDataURL(file);
     },
 
     // --- Mouse handlers ---
