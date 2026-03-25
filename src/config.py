@@ -9,12 +9,12 @@ STATIC_DIR = DASHBOARD_DIR / "src" / "static"
 
 # Column definitions in display order
 COLUMNS = [
-    {"id": "todo", "label": "Todo"},
-    {"id": "doing", "label": "Doing"},
-    {"id": "clarify", "label": "Clarify"},
-    {"id": "review", "label": "Review"},
-    {"id": "done", "label": "Done"},
-    {"id": "archive", "label": "Archive"},
+    {"id": "todo", "label": "📝 Todo"},
+    {"id": "doing", "label": "🚧 Doing"},
+    {"id": "clarify", "label": "❓ Clarify"},
+    {"id": "review", "label": "👀 Review"},
+    {"id": "done", "label": "✅ Done"},
+    {"id": "archive", "label": "📦 Archive"},
 ]
 
 COLUMN_IDS = [c["id"] for c in COLUMNS]
