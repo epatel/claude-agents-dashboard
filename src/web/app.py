@@ -43,4 +43,7 @@ def create_app(target_project: Path, data_dir: Path) -> FastAPI:
     from .routes import router
     app.include_router(router)
 
+    from .file_routes import file_router
+    app.include_router(file_router)
+
     return app

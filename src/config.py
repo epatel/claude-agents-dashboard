@@ -47,3 +47,63 @@ DEFAULT_AGENT_CONFIG = {
     "mcp_enabled": False,
     "plugins": [],
 }
+
+# File browser constants
+FILE_BROWSER_EXCLUDED_DIRS = {
+    ".git", "node_modules", "__pycache__", ".venv", "venv",
+    "agents-lab", ".mypy_cache", ".pytest_cache", ".ruff_cache",
+    "dist", "build", ".egg-info", ".tox", ".next", ".nuxt",
+    ".svelte-kit", "target", ".gradle", ".idea", ".vscode",
+    ".superpowers",
+}
+
+FILE_BROWSER_EXCLUDED_FILES = {
+    ".DS_Store", "Thumbs.db", "desktop.ini",
+}
+
+FILE_BROWSER_SECRET_PATTERNS = [
+    ".env", ".env.*",
+    "*.key", "*.pem", "*.p12", "*.pfx",
+    "credentials.*", "*.secret", "*.secrets",
+    "id_rsa", "id_rsa.*", "id_ed25519", "id_ed25519.*",
+    "*.keystore", "*.jks",
+]
+
+FILE_BROWSER_MAX_TEXT_SIZE = 1_000_000  # 1MB
+FILE_BROWSER_MAX_IMAGE_SIZE = 5_000_000  # 5MB
+FILE_BROWSER_TREE_DEPTH = 2
+
+FILE_BROWSER_LANGUAGE_MAP = {
+    ".py": "python",
+    ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript",
+    ".ts": "typescript", ".tsx": "typescript",
+    ".html": "html", ".htm": "html",
+    ".css": "css",
+    ".json": "json",
+    ".yaml": "yaml", ".yml": "yaml",
+    ".md": "markdown",
+    ".sh": "bash", ".bash": "bash", ".zsh": "bash",
+    ".sql": "sql",
+    ".toml": "toml",
+    ".xml": "xml",
+    ".rs": "rust",
+    ".go": "go",
+    ".java": "java",
+    ".rb": "ruby",
+    ".c": "c", ".h": "c",
+    ".cpp": "cpp", ".hpp": "cpp",
+    ".dart": "dart",
+}
+
+FILE_BROWSER_IMAGE_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico",
+}
+
+FILE_BROWSER_IMAGE_MIME_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+    ".ico": "image/x-icon",
+}
