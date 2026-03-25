@@ -26,6 +26,7 @@
         {% elif item.column_name == 'review' %}
         <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.approveItem('{{ item.id }}')" title="Approve">✓ Approve</button>
         <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('{{ item.id }}')" title="Request changes">↩</button>
+        <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelReview('{{ item.id }}')" title="Cancel review">✕</button>
         {% elif item.column_name == 'done' %}
         <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'archive')" title="📦 Archive">📦 Archive</button>
         {% endif %}

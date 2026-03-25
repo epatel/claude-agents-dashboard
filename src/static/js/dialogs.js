@@ -322,6 +322,12 @@ const Dialogs = {
             this.close('review-dialog');
             this.openRequestChanges(itemId);
         };
+        document.getElementById('review-cancel-btn').onclick = async () => {
+            if (await this.confirm('Cancel this review? The work will be discarded and the item moved back to Todo.')) {
+                await Board.cancelReview(itemId);
+                this.close('review-dialog');
+            }
+        };
 
         // Track current item ID for work log filtering
         this._currentItemId = itemId;
