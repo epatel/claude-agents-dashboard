@@ -48,6 +48,8 @@ class AgentSession:
         on_clarify=None,
         on_create_todo=None,
         on_set_commit_message=None,
+        mcp_servers: str | None = None,
+        mcp_enabled: bool = False,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
@@ -60,6 +62,8 @@ class AgentSession:
         self.on_clarify = on_clarify        # async callback(prompt: str, choices: list|None) -> str
         self.on_create_todo = on_create_todo  # async callback(title: str, description: str) -> dict
         self.on_set_commit_message = on_set_commit_message  # async callback(message: str) -> str
+        self.mcp_servers = mcp_servers      # JSON string of MCP server configurations from agent config
+        self.mcp_enabled = mcp_enabled      # Whether MCP is enabled from agent config
         self.client: ClaudeSDKClient | None = None
         self._task: asyncio.Task | None = None
         self._cancelled = False
@@ -77,6 +81,15 @@ class AgentSession:
             mcp_servers["todo"] = create_todo_server(self.on_create_todo)
         if self.on_set_commit_message:
             mcp_servers["commit_message"] = create_commit_message_server(self.on_set_commit_message)
+
+        # Load MCP servers from agent configuration (database)
+        if self.mcp_enabled and self.mcp_servers:
+            try:
+                agent_mcp_servers = json.loads(self.mcp_servers)
+                mcp_servers.update(agent_mcp_servers)
+                logger.info(f"Loaded {len(agent_mcp_servers)} MCP servers from agent configuration")
+            except Exception as e:
+                logger.warning(f"Failed to parse MCP servers from agent config: {e}")
 
         # Load external MCP servers from mcp-config.json
         mcp_config_path = self.worktree_path / "mcp-config.json"
