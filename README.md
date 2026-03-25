@@ -44,6 +44,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 ## Features
 
 - **Kanban board** with drag-and-drop (smooth card spacing), create/edit/delete items
+- **Save & Start** — create an item and immediately launch an agent in one click
 - **Agent orchestration** via Claude Agent SDK — multiple agents can run simultaneously
 - **Git worktrees** — each agent works in isolation, branched off main
 - **Live work log** — streaming agent output via WebSocket (messages, thinking, tool use)
@@ -58,9 +59,10 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Session persistence** — request changes resumes the agent's conversation with full context
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
-- **Per-item model selection** — override the default model on individual items (falls back to global config)
-- **Agent config** — set system prompt, model, project context, and MCP servers
+- **Per-item model selection** — choose between Claude Sonnet 4 and Claude Opus 4.6 per item (falls back to global config)
+- **Agent config** — set system prompt, model, project context, MCP servers, and plugins
 - **MCP support** — connect external tools and data sources via Model Context Protocol
+- **Plugin support** — load local Claude Code plugins via directory paths
 - **Merge conflict detection** — merge conflicts abort cleanly, keeping the worktree intact for resolution
 - **Item cleanup** — deleting an item stops running agents, removes worktrees and branches, and cleans up attachment files
 - **Light/dark mode** — respects system preference with manual toggle
@@ -69,7 +71,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket
-- **Agent**: Claude Agent SDK (`claude-agent-sdk`), default model: `claude-sonnet-4-20250514`
+- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 4.6
 - **Security**: Localhost only, no authentication
 
 ## Requirements
@@ -90,7 +92,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema is consolidated into a single migration (`001_initial_schema.py`) that creates all tables. Migrations run automatically on startup.
 
 ### Migration Commands
 
@@ -124,7 +126,7 @@ python -m src.manage status --db-path /path/to/custom/database.db
 ### Creating Migrations
 
 1. Copy the migration template: `src/migrations/versions/000_template.py.example`
-2. Rename to format: `XXX_description.py` (e.g., `003_add_user_settings.py`)
+2. Rename to format: `XXX_description.py` (e.g., `002_add_user_settings.py`)
 3. Update version number and description
 4. Implement `up()` method (apply changes) and `down()` method (rollback changes)
 5. Test thoroughly before deploying
