@@ -223,11 +223,14 @@ class AgentOrchestrator:
         if project_context:
             system_prompt = f"{system_prompt}\n\nProject context:\n{project_context}"
 
+        # Determine which model to use: item-specific model, or fall back to global config
+        model = item.get("model") or config.get("model")
+
         # Create session with callbacks
         session = AgentSession(
             worktree_path=worktree_path,
             system_prompt=system_prompt,
-            model=config.get("model"),
+            model=model,
             on_message=lambda text, iid=item_id: self._log(iid, "agent_message", text),
             on_tool_use=lambda name, inp, iid=item_id: self._log(
                 iid, "tool_use", self._format_tool_use(name, inp), json.dumps(inp)

@@ -17,8 +17,10 @@ const Api = {
         return this.request('GET', '/api/items');
     },
 
-    createItem(title, description = '') {
-        return this.request('POST', '/api/items', { title, description });
+    createItem(title, description = '', model = null) {
+        const payload = { title, description };
+        if (model) payload.model = model;
+        return this.request('POST', '/api/items', payload);
     },
 
     updateItem(id, data) {

@@ -60,8 +60,8 @@ async def create_item(request: Request, body: ItemCreate):
         position = row[0]
 
         await conn.execute(
-            "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, 'todo', ?)",
-            (item_id, body.title, body.description, position),
+            "INSERT INTO items (id, title, description, column_name, position, model) VALUES (?, ?, ?, 'todo', ?, ?)",
+            (item_id, body.title, body.description, position, body.model),
         )
         await conn.commit()
 

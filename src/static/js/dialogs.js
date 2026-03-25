@@ -55,6 +55,7 @@ const Dialogs = {
         document.getElementById('item-form-id').value = '';
         document.getElementById('item-form-title').value = '';
         document.getElementById('item-form-desc').value = '';
+        document.getElementById('item-form-model').value = '';
         this._pendingAttachments = [];
         this._renderFormAttachments();
         this.open('item-dialog');
@@ -66,6 +67,7 @@ const Dialogs = {
         document.getElementById('item-form-id').value = item.id;
         document.getElementById('item-form-title').value = item.title;
         document.getElementById('item-form-desc').value = item.description;
+        document.getElementById('item-form-model').value = item.model || '';
         this._pendingAttachments = [];
         this._renderFormAttachments();
         // Load existing attachments for edit
@@ -128,15 +130,18 @@ const Dialogs = {
         const id = document.getElementById('item-form-id').value;
         const title = document.getElementById('item-form-title').value.trim();
         const description = document.getElementById('item-form-desc').value;
+        const model = document.getElementById('item-form-model').value || null;
 
         if (!title) return;
 
         try {
             let itemId = id;
             if (id) {
-                await Api.updateItem(id, { title, description });
+                const updateData = { title, description };
+                if (model !== null) updateData.model = model;
+                await Api.updateItem(id, updateData);
             } else {
-                const item = await Api.createItem(title, description);
+                const item = await Api.createItem(title, description, model);
                 itemId = item.id;
             }
 

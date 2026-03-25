@@ -11,6 +11,7 @@ def new_id() -> str:
 class ItemCreate(BaseModel):
     title: str
     description: str = ""
+    model: Optional[str] = None
 
 
 class ItemUpdate(BaseModel):
@@ -19,6 +20,7 @@ class ItemUpdate(BaseModel):
     column_name: Optional[str] = None
     position: Optional[int] = None
     status: Optional[str] = None
+    model: Optional[str] = None
 
 
 class ItemMove(BaseModel):
@@ -36,6 +38,7 @@ class Item(BaseModel):
     branch_name: Optional[str]
     worktree_path: Optional[str]
     session_id: Optional[str]
+    model: Optional[str]
     created_at: str
     updated_at: str
 
