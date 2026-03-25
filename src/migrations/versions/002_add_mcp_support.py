@@ -1,7 +1,7 @@
 """Add MCP (Model Context Protocol) support to agent configuration.
 
 This migration adds columns to support MCP servers configuration:
-- mcp_servers: JSON array of configured MCP server configurations
+- mcp_servers: JSON object mapping server names to their configurations
 - mcp_enabled: Boolean flag to enable/disable MCP functionality
 """
 
