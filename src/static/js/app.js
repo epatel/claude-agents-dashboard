@@ -123,6 +123,18 @@ const App = {
             case 'item_updated':
             case 'item_moved':
                 Board.updateCard(data);
+
+                // Auto-transition: if the detail dialog is open for this item
+                // and the item just moved to "review", switch to the review dialog
+                if (data.id && data.column_name === 'review' && Dialogs._currentItemId === data.id) {
+                    const detailDialog = document.getElementById('detail-dialog');
+                    if (detailDialog && detailDialog.open) {
+                        // Save item ID before close() clears it
+                        const itemId = data.id;
+                        Dialogs.close('detail-dialog');
+                        Dialogs.showReview(itemId);
+                    }
+                }
                 break;
             case 'item_deleted':
                 Board.removeCard(data.id);
