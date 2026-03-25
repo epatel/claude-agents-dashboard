@@ -1,6 +1,7 @@
 import asyncio
 import subprocess
 from pathlib import Path
+import os.path
 
 
 async def run_git(cwd: Path, *args: str) -> str:
@@ -132,9 +133,62 @@ async def get_changed_files(repo: Path, branch: str, base: str | None = None, wo
     ]
 
 
+def validate_file_path(file_path: str) -> str:
+    """Validate and sanitize file path to prevent path traversal attacks.
+
+    Args:
+        file_path: The file path to validate
+
+    Returns:
+        str: The sanitized file path
+
+    Raises:
+        ValueError: If the path contains invalid patterns
+    """
+    if not file_path:
+        raise ValueError("File path cannot be empty")
+
+    # Remove any null bytes or control characters
+    file_path = file_path.replace('\x00', '')
+
+    # Check for absolute paths
+    if os.path.isabs(file_path):
+        raise ValueError("Absolute paths are not allowed")
+
+    # Check for parent directory traversal patterns
+    if '..' in file_path:
+        raise ValueError("Path traversal patterns (..) are not allowed")
+
+    # Check for other potentially dangerous patterns
+    dangerous_patterns = [
+        '~/',  # Home directory expansion
+        '//',  # Double slashes
+        '\\',  # Windows-style separators
+        '\n',  # Newlines
+        '\r',  # Carriage returns
+    ]
+
+    for pattern in dangerous_patterns:
+        if pattern in file_path:
+            raise ValueError(f"Invalid character sequence '{pattern}' in path")
+
+    # Normalize the path and ensure it doesn't start with /
+    normalized = os.path.normpath(file_path)
+    if normalized.startswith('/'):
+        raise ValueError("Normalized path cannot start with /")
+
+    # Additional check: ensure normalization didn't create .. patterns
+    if '..' in normalized:
+        raise ValueError("Normalized path contains parent directory references")
+
+    return normalized
+
+
 async def get_file_content(repo: Path, branch: str, file_path: str) -> str:
     """Get file content at a specific branch."""
-    return await run_git(repo, "show", f"{branch}:{file_path}")
+    # Validate the file path to prevent path traversal attacks
+    validated_path = validate_file_path(file_path)
+    return await run_git(repo, "show", f"{branch}:{validated_path}")
 
 
 async def commit_worktree_changes(worktree_path: Path, message: str) -> bool:
