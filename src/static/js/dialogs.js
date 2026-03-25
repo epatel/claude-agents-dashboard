@@ -50,7 +50,7 @@ const Dialogs = {
     // Pending attachments for new items (before they have an ID)
     _pendingAttachments: [],
 
-    openNewItem() {
+    async openNewItem() {
         document.getElementById('item-dialog-title').textContent = 'New Item';
         document.getElementById('item-form-id').value = '';
         document.getElementById('item-form-title').value = '';
@@ -58,11 +58,12 @@ const Dialogs = {
         document.getElementById('item-form-model').value = '';
         this._pendingAttachments = [];
         this._renderFormAttachments();
+        await this._updateDefaultModelDisplay();
         this.open('item-dialog');
         document.getElementById('item-form-title').focus();
     },
 
-    openEditItem(item) {
+    async openEditItem(item) {
         document.getElementById('item-dialog-title').textContent = 'Edit Item';
         document.getElementById('item-form-id').value = item.id;
         document.getElementById('item-form-title').value = item.title;
@@ -74,6 +75,7 @@ const Dialogs = {
         if (item.id) {
             this._loadFormAttachments(item.id);
         }
+        await this._updateDefaultModelDisplay();
         this.open('item-dialog');
         document.getElementById('item-form-title').focus();
     },
@@ -659,6 +661,35 @@ const Dialogs = {
             this.switchDetailTab('detail-attach');
         } catch (err) {
             console.error('Failed to save annotation:', err);
+        }
+    },
+
+    // --- Model display helpers ---
+
+    _getModelDisplayName(modelId) {
+        const modelNames = {
+            'claude-sonnet-4-20250514': 'Claude Sonnet 4',
+            'claude-opus-4-6': 'Claude Opus 4.6',
+            'claude-haiku-4-5-20251001': 'Claude Haiku 4.5'
+        };
+        return modelNames[modelId] || modelId;
+    },
+
+    async _updateDefaultModelDisplay() {
+        try {
+            const config = await Api.request('GET', '/api/config');
+            const defaultModel = config.model || 'claude-sonnet-4-20250514';
+            const displayName = this._getModelDisplayName(defaultModel);
+
+            // Update the first option in the model select dropdown
+            const modelSelect = document.getElementById('item-form-model');
+            const defaultOption = modelSelect.querySelector('option[value=""]');
+            if (defaultOption) {
+                defaultOption.textContent = `Use Global Default (${displayName})`;
+            }
+        } catch (err) {
+            console.error('Failed to fetch config for model display:', err);
+            // Keep the original text if we can't fetch the config
         }
     },
 
