@@ -143,6 +143,11 @@ const App = {
     },
 
     appendLog(data) {
+        // Only append logs if they're for the currently open item
+        if (!data.item_id || !Dialogs._currentItemId || data.item_id !== Dialogs._currentItemId) {
+            return; // Skip logs for other items
+        }
+
         // Append to detail dialog log if it's open for this item
         const detailLogEl = document.getElementById('detail-log');
         if (detailLogEl) {
