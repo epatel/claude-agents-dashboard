@@ -1,12 +1,13 @@
 """Initial database schema migration.
 
-This migration creates the core tables for the Agents Dashboard:
+This migration creates the complete schema for the Agents Dashboard:
 - items: Main kanban board items
 - work_log: Agent activity logging
 - review_comments: Code review feedback
 - clarifications: User interaction prompts
 - attachments: Uploaded files and images
-- agent_config: System configuration
+- agent_config: System configuration (with MCP and plugin support)
+- token_usage: Token consumption tracking per agent run
 """
 
 import sys
@@ -18,7 +19,7 @@ import aiosqlite
 
 
 class InitialSchemaMigration(Migration):
-    """Creates the initial database schema."""
+    """Creates the complete database schema."""
 
     def __init__(self):
         super().__init__(
@@ -27,7 +28,7 @@ class InitialSchemaMigration(Migration):
         )
 
     async def up(self, db: aiosqlite.Connection) -> None:
-        """Create all initial tables."""
+        """Create all tables."""
 
         # Items table - main kanban board items
         await db.execute("""
@@ -41,6 +42,8 @@ class InitialSchemaMigration(Migration):
                 branch_name   TEXT DEFAULT NULL,
                 worktree_path TEXT DEFAULT NULL,
                 session_id    TEXT DEFAULT NULL,
+                model         TEXT DEFAULT NULL,
+                commit_message TEXT DEFAULT NULL,
                 created_at    TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
             )
@@ -103,6 +106,9 @@ class InitialSchemaMigration(Migration):
                 tools           TEXT,
                 model           TEXT DEFAULT 'claude-sonnet-4-20250514',
                 project_context TEXT,
+                mcp_servers     TEXT DEFAULT '[]',
+                mcp_enabled     INTEGER DEFAULT 0,
+                plugins         TEXT DEFAULT '[]',
                 updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
             )
         """)
@@ -112,10 +118,38 @@ class InitialSchemaMigration(Migration):
             "INSERT OR IGNORE INTO agent_config (id) VALUES (1)"
         )
 
+        # Token usage table - track token consumption per agent run
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS token_usage (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id         TEXT NOT NULL REFERENCES items(id),
+                session_id      TEXT,
+                input_tokens    INTEGER,
+                output_tokens   INTEGER,
+                total_tokens    INTEGER,
+                cost_usd        REAL,
+                completed_at    TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+
+        # Create indexes for efficient querying
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_token_usage_item_id ON token_usage(item_id)
+        """)
+
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_token_usage_completed_at ON token_usage(completed_at)
+        """)
+
     async def down(self, db: aiosqlite.Connection) -> None:
         """Drop all tables (destructive - use with caution)."""
 
+        # Drop indexes
+        await db.execute("DROP INDEX IF EXISTS idx_token_usage_completed_at")
+        await db.execute("DROP INDEX IF EXISTS idx_token_usage_item_id")
+
         # Drop tables in reverse dependency order
+        await db.execute("DROP TABLE IF EXISTS token_usage")
         await db.execute("DROP TABLE IF EXISTS attachments")
         await db.execute("DROP TABLE IF EXISTS clarifications")
         await db.execute("DROP TABLE IF EXISTS review_comments")
