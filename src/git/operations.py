@@ -179,8 +179,9 @@ async def merge_branch(repo: Path, branch: str, base: str | None = None,
     await run_git(repo, "checkout", base)
 
     try:
+        merge_msg = commit_message or f"Merge {branch} into {base}"
         output = await run_git(repo, "merge", branch, "--no-ff",
-                               "-m", f"Merge {branch} into {base}")
+                               "-m", merge_msg)
         return True, output
     except subprocess.CalledProcessError as e:
         # Conflict — abort the merge
