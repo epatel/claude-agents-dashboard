@@ -236,8 +236,9 @@ const Dialogs = {
         this._currentItemId = itemId;
         await this._loadAttachments(itemId);
 
-        // Reset to description tab
-        this.switchDetailTab('detail-desc');
+        // Preselect Work Log tab if agent is running, otherwise show description tab
+        const defaultTab = isRunning ? 'detail-wlog' : 'detail-desc';
+        this.switchDetailTab(defaultTab);
 
         this.open('detail-dialog');
     },
@@ -379,6 +380,11 @@ const Dialogs = {
                 this.autoScroll(logEl);
             }
         } catch { logEl.innerHTML = ''; }
+
+        // Preselect Work Log tab if agent is running, otherwise show description tab
+        const isRunning = item.status === 'running' || item.status === 'resolving_conflicts';
+        const defaultTab = isRunning ? 'detail-wlog' : 'detail-desc';
+        this.switchDetailTab(defaultTab);
 
         this.open('detail-dialog');
     },
