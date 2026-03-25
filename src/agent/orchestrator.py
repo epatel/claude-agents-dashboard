@@ -578,6 +578,48 @@ class AgentOrchestrator:
             ))
             await conn.commit()
 
+    async def delete_item(self, item_id: str) -> dict:
+        """Delete an item and clean up all associated resources."""
+        # Clean up any running agent session
+        await self._cleanup_session(item_id)
+
+        # Get item info for cleanup before deletion
+        async with self.db.connect() as conn:
+            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            item_row = await cursor.fetchone()
+            item = dict(item_row) if item_row else None
+
+            # Delete attachment files
+            cursor2 = await conn.execute("SELECT asset_path FROM attachments WHERE item_id = ?", (item_id,))
+            for row in await cursor2.fetchall():
+                p = Path(row[0])
+                if p.exists():
+                    p.unlink()
+
+            # Delete all related records
+            await conn.execute("DELETE FROM attachments WHERE item_id = ?", (item_id,))
+            await conn.execute("DELETE FROM work_log WHERE item_id = ?", (item_id,))
+            await conn.execute("DELETE FROM review_comments WHERE item_id = ?", (item_id,))
+            await conn.execute("DELETE FROM clarifications WHERE item_id = ?", (item_id,))
+            await conn.execute("DELETE FROM items WHERE id = ?", (item_id,))
+            await conn.commit()
+
+        # Clean up worktree and branch if they exist
+        if item and item.get("worktree_path") and item.get("branch_name"):
+            try:
+                await cleanup_worktree(
+                    self.target_project,
+                    Path(item["worktree_path"]),
+                    item["branch_name"],
+                )
+            except Exception as e:
+                logger.warning(f"Worktree cleanup failed for item {item_id}: {e}")
+
+        # Broadcast deletion event
+        await self.ws_manager.broadcast("item_deleted", {"id": item_id})
+
+        return {"ok": True}
+
     async def shutdown(self):
         """Gracefully stop all running agents."""
         item_ids = list(set(list(self.sessions.keys()) + list(self._agent_tasks.keys())))

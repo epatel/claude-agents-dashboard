@@ -104,48 +104,8 @@ async def update_item(request: Request, item_id: str, body: ItemUpdate):
 
 @router.delete("/api/items/{item_id}")
 async def delete_item(request: Request, item_id: str):
-    db = request.app.state.db
-    async with db.connect() as conn:
-        # Get item info for cleanup
-        cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-        item = await cursor.fetchone()
-        if item:
-            item = dict(item)
-
-        # Delete attachment files
-        cursor2 = await conn.execute("SELECT asset_path FROM attachments WHERE item_id = ?", (item_id,))
-        for row in await cursor2.fetchall():
-            p = Path(row[0])
-            if p.exists():
-                p.unlink()
-
-        await conn.execute("DELETE FROM attachments WHERE item_id = ?", (item_id,))
-        await conn.execute("DELETE FROM work_log WHERE item_id = ?", (item_id,))
-        await conn.execute("DELETE FROM review_comments WHERE item_id = ?", (item_id,))
-        await conn.execute("DELETE FROM clarifications WHERE item_id = ?", (item_id,))
-        await conn.execute("DELETE FROM items WHERE id = ?", (item_id,))
-        await conn.commit()
-
-    # Cancel running agent if any
     orchestrator = request.app.state.orchestrator
-    session = orchestrator.sessions.pop(item_id, None)
-    if session:
-        await session.cancel()
-
-    # Clean up worktree and branch
-    if item and item.get("worktree_path") and item.get("branch_name"):
-        from ..git.worktree import cleanup_worktree
-        try:
-            await cleanup_worktree(
-                request.app.state.target_project,
-                Path(item["worktree_path"]),
-                item["branch_name"],
-            )
-        except Exception:
-            pass
-
-    await request.app.state.ws_manager.broadcast("item_deleted", {"id": item_id})
-    return {"ok": True}
+    return await orchestrator.delete_item(item_id)
 
 
 @router.post("/api/items/{item_id}/move")
