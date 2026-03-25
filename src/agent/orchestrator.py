@@ -31,6 +31,7 @@ class AgentOrchestrator:
         self.db = db
         self.ws_manager = ws_manager
         self.sessions: dict[str, AgentSession] = {}
+        self._agent_tasks: dict[str, asyncio.Task] = {}  # item_id -> _run_agent task
         self._clarify_events: dict[str, asyncio.Event] = {}
         self._clarify_responses: dict[str, str] = {}
         self._last_agent_messages: dict[str, str] = {}  # item_id -> last agent text
@@ -267,7 +268,8 @@ class AgentOrchestrator:
         prompt = f"Task: {item['title']}\n\n{item['description']}"
 
         # Launch agent in background so HTTP response returns immediately
-        asyncio.create_task(self._run_agent(item_id, session, prompt))
+        task = asyncio.create_task(self._run_agent(item_id, session, prompt))
+        self._agent_tasks[item_id] = task
 
         return item
 
@@ -281,8 +283,13 @@ class AgentOrchestrator:
 
     async def _on_agent_complete(self, item_id: str, result: AgentResult):
         """Called when agent finishes."""
-        self.sessions.pop(item_id, None)
+        session = self.sessions.pop(item_id, None)
+        self._agent_tasks.pop(item_id, None)
         self._last_agent_messages.pop(item_id, None)
+
+        # If session was already removed (e.g. by cancel_agent), skip state update
+        if session is None:
+            return
 
         # Save token usage statistics
         await self._save_token_usage(item_id, result)
@@ -318,15 +325,31 @@ class AgentOrchestrator:
 
     async def _on_agent_error(self, item_id: str, error: str):
         """Called when agent crashes."""
-        self.sessions.pop(item_id, None)
+        session = self.sessions.pop(item_id, None)
+        self._agent_tasks.pop(item_id, None)
+
+        # If session was already removed (e.g. by cancel_agent), skip state update
+        if session is None:
+            return
+
         await self._log(item_id, "error", f"Agent error: {error}")
         await self._update_item(item_id, status="failed")
 
     async def cancel_agent(self, item_id: str) -> dict:
         """Cancel a running agent."""
         session = self.sessions.pop(item_id, None)
+        agent_task = self._agent_tasks.pop(item_id, None)
+
         if session:
             await session.cancel()
+
+        # Cancel the _run_agent background task to prevent error/complete callbacks
+        if agent_task and not agent_task.done():
+            agent_task.cancel()
+            try:
+                await agent_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
         await self._log(item_id, "system", "Agent cancelled by user")
         return await self._update_item(
@@ -460,7 +483,8 @@ class AgentOrchestrator:
 
         # Resume conversation with feedback in background
         resume_id = item.get("session_id")
-        asyncio.create_task(self._run_agent(item_id, session, feedback, resume_session_id=resume_id))
+        task = asyncio.create_task(self._run_agent(item_id, session, feedback, resume_session_id=resume_id))
+        self._agent_tasks[item_id] = task
 
         return item
 
@@ -539,4 +563,12 @@ class AgentOrchestrator:
                 await session.cancel()
             except Exception:
                 pass
+        for item_id, task in list(self._agent_tasks.items()):
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
         self.sessions.clear()
+        self._agent_tasks.clear()
