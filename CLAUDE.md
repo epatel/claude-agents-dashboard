@@ -139,12 +139,20 @@ sequenceDiagram
     SDK-->>Session: ResultMessage
     Session-->>Orchestrator: on_complete(AgentResult)
     Orchestrator->>Orchestrator: Save token_usage, move to Review
+
+    alt Merge conflict on approve
+        User->>Routes: POST /api/items/{id}/approve
+        Routes->>Orchestrator: approve_item()
+        Orchestrator->>Git: merge_agent_work() → conflict
+        Orchestrator->>Git: Capture diff, reset worktree to latest base
+        Orchestrator->>Session: Restart agent with conflict prompt + diff
+    end
 ```
 
 ### Key design decisions
 
 - **Service layer architecture**: The orchestrator is a thin facade (111 lines) that delegates to 5 focused services:
-  - `WorkflowService` (355 lines): Coordinates agent workflows, state transitions, and callback creation
+  - `WorkflowService` (405 lines): Coordinates agent workflows, state transitions, callback creation, and merge conflict auto-resolution
   - `DatabaseService` (182 lines): All database operations (items, logs, config, attachments, token usage)
   - `NotificationService` (96 lines): WebSocket broadcasting and tool use formatting
   - `GitService` (94 lines): Worktree management, merge operations, and cleanup
@@ -172,7 +180,7 @@ sequenceDiagram
 
 - **Merge commits worktree first**: `merge_branch()` calls `commit_worktree_changes()` before merging, handling agents that leave uncommitted work. Uses agent-provided commit messages when available (via `set_commit_message` MCP tool).
 
-- **Merge conflict handling**: If a merge conflict occurs, `GitService.merge_agent_work()` returns `(False, message)` and `WorkflowService` moves the item to `resolving_conflicts` status, keeping the worktree intact.
+- **Merge conflict auto-resolution**: If a merge conflict occurs, `GitService.merge_agent_work()` returns `(False, message)`. `WorkflowService.approve_item()` then captures the agent's diff, resets the worktree to the latest base branch (`git fetch origin base && git reset --hard base`), and restarts the agent with a conflict prompt containing the previous diff. The agent reapplies its changes to the updated codebase. Falls back to `conflict` status if the diff cannot be captured.
 
 - **Cost & token tracking**: Agent completion logs USD cost and token usage (input/output/total) via `AgentResult`. Token data is persisted to the `token_usage` table by `DatabaseService.save_token_usage()`. Completion formatting uses `NotificationService.format_completion_log()`.
 

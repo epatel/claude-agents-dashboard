@@ -85,7 +85,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Agent config** — set system prompt, model, project context, MCP servers, and plugins
 - **MCP support** — connect external tools and data sources via Model Context Protocol
 - **Plugin support** — load local Claude Code plugins via directory paths
-- **Merge conflict detection** — merge conflicts abort cleanly, keeping the worktree intact for resolution
+- **Merge conflict auto-resolution** — on merge conflict, captures the agent's diff, resets the worktree to the latest base branch, and restarts the agent with the previous diff as context for automated recovery
 - **Item cleanup** — deleting an item stops running agents, removes worktrees and branches, and cleans up attachment files
 - **WebSocket reconnection** — automatic reconnection with exponential backoff, visibility-aware, manual reconnect via status indicator
 - **WebSocket rate limiting** — per-IP connection limits (5 concurrent, 10 per 60s window) prevent resource exhaustion
@@ -173,7 +173,7 @@ stateDiagram-v2
     Review --> Todo: Cancel review
     Done --> Archive: Archive
     Doing --> Todo: Cancel agent
-    Review --> ResolvingConflicts: Merge conflict
+    Review --> Doing: Merge conflict (auto-retry)
 ```
 
 ## Requirements
