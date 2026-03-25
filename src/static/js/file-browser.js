@@ -4,7 +4,7 @@ const FileBrowser = {
     _activeTab: -1,
     _expandedDirs: new Set(),
     _maxTabs: 10,
-    _fontSize: 13,
+    _fontSize: parseInt(localStorage.getItem('fileBrowserFontSize')) || 13,
 
     init() {
         const filterInput = document.getElementById('file-tree-filter');
@@ -72,6 +72,7 @@ const FileBrowser = {
 
     changeFontSize(delta) {
         this._fontSize = Math.max(9, Math.min(24, this._fontSize + delta));
+        localStorage.setItem('fileBrowserFontSize', this._fontSize);
         const viewers = document.querySelectorAll('.file-code-viewer, .file-markdown-viewer');
         viewers.forEach(el => { el.style.fontSize = this._fontSize + 'px'; });
     },
@@ -468,6 +469,9 @@ const FileBrowser = {
 
         const mdDiv = document.createElement('div');
         mdDiv.className = 'file-markdown-viewer';
+        if (this._fontSize !== 13) {
+            mdDiv.style.fontSize = this._fontSize + 'px';
+        }
         this._renderMarkdownContent(mdDiv, tab.content);
 
         toggle.addEventListener('click', () => {
