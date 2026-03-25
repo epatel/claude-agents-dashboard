@@ -130,13 +130,14 @@
     min-height: 0;
     min-width: 0;
     position: relative;
+    padding-bottom: 44px;
 }
 
 /* Font size controls */
 
 .file-font-controls {
     position: absolute;
-    bottom: 12px;
+    bottom: 8px;
     right: 12px;
     display: flex;
     gap: 2px;
