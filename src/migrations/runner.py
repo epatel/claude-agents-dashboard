@@ -61,8 +61,8 @@ class MigrationRunner:
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
                     if (isinstance(attr, type) and
-                        hasattr(attr, '__bases__') and
-                        any(base.__name__ == 'Migration' for base in attr.__bases__)):
+                        issubclass(attr, Migration) and
+                        attr != Migration):
                         migration_class = attr
                         break
 
