@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 import uuid
+from .constants import DEFAULT_MODEL
 
 
 def new_id() -> str:
@@ -90,7 +91,7 @@ class TokenUsage(BaseModel):
 class AgentConfig(BaseModel):
     system_prompt: Optional[str] = ""
     tools: Optional[str] = "[]"
-    model: str = "claude-sonnet-4-20250514"
+    model: str = DEFAULT_MODEL
     project_context: Optional[str] = ""
     mcp_servers: Optional[str] = "{}"
     mcp_enabled: bool = False
