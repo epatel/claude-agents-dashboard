@@ -55,6 +55,10 @@ const Api = {
         return this.request('POST', `/api/items/${id}/request-changes`, { comments });
     },
 
+    cancelReview(id) {
+        return this.request('POST', `/api/items/${id}/cancel-review`);
+    },
+
     getWorkLog(id) {
         return this.request('GET', `/api/items/${id}/log`);
     },

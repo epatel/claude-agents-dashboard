@@ -263,6 +263,12 @@ async def request_changes(request: Request, item_id: str, body: RequestChangesBo
     return await orchestrator.request_changes(item_id, body.comments)
 
 
+@router.post("/api/items/{item_id}/cancel-review")
+async def cancel_review(request: Request, item_id: str):
+    orchestrator = request.app.state.orchestrator
+    return await orchestrator.cancel_review(item_id)
+
+
 @router.post("/api/items/{item_id}/clarify")
 async def submit_clarification(request: Request, item_id: str, body: ClarificationResponse):
     orchestrator = request.app.state.orchestrator

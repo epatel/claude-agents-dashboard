@@ -460,6 +460,33 @@ class AgentOrchestrator:
 
         return item
 
+    async def cancel_review(self, item_id: str) -> dict:
+        """Cancel a review - discard changes and move item back to todo."""
+        async with self.db.connect() as conn:
+            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            item = dict(await cursor.fetchone())
+
+        # Clean up worktree
+        branch = item["branch_name"]
+        worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
+        if worktree_path and branch:
+            try:
+                await cleanup_worktree(self.target_project, worktree_path, branch)
+                await self._log(item_id, "system", f"Cleaned up worktree and branch {branch}")
+            except Exception as e:
+                logger.warning(f"Worktree cleanup failed: {e}")
+                await self._log(item_id, "system", f"Worktree cleanup failed: {e}")
+
+        await self._log(item_id, "user_action", "Review cancelled - work discarded")
+
+        # Move item back to todo, clear status and worktree
+        return await self._update_item(
+            item_id,
+            column_name="todo",
+            status=None,
+            worktree_path=None,
+        )
+
     async def submit_clarification(self, item_id: str, response: str) -> dict:
         """Submit a clarification response to a waiting agent."""
         # Update clarification record

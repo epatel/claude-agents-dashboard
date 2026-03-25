@@ -170,6 +170,14 @@ const Board = {
         Dialogs.openRequestChanges(itemId);
     },
 
+    async cancelReview(itemId) {
+        try {
+            await Api.cancelReview(itemId);
+        } catch (err) {
+            console.error('Failed to cancel review:', err);
+        }
+    },
+
     // --- Re-rendering ---
 
     renderCard(item) {
@@ -203,7 +211,8 @@ const Board = {
             actionsHtml = `<button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')">✕</button>`;
         } else if (col === 'review') {
             actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.approveItem('${item.id}')">✓ Approve</button>
-                <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')">↩</button>`;
+                <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')">↩</button>
+                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelReview('${item.id}')">✕</button>`;
         } else if (col === 'done') {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')">Archive</button>`;
         }
