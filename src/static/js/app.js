@@ -30,10 +30,10 @@ const App = {
         Board.init(items);
 
         // Wire up top bar buttons
-        document.getElementById('new-item-btn').addEventListener('click', () => {
+        document.getElementById('new-item-btn')?.addEventListener('click', () => {
             Dialogs.openNewItem();
         });
-        document.getElementById('config-btn').addEventListener('click', () => {
+        document.getElementById('config-btn')?.addEventListener('click', () => {
             Dialogs.openConfig();
         });
 
