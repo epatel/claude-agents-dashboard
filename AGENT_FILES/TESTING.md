@@ -3,7 +3,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 123 tests
+./run-tests.sh              # Run all 143 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -17,38 +17,38 @@ The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio
 tests/
 ├── conftest.py                         # Shared fixtures
 ├── smoke/
-│   └── test_basic_functionality.py     # Imports, DB, config checks (12 tests)
+│   └── test_basic_functionality.py     # Imports, DB, config checks (13 tests)
 ├── unit/
 │   ├── migrations/
-│   │   ├── test_migration_runner.py    # Migration up/down/status (14 tests)
-│   │   └── test_migration_edge_cases.py # Edge cases, discovery (14 tests)
-│   ├── test_path_validation.py         # Path traversal prevention (14 tests)
+│   │   ├── test_migration_runner.py    # Migration up/down/status (15 tests)
+│   │   └── test_migration_edge_cases.py # Edge cases, discovery (15 tests)
+│   ├── test_path_validation.py         # Path traversal prevention (16 tests)
 │   ├── test_git_timeout.py            # Git timeout handling (5 tests)
-│   ├── test_file_routes.py            # File browser routes (35 tests)
-│   ├── test_allowed_commands.py       # Command filter + access MCP (9 tests)
+│   ├── test_file_routes.py            # File browser routes (41 tests)
+│   ├── test_allowed_commands.py       # Command filter + access MCP (15 tests)
 │   └── test_diff_mixing.py           # Diff isolation between items (6 tests)
 ├── integration/
-│   └── test_orchestrator_lifecycle.py  # Full agent workflow (14 tests)
+│   └── test_orchestrator_lifecycle.py  # Full agent workflow (17 tests)
 └── README.md
 ```
 
 ## Test Categories
 
-### Smoke Tests (12 tests)
+### Smoke Tests (13 tests)
 Quick checks that core components work:
 - Database connection and CRUD
 - Module imports (core, web, git)
 - Migration runner initialization
 - Requirements and config validation
 
-### Unit Tests — Migrations (28 tests)
+### Unit Tests — Migrations (30 tests)
 Tests the migration runner in isolation using raw SQLite (no app schema):
 - Apply/rollback single and multiple migrations
 - Migration discovery from files
 - Edge cases: malformed files, concurrent apply, long versions, empty methods
 - Performance: 100-file discovery under 1 second
 
-### Unit Tests — Path Validation (14 tests)
+### Unit Tests — Path Validation (16 tests)
 Tests `validate_file_path()` security:
 - Path traversal patterns (`..`, absolute paths)
 - Null bytes, control characters, Windows separators
@@ -61,7 +61,7 @@ Tests timeout handling in git operations:
 - Merge-specific timeout
 - Timeout abort and recovery
 
-### Unit Tests — File Browser Routes (35 tests)
+### Unit Tests — File Browser Routes (41 tests)
 Tests `file_routes.py` endpoints:
 - Path validation and security (traversal, symlinks, null bytes)
 - Secret file detection and hiding
@@ -69,7 +69,7 @@ Tests `file_routes.py` endpoints:
 - Directory tree scanning with depth limits
 - File content reading (text, binary, images)
 
-### Unit Tests — Allowed Commands (9 tests)
+### Unit Tests — Allowed Commands (15 tests)
 Tests command filtering and runtime access:
 - Command filter hook: allow/deny bash commands by first-word prefix
 - Non-bash tools pass through without filtering
@@ -77,6 +77,8 @@ Tests command filtering and runtime access:
 - Command access MCP tool server creation
 - Permission request flow: approve saves to agent_config
 - Multiple commands can be saved and retrieved
+- YOLO mode bypass, runtime approval persistence
+- Edge cases: empty commands, multi-word prefixes
 
 ### Unit Tests — Diff Mixing (6 tests)
 Tests diff isolation between concurrent agent items:
@@ -87,7 +89,7 @@ Tests diff isolation between concurrent agent items:
 - Concurrent diff requests return correct results
 - Diff while merge is in progress (race condition testing)
 
-### Integration Tests (14 tests)
+### Integration Tests (17 tests)
 Tests the full orchestrator lifecycle through the service layer:
 - **Happy path**: start → complete → approve → done
 - **Failure**: agent error → failed status

@@ -17,12 +17,12 @@ path/to/claude-agents-dashboard/run.sh
 ## Running tests
 
 ```bash
-./run-tests.sh              # Run all 123 tests
+./run-tests.sh              # Run all 143 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ```
 
-Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (imports, DB basics), unit (path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing), integration (orchestrator lifecycle). See `tests/README.md` for details.
+Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (13 tests — imports, DB basics), unit (113 tests — path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing), integration (17 tests — orchestrator lifecycle). See `tests/README.md` for details.
 
 ## Architecture
 
@@ -152,12 +152,12 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (110 lines) that delegates to 5 focused services:
-  - `WorkflowService` (405 lines): Coordinates agent workflows, state transitions, callback creation, and merge conflict auto-resolution
-  - `DatabaseService` (181 lines): All database operations (items, logs, config, attachments, token usage)
+- **Service layer architecture**: The orchestrator is a thin facade (110 lines) that delegates to 5 focused services (total ~1,088 lines):
+  - `WorkflowService` (537 lines): Coordinates agent workflows, state transitions, callback creation, and merge conflict auto-resolution
+  - `DatabaseService` (199 lines): All database operations (items, logs, config, attachments, token usage)
   - `NotificationService` (95 lines): WebSocket broadcasting and tool use formatting
-  - `GitService` (93 lines): Worktree management, merge operations, and cleanup
-  - `SessionService` (152 lines): Agent session lifecycle, commit messages, plugin parsing
+  - `GitService` (94 lines): Worktree management, merge operations, and cleanup
+  - `SessionService` (163 lines): Agent session lifecycle, commit messages, plugin parsing
 
 - **Agent start is non-blocking**: `WorkflowService.start_agent()` creates a session via `SessionService.create_session()` and launches it via `SessionService.start_session_task()` which uses `asyncio.create_task()` so the HTTP response returns immediately. The agent streams progress via WebSocket.
 
@@ -406,7 +406,7 @@ src/
 
 ### Testing changes
 
-Run the automated test suite (123 tests):
+Run the automated test suite (143 tests):
 ```bash
 ./run-tests.sh              # All tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
