@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (123 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations, security, git operations, and agent tools.
+This directory contains the automated test suite (143 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations, security, git operations, and agent tools.
 
 ## Test Structure
 
@@ -9,17 +9,17 @@ tests/
 ├── conftest.py                                   # Shared fixtures and test configuration
 ├── unit/                                         # Unit tests (fast, isolated)
 │   ├── migrations/
-│   │   ├── test_migration_runner.py             # Core migration functionality (14 tests)
-│   │   └── test_migration_edge_cases.py         # Edge cases and error scenarios (14 tests)
-│   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
+│   │   ├── test_migration_runner.py             # Core migration functionality (15 tests)
+│   │   └── test_migration_edge_cases.py         # Edge cases and error scenarios (15 tests)
+│   ├── test_path_validation.py                  # Path traversal prevention (16 tests)
 │   ├── test_git_timeout.py                      # Git timeout handling (5 tests)
-│   ├── test_file_routes.py                      # File browser routes (35 tests)
-│   ├── test_allowed_commands.py                 # Command filter + access MCP tool (9 tests)
+│   ├── test_file_routes.py                      # File browser routes (41 tests)
+│   ├── test_allowed_commands.py                 # Command filter + access MCP tool (15 tests)
 │   └── test_diff_mixing.py                      # Diff isolation between items (6 tests)
 ├── integration/                                  # Integration tests (slower, multi-component)
-│   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (14 tests)
+│   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (17 tests)
 ├── smoke/                                        # Smoke tests (basic functionality)
-│   └── test_basic_functionality.py              # Quick regression checks (12 tests)
+│   └── test_basic_functionality.py              # Quick regression checks (13 tests)
 └── README.md                                     # This file
 ```
 
@@ -62,7 +62,7 @@ Tests migration operations:
 
 ### Quick Start
 ```bash
-# Run all 123 tests
+# Run all 143 tests
 ./run-tests.sh
 
 # Run specific test categories

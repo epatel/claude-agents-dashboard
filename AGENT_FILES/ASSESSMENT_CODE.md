@@ -2,13 +2,13 @@
 
 **Date**: 2026-03-26
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 8 — Maintenance reassessment with updated test counts, new migrations, and codebase statistics.
+**Revision**: 9 — Maintenance reassessment with updated test counts (143), line counts, and codebase statistics.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 10 specialized dialog modules on the frontend. Since the previous assessment, a **file browser** has been added, along with **allowed commands** with runtime approval, **bash YOLO mode**, and **base commit pinning** for stable diffs. The test suite has grown to **123 automated tests** across smoke, unit, and integration tiers, now including diff isolation and command filter tests.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 10 specialized dialog modules on the frontend. Since the previous assessment, a **file browser** has been added, along with **allowed commands** with runtime approval, **bash YOLO mode**, and **base commit pinning** for stable diffs. The test suite has grown to **143 automated tests** across smoke, unit, and integration tiers, with expanded coverage for diff isolation, command filtering, file browser routes, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -109,32 +109,32 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 405 | A | Core workflow coordination with callback factory pattern and merge conflict auto-resolution |
-| `services/database_service.py` | 181 | A | All DB operations extracted; parameterized queries throughout |
+| `services/workflow_service.py` | 537 | A | Core workflow coordination with callback factory pattern and merge conflict auto-resolution |
+| `services/database_service.py` | 199 | A | All DB operations extracted; parameterized queries throughout |
 | `services/notification_service.py` | 95 | A | WebSocket broadcasting + tool formatting; clean separation |
-| `services/git_service.py` | 93 | A | Git worktree and merge operations with proper error handling |
-| `services/session_service.py` | 152 | A | Session lifecycle, commit messages, plugin parsing |
+| `services/git_service.py` | 94 | A | Git worktree and merge operations with proper error handling |
+| `services/session_service.py` | 163 | A | Session lifecycle, commit messages, plugin parsing |
 
 ### Backend Python — Core
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `main.py` | 81 | A | Clean entry point, proper git validation, port discovery |
+| `main.py` | 89 | A | Clean entry point, proper git validation, port discovery |
 | `config.py` | 109 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
 | `constants.py` | 12 | A | Centralized `AVAILABLE_MODELS` dict and `DEFAULT_MODEL` |
-| `models.py` | 98 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
+| `models.py` | 100 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
-| `web/routes.py` | 566 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
+| `web/routes.py` | 580 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
 | `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 110 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
-| `agent/session.py` | 295 | A- | Clean SDK wrapper; good token extraction with fallbacks |
+| `agent/session.py` | 342 | A- | Clean SDK wrapper; good token extraction with fallbacks |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
 | `agent/todo.py` | 56 | A | Clean MCP tool definition |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
-| `git/operations.py` | 285 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
-| `git/worktree.py` | 54 | A | Simple and correct; returns base branch for tracking |
+| `git/operations.py` | 313 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
+| `git/worktree.py` | 73 | A | Simple and correct; returns base branch for tracking |
 | `migrations/runner.py` | 198 | A- | Solid migration system; class discovery uses string comparison (justified) |
 | `migrations/migration.py` | 28 | A | Clean base class |
 | `migrations/versions/001_initial_schema.py` | 158 | A | Complete initial schema with all 8 tables |
@@ -147,7 +147,7 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
-| `app.js` | 387 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
+| `app.js` | 392 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
 | `board.js` | 346 | B+ | Drag-drop works well; card rendering could use templating |
 | `dialogs.js` | 83 | A | Clean coordinator pattern — delegates to 10 specialized modules |
 | `dialog-core.js` | 53 | A | Core dialog open/close/confirm utilities |
@@ -155,8 +155,8 @@ graph TB
 | `item-dialog.js` | 190 | A- | New/edit item forms with attachment handling |
 | `detail-dialog.js` | 188 | A- | Item detail view with tabbed interface |
 | `review-dialog.js` | 102 | A | Review dialog with diff viewer and work log |
-| `config-dialog.js` | 87 | A | Agent configuration (system prompt, MCP, plugins) |
-| `clarification-dialog.js` | 50 | A | Clean clarification prompt/response UI |
+| `config-dialog.js` | 144 | A | Agent configuration (system prompt, MCP, plugins) |
+| `clarification-dialog.js` | 117 | A | Clean clarification prompt/response UI |
 | `request-changes-dialog.js` | 24 | A | Focused request-changes form |
 | `attachments.js` | 43 | A | Attachment viewing and deletion |
 | `annotation-canvas.js` | 52 | A | Canvas annotation integration bridge |
@@ -176,6 +176,8 @@ graph TB
 | `dialog.css` | 74 | A | Dialog component styles |
 | `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 66 | A | Light/dark theme definitions |
+
+**Note**: CSS total is ~1,629 lines across 5 modules.
 
 ---
 
@@ -293,7 +295,7 @@ stateDiagram-v2
 | 10 | No WebSocket rate limiting | ✅ Per-IP rate limiting with concurrent connection limits and windowed attempt tracking |
 | 11 | No request timeout for blocking operations | ✅ `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT` on approve route |
 | 12 | Migration class discovery uses string comparison | ✅ Justified — `issubclass` fails with dynamic module loading |
-| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (405), DatabaseService (181), NotificationService (95), GitService (93), SessionService (152). Orchestrator now 110-line facade |
+| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (537), DatabaseService (199), NotificationService (95), GitService (94), SessionService (163). Orchestrator now 110-line facade |
 | 14 | `dialogs.js` too large (801 lines) | ✅ Split into 10 specialized modules with coordinator pattern. Largest module is `item-dialog.js` at 190 lines |
 
 ### Remaining Issues
@@ -310,19 +312,19 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 123 automated tests across 10 test files via `./run-tests.sh`.
+**Current state**: 143 automated tests across 10 test files via `./run-tests.sh`.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
-| `tests/smoke/test_basic_functionality.py` | Smoke | 12 | Imports, DB basics, config |
-| `tests/unit/test_path_validation.py` | Unit | 14 | Path traversal prevention |
+| `tests/smoke/test_basic_functionality.py` | Smoke | 13 | Imports, DB basics, config |
+| `tests/unit/test_path_validation.py` | Unit | 16 | Path traversal prevention |
 | `tests/unit/test_git_timeout.py` | Unit | 5 | Git operation timeout behavior |
-| `tests/unit/test_file_routes.py` | Unit | 35 | File browser path validation, secret detection, language mapping, directory scanning, file content reading |
-| `tests/unit/test_allowed_commands.py` | Unit | 9 | Command filter hook, command access MCP tool, permission persistence |
+| `tests/unit/test_file_routes.py` | Unit | 41 | File browser path validation, secret detection, language mapping, directory scanning, file content reading |
+| `tests/unit/test_allowed_commands.py` | Unit | 15 | Command filter hook, command access MCP tool, permission persistence, YOLO mode |
 | `tests/unit/test_diff_mixing.py` | Unit | 6 | Diff isolation between items, concurrent diffs, base commit pinning |
-| `tests/unit/migrations/test_migration_runner.py` | Unit | 14 | Migration engine |
-| `tests/unit/migrations/test_migration_edge_cases.py` | Unit | 14 | Migration edge cases |
-| `tests/integration/test_orchestrator_lifecycle.py` | Integration | 14 | Orchestrator lifecycle |
+| `tests/unit/migrations/test_migration_runner.py` | Unit | 15 | Migration engine |
+| `tests/unit/migrations/test_migration_edge_cases.py` | Unit | 15 | Migration edge cases |
+| `tests/integration/test_orchestrator_lifecycle.py` | Integration | 17 | Orchestrator lifecycle |
 | `tests/conftest.py` | Fixtures | — | Shared test fixtures |
 
 ### Recommended Additional Tests
@@ -387,12 +389,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 31 | ~4,155 |
-| JavaScript frontend | 19 | ~3,673 |
-| CSS styles | 5 | ~1,693 |
+| Python backend (src/) | 31 | ~4,184 |
+| JavaScript frontend | 19 | ~3,802 |
+| CSS styles | 5 | ~1,629 |
 | HTML templates | 3 | ~491 |
-| Tests | 10 | ~2,592 |
-| **Grand total** | **68** | **~12,604** |
+| Tests | 10 | ~3,014 |
+| **Grand total** | **68** | **~13,120** |
 
 ---
 
