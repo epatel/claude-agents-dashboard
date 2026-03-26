@@ -20,11 +20,12 @@ class GitService:
         self.worktree_dir.mkdir(exist_ok=True)
 
     async def create_or_reuse_worktree(self, item_id: str, existing_worktree_path: Optional[str] = None,
-                                      existing_branch_name: Optional[str] = None) -> Tuple[Path, str, str]:
+                                      existing_branch_name: Optional[str] = None) -> Tuple[Path, str, str, Optional[str]]:
         """Create a new worktree or reuse an existing one.
 
         Returns:
-            Tuple of (worktree_path, branch_name, base_branch)
+            Tuple of (worktree_path, branch_name, base_branch, base_commit)
+            base_commit is the SHA of the base branch at creation time (None when reusing).
         """
         branch_name = existing_branch_name or f"agent/{item_id}"
 
@@ -33,13 +34,13 @@ class GitService:
             worktree_path = Path(existing_worktree_path)
             # Try to determine base branch (fallback to main if unknown)
             base_branch = "main"  # Could be enhanced to detect actual base
-            return worktree_path, branch_name, base_branch
+            return worktree_path, branch_name, base_branch, None
 
         # Check if worktree dir already exists from previous run
         worktree_path = self.worktree_dir / branch_name.replace("/", "-")
         if worktree_path.exists():
             base_branch = "main"  # Could be enhanced to detect actual base
-            return worktree_path, branch_name, base_branch
+            return worktree_path, branch_name, base_branch, None
 
         # Clean up stale branch if it exists
         try:
@@ -48,11 +49,11 @@ class GitService:
             pass  # Branch doesn't exist, that's fine
 
         # Create new worktree
-        worktree_path, base_branch = await create_worktree(
+        worktree_path, base_branch, base_commit = await create_worktree(
             self.target_project, self.worktree_dir, branch_name
         )
 
-        return worktree_path, branch_name, base_branch
+        return worktree_path, branch_name, base_branch, base_commit
 
     async def merge_agent_work(self, branch_name: str, base_branch: Optional[str] = None,
                               worktree_path: Optional[Path] = None,

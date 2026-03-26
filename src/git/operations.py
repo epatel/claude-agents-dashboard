@@ -77,21 +77,29 @@ async def get_current_branch(repo: Path) -> str:
             return "main"
 
 
-async def get_diff(repo: Path, branch: str, base: str | None = None, worktree_path: Path | None = None) -> str:
+async def get_diff(repo: Path, branch: str, base: str | None = None,
+                   worktree_path: Path | None = None, base_commit: str | None = None) -> str:
     """Get diff including both committed and uncommitted changes.
 
     If worktree_path is given, diffs the worktree working directory against base.
     Otherwise diffs the branch ref against base.
+
+    Args:
+        base_commit: If provided, use this exact commit SHA instead of the base
+            branch name. This ensures diffs are stable even when the base branch
+            moves forward (e.g., after other items are merged).
     """
-    if base is None:
-        base = await get_main_branch(repo)
+    # Prefer base_commit (immutable SHA) over base branch name (moving target)
+    diff_base = base_commit or base
+    if diff_base is None:
+        diff_base = await get_main_branch(repo)
 
     if worktree_path and worktree_path.exists():
         # Diff base against the worktree's working directory (includes uncommitted changes)
         # First get committed diff
         committed = ""
         try:
-            committed = await run_git(repo, "diff", base, branch)
+            committed = await run_git(repo, "diff", diff_base, branch)
         except subprocess.CalledProcessError:
             pass
 
@@ -124,20 +132,27 @@ async def get_diff(repo: Path, branch: str, base: str | None = None, worktree_pa
         parts = [p for p in [committed, uncommitted, new_files_diff] if p.strip()]
         return "\n".join(parts)
     else:
-        return await run_git(repo, "diff", base, branch)
+        return await run_git(repo, "diff", diff_base, branch)
 
 
-async def get_changed_files(repo: Path, branch: str, base: str | None = None, worktree_path: Path | None = None) -> list[dict]:
-    """Get list of changed files including uncommitted changes."""
-    if base is None:
-        base = await get_main_branch(repo)
+async def get_changed_files(repo: Path, branch: str, base: str | None = None,
+                            worktree_path: Path | None = None, base_commit: str | None = None) -> list[dict]:
+    """Get list of changed files including uncommitted changes.
+
+    Args:
+        base_commit: If provided, use this exact commit SHA instead of the base
+            branch name for stable results.
+    """
+    diff_base = base_commit or base
+    if diff_base is None:
+        diff_base = await get_main_branch(repo)
 
     status_labels = {"A": "Added", "M": "Modified", "D": "Deleted", "R": "Renamed"}
     files = {}
 
     # Get committed changes between base and branch
     try:
-        output = await run_git(repo, "diff", "--name-status", base, branch)
+        output = await run_git(repo, "diff", "--name-status", diff_base, branch)
         for line in output.split("\n"):
             if not line.strip():
                 continue

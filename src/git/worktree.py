@@ -2,11 +2,11 @@ from pathlib import Path
 from .operations import run_git, get_current_branch
 
 
-async def create_worktree(repo: Path, worktree_dir: Path, branch_name: str) -> tuple[Path, str]:
+async def create_worktree(repo: Path, worktree_dir: Path, branch_name: str) -> tuple[Path, str, str]:
     """Create a git worktree with a new branch off the current branch.
 
-    Returns (worktree_path, base_branch) so the caller can record which
-    branch the worktree was created from.
+    Returns (worktree_path, base_branch, base_commit) so the caller can
+    record which branch and exact commit the worktree was created from.
     """
     current = await get_current_branch(repo)
     worktree_path = worktree_dir / branch_name.replace("/", "-")
@@ -27,8 +27,11 @@ async def create_worktree(repo: Path, worktree_dir: Path, branch_name: str) -> t
         except Exception as e:
             raise ValueError(f"Repository at {repo} appears to be empty with no commits. Please initialize it with at least one commit, or ensure the target directory is a valid git repository.") from e
 
+    # Capture the exact commit SHA before creating the worktree
+    base_commit = await run_git(repo, "rev-parse", current)
+
     await run_git(repo, "worktree", "add", str(worktree_path), "-b", branch_name, current)
-    return worktree_path, current
+    return worktree_path, current, base_commit
 
 
 async def remove_worktree(repo: Path, worktree_path: Path) -> None:

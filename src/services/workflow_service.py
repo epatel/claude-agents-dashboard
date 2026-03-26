@@ -42,19 +42,21 @@ class WorkflowService:
         config = await self.db.get_agent_config()
 
         # Setup git worktree
-        worktree_path, branch_name, base_branch = await self.git.create_or_reuse_worktree(
+        worktree_path, branch_name, base_branch, base_commit = await self.git.create_or_reuse_worktree(
             item_id, item.get("worktree_path"), item.get("branch_name")
         )
 
-        # Update item state
-        item = await self.db.update_item(
-            item_id,
+        # Update item state (preserve existing base_commit if reusing worktree)
+        update_kwargs = dict(
             column_name="doing",
             status="running",
             branch_name=branch_name,
             worktree_path=str(worktree_path),
             base_branch=base_branch,
         )
+        if base_commit:
+            update_kwargs["base_commit"] = base_commit
+        item = await self.db.update_item(item_id, **update_kwargs)
         await self.notifications.broadcast_item_updated(item)
 
         await self._log_and_notify(item_id, "system", "Agent started")
@@ -106,7 +108,7 @@ class WorkflowService:
         worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
         if not worktree_path or not worktree_path.exists():
             branch_name = item.get("branch_name") or f"agent/{item_id}"
-            worktree_path, _, _ = await self.git.create_or_reuse_worktree(item_id, None, branch_name)
+            worktree_path, _, _, _ = await self.git.create_or_reuse_worktree(item_id, None, branch_name)
             await self.db.update_item(
                 item_id,
                 branch_name=branch_name,
