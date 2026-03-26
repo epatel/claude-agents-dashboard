@@ -30,7 +30,7 @@ def make_tool_filter_hook(allowed_builtin_tools: list[str]):
                 "permissionDecision": "deny",
                 "permissionDecisionReason": (
                     f"Tool '{tool_name}' is not enabled. "
-                    "Use the request_tool_access tool to ask the user for permission."
+                    "Use the mcp__tool_access__request_tool_access tool to ask the user for permission."
                 ),
             }
         }

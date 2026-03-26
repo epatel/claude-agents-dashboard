@@ -34,7 +34,7 @@ def make_command_filter_hook(allowed_commands: list[str], session=None):
                 "permissionDecision": "deny",
                 "permissionDecisionReason": (
                     f"Command '{first_word}' is not in the allowed commands list. "
-                    "Use the request_command_access tool to ask the user for permission."
+                    "Use the mcp__command_access__request_command_access tool to ask the user for permission."
                 ),
             }
         }

@@ -143,7 +143,8 @@ class AgentSession:
         )
         tool_note = (
             "\n\nIf a built-in tool (like WebSearch or WebFetch) is blocked, use the "
-            "request_tool_access tool to ask the user for permission."
+            "mcp__tool_access__request_tool_access tool to ask the user for permission. "
+            "Do NOT use ToolSearch to find it — call it directly."
         )
         full_system_prompt = (self.system_prompt or "") + cwd_note + clarify_note + commit_note + command_note + tool_note
 
