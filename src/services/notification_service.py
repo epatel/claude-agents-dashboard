@@ -36,7 +36,7 @@ class NotificationService:
         })
 
     async def broadcast_clarification_requested(self, item_id: str, prompt: str, choices: Optional[List[str]]):
-        """Broadcast clarification request event."""
+        """Broadcast question request event."""
         await self.ws_manager.broadcast("clarification_requested", {
             "item_id": item_id,
             "prompt": prompt,

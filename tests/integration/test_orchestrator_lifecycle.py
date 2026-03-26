@@ -204,10 +204,10 @@ class TestOrchestratorLifecycle:
             result = await test_orchestrator.approve_item(item_id)
             assert result["status"] == "resolving_conflicts"
 
-    async def test_clarification_workflow(
+    async def test_questions_workflow(
         self, test_orchestrator, test_item, mock_git_operations
     ):
-        """Test the clarification request and response workflow."""
+        """Test the questions request and response workflow."""
         item_id = test_item["id"]
         prompt = "What color should the button be?"
         choices = ["red", "blue", "green"]
@@ -221,7 +221,7 @@ class TestOrchestratorLifecycle:
         async with test_orchestrator.db.connect() as conn:
             cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
             item = dict(await cursor.fetchone())
-        assert item["column_name"] == "clarify"
+        assert item["column_name"] == "questions"
 
         await test_orchestrator.submit_clarification(item_id, "blue")
         response = await clarification_task

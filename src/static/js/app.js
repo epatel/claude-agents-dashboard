@@ -325,7 +325,7 @@ const App = {
                         const ended = data.status && data.status !== 'running' && data.status !== 'resolving_conflicts';
                         if (movedOut || ended) {
                             Dialogs.close('detail-dialog');
-                            // showDetail auto-routes to review/clarify dialogs based on column
+                            // showDetail auto-routes to review/questions dialogs based on column
                             Dialogs.showDetail(itemId);
                         }
                     }

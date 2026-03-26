@@ -13,8 +13,8 @@ const DetailDialog = {
             return ReviewDialog.showReview(itemId);
         }
 
-        // If item is in clarify, reopen the clarification dialog
-        if (item.column_name === 'clarify') {
+        // If item is in questions, reopen the questions dialog
+        if (item.column_name === 'questions') {
             return ClarificationDialog.reopenClarification(itemId);
         }
 

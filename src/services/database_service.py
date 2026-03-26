@@ -94,7 +94,7 @@ class DatabaseService:
         return item
 
     async def store_clarification(self, item_id: str, prompt: str, choices: Optional[List[str]]):
-        """Store a clarification request in the database."""
+        """Store a question request in the database."""
         async with self.db.connect() as conn:
             await conn.execute(
                 "INSERT INTO clarifications (item_id, prompt, choices) VALUES (?, ?, ?)",
@@ -103,7 +103,7 @@ class DatabaseService:
             await conn.commit()
 
     async def update_clarification_response(self, item_id: str, response: str):
-        """Update clarification with user response."""
+        """Update question with user response."""
         async with self.db.connect() as conn:
             await conn.execute(
                 "UPDATE clarifications SET response = ?, answered_at = datetime('now') "

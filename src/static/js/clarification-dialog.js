@@ -1,5 +1,5 @@
 /**
- * Clarification dialog functionality
+ * Questions dialog functionality — handles agent questions and permission requests
  */
 const ClarificationDialog = {
     _originalFormHTML: null,
@@ -30,7 +30,7 @@ const ClarificationDialog = {
                     this.showPermissionRequest(itemId, command, reason);
                 } else {
                     const choices = data.choices ? JSON.parse(data.choices) : [];
-                    this.showClarification(itemId, data.prompt || '(Agent is waiting for your input)', choices);
+                    this.showClarification(itemId, data.prompt || '(Agent is waiting for your response)', choices);
                 }
             } else {
                 // No pending clarification, show regular detail

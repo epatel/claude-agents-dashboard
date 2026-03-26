@@ -4,7 +4,7 @@ This migration creates the complete schema for the Agents Dashboard:
 - items: Main kanban board items
 - work_log: Agent activity logging
 - review_comments: Code review feedback
-- clarifications: User interaction prompts
+- clarifications: Agent question prompts awaiting user response
 - attachments: Uploaded files and images
 - agent_config: System configuration (with MCP and plugin support)
 - token_usage: Token consumption tracking per agent run
@@ -73,7 +73,7 @@ class InitialSchemaMigration(Migration):
             )
         """)
 
-        # Clarifications table - user interaction prompts
+        # Clarifications table - agent questions awaiting user response
         await db.execute("""
             CREATE TABLE IF NOT EXISTS clarifications (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,

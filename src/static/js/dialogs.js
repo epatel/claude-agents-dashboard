@@ -31,7 +31,7 @@ const Dialogs = {
     showReview: (itemId) => ReviewDialog.showReview(itemId),
     switchReviewTab: (tabName) => ReviewDialog.switchReviewTab(tabName),
 
-    // Clarification dialog - delegate to ClarificationDialog
+    // Questions dialog - delegate to ClarificationDialog
     reopenClarification: (itemId) => ClarificationDialog.reopenClarification(itemId),
     showClarification: (itemId, prompt, choices) => ClarificationDialog.showClarification(itemId, prompt, choices),
     submitClarification: (event) => ClarificationDialog.submitClarification(event),

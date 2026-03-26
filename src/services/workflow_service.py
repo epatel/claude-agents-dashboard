@@ -25,7 +25,7 @@ class WorkflowService:
         self.notifications = notification_service
         self.sessions = session_service
 
-        # State for clarification handling
+        # State for question/response handling
         self._clarify_events: Dict[str, asyncio.Event] = {}
         self._clarify_responses: Dict[str, str] = {}
 
@@ -272,7 +272,7 @@ class WorkflowService:
         return item
 
     async def submit_clarification(self, item_id: str, response: str) -> Dict[str, Any]:
-        """Submit a clarification response to a waiting agent."""
+        """Submit a question response to a waiting agent."""
         await self.db.update_clarification_response(item_id, response)
 
         # Signal the waiting clarify callback
@@ -360,10 +360,10 @@ class WorkflowService:
 
     def _create_on_clarify_callback(self, item_id: str):
         async def on_clarify(prompt: str, choices: Optional[List[str]]) -> str:
-            # Move item to clarify
-            item = await self.db.update_item(item_id, column_name="clarify", status=None)
+            # Move item to questions
+            item = await self.db.update_item(item_id, column_name="questions", status=None)
             await self.notifications.broadcast_item_updated(item)
-            await self._log_and_notify(item_id, "system", f"Agent needs clarification: {prompt}")
+            await self._log_and_notify(item_id, "system", f"Agent has a question: {prompt}")
 
             # Store clarification
             await self.db.store_clarification(item_id, prompt, choices)
@@ -391,7 +391,7 @@ class WorkflowService:
     def _create_on_request_command_callback(self, item_id: str):
         async def on_request_command(command: str, reason: str) -> str:
             item = await self.db.update_item(
-                item_id, column_name="clarify", status=None
+                item_id, column_name="questions", status=None
             )
             await self.notifications.broadcast_item_updated(item)
             await self._log_and_notify(
