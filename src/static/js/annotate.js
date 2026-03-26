@@ -702,9 +702,10 @@ const Annotate = {
             const angle = Math.atan2(y2 - y1, x2 - x1);
             const headLen = 10 + (s.lineWidth || this.lineWidth) * 2;
             const headHalf = 0.4;
-            // Shorten the line so it stops at the arrowhead base
-            const baseX = x2 - headLen * Math.cos(angle);
-            const baseY = y2 - headLen * Math.sin(angle);
+            // Shorten the line so it stops just inside the arrowhead
+            const overlap = headLen * 0.3;
+            const baseX = x2 - (headLen - overlap) * Math.cos(angle);
+            const baseY = y2 - (headLen - overlap) * Math.sin(angle);
             ctx.beginPath();
             ctx.moveTo(x1, y1);
             ctx.lineTo(baseX, baseY);
