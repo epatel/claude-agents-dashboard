@@ -154,20 +154,31 @@ class AgentSession:
                     plugins.append({"type": "local", "path": plugin_path})
                     logger.info(f"Loading plugin from: {plugin_path}")
 
+        # Session ID capture hook — always registered so we can resume on restart
+        from claude_agent_sdk import HookMatcher
+
+        async def capture_session_id(hook_input, tool_use_id, context):
+            sid = hook_input.get("session_id") if isinstance(hook_input, dict) else None
+            if sid:
+                self.current_session_id = sid
+            return {}
+
+        hooks = {
+            "PreToolUse": [
+                HookMatcher(hooks=[capture_session_id]),
+            ]
+        }
+
         # Command filter hook for allowed bash commands
-        hooks = None
         if self.allowed_commands:
             allowed_tools.append("Bash")
             from .command_filter import make_command_filter_hook
-            from claude_agent_sdk import HookMatcher
-            hooks = {
-                "PreToolUse": [
-                    HookMatcher(
-                        matcher="Bash",
-                        hooks=[make_command_filter_hook(self.allowed_commands, session=self)],
-                    )
-                ]
-            }
+            hooks["PreToolUse"].append(
+                HookMatcher(
+                    matcher="Bash",
+                    hooks=[make_command_filter_hook(self.allowed_commands, session=self)],
+                )
+            )
 
         options = ClaudeAgentOptions(
             cwd=self.worktree_path,

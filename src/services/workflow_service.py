@@ -434,9 +434,10 @@ class WorkflowService:
 
                 # Schedule restart as a separate task — we can't cleanup the
                 # current session from inside it (we're running in its task).
+                item = await self.db.get_item(item_id)
                 asyncio.create_task(
                     self._restart_session_with_new_permissions(
-                        item_id, command, resume_id
+                        item_id, command, resume_id, item
                     )
                 )
 
@@ -473,7 +474,7 @@ class WorkflowService:
             return result
         return on_set_commit_message
 
-    async def _restart_session_with_new_permissions(self, item_id: str, command: str, resume_id: str | None):
+    async def _restart_session_with_new_permissions(self, item_id: str, command: str, resume_id: str | None, item: Dict[str, Any] | None = None):
         """Restart an agent session with updated allowed commands.
 
         Runs as a separate task so the old session's MCP handler can exit cleanly.
@@ -511,9 +512,14 @@ class WorkflowService:
                 on_request_command=self._create_on_request_command_callback(item_id),
             )
 
+            # Include original task so agent knows what to do even without resume
+            task_title = (item or {}).get("title", "")
+            task_desc = (item or {}).get("description", "")
             restart_prompt = (
                 f"Permission for '{command}' was granted. "
-                f"You can now run {command} commands. Continue with your task."
+                f"You can now run {command} commands.\n\n"
+                f"Continue with your original task:\n"
+                f"Task: {task_title}\n\n{task_desc}"
             )
             await self.sessions.start_session_task(
                 item_id, new_session, restart_prompt, None, resume_id
