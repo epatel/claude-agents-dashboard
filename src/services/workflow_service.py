@@ -432,42 +432,17 @@ class WorkflowService:
                 if old_session:
                     resume_id = getattr(old_session, 'current_session_id', None)
 
-                # Cancel the current session (it can't use the new permissions)
-                await self.sessions.cleanup_session(item_id)
-
-                # Restart with updated config (now includes the command)
-                item = await self.db.update_item(
-                    item_id, column_name="doing", status="running"
-                )
-                await self.notifications.broadcast_item_updated(item)
-
-                config = await self.db.get_agent_config()
-                model = item.get("model") or config.get("model")
-                worktree_path = Path(item["worktree_path"])
-                new_session = await self.sessions.create_session(
-                    item_id, worktree_path, config, model,
-                    on_message=self._create_on_message_callback(item_id),
-                    on_tool_use=self._create_on_tool_use_callback(item_id),
-                    on_thinking=self._create_on_thinking_callback(item_id),
-                    on_complete=self._create_on_complete_callback(item_id),
-                    on_error=self._create_on_error_callback(item_id),
-                    on_clarify=self._create_on_clarify_callback(item_id),
-                    on_create_todo=self._create_on_create_todo_callback(item_id),
-                    on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
-                    on_request_command=self._create_on_request_command_callback(item_id),
+                # Schedule restart as a separate task — we can't cleanup the
+                # current session from inside it (we're running in its task).
+                asyncio.create_task(
+                    self._restart_session_with_new_permissions(
+                        item_id, command, resume_id
+                    )
                 )
 
-                restart_prompt = (
-                    f"Permission for '{command}' was granted. "
-                    f"You can now run {command} commands. Continue with your task."
-                )
-                await self.sessions.start_session_task(
-                    item_id, new_session, restart_prompt, None, resume_id
-                )
-
-                # Don't return — the old session is dead, new one is running.
-                # Raise to break out of the MCP tool handler cleanly.
-                raise asyncio.CancelledError("Session restarted with new permissions")
+                # Return approved so the MCP tool handler exits cleanly.
+                # The session will be killed and restarted by the task above.
+                return "approved"
             else:
                 await self._log_and_notify(
                     item_id, "system",
@@ -497,6 +472,57 @@ class WorkflowService:
             await self._log_and_notify(item_id, "system", f"Commit message set: {message}")
             return result
         return on_set_commit_message
+
+    async def _restart_session_with_new_permissions(self, item_id: str, command: str, resume_id: str | None):
+        """Restart an agent session with updated allowed commands.
+
+        Runs as a separate task so the old session's MCP handler can exit cleanly.
+        """
+        try:
+            # Brief delay to let the MCP tool response propagate
+            await asyncio.sleep(0.5)
+
+            # Cancel the old session
+            await self.sessions.cleanup_session(item_id)
+
+            # Restart with updated config
+            item = await self.db.get_item(item_id)
+            if not item:
+                return
+
+            item = await self.db.update_item(
+                item_id, column_name="doing", status="running"
+            )
+            await self.notifications.broadcast_item_updated(item)
+
+            config = await self.db.get_agent_config()
+            model = item.get("model") or config.get("model")
+            worktree_path = Path(item["worktree_path"])
+            new_session = await self.sessions.create_session(
+                item_id, worktree_path, config, model,
+                on_message=self._create_on_message_callback(item_id),
+                on_tool_use=self._create_on_tool_use_callback(item_id),
+                on_thinking=self._create_on_thinking_callback(item_id),
+                on_complete=self._create_on_complete_callback(item_id),
+                on_error=self._create_on_error_callback(item_id),
+                on_clarify=self._create_on_clarify_callback(item_id),
+                on_create_todo=self._create_on_create_todo_callback(item_id),
+                on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
+                on_request_command=self._create_on_request_command_callback(item_id),
+            )
+
+            restart_prompt = (
+                f"Permission for '{command}' was granted. "
+                f"You can now run {command} commands. Continue with your task."
+            )
+            await self.sessions.start_session_task(
+                item_id, new_session, restart_prompt, None, resume_id
+            )
+        except Exception as e:
+            logger.error(f"Failed to restart session for {item_id}: {e}")
+            await self._log_and_notify(
+                item_id, "system", f"Failed to restart session: {e}"
+            )
 
     async def _log_and_notify(self, item_id: str, entry_type: str, content: str, metadata: Optional[str] = None):
         """Log entry to database and broadcast notification."""
