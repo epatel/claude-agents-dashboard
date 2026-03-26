@@ -421,19 +421,53 @@ class WorkflowService:
 
             if response == "approved":
                 await self.db.save_allowed_command(command)
-
-                # Update the running session's allowed_commands list so the
-                # PreToolUse hook immediately allows this command (the hook
-                # closure references the same list object).
-                session = self.sessions.sessions.get(item_id)
-                if session and hasattr(session, 'allowed_commands'):
-                    if command not in session.allowed_commands:
-                        session.allowed_commands.append(command)
-
                 await self._log_and_notify(
                     item_id, "system",
-                    f"Command '{command}' approved and added to allowed commands"
+                    f"Command '{command}' approved — restarting session with updated permissions"
                 )
+
+                # Get session_id from the running session for resume
+                old_session = self.sessions.sessions.get(item_id)
+                resume_id = None
+                if old_session:
+                    resume_id = getattr(old_session, 'current_session_id', None)
+
+                # Cancel the current session (it can't use the new permissions)
+                await self.sessions.cleanup_session(item_id)
+
+                # Restart with updated config (now includes the command)
+                item = await self.db.update_item(
+                    item_id, column_name="doing", status="running"
+                )
+                await self.notifications.broadcast_item_updated(item)
+
+                config = await self.db.get_agent_config()
+                model = item.get("model") or config.get("model")
+                worktree_path = Path(item["worktree_path"])
+                new_session = await self.sessions.create_session(
+                    item_id, worktree_path, config, model,
+                    on_message=self._create_on_message_callback(item_id),
+                    on_tool_use=self._create_on_tool_use_callback(item_id),
+                    on_thinking=self._create_on_thinking_callback(item_id),
+                    on_complete=self._create_on_complete_callback(item_id),
+                    on_error=self._create_on_error_callback(item_id),
+                    on_clarify=self._create_on_clarify_callback(item_id),
+                    on_create_todo=self._create_on_create_todo_callback(item_id),
+                    on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
+                    on_request_command=self._create_on_request_command_callback(item_id),
+                )
+
+                restart_prompt = (
+                    f"Permission for '{command}' was granted. "
+                    f"You can now run {command} commands. Continue with your task."
+                )
+                await self.sessions.start_session_task(
+                    item_id, new_session, restart_prompt, None, resume_id
+                )
+
+                # Don't return — the old session is dead, new one is running.
+                # Raise to break out of the MCP tool handler cleanly.
+                raise asyncio.CancelledError("Session restarted with new permissions")
             else:
                 await self._log_and_notify(
                     item_id, "system",

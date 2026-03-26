@@ -73,6 +73,7 @@ class AgentSession:
         self.client: ClaudeSDKClient | None = None
         self._task: asyncio.Task | None = None
         self._cancelled = False
+        self.current_session_id: str | None = None
 
     async def start(self, prompt: str, attachments: list[dict] | None = None, resume_session_id: str | None = None) -> None:
         """Start the agent with a prompt and optional image attachments."""
@@ -163,7 +164,7 @@ class AgentSession:
                 "PreToolUse": [
                     HookMatcher(
                         matcher="Bash",
-                        hooks=[make_command_filter_hook(self.allowed_commands)],
+                        hooks=[make_command_filter_hook(self.allowed_commands, session=self)],
                     )
                 ]
             }
@@ -232,6 +233,10 @@ class AgentSession:
                                 await self.on_tool_use(block.name, block.input)
 
                 elif isinstance(message, ResultMessage):
+                    # Capture session_id
+                    if message.session_id:
+                        self.current_session_id = message.session_id
+
                     # Extract token usage from the usage dict
                     input_tokens = None
                     output_tokens = None
