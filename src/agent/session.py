@@ -188,7 +188,6 @@ class AgentSession:
                     # Allow plugin tools through the whitelist.
                     # SDK names plugin tools as mcp__plugin_{name}_{server}__{tool}
                     plugin_name = Path(plugin_path).name
-                    allowed_tools.append(f"mcp__{plugin_name}__*")
                     allowed_tools.append(f"mcp__plugin_{plugin_name}_*")
                     logger.info(f"Loading plugin from: {plugin_path}")
 
