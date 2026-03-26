@@ -8,6 +8,10 @@ const ConfigDialog = {
     // Allowed commands state
     _configAllowedCommands: [],
 
+    // Built-in tools state
+    _configBuiltinTools: [],
+    _availableBuiltinTools: [],
+
     switchConfigTab(tabName) {
         document.querySelectorAll('#config-dialog .review-tab').forEach(t => {
             t.classList.toggle('active', t.dataset.tab === tabName);
@@ -43,6 +47,22 @@ const ConfigDialog = {
             document.getElementById('config-bash-yolo').checked = config.bash_yolo || false;
             this._renderAllowedCommandsList();
             this._updateYoloState(config.bash_yolo || false);
+
+            // Load built-in tools
+            try {
+                this._configBuiltinTools = JSON.parse(config.allowed_builtin_tools || '[]');
+            } catch {
+                this._configBuiltinTools = [];
+            }
+            try {
+                this._availableBuiltinTools = await Api.request('GET', '/api/config/available-tools');
+            } catch {
+                this._availableBuiltinTools = [
+                    {name: 'WebSearch', label: 'Web Search', description: 'Search the web for information'},
+                    {name: 'WebFetch', label: 'Web Fetch', description: 'Fetch content from URLs'},
+                ];
+            }
+            this._renderBuiltinToolsList();
 
             this.switchConfigTab('general');
             DialogCore.open('config-dialog');
@@ -123,6 +143,30 @@ const ConfigDialog = {
         if (addBtn) addBtn.disabled = yolo;
     },
 
+    _renderBuiltinToolsList() {
+        const container = document.getElementById('config-builtin-tools-list');
+        if (!container) return;
+        if (this._availableBuiltinTools.length === 0) {
+            container.innerHTML = '<div class="text-muted" style="font-size:13px;">No optional tools available.</div>';
+            return;
+        }
+        container.innerHTML = this._availableBuiltinTools.map(tool => {
+            const checked = this._configBuiltinTools.includes(tool.name) ? 'checked' : '';
+            return `<label style="font-size:12px;font-weight:normal;margin-top:8px;">
+                ${tool.label}
+                <input type="checkbox" ${checked} onchange="ConfigDialog.toggleBuiltinTool('${tool.name}', this.checked)" style="cursor:pointer;">
+            </label>`;
+        }).join('');
+    },
+
+    toggleBuiltinTool(name, enabled) {
+        if (enabled && !this._configBuiltinTools.includes(name)) {
+            this._configBuiltinTools.push(name);
+        } else if (!enabled) {
+            this._configBuiltinTools = this._configBuiltinTools.filter(t => t !== name);
+        }
+    },
+
     async submitConfig(event) {
         event.preventDefault();
         const config = {
@@ -134,6 +178,7 @@ const ConfigDialog = {
             plugins: JSON.stringify(this._configPlugins),
             allowed_commands: JSON.stringify(this._configAllowedCommands),
             bash_yolo: document.getElementById('config-bash-yolo').checked,
+            allowed_builtin_tools: JSON.stringify(this._configBuiltinTools),
         };
         try {
             await Api.request('PUT', '/api/config', config);

@@ -98,3 +98,4 @@ class AgentConfig(BaseModel):
     plugins: Optional[str] = "[]"
     allowed_commands: Optional[str] = "[]"
     bash_yolo: bool = False
+    allowed_builtin_tools: Optional[str] = "[]"

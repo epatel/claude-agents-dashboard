@@ -54,12 +54,14 @@ class AgentSession:
         plugins: list[dict] | None = None,
         allowed_commands: list[str] | None = None,
         bash_yolo: bool = False,
+        allowed_builtin_tools: list[str] | None = None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
         self.model = model
         self.allowed_commands = allowed_commands or []
         self.bash_yolo = bash_yolo
+        self.allowed_builtin_tools = allowed_builtin_tools or []
         self.on_message = on_message        # async callback(text: str)
         self.on_tool_use = on_tool_use      # async callback(tool_name: str, input: dict)
         self.on_thinking = on_thinking      # async callback(thinking: str)
@@ -168,6 +170,12 @@ class AgentSession:
         # Always allow Bash in the tool whitelist — permission_mode and the
         # PreToolUse hook handle actual command filtering.
         allowed_tools.append("Bash")
+
+        # Add user-enabled built-in tools (e.g. WebSearch, WebFetch)
+        for tool_name in self.allowed_builtin_tools:
+            if tool_name not in allowed_tools:
+                allowed_tools.append(tool_name)
+                logger.info(f"Allowing built-in tool: {tool_name}")
 
         hooks = None
         if not self.bash_yolo and self.allowed_commands:

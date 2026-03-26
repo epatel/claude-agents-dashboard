@@ -58,6 +58,13 @@ class SessionService:
         except (json.JSONDecodeError, TypeError):
             allowed_commands = []
 
+        # Parse allowed built-in tools from config
+        allowed_builtin_tools_raw = config.get("allowed_builtin_tools", "[]")
+        try:
+            allowed_builtin_tools = json.loads(allowed_builtin_tools_raw) if isinstance(allowed_builtin_tools_raw, str) else (allowed_builtin_tools_raw or [])
+        except (json.JSONDecodeError, TypeError):
+            allowed_builtin_tools = []
+
         session = AgentSession(
             worktree_path=worktree_path,
             system_prompt=system_prompt,
@@ -76,6 +83,7 @@ class SessionService:
             plugins=plugins,
             allowed_commands=allowed_commands,
             bash_yolo=config.get("bash_yolo", False),
+            allowed_builtin_tools=allowed_builtin_tools,
         )
 
         self.sessions[item_id] = session

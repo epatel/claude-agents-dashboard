@@ -11,3 +11,10 @@ AVAILABLE_MODELS = {
 
 # Default model to use when none specified
 DEFAULT_MODEL = AVAILABLE_MODELS["CLAUDE_SONNET_4"]
+
+# Built-in Claude Code tools that can be opted-in via agent config.
+# These require explicit allowlisting in permission_mode="acceptEdits".
+OPTIONAL_BUILTIN_TOOLS = [
+    {"name": "WebSearch", "label": "Web Search", "description": "Search the web for information"},
+    {"name": "WebFetch", "label": "Web Fetch", "description": "Fetch content from URLs"},
+]

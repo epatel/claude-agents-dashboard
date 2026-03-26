@@ -181,6 +181,8 @@ sequenceDiagram
 
 - **Bash YOLO mode**: When `bash_yolo` is enabled in agent config (migration 004), agents run with `permission_mode="bypassPermissions"` instead of `acceptEdits`, granting unrestricted bash access. This skips the command filter hook entirely. Useful for trusted environments where command restrictions are unnecessary.
 
+- **Configurable built-in tools**: Users can enable optional built-in Claude Code tools (e.g., WebSearch, WebFetch) via the "Tools" tab in Agent Configuration. Enabled tools are stored as a JSON array in `agent_config.allowed_builtin_tools` (migration 006) and appended to the `allowed_tools` list at session creation. Available tools are defined in `constants.py` as `OPTIONAL_BUILTIN_TOOLS` and served via `GET /api/config/available-tools`.
+
 - **Merge commits worktree first**: `merge_branch()` calls `commit_worktree_changes()` before merging, handling agents that leave uncommitted work. Uses agent-provided commit messages when available (via `set_commit_message` MCP tool).
 
 - **Merge conflict auto-resolution**: If a merge conflict occurs, `GitService.merge_agent_work()` returns `(False, message)`. `WorkflowService.approve_item()` then captures the agent's diff, resets the worktree to the latest base branch (`git fetch origin base && git reset --hard base`), and restarts the agent with a conflict prompt containing the previous diff. The agent reapplies its changes to the updated codebase. Falls back to `conflict` status if the diff cannot be captured.
@@ -266,6 +268,7 @@ erDiagram
         text plugins
         text allowed_commands
         bool bash_yolo
+        text allowed_builtin_tools
     }
 
     schema_migrations {
@@ -274,7 +277,7 @@ erDiagram
     }
 ```
 
-SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 5 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 6 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items, `006_add_allowed_builtin_tools.py` adds configurable built-in tools to agent config). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
 
 Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested under items) since attachments have their own integer IDs.
 
@@ -301,7 +304,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 - Card action buttons use `event.stopPropagation()` on individual buttons, not on the wrapper div, to avoid click blind spots.
 - MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` in `WorkflowService` for user response, todo creation immediately returns success and broadcasts via `NotificationService`, commit message stores in-memory (`SessionService._commit_messages` dict) and persists to DB on agent completion.
 - Agent-created items are indistinguishable from manually created ones in the database and UI — they follow the same lifecycle and support all features.
-- The agent config dialog (`config-dialog.js`) has three tabs: General (system prompt, model, project context), MCP (server JSON config, enable/disable toggle), and Plugins (local plugin directory paths with add/remove UI).
+- The agent config dialog (`config-dialog.js`) has four tabs: General (model, allowed commands, yolo mode, built-in tool toggles), Prompts (system prompt, project context), MCP (server JSON config, enable/disable toggle), and Plugins (local plugin directory paths with add/remove UI).
 - Port auto-discovery scans 8000-8019 (`MAX_PORT_TRIES = 20` in `config.py`).
 
 ## Project structure
@@ -314,7 +317,7 @@ AGENT_FILES/
 src/
 +-- main.py                           # Entry point, port discovery
 +-- config.py                         # Column definitions, timeouts, rate limits, default config, file browser settings
-+-- constants.py                      # AVAILABLE_MODELS, DEFAULT_MODEL
++-- constants.py                      # AVAILABLE_MODELS, DEFAULT_MODEL, OPTIONAL_BUILTIN_TOOLS
 +-- models.py                         # Pydantic models
 +-- database.py                       # DB connection + migration init
 +-- manage.py                         # CLI for migrations
@@ -350,6 +353,7 @@ src/
 |       +-- 003_add_allowed_commands.py # Allowed commands in agent_config
 |       +-- 004_add_bash_yolo.py    # Bash YOLO mode flag
 |       +-- 005_add_base_commit.py  # Base commit SHA for stable diffs
+|       +-- 006_add_allowed_builtin_tools.py # Configurable built-in tools
 +-- static/
 |   +-- js/
 |   |   +-- app.js                   # WebSocket + init
