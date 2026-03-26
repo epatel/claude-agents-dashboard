@@ -2,7 +2,10 @@ venv/
 __pycache__/
 *.pyc
 .DS_Store
+.superpowers
 agents-lab/
+node_modules/
+docs/superpowers/
 
 # Exclude annotation images
 annotation_*.png
