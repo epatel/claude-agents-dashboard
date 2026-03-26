@@ -257,6 +257,7 @@
         <form id="config-form" onsubmit="Dialogs.submitConfig(event)">
             <div class="review-tabs">
                 <button type="button" class="review-tab active" data-tab="general" onclick="Dialogs.switchConfigTab('general')">General</button>
+                <button type="button" class="review-tab" data-tab="prompts" onclick="Dialogs.switchConfigTab('prompts')">Prompts</button>
                 <button type="button" class="review-tab" data-tab="mcp" onclick="Dialogs.switchConfigTab('mcp')">MCP</button>
                 <button type="button" class="review-tab" data-tab="plugins" onclick="Dialogs.switchConfigTab('plugins')">Plugins</button>
             </div>
@@ -282,6 +283,9 @@
                         <button class="btn btn-sm" onclick="ConfigDialog.addAllowedCommand()">Add</button>
                     </div>
                 </div>
+            </div>
+            <!-- Prompts tab -->
+            <div class="config-tab-content" data-config-tab="prompts" style="padding:20px;display:none;">
                 <div class="form-group">
                     <label for="config-system-prompt">System Prompt <span class="tooltip" data-tip="Instructions prepended to every agent task. Use this to define coding style, conventions, or constraints that apply to all work in this project.">?</span></label>
                     <textarea id="config-system-prompt" rows="6" placeholder="e.g. Use TypeScript with strict mode. Follow existing patterns in the codebase. Write tests for new features."></textarea>
