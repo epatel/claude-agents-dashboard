@@ -344,6 +344,11 @@ const App = {
                     data.choices ? JSON.parse(data.choices) : []
                 );
                 break;
+            case 'permission_requested':
+                ClarificationDialog.showPermissionRequest(
+                    data.item_id, data.command, data.reason
+                );
+                break;
             default:
                 console.log('Unknown event:', type, data);
         }

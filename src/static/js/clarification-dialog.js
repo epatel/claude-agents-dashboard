@@ -2,6 +2,21 @@
  * Clarification dialog functionality
  */
 const ClarificationDialog = {
+    _originalFormHTML: null,
+
+    _saveFormHTML() {
+        if (!this._originalFormHTML) {
+            this._originalFormHTML = document.getElementById('clarify-form').innerHTML;
+        }
+    },
+
+    _restoreFormHTML() {
+        if (this._originalFormHTML) {
+            document.getElementById('clarify-form').innerHTML = this._originalFormHTML;
+            this._originalFormHTML = null;
+        }
+    },
+
     async reopenClarification(itemId) {
         // Fetch pending clarification from DB
         try {
@@ -19,6 +34,7 @@ const ClarificationDialog = {
     },
 
     showClarification(itemId, prompt, choices) {
+        this._restoreFormHTML();
         document.getElementById('clarify-item-id').value = itemId;
         document.getElementById('clarify-prompt').textContent = prompt;
         document.getElementById('clarify-response').value = '';
@@ -33,6 +49,49 @@ const ClarificationDialog = {
         }
 
         DialogCore.open('clarify-dialog');
+    },
+
+    showPermissionRequest(itemId, command, reason) {
+        this._saveFormHTML();
+        const form = document.getElementById('clarify-form');
+        form.innerHTML = `
+            <div class="form-group">
+                <div style="margin-bottom: 12px;">
+                    <strong>Agent requests command access</strong>
+                </div>
+                <div style="margin-bottom: 8px;">
+                    Command: <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;">${command}</code>
+                </div>
+                <div style="margin-bottom: 16px; color: var(--text-muted);">
+                    Reason: ${reason}
+                </div>
+            </div>
+            <div class="modal-footer" style="display:flex;gap:8px;">
+                <button type="button" class="btn btn-primary" onclick="ClarificationDialog.approveCommand('${itemId}', '${command}')">
+                    Allow
+                </button>
+                <button type="button" class="btn" onclick="ClarificationDialog.denyCommand('${itemId}')">
+                    Deny
+                </button>
+            </div>
+        `;
+        DialogCore.open('clarify-dialog');
+    },
+
+    async approveCommand(itemId, command) {
+        await Api.request('POST', '/api/items/' + itemId + '/approve-command', {
+            approved: true, command: command
+        });
+        DialogCore.close('clarify-dialog');
+        this._restoreFormHTML();
+    },
+
+    async denyCommand(itemId) {
+        await Api.request('POST', '/api/items/' + itemId + '/approve-command', {
+            approved: false
+        });
+        DialogCore.close('clarify-dialog');
+        this._restoreFormHTML();
     },
 
     async submitClarification(event) {
