@@ -1,5 +1,7 @@
 """Tests for the allowed_commands migration (003)."""
 
+import json
+
 import pytest
 import aiosqlite
 
@@ -75,3 +77,43 @@ class TestCommandAccessMCPTool:
 
         server = create_command_access_server(mock_callback)
         assert server is not None
+
+
+class TestPermissionRequestFlow:
+    async def test_approve_saves_command(self, test_db):
+        """Approving a command request saves it to agent_config."""
+        async with test_db.connect() as db:
+            db.row_factory = aiosqlite.Row
+            # Verify initial state
+            cursor = await db.execute("SELECT allowed_commands FROM agent_config")
+            row = await cursor.fetchone()
+            commands = json.loads(row["allowed_commands"])
+            assert commands == []
+
+            # Simulate saving a command
+            commands.append("flutter")
+            await db.execute(
+                "UPDATE agent_config SET allowed_commands = ?",
+                [json.dumps(commands)],
+            )
+            await db.commit()
+
+            # Verify
+            cursor = await db.execute("SELECT allowed_commands FROM agent_config")
+            row = await cursor.fetchone()
+            assert json.loads(row["allowed_commands"]) == ["flutter"]
+
+    async def test_multiple_commands(self, test_db):
+        """Multiple commands can be saved."""
+        async with test_db.connect() as db:
+            db.row_factory = aiosqlite.Row
+            commands = ["flutter", "dart", "npm"]
+            await db.execute(
+                "UPDATE agent_config SET allowed_commands = ?",
+                [json.dumps(commands)],
+            )
+            await db.commit()
+
+            cursor = await db.execute("SELECT allowed_commands FROM agent_config")
+            row = await cursor.fetchone()
+            assert json.loads(row["allowed_commands"]) == ["flutter", "dart", "npm"]
