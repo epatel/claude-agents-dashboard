@@ -71,6 +71,7 @@ class WorkflowService:
             on_clarify=self._create_on_clarify_callback(item_id),
             on_create_todo=self._create_on_create_todo_callback(item_id),
             on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
+            on_request_command=self._create_on_request_command_callback(item_id),
         )
 
         # Build prompt and fetch attachments
@@ -186,6 +187,7 @@ class WorkflowService:
                     on_clarify=self._create_on_clarify_callback(item_id),
                     on_create_todo=self._create_on_create_todo_callback(item_id),
                     on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
+                    on_request_command=self._create_on_request_command_callback(item_id),
                 )
 
                 conflict_prompt = (
@@ -235,6 +237,7 @@ class WorkflowService:
             on_clarify=self._create_on_clarify_callback(item_id),
             on_create_todo=self._create_on_create_todo_callback(item_id),
             on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
+            on_request_command=self._create_on_request_command_callback(item_id),
         )
 
         # Fetch attachments for context
@@ -384,6 +387,50 @@ class WorkflowService:
             return response
 
         return on_clarify
+
+    def _create_on_request_command_callback(self, item_id: str):
+        async def on_request_command(command: str, reason: str) -> str:
+            item = await self.db.update_item(
+                item_id, column_name="clarify", status=None
+            )
+            await self.notifications.broadcast_item_updated(item)
+
+            await self.notifications.broadcast(
+                "permission_requested",
+                {
+                    "item_id": item_id,
+                    "command": command,
+                    "reason": reason,
+                },
+            )
+
+            event = asyncio.Event()
+            self._clarify_events[item_id] = event
+            await event.wait()
+
+            response = self._clarify_responses.pop(item_id, "denied")
+            self._clarify_events.pop(item_id, None)
+
+            if response == "approved":
+                await self.db.save_allowed_command(command)
+                await self._log_and_notify(
+                    item_id, "system",
+                    f"Command '{command}' approved and added to allowed commands"
+                )
+            else:
+                await self._log_and_notify(
+                    item_id, "system",
+                    f"Command '{command}' access denied"
+                )
+
+            item = await self.db.update_item(
+                item_id, column_name="doing", status="running"
+            )
+            await self.notifications.broadcast_item_updated(item)
+
+            return response
+
+        return on_request_command
 
     def _create_on_create_todo_callback(self, item_id: str):
         async def on_create_todo(title: str, description: str) -> Dict[str, Any]:

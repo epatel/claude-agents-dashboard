@@ -48,6 +48,7 @@ class AgentSession:
         on_clarify=None,
         on_create_todo=None,
         on_set_commit_message=None,
+        on_request_command=None,
         mcp_servers: str | None = None,
         mcp_enabled: bool = False,
         plugins: list[dict] | None = None,
@@ -65,6 +66,7 @@ class AgentSession:
         self.on_clarify = on_clarify        # async callback(prompt: str, choices: list|None) -> str
         self.on_create_todo = on_create_todo  # async callback(title: str, description: str) -> dict
         self.on_set_commit_message = on_set_commit_message  # async callback(message: str) -> str
+        self.on_request_command = on_request_command  # async callback(command: str, reason: str) -> str
         self.mcp_servers = mcp_servers      # JSON string of MCP server configurations from agent config
         self.mcp_enabled = mcp_enabled      # Whether MCP is enabled from agent config
         self.plugins = plugins              # List of plugin configs: [{"type": "local", "path": "..."}]
@@ -85,6 +87,9 @@ class AgentSession:
             mcp_servers["todo"] = create_todo_server(self.on_create_todo)
         if self.on_set_commit_message:
             mcp_servers["commit_message"] = create_commit_message_server(self.on_set_commit_message)
+        if self.on_request_command:
+            from .command_access import create_command_access_server
+            mcp_servers["command_access"] = create_command_access_server(self.on_request_command)
 
         # Load MCP servers from agent configuration (database)
         if self.mcp_enabled and self.mcp_servers:
@@ -115,7 +120,11 @@ class AgentSession:
             "Use conventional style: start with a verb (Add, Fix, Update, Refactor, Remove). "
             "This is required — do not skip it."
         )
-        full_system_prompt = (self.system_prompt or "") + cwd_note + commit_note
+        command_note = (
+            "\n\nIf a shell command is blocked, use the request_command_access tool "
+            "to ask the user for permission. Provide the command name and reason."
+        )
+        full_system_prompt = (self.system_prompt or "") + cwd_note + commit_note + command_note
 
         # Configure allowed MCP tools
         allowed_tools = []
@@ -125,10 +134,12 @@ class AgentSession:
             allowed_tools.append("mcp__todo__create_todo")
         if "commit_message" in mcp_servers:
             allowed_tools.append("mcp__commit_message__set_commit_message")
+        if "command_access" in mcp_servers:
+            allowed_tools.append("mcp__command_access__request_command_access")
 
         # Allow all tools from external MCP servers (using wildcard for each server)
         for server_name, server_config in mcp_servers.items():
-            if server_name not in ["clarification", "todo", "commit_message"]:  # Skip our built-in servers
+            if server_name not in ["clarification", "todo", "commit_message", "command_access"]:  # Skip our built-in servers
                 allowed_tools.append(f"mcp__{server_name}__*")
                 logger.info(f"Allowing all tools from external MCP server: {server_name}")
 

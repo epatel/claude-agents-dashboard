@@ -153,6 +153,24 @@ class DatabaseService:
             ))
             await conn.commit()
 
+    async def save_allowed_command(self, command: str):
+        """Add a command to the allowed_commands list in agent_config."""
+        config = await self.get_agent_config()
+        raw = config.get("allowed_commands", "[]")
+        try:
+            commands = json.loads(raw) if isinstance(raw, str) else (raw or [])
+        except (json.JSONDecodeError, TypeError):
+            commands = []
+        if command not in commands:
+            commands.append(command)
+            async with self.db.connect() as conn:
+                await conn.execute(
+                    "UPDATE agent_config SET allowed_commands = ?, updated_at = datetime('now') WHERE id = 1",
+                    (json.dumps(commands),),
+                )
+                await conn.commit()
+        return commands
+
     async def delete_item_and_related(self, item_id: str) -> Optional[Dict[str, Any]]:
         """Delete an item and all related records, return the deleted item."""
         async with self.db.connect() as conn:
