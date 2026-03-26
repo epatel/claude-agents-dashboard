@@ -117,6 +117,12 @@ class AgentSession:
 
         # Ensure agent knows to work in the worktree directory
         cwd_note = f"\n\nIMPORTANT: Your working directory is {self.worktree_path}. All file operations must be within this directory."
+        clarify_note = (
+            "\n\nIMPORTANT: If you need to ask the user a question or need clarification, "
+            "you MUST use the ask_user MCP tool (mcp__clarification__ask_user). "
+            "Do NOT use ToolSearch, AskUserQuestion, or any other built-in tool to ask questions. "
+            "The ask_user tool is the ONLY way to communicate with the user."
+        )
         commit_note = (
             "\n\nIMPORTANT: When you have finished your task, you MUST call the "
             "set_commit_message tool with a concise commit message summarizing what you did. "
@@ -127,7 +133,7 @@ class AgentSession:
             "\n\nIf a shell command is blocked, use the request_command_access tool "
             "to ask the user for permission. Provide the command name and reason."
         )
-        full_system_prompt = (self.system_prompt or "") + cwd_note + commit_note + command_note
+        full_system_prompt = (self.system_prompt or "") + cwd_note + clarify_note + commit_note + command_note
 
         # Configure allowed MCP tools
         allowed_tools = []
