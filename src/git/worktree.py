@@ -11,6 +11,22 @@ async def create_worktree(repo: Path, worktree_dir: Path, branch_name: str) -> t
     current = await get_current_branch(repo)
     worktree_path = worktree_dir / branch_name.replace("/", "-")
 
+    # Check if the base branch actually exists
+    try:
+        await run_git(repo, "rev-parse", "--verify", current)
+    except Exception:
+        # Base branch doesn't exist - likely an empty repository
+        # Try to create an initial commit to establish the branch
+        try:
+            # Create a minimal README to establish the repository
+            readme_path = repo / "README.md"
+            if not readme_path.exists():
+                readme_path.write_text("# Project\n\nThis repository was initialized by Claude Agents Dashboard.\n")
+                await run_git(repo, "add", "README.md")
+                await run_git(repo, "commit", "-m", "Initial commit")
+        except Exception as e:
+            raise ValueError(f"Repository at {repo} appears to be empty with no commits. Please initialize it with at least one commit, or ensure the target directory is a valid git repository.") from e
+
     await run_git(repo, "worktree", "add", str(worktree_path), "-b", branch_name, current)
     return worktree_path, current
 
