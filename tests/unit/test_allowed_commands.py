@@ -67,6 +67,124 @@ class TestCommandFilterHook:
         assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+from unittest.mock import AsyncMock, patch, MagicMock
+from pathlib import Path
+
+from src.agent.session import AgentSession
+
+
+class TestAllowedToolsWhitelist:
+    """Verify that allowed_tools is built correctly so Bash and plugins aren't blocked."""
+
+    def _make_session(self, allowed_commands=None, bash_yolo=False, plugins=None):
+        return AgentSession(
+            worktree_path=Path("/tmp/fake-worktree"),
+            system_prompt="test",
+            allowed_commands=allowed_commands or [],
+            bash_yolo=bash_yolo,
+            plugins=plugins,
+            on_clarify=AsyncMock(),
+            on_create_todo=AsyncMock(),
+            on_set_commit_message=AsyncMock(),
+            on_request_command=AsyncMock(),
+        )
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    async def test_bash_in_whitelist_with_no_commands(self, mock_sdk):
+        """Bash must be in allowed_tools even without allowed_commands or bash_yolo."""
+        mock_client = AsyncMock()
+        mock_sdk.return_value = mock_client
+
+        session = self._make_session()
+        # Capture the options passed to ClaudeSDKClient
+        with patch.object(session, '_receive_loop', new_callable=AsyncMock):
+            try:
+                await session.start("test prompt")
+            except Exception:
+                pass
+
+        args, kwargs = mock_sdk.call_args
+        options = kwargs.get("options") or args[0]
+        assert "Bash" in options.allowed_tools
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    async def test_bash_in_whitelist_with_allowed_commands(self, mock_sdk):
+        """Bash must be in allowed_tools when allowed_commands is set."""
+        mock_client = AsyncMock()
+        mock_sdk.return_value = mock_client
+
+        session = self._make_session(allowed_commands=["flutter", "npm"])
+        with patch.object(session, '_receive_loop', new_callable=AsyncMock):
+            try:
+                await session.start("test prompt")
+            except Exception:
+                pass
+
+        options = mock_sdk.call_args.kwargs.get("options") or mock_sdk.call_args.args[0]
+        assert "Bash" in options.allowed_tools
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    async def test_bash_in_whitelist_with_bash_yolo(self, mock_sdk):
+        """Bash must be in allowed_tools when bash_yolo is enabled."""
+        mock_client = AsyncMock()
+        mock_sdk.return_value = mock_client
+
+        session = self._make_session(bash_yolo=True)
+        with patch.object(session, '_receive_loop', new_callable=AsyncMock):
+            try:
+                await session.start("test prompt")
+            except Exception:
+                pass
+
+        options = mock_sdk.call_args.kwargs.get("options") or mock_sdk.call_args.args[0]
+        assert "Bash" in options.allowed_tools
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    async def test_plugin_tools_in_whitelist(self, mock_sdk):
+        """Plugin tools must get wildcard entries in allowed_tools."""
+        mock_client = AsyncMock()
+        mock_sdk.return_value = mock_client
+
+        plugins = [{"type": "local", "path": "/home/user/.claude/plugins/context-mode"}]
+        session = self._make_session(plugins=plugins)
+        with patch.object(session, '_receive_loop', new_callable=AsyncMock):
+            try:
+                await session.start("test prompt")
+            except Exception:
+                pass
+
+        options = mock_sdk.call_args.kwargs.get("options") or mock_sdk.call_args.args[0]
+        assert "mcp__context-mode__*" in options.allowed_tools
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    async def test_hook_only_set_with_allowed_commands(self, mock_sdk):
+        """PreToolUse hook should only be set when allowed_commands is configured (and not yolo)."""
+        mock_client = AsyncMock()
+        mock_sdk.return_value = mock_client
+
+        # No commands, no yolo — no hook
+        session = self._make_session()
+        with patch.object(session, '_receive_loop', new_callable=AsyncMock):
+            try:
+                await session.start("test prompt")
+            except Exception:
+                pass
+        options = mock_sdk.call_args.kwargs.get("options") or mock_sdk.call_args.args[0]
+        assert options.hooks is None
+
+        # With commands — hook should be set
+        mock_sdk.reset_mock()
+        session = self._make_session(allowed_commands=["flutter"])
+        with patch.object(session, '_receive_loop', new_callable=AsyncMock):
+            try:
+                await session.start("test prompt")
+            except Exception:
+                pass
+        options = mock_sdk.call_args.kwargs.get("options") or mock_sdk.call_args.args[0]
+        assert options.hooks is not None
+        assert "PreToolUse" in options.hooks
+
+
 from src.agent.command_access import create_command_access_server
 
 

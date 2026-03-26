@@ -160,15 +160,17 @@ class AgentSession:
                 plugin_path = plugin_config.get("path", "")
                 if plugin_path:
                     plugins.append({"type": "local", "path": plugin_path})
+                    # Allow plugin tools through the whitelist
+                    plugin_name = Path(plugin_path).name
+                    allowed_tools.append(f"mcp__{plugin_name}__*")
                     logger.info(f"Loading plugin from: {plugin_path}")
 
-        # Hooks and Bash access — only registered when needed to avoid
-        # interfering with the SDK's default permission_mode behavior.
+        # Always allow Bash in the tool whitelist — permission_mode and the
+        # PreToolUse hook handle actual command filtering.
+        allowed_tools.append("Bash")
+
         hooks = None
-        if self.bash_yolo:
-            allowed_tools.append("Bash")
-        elif self.allowed_commands:
-            allowed_tools.append("Bash")
+        if not self.bash_yolo and self.allowed_commands:
             from claude_agent_sdk import HookMatcher
             from .command_filter import make_command_filter_hook
             hooks = {
