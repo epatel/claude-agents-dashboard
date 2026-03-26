@@ -17,12 +17,12 @@ path/to/claude-agents-dashboard/run.sh
 ## Running tests
 
 ```bash
-./run-tests.sh              # Run all 108 tests
+./run-tests.sh              # Run all 123 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ```
 
-Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (imports, DB basics), unit (path validation, git timeouts, migration runner, migration edge cases, file browser routes), integration (orchestrator lifecycle). See `tests/README.md` for details.
+Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (imports, DB basics), unit (path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing), integration (orchestrator lifecycle). See `tests/README.md` for details.
 
 ## Architecture
 
@@ -161,7 +161,7 @@ sequenceDiagram
 
 - **Agent start is non-blocking**: `WorkflowService.start_agent()` creates a session via `SessionService.create_session()` and launches it via `SessionService.start_session_task()` which uses `asyncio.create_task()` so the HTTP response returns immediately. The agent streams progress via WebSocket.
 
-- **One worktree per item**: Each agent task gets a git worktree (`agents-lab/worktrees/agent-{item_id}`) branched off the current branch. `GitService.create_or_reuse_worktree()` returns a `(worktree_path, branch_name, base_branch)` tuple, and the base branch is stored in the item's `base_branch` column (added in migration 002) for reliable merge targeting. This allows multiple agents to run simultaneously without conflicts.
+- **One worktree per item**: Each agent task gets a git worktree (`agents-lab/worktrees/agent-{item_id}`) branched off the current branch. `GitService.create_or_reuse_worktree()` returns a `(worktree_path, branch_name, base_branch, base_commit)` tuple. The base branch is stored in the item's `base_branch` column (migration 002) for reliable merge targeting, and the base commit SHA is stored in `base_commit` (migration 005) for stable diff computation. This allows multiple agents to run simultaneously without conflicts.
 
 - **Clarification uses asyncio.Event**: When an agent calls the `ask_user` MCP tool, the `WorkflowService._create_on_clarify_callback()` moves the item to "Clarify", broadcasts to the frontend, and `await`s an `asyncio.Event`. The HTTP endpoint `submit_clarification` sets the event, unblocking the agent.
 
@@ -177,7 +177,9 @@ sequenceDiagram
 
 - **Path traversal protection**: `validate_file_path()` in operations.py blocks absolute paths, `..` traversal, null bytes, control characters, and other dangerous patterns before passing paths to `git show`. Routes catch `ValueError` for 400 responses.
 
-- **Diff includes uncommitted changes**: `get_diff()` and `get_changed_files()` accept a `worktree_path` parameter. When provided, they combine committed branch diff + uncommitted changes + untracked files, since agents don't always commit their work. Untracked file reads use `asyncio.to_thread()` to avoid blocking the event loop.
+- **Diff includes uncommitted changes**: `get_diff()` and `get_changed_files()` accept a `worktree_path` parameter. When provided, they combine committed branch diff + uncommitted changes + untracked files, since agents don't always commit their work. Untracked file reads use `asyncio.to_thread()` to avoid blocking the event loop. When `base_commit` is provided, diffs use the pinned commit SHA instead of the branch name, ensuring stability even after other items are merged into the base branch.
+
+- **Bash YOLO mode**: When `bash_yolo` is enabled in agent config (migration 004), agents run with `permission_mode="bypassPermissions"` instead of `acceptEdits`, granting unrestricted bash access. This skips the command filter hook entirely. Useful for trusted environments where command restrictions are unnecessary.
 
 - **Merge commits worktree first**: `merge_branch()` calls `commit_worktree_changes()` before merging, handling agents that leave uncommitted work. Uses agent-provided commit messages when available (via `set_commit_message` MCP tool).
 
@@ -251,6 +253,8 @@ erDiagram
         text branch_name
         text session_id
         text model
+        text base_branch
+        text base_commit
     }
 
     agent_config {
@@ -260,6 +264,8 @@ erDiagram
         text mcp_servers
         bool mcp_enabled
         text plugins
+        text allowed_commands
+        bool bash_yolo
     }
 
     schema_migrations {
@@ -268,14 +274,14 @@ erDiagram
     }
 ```
 
-SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 2 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking to items). Tables: `items` (board cards + git metadata + model + commit_message + base_branch), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 5 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
 
 Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested under items) since attachments have their own integer IDs.
 
 #### Migration System
 
 - **Migration runner**: `src/migrations/runner.py` manages applying/rolling back migrations
-- **Migration files**: `src/migrations/versions/XXX_description.py` contain versioned schema changes (`001_initial_schema.py` for base schema, `002_add_base_branch.py` for base branch tracking)
+- **Migration files**: `src/migrations/versions/XXX_description.py` contain versioned schema changes (`001_initial_schema.py` for base schema, `002_add_base_branch.py` for base branch tracking, `003_add_allowed_commands.py` for command allowlist, `004_add_bash_yolo.py` for unrestricted bash mode, `005_add_base_commit.py` for stable diff pinning)
 - **Schema tracking**: `schema_migrations` table tracks which migrations have been applied
 - **CLI management**: `python -m src.manage` for migration commands
 - **Auto-migration**: Database automatically runs pending migrations on startup
@@ -341,6 +347,9 @@ src/
 |   +-- versions/
 |       +-- 001_initial_schema.py    # Complete schema (8 tables)
 |       +-- 002_add_base_branch.py  # Base branch tracking
+|       +-- 003_add_allowed_commands.py # Allowed commands in agent_config
+|       +-- 004_add_bash_yolo.py    # Bash YOLO mode flag
+|       +-- 005_add_base_commit.py  # Base commit SHA for stable diffs
 +-- static/
 |   +-- js/
 |   |   +-- app.js                   # WebSocket + init
@@ -397,7 +406,7 @@ src/
 
 ### Testing changes
 
-Run the automated test suite (108 tests):
+Run the automated test suite (123 tests):
 ```bash
 ./run-tests.sh              # All tests
 ./run-tests.sh tests/smoke/ # Smoke tests only

@@ -2,13 +2,13 @@
 
 **Date**: 2026-03-26
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 7 — Maintenance reassessment with updated line counts and statistics.
+**Revision**: 8 — Maintenance reassessment with updated test counts, new migrations, and codebase statistics.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 10 specialized dialog modules on the frontend. Since the previous assessment, a **file browser** has been added — a full-featured dialog for browsing the target project's source code with a directory tree, tabbed file viewer, syntax highlighting (Prism.js), markdown rendering with mermaid diagram support, image previews, secret file hiding, and keyboard navigation. The test suite has grown to **108 automated tests** across smoke, unit, and integration tiers.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 10 specialized dialog modules on the frontend. Since the previous assessment, a **file browser** has been added, along with **allowed commands** with runtime approval, **bash YOLO mode**, and **base commit pinning** for stable diffs. The test suite has grown to **123 automated tests** across smoke, unit, and integration tiers, now including diff isolation and command filter tests.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -139,6 +139,9 @@ graph TB
 | `migrations/migration.py` | 28 | A | Clean base class |
 | `migrations/versions/001_initial_schema.py` | 158 | A | Complete initial schema with all 8 tables |
 | `migrations/versions/002_add_base_branch.py` | 32 | A | Adds `base_branch` column to items table |
+| `migrations/versions/003_add_allowed_commands.py` | 36 | A | Adds `allowed_commands` to agent_config |
+| `migrations/versions/004_add_bash_yolo.py` | 27 | A | Adds `bash_yolo` flag to agent_config |
+| `migrations/versions/005_add_base_commit.py` | 32 | A | Adds `base_commit` SHA to items table |
 
 ### Frontend JavaScript
 
@@ -307,7 +310,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 108 automated tests across 8 test files via `./run-tests.sh`.
+**Current state**: 123 automated tests across 10 test files via `./run-tests.sh`.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -315,6 +318,8 @@ stateDiagram-v2
 | `tests/unit/test_path_validation.py` | Unit | 14 | Path traversal prevention |
 | `tests/unit/test_git_timeout.py` | Unit | 5 | Git operation timeout behavior |
 | `tests/unit/test_file_routes.py` | Unit | 35 | File browser path validation, secret detection, language mapping, directory scanning, file content reading |
+| `tests/unit/test_allowed_commands.py` | Unit | 9 | Command filter hook, command access MCP tool, permission persistence |
+| `tests/unit/test_diff_mixing.py` | Unit | 6 | Diff isolation between items, concurrent diffs, base commit pinning |
 | `tests/unit/migrations/test_migration_runner.py` | Unit | 14 | Migration engine |
 | `tests/unit/migrations/test_migration_edge_cases.py` | Unit | 14 | Migration edge cases |
 | `tests/integration/test_orchestrator_lifecycle.py` | Integration | 14 | Orchestrator lifecycle |
@@ -382,12 +387,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 32 | ~3,728 |
-| JavaScript frontend | 19 | ~3,544 |
+| Python backend (src/) | 31 | ~4,155 |
+| JavaScript frontend | 19 | ~3,673 |
 | CSS styles | 5 | ~1,693 |
-| HTML templates | 3 | ~471 |
-| Tests | 8 | ~2,216 |
-| **Grand total** | **67** | **~11,652** |
+| HTML templates | 3 | ~491 |
+| Tests | 10 | ~2,592 |
+| **Grand total** | **68** | **~12,604** |
 
 ---
 

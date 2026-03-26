@@ -3,7 +3,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 108 tests
+./run-tests.sh              # Run all 123 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -24,7 +24,9 @@ tests/
 │   │   └── test_migration_edge_cases.py # Edge cases, discovery (14 tests)
 │   ├── test_path_validation.py         # Path traversal prevention (14 tests)
 │   ├── test_git_timeout.py            # Git timeout handling (5 tests)
-│   └── test_file_routes.py            # File browser routes (35 tests)
+│   ├── test_file_routes.py            # File browser routes (35 tests)
+│   ├── test_allowed_commands.py       # Command filter + access MCP (9 tests)
+│   └── test_diff_mixing.py           # Diff isolation between items (6 tests)
 ├── integration/
 │   └── test_orchestrator_lifecycle.py  # Full agent workflow (14 tests)
 └── README.md
@@ -66,6 +68,24 @@ Tests `file_routes.py` endpoints:
 - Language/extension mapping
 - Directory tree scanning with depth limits
 - File content reading (text, binary, images)
+
+### Unit Tests — Allowed Commands (9 tests)
+Tests command filtering and runtime access:
+- Command filter hook: allow/deny bash commands by first-word prefix
+- Non-bash tools pass through without filtering
+- Empty allowlist denies all bash commands
+- Command access MCP tool server creation
+- Permission request flow: approve saves to agent_config
+- Multiple commands can be saved and retrieved
+
+### Unit Tests — Diff Mixing (6 tests)
+Tests diff isolation between concurrent agent items:
+- Independent diffs: each item only sees its own changes
+- Diff during concurrent merge: diffs remain stable
+- Uncommitted changes don't leak between items
+- Diff after base moves forward (using base_commit pinning)
+- Concurrent diff requests return correct results
+- Diff while merge is in progress (race condition testing)
 
 ### Integration Tests (14 tests)
 Tests the full orchestrator lifecycle through the service layer:

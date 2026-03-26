@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite for the Agent Dashboard application, focusing on P0 priority areas: **Orchestrator lifecycle** and **Database migrations**.
+This directory contains the automated test suite (123 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations, security, git operations, and agent tools.
 
 ## Test Structure
 
@@ -13,7 +13,9 @@ tests/
 │   │   └── test_migration_edge_cases.py         # Edge cases and error scenarios (14 tests)
 │   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
 │   ├── test_git_timeout.py                      # Git timeout handling (5 tests)
-│   └── test_file_routes.py                      # File browser routes (35 tests)
+│   ├── test_file_routes.py                      # File browser routes (35 tests)
+│   ├── test_allowed_commands.py                 # Command filter + access MCP tool (9 tests)
+│   └── test_diff_mixing.py                      # Diff isolation between items (6 tests)
 ├── integration/                                  # Integration tests (slower, multi-component)
 │   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (14 tests)
 ├── smoke/                                        # Smoke tests (basic functionality)
@@ -34,7 +36,19 @@ Tests the complete agent workflow:
 - ✅ **Review Loop**: Feedback and restart workflows
 - ✅ **Concurrency**: Multiple concurrent agents
 
-### 2. Database Migrations (Unit Tests)
+### 2. Allowed Commands & Diff Isolation (Unit Tests)
+**Files: `tests/unit/test_allowed_commands.py`, `tests/unit/test_diff_mixing.py`**
+
+Tests agent security and diff correctness:
+- ✅ **Command filter hook**: Allow/deny bash commands by prefix
+- ✅ **Command access MCP tool**: Server creation and request flow
+- ✅ **Permission persistence**: Approved commands saved to agent config
+- ✅ **Diff isolation**: Each item's diff contains only its own changes
+- ✅ **Concurrent diffs**: Simultaneous diff requests return correct results
+- ✅ **Diff during merge**: Diffs remain stable while other items are merged
+- ✅ **Base commit pinning**: Diffs use fixed commit SHA, immune to branch moves
+
+### 3. Database Migrations (Unit Tests)
 **Files: `tests/unit/migrations/test_migration_runner.py`, `tests/unit/migrations/test_migration_edge_cases.py`**
 
 Tests migration operations:
@@ -48,7 +62,7 @@ Tests migration operations:
 
 ### Quick Start
 ```bash
-# Run all 108 tests
+# Run all 123 tests
 ./run-tests.sh
 
 # Run specific test categories

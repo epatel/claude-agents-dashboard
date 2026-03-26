@@ -28,7 +28,7 @@ The server starts at `http://127.0.0.1:8000` (auto-increments ports 8000-8019 if
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 123 tests across smoke, unit, and integration tiers.
 
 ## How it works
 
@@ -93,7 +93,9 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Git operation timeouts** — configurable timeouts for git operations (5min), merges (10min), and HTTP requests (11min)
 - **File browser** — browse the target project's source code in a full-featured dialog with directory tree, tabbed file viewer, Prism.js syntax highlighting, rendered markdown with mermaid diagrams, inline image previews, secret file hiding, file filter, keyboard navigation, and breadcrumb navigation
 - **Allowed commands** — configure which shell commands agents can run (e.g., flutter, npm, cargo); agents can request access at runtime via MCP tool with user approval prompt
+- **Bash YOLO mode** — optional mode that grants agents unrestricted bash access (configurable per project via agent config)
 - **Base branch tracking** — worktrees record which branch they were created from for reliable merge targeting
+- **Base commit pinning** — worktrees record the exact commit SHA at creation time, ensuring diffs remain stable even when the base branch moves forward (e.g., after merging other items)
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture
@@ -197,7 +199,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema is consolidated into a single migration (`001_initial_schema.py`) that creates all tables. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations adding columns incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -221,6 +223,8 @@ erDiagram
         text session_id
         text model
         text commit_message
+        text base_branch
+        text base_commit
         text created_at
         text updated_at
     }
@@ -253,6 +257,8 @@ erDiagram
         text mcp_servers
         bool mcp_enabled
         text plugins
+        text allowed_commands
+        bool bash_yolo
         text updated_at
     }
 
@@ -409,9 +415,9 @@ Each project gets its own server instance. Run `run.sh` from different repos —
 
 The `AGENT_FILES/` directory contains supplementary documentation for agents working on this project:
 
-- `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings
+- `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `TESTING.md` — Detailed testing guide with test inventory and writing guidelines
+- `TESTING.md` — Detailed testing guide with test inventory (123 tests) and writing guidelines
 
 ## License
 
