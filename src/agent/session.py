@@ -179,20 +179,16 @@ class AgentSession:
 
         # Build plugins list from configured plugin paths
         plugins = None
+        plugin_prefixes = []
         if self.plugins:
             plugins = []
             for plugin_config in self.plugins:
                 plugin_path = plugin_config.get("path", "")
                 if plugin_path:
                     plugins.append({"type": "local", "path": plugin_path})
-                    # Allow plugin tools through the whitelist.
-                    # SDK names plugin tools as mcp__plugin_{name}_{server}__{tool}
                     plugin_name = Path(plugin_path).name
-                    # Wildcard at the server__tool boundary
-                    allowed_tools.append(f"mcp__plugin_{plugin_name}_*__*")
-                    # Fallback: wildcard right after plugin name
-                    allowed_tools.append(f"mcp__plugin_{plugin_name}_*")
-                    logger.info(f"Loading plugin '{plugin_name}', allowing tools: mcp__plugin_{plugin_name}_*__* and mcp__plugin_{plugin_name}_*")
+                    plugin_prefixes.append(f"mcp__plugin_{plugin_name}")
+                    logger.info(f"Loading plugin from: {plugin_path}")
 
         # Always allow Bash in the tool whitelist — permission_mode and the
         # PreToolUse hook handle actual command filtering.
@@ -230,6 +226,20 @@ class AgentSession:
         if hook_matchers:
             hooks = {"PreToolUse": hook_matchers}
 
+        # Build can_use_tool callback to allow plugin tools by prefix match,
+        # since SDK wildcard patterns don't work for plugin tool names.
+        can_use_tool_fn = None
+        if plugin_prefixes:
+            allowed_set = set(allowed_tools) if allowed_tools else set()
+            def can_use_tool(tool_name: str) -> bool:
+                if tool_name in allowed_set:
+                    return True
+                for prefix in plugin_prefixes:
+                    if tool_name.startswith(prefix):
+                        return True
+                return False
+            can_use_tool_fn = can_use_tool
+
         options = ClaudeAgentOptions(
             cwd=self.worktree_path,
             system_prompt=full_system_prompt,
@@ -237,6 +247,7 @@ class AgentSession:
             permission_mode="acceptEdits",  # More targeted than bypassPermissions
             mcp_servers=mcp_servers if mcp_servers else None,
             allowed_tools=allowed_tools if allowed_tools else None,
+            can_use_tool=can_use_tool_fn,
             add_dirs=[str(self.worktree_path)],
             thinking={"type": "enabled", "budget_tokens": 10000},
             plugins=plugins if plugins else None,

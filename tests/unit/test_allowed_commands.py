@@ -141,7 +141,7 @@ class TestAllowedToolsWhitelist:
 
     @patch("src.agent.session.ClaudeSDKClient")
     async def test_plugin_tools_in_whitelist(self, mock_sdk):
-        """Plugin tools must get wildcard entries in allowed_tools."""
+        """Plugin tools must be allowed via can_use_tool callback."""
         mock_client = AsyncMock()
         mock_sdk.return_value = mock_client
 
@@ -154,8 +154,14 @@ class TestAllowedToolsWhitelist:
                 pass
 
         options = mock_sdk.call_args.kwargs.get("options") or mock_sdk.call_args.args[0]
-        assert "mcp__plugin_context-mode_*__*" in options.allowed_tools
-        assert "mcp__plugin_context-mode_*" in options.allowed_tools
+        assert options.can_use_tool is not None
+        # Plugin tools should be allowed by prefix match
+        assert options.can_use_tool("mcp__plugin_context-mode_context-mode__ctx_batch_execute")
+        assert options.can_use_tool("mcp__plugin_context-mode_context-mode__ctx_execute")
+        # Non-plugin tools should also work if in allowed_tools
+        assert options.can_use_tool("Bash")
+        # Unknown tools should not be allowed
+        assert not options.can_use_tool("mcp__unknown__tool")
 
     @patch("src.agent.session.ClaudeSDKClient")
     async def test_hook_only_set_with_allowed_commands(self, mock_sdk):
