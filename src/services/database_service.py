@@ -17,6 +17,15 @@ class DatabaseService:
     def __init__(self, db: Database):
         self.db = db
 
+    async def get_all_items(self) -> List[Dict[str, Any]]:
+        """Get all items ordered by column and position."""
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT id, title, description, column_name, status FROM items ORDER BY column_name, position"
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
     async def get_item(self, item_id: str) -> Optional[Dict[str, Any]]:
         """Get an item by ID."""
         async with self.db.connect() as conn:

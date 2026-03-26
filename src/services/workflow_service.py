@@ -75,6 +75,7 @@ class WorkflowService:
             on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
+            on_view_board=self._create_on_view_board_callback(),
         )
 
         # Build prompt and fetch attachments
@@ -242,6 +243,7 @@ class WorkflowService:
             on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
+            on_view_board=self._create_on_view_board_callback(),
         )
 
         # Fetch attachments for context
@@ -543,6 +545,31 @@ class WorkflowService:
             await self._log_and_notify(item_id, "system", f"Commit message set: {message}")
             return result
         return on_set_commit_message
+
+    def _create_on_view_board_callback(self):
+        async def on_view_board() -> str:
+            from ..config import COLUMNS
+            items = await self.db.get_all_items()
+            # Group by column
+            by_column = {}
+            for item in items:
+                col = item["column_name"]
+                by_column.setdefault(col, []).append(item)
+
+            lines = []
+            for col in COLUMNS:
+                col_id = col["id"]
+                col_items = by_column.get(col_id, [])
+                lines.append(f"## {col['label']} ({len(col_items)})")
+                if col_items:
+                    for item in col_items:
+                        status = f" [{item['status']}]" if item.get("status") else ""
+                        lines.append(f"- {item['title']}{status}")
+                else:
+                    lines.append("  (empty)")
+                lines.append("")
+            return "\n".join(lines)
+        return on_view_board
 
     async def _restart_session_with_new_permissions(self, item_id: str, command: str, resume_id: str | None, item: Dict[str, Any] | None = None):
         """Restart an agent session with updated allowed commands.

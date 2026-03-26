@@ -51,6 +51,7 @@ class AgentSession:
         on_set_commit_message=None,
         on_request_command=None,
         on_request_tool=None,
+        on_view_board=None,
         mcp_servers: str | None = None,
         mcp_enabled: bool = False,
         plugins: list[dict] | None = None,
@@ -74,6 +75,7 @@ class AgentSession:
         self.on_set_commit_message = on_set_commit_message  # async callback(message: str) -> str
         self.on_request_command = on_request_command  # async callback(command: str, reason: str) -> str
         self.on_request_tool = on_request_tool      # async callback(tool_name: str, reason: str) -> str
+        self.on_view_board = on_view_board          # async callback() -> str
         self.mcp_servers = mcp_servers      # JSON string of MCP server configurations from agent config
         self.mcp_enabled = mcp_enabled      # Whether MCP is enabled from agent config
         self.plugins = plugins              # List of plugin configs: [{"type": "local", "path": "..."}]
@@ -101,6 +103,9 @@ class AgentSession:
         if self.on_request_tool:
             from .tool_access import create_tool_access_server
             mcp_servers["tool_access"] = create_tool_access_server(self.on_request_tool)
+        if self.on_view_board:
+            from .board_view import create_board_view_server
+            mcp_servers["board_view"] = create_board_view_server(self.on_view_board)
 
         # Load MCP servers from agent configuration (database)
         if self.mcp_enabled and self.mcp_servers:
@@ -160,10 +165,12 @@ class AgentSession:
             allowed_tools.append("mcp__command_access__request_command_access")
         if "tool_access" in mcp_servers:
             allowed_tools.append("mcp__tool_access__request_tool_access")
+        if "board_view" in mcp_servers:
+            allowed_tools.append("mcp__board_view__view_board")
 
         # Allow all tools from external MCP servers (using wildcard for each server)
         for server_name, server_config in mcp_servers.items():
-            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access"]:  # Skip our built-in servers
+            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view"]:  # Skip our built-in servers
                 allowed_tools.append(f"mcp__{server_name}__*")
                 logger.info(f"Allowing all tools from external MCP server: {server_name}")
 
