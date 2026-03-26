@@ -2,10 +2,39 @@
  * Core dialog utilities and confirmation dialogs
  */
 const DialogCore = {
-    // Utility function for reliable auto-scroll
+    // Track which log elements have auto-scroll enabled (default: true)
+    _autoScrollEnabled: new WeakMap(),
+
+    // Check if an element is scrolled to (or near) the bottom
+    _isAtBottom(element, threshold = 30) {
+        return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold;
+    },
+
+    // Attach scroll listener to a log element to track user scroll intent
+    initAutoScroll(element) {
+        if (!element || element._autoScrollInit) return;
+        element._autoScrollInit = true;
+        this._autoScrollEnabled.set(element, true);
+        element.addEventListener('scroll', () => {
+            this._autoScrollEnabled.set(element, this._isAtBottom(element));
+        });
+    },
+
+    // Utility function for reliable auto-scroll (respects user scroll position)
     autoScroll(element) {
         if (!element) return;
-        // Use requestAnimationFrame for better performance and reliability
+        this.initAutoScroll(element);
+        if (!this._autoScrollEnabled.get(element)) return;
+        requestAnimationFrame(() => {
+            element.scrollTop = element.scrollHeight;
+        });
+    },
+
+    // Force scroll to bottom and re-enable auto-scroll (for explicit user actions like tab switches)
+    forceAutoScroll(element) {
+        if (!element) return;
+        this.initAutoScroll(element);
+        this._autoScrollEnabled.set(element, true);
         requestAnimationFrame(() => {
             element.scrollTop = element.scrollHeight;
         });

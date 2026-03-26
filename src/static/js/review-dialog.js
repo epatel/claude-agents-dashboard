@@ -21,8 +21,8 @@ const ReviewDialog = {
                 logEl.innerHTML = log.map(e =>
                     `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${DialogUtils.renderMarkdown(e.content)}</div></div>`
                 ).join('');
-                // Scroll to end after loading
-                DialogCore.autoScroll(logEl);
+                // Scroll to end after initial load
+                DialogCore.forceAutoScroll(logEl);
             } else {
                 logEl.innerHTML = '<div class="log-entry">No work log entries</div>';
             }
@@ -91,11 +91,11 @@ const ReviewDialog = {
             active.style.display = '';
             active.classList.add('active');
 
-            // Auto-scroll to end when switching to work log tab
+            // Force scroll to end when switching to work log tab (explicit user action)
             if (tabName === 'log') {
                 const logEl = document.getElementById('review-log');
                 if (logEl && logEl.children.length > 0) {
-                    DialogCore.autoScroll(logEl);
+                    DialogCore.forceAutoScroll(logEl);
                 }
             }
         }

@@ -118,18 +118,6 @@ class AgentSession:
             except Exception as e:
                 logger.warning(f"Failed to parse MCP servers from agent config: {e}")
 
-        # Load external MCP servers from mcp-config.json
-        mcp_config_path = self.worktree_path / "mcp-config.json"
-        if mcp_config_path.exists():
-            try:
-                with open(mcp_config_path, 'r') as f:
-                    external_config = json.load(f)
-                    external_servers = external_config.get("mcpServers", {})
-                    mcp_servers.update(external_servers)
-                    logger.info(f"Loaded {len(external_servers)} external MCP servers from config")
-            except Exception as e:
-                logger.warning(f"Failed to load MCP config: {e}")
-
         # Ensure agent knows to work in the worktree directory
         cwd_note = f"\n\nIMPORTANT: Your working directory is {self.worktree_path}. All file operations must be within this directory."
         clarify_note = (
@@ -226,18 +214,26 @@ class AgentSession:
         if hook_matchers:
             hooks = {"PreToolUse": hook_matchers}
 
-        # Build can_use_tool callback to allow plugin tools by prefix match,
-        # since SDK wildcard patterns don't work for plugin tool names.
+        # Collect external MCP server prefixes (SDK wildcards don't work)
+        external_mcp_prefixes = []
+        for server_name, server_config in mcp_servers.items():
+            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view"]:
+                external_mcp_prefixes.append(f"mcp__{server_name}__")
+
+        # Build can_use_tool callback to allow plugin and external MCP tools
+        # by prefix match, since SDK wildcard patterns don't work.
         can_use_tool_fn = None
-        if plugin_prefixes:
+        all_prefixes = plugin_prefixes + external_mcp_prefixes
+        if all_prefixes:
             allowed_set = set(allowed_tools) if allowed_tools else set()
             def can_use_tool(tool_name: str) -> bool:
                 if tool_name in allowed_set:
                     return True
-                for prefix in plugin_prefixes:
+                for prefix in all_prefixes:
                     if tool_name.startswith(prefix):
                         return True
-                return False
+                # Allow standard (non-MCP) tools — permission_mode handles them
+                return not tool_name.startswith("mcp__")
             can_use_tool_fn = can_use_tool
 
         options = ClaudeAgentOptions(
@@ -252,6 +248,7 @@ class AgentSession:
             thinking={"type": "enabled", "budget_tokens": 10000},
             plugins=plugins if plugins else None,
             hooks=hooks,
+            setting_sources=["project"],  # Load CLAUDE.md from target project
         )
 
         if resume_session_id:

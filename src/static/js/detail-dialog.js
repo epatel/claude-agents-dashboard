@@ -109,8 +109,8 @@ const DetailDialog = {
                 logEl.innerHTML = log.map(e =>
                     `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${DialogUtils.renderMarkdown(e.content)}</div></div>`
                 ).join('');
-                // Scroll to end after loading
-                DialogCore.autoScroll(logEl);
+                // Scroll to end after initial load
+                DialogCore.forceAutoScroll(logEl);
             } else {
                 logEl.innerHTML = '<div class="log-entry">No work log entries</div>';
             }
@@ -142,11 +142,11 @@ const DetailDialog = {
             active.style.display = '';
             active.classList.add('active');
 
-            // Auto-scroll to end when switching to work log tab
+            // Force scroll to end when switching to work log tab (explicit user action)
             if (tabName === 'detail-wlog') {
                 const logEl = document.getElementById('detail-log');
                 if (logEl && logEl.children.length > 0) {
-                    DialogCore.autoScroll(logEl);
+                    DialogCore.forceAutoScroll(logEl);
                 }
             }
         }
@@ -173,9 +173,9 @@ const DetailDialog = {
             logEl.innerHTML = log.length > 0
                 ? log.map(e => `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${DialogUtils.renderMarkdown(e.content)}</div></div>`).join('')
                 : '<div class="log-entry">No work log entries</div>';
-            // Scroll to end after loading
+            // Scroll to end after initial load
             if (log.length > 0) {
-                DialogCore.autoScroll(logEl);
+                DialogCore.forceAutoScroll(logEl);
             }
         } catch { logEl.innerHTML = ''; }
 

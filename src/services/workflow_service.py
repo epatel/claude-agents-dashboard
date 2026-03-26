@@ -193,6 +193,9 @@ class WorkflowService:
                     on_create_todo=self._create_on_create_todo_callback(item_id),
                     on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
                     on_request_command=self._create_on_request_command_callback(item_id),
+                    on_request_tool=self._create_on_request_tool_callback(item_id),
+                    on_view_board=self._create_on_view_board_callback(),
+                    on_delete_todo=self._create_on_delete_todo_callback(item_id),
                 )
 
                 conflict_prompt = (
@@ -625,6 +628,9 @@ class WorkflowService:
                 on_create_todo=self._create_on_create_todo_callback(item_id),
                 on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
                 on_request_command=self._create_on_request_command_callback(item_id),
+                on_request_tool=self._create_on_request_tool_callback(item_id),
+                on_view_board=self._create_on_view_board_callback(),
+                on_delete_todo=self._create_on_delete_todo_callback(item_id),
             )
 
             # Include original task so agent knows what to do even without resume

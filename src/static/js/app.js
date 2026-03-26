@@ -9,13 +9,9 @@ const App = {
     reconnectTimer: null,
     isPageVisible: true,
 
-    // Utility function for reliable auto-scroll
+    // Delegate auto-scroll to DialogCore
     autoScroll(element) {
-        if (!element) return;
-        // Use requestAnimationFrame for better performance and reliability
-        requestAnimationFrame(() => {
-            element.scrollTop = element.scrollHeight;
-        });
+        DialogCore.autoScroll(element);
     },
 
     init() {
