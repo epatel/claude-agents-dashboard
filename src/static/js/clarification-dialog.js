@@ -22,8 +22,16 @@ const ClarificationDialog = {
         try {
             const data = await Api.request('GET', `/api/items/${itemId}/clarification`);
             if (data && data.id) {
-                const choices = data.choices ? JSON.parse(data.choices) : [];
-                this.showClarification(itemId, data.prompt || '(Agent is waiting for your input)', choices);
+                // Check if this is a permission request
+                if (data.prompt && data.prompt.startsWith('__permission_request__|')) {
+                    const parts = data.prompt.split('|');
+                    const command = parts[1] || '';
+                    const reason = parts.slice(2).join('|') || '';
+                    this.showPermissionRequest(itemId, command, reason);
+                } else {
+                    const choices = data.choices ? JSON.parse(data.choices) : [];
+                    this.showClarification(itemId, data.prompt || '(Agent is waiting for your input)', choices);
+                }
             } else {
                 // No pending clarification, show regular detail
                 DetailDialog._showDetailDirect(itemId);

@@ -394,6 +394,14 @@ class WorkflowService:
                 item_id, column_name="clarify", status=None
             )
             await self.notifications.broadcast_item_updated(item)
+            await self._log_and_notify(
+                item_id, "system",
+                f"Agent requests permission to run '{command}': {reason}"
+            )
+
+            # Store as clarification so it persists and can be retrieved on card click
+            prompt = f"__permission_request__|{command}|{reason}"
+            await self.db.store_clarification(item_id, prompt, None)
 
             await self.notifications.broadcast(
                 "permission_requested",
