@@ -183,6 +183,8 @@ sequenceDiagram
 
 - **Merge conflict auto-resolution**: If a merge conflict occurs, `GitService.merge_agent_work()` returns `(False, message)`. `WorkflowService.approve_item()` then captures the agent's diff, resets the worktree to the latest base branch (`git fetch origin base && git reset --hard base`), and restarts the agent with a conflict prompt containing the previous diff. The agent reapplies its changes to the updated codebase. Falls back to `conflict` status if the diff cannot be captured.
 
+- **Allowed commands with PreToolUse hook**: Agents run with `permission_mode="acceptEdits"` which blocks all bash commands by default. Users configure allowed command prefixes (e.g., `flutter`, `npm`) in agent config. A `PreToolUse` hook (`command_filter.py`) checks the first word of each bash command against the allowed list. Denied commands tell the agent to use the `request_command_access` MCP tool, which pauses the agent (like clarification), prompts the user to approve/deny, saves approved commands to config, and the agent can retry.
+
 - **Cost & token tracking**: Agent completion logs USD cost and token usage (input/output/total) via `AgentResult`. Token data is persisted to the `token_usage` table by `DatabaseService.save_token_usage()`. Completion formatting uses `NotificationService.format_completion_log()`.
 
 - **Stats dashboard**: The `/api/stats` endpoint aggregates token usage, cost, message counts, tool calls, item status distribution, and recent activity. Server-side stats caching with 30s TTL (`_stats_cache` in routes.py) reduces DB load, with cache invalidation on mutations (create, delete, move, start, approve). The frontend `StatsManager` (in `stats.js`) renders a stats bar in the header, auto-refreshes every 10 seconds, and updates on WebSocket events (item_created, item_updated, item_moved, agent_log) with debouncing. Stats bar is hidden on small screens (< 768px).
@@ -321,6 +323,8 @@ src/
 |   +-- clarification.py             # ask_user MCP tool
 |   +-- todo.py                      # create_todo MCP tool
 |   +-- commit_message.py            # set_commit_message MCP tool
+|   +-- command_filter.py              # PreToolUse hook for bash command filtering
+|   +-- command_access.py              # request_command_access MCP tool
 +-- services/
 |   +-- __init__.py                  # Re-exports all services
 |   +-- workflow_service.py          # Agent workflow coordination + state transitions
@@ -450,3 +454,4 @@ The system includes several built-in MCP tools for agents:
 - **`ask_user`** (clarification): Allows agents to ask users questions and wait for responses. Moves items to "Clarify" column and resumes when answered.
 - **`create_todo`** (todo creation): Enables agents to create new todo items with title and optional description. Items are automatically positioned in the todo column and broadcast to all connected clients.
 - **`set_commit_message`** (commit message): Allows agents to set a custom commit message for their work. Stored in the database and used during merge instead of the generic "Agent work on agent/xxx" message.
+- **`request_command_access`** (command access): Allows agents to request permission to run blocked shell commands. Shows an approve/deny prompt in the UI. Approved commands are saved to agent config for future sessions.

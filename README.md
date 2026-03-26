@@ -92,6 +92,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Stats caching** — server-side stats caching with 30s TTL, invalidated on mutations for fresh data
 - **Git operation timeouts** — configurable timeouts for git operations (5min), merges (10min), and HTTP requests (11min)
 - **File browser** — browse the target project's source code in a full-featured dialog with directory tree, tabbed file viewer, Prism.js syntax highlighting, rendered markdown with mermaid diagrams, inline image previews, secret file hiding, file filter, keyboard navigation, and breadcrumb navigation
+- **Allowed commands** — configure which shell commands agents can run (e.g., flutter, npm, cargo); agents can request access at runtime via MCP tool with user approval prompt
 - **Base branch tracking** — worktrees record which branch they were created from for reliable merge targeting
 - **Light/dark mode** — respects system preference with manual toggle
 
