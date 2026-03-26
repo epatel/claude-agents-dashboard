@@ -63,3 +63,15 @@ class TestCommandFilterHook:
             {},
         )
         assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+from src.agent.command_access import create_command_access_server
+
+
+class TestCommandAccessMCPTool:
+    async def test_creates_server(self):
+        async def mock_callback(cmd, reason):
+            return "approved"
+
+        server = create_command_access_server(mock_callback)
+        assert server is not None
