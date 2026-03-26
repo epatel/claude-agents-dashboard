@@ -9,6 +9,7 @@ const Annotate = {
     color: '#ff3b30',
     lineWidth: 3,
     fontSize: 16,
+    textBackground: false,
 
     // Interaction state
     _dragging: null,
@@ -40,6 +41,8 @@ const Annotate = {
     },
 
     cleanup() {
+        // Close any open text editor
+        this._closeTextEditor(false);
         // Remove document-level event listener to prevent memory leaks
         if (this._pasteHandler) {
             document.removeEventListener('paste', this._pasteHandler);
@@ -230,7 +233,7 @@ const Annotate = {
 
         // Focus canvas when clicked to enable keyboard shortcuts
         c.addEventListener('click', () => {
-            c.focus();
+            if (!this._activeTextEditor) c.focus();
         });
     },
 
@@ -368,10 +371,21 @@ const Annotate = {
     // --- Mouse handlers ---
 
     _onMouseDown(e) {
+        // If a text editor is open, close it on any canvas click
+        if (this._activeTextEditor) {
+            e.stopPropagation();
+            this._closeTextEditor(true);
+            return;
+        }
+
         const p = this._pos(e);
         this._startX = p.x;
         this._startY = p.y;
-        this.canvas.focus();
+
+        // Don't focus canvas when about to open text editor (it steals textarea focus)
+        if (this.tool !== 'text') {
+            this.canvas.focus();
+        }
 
         if (this.tool === 'select') {
             // Check resize handles on selected images first
@@ -405,6 +419,14 @@ const Annotate = {
                 return;
             }
             this.render();
+        } else if (this.tool === 'text') {
+            e.stopPropagation();
+            // If a text editor is open, close it (save) instead of opening a new one
+            if (this._activeTextEditor) {
+                this._closeTextEditor(true);
+                return;
+            }
+            this._openTextEditor(p.x, p.y, null);
         } else {
             // Start drawing
             this._drawing = { type: this.tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y };
@@ -517,16 +539,140 @@ const Annotate = {
 
     _onDblClick(e) {
         if (this.tool === 'text' || this.tool === 'select') {
+            e.stopPropagation();
             const p = this._pos(e);
-            const text = prompt('Enter text:');
-            if (text) {
-                this.annotations.push({
-                    type: 'text', x: p.x, y: p.y, text,
-                    color: this.color, fontSize: this.fontSize, selected: false,
-                });
-                this.render();
+            // Check if double-clicking an existing text annotation to edit it
+            const hitText = this.annotations.find(a =>
+                a.type === 'text' && this._hitTextBounds(a, p.x, p.y)
+            );
+            if (hitText) {
+                this._openTextEditor(hitText.x, hitText.y, hitText);
+            } else if (this.tool === 'text') {
+                this._openTextEditor(p.x, p.y, null);
             }
         }
+    },
+
+    _hitTextBounds(a, x, y) {
+        const fontSize = a.fontSize || this.fontSize;
+        const lineHeight = fontSize * 1.3;
+        const lines = (a.text || '').split('\n');
+        this.ctx.font = `${fontSize}px sans-serif`;
+        let maxWidth = 0;
+        for (const line of lines) {
+            maxWidth = Math.max(maxWidth, this.ctx.measureText(line).width);
+        }
+        const totalHeight = lines.length * lineHeight;
+        return x >= a.x && x <= a.x + maxWidth && y >= a.y && y <= a.y + totalHeight;
+    },
+
+    _openTextEditor(canvasX, canvasY, existingAnnotation) {
+        // Remove any existing text editor
+        this._closeTextEditor(false);
+
+        const canvasRect = this.canvas.getBoundingClientRect();
+        const fontSize = existingAnnotation?.fontSize || this.fontSize;
+        const withBg = existingAnnotation ? !!existingAnnotation.background : this.textBackground;
+
+        const textarea = document.createElement('textarea');
+        textarea.className = 'annotate-text-editor';
+        textarea.value = existingAnnotation?.text || '';
+        // Position relative to canvas within .annotate-canvas-wrap
+        const offsetX = this.canvas.offsetLeft + canvasX;
+        const offsetY = this.canvas.offsetTop + canvasY;
+        textarea.style.cssText = `
+            position: absolute;
+            left: ${offsetX}px;
+            top: ${offsetY}px;
+            font-size: ${fontSize}px;
+            font-family: sans-serif;
+            color: ${existingAnnotation?.color || this.color};
+            background: ${withBg ? 'rgba(255,255,255,0.95)' : 'transparent'};
+            border: 1px dashed #0071e3;
+            outline: none;
+            padding: 2px 4px;
+            min-width: 60px;
+            min-height: ${fontSize + 8}px;
+            resize: none;
+            overflow: hidden;
+            z-index: 100;
+            line-height: 1.3;
+            white-space: pre;
+        `;
+
+        // Auto-grow the textarea
+        const autoGrow = () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+            textarea.style.width = 'auto';
+            textarea.style.width = Math.max(60, textarea.scrollWidth + 10) + 'px';
+        };
+
+        textarea.addEventListener('input', autoGrow);
+
+        // Prevent clicks on textarea from closing the dialog
+        textarea.addEventListener('click', (e) => e.stopPropagation());
+        textarea.addEventListener('mousedown', (e) => e.stopPropagation());
+
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this._closeTextEditor(false);
+            }
+            // Allow Enter for new lines (no special handling needed)
+        });
+
+        // Click-outside is handled by _onMouseDown on the canvas.
+        // No document-level listener needed.
+
+        // Store editor state
+        this._activeTextEditor = {
+            textarea,
+            canvasX,
+            canvasY,
+            existingAnnotation,
+            fontSize,
+            withBg,
+        };
+
+        // Add to canvas wrapper so click events don't escape to the dialog backdrop
+        const canvasWrap = this.canvas.closest('.annotate-canvas-wrap') || this.canvas.parentElement;
+        canvasWrap.style.position = 'relative';
+        canvasWrap.appendChild(textarea);
+
+        // Focus after a tick to win over any canvas click/focus events
+        setTimeout(() => {
+            textarea.focus();
+            autoGrow();
+        }, 0);
+    },
+
+    _closeTextEditor(save) {
+        if (!this._activeTextEditor) return;
+
+        const { textarea, canvasX, canvasY, existingAnnotation, fontSize, withBg } = this._activeTextEditor;
+        const text = textarea.value.trim();
+
+        if (save && text) {
+            if (existingAnnotation) {
+                // Update existing annotation
+                existingAnnotation.text = text;
+                existingAnnotation.fontSize = fontSize;
+            } else {
+                // Create new annotation
+                this.annotations.push({
+                    type: 'text', x: canvasX, y: canvasY, text,
+                    color: this.color, fontSize,
+                    background: withBg, selected: false,
+                });
+            }
+            this.render();
+        }
+
+        // Cleanup
+        textarea.remove();
+        this._activeTextEditor = null;
+        this.canvas.focus();
     },
 
     // --- Hit testing ---
@@ -570,11 +716,7 @@ const Annotate = {
         for (let i = this.annotations.length - 1; i >= 0; i--) {
             const a = this.annotations[i];
             if (a.type === 'text') {
-                this.ctx.font = `${a.fontSize || this.fontSize}px sans-serif`;
-                const m = this.ctx.measureText(a.text);
-                const fontSize = a.fontSize || this.fontSize;
-                // Use consistent hit testing with new text baseline
-                if (x >= a.x && x <= a.x + m.width && y >= a.y && y <= a.y + fontSize) return a;
+                if (this._hitTextBounds(a, x, y)) return a;
             } else if (a.type === 'arrow') {
                 const dist = this._distToLine(x, y, a.x1, a.y1, a.x2, a.y2);
                 if (dist < 10) return a;
@@ -671,14 +813,20 @@ const Annotate = {
             if (a.type === 'text') {
                 this._drawShape(a);
                 if (a.selected) {
+                    const fontSize = a.fontSize || this.fontSize;
+                    const lineHeight = fontSize * 1.3;
+                    const lines = (a.text || '').split('\n');
+                    ctx.font = `${fontSize}px sans-serif`;
+                    let maxWidth = 0;
+                    for (const line of lines) {
+                        maxWidth = Math.max(maxWidth, ctx.measureText(line).width);
+                    }
+                    const totalHeight = lines.length * lineHeight;
                     ctx.strokeStyle = '#0071e3';
                     ctx.lineWidth = 1;
                     ctx.setLineDash([4, 3]);
-                    ctx.font = `${a.fontSize || this.fontSize}px sans-serif`;
-                    const m = ctx.measureText(a.text);
                     const padding = 2;
-                    // Use consistent text baseline for selection box
-                    ctx.strokeRect(a.x - padding, a.y - padding, m.width + (padding * 2), (a.fontSize || this.fontSize) + (padding * 2));
+                    ctx.strokeRect(a.x - padding, a.y - padding, maxWidth + padding * 2, totalHeight + padding * 2);
                     ctx.setLineDash([]);
                 }
             }
@@ -733,29 +881,41 @@ const Annotate = {
             ctx.strokeRect(x, y, w, h);
         } else if (s.type === 'text') {
             const fontSize = s.fontSize || this.fontSize;
+            const lineHeight = fontSize * 1.3;
+            const lines = (s.text || '').split('\n');
             ctx.font = `${fontSize}px sans-serif`;
             ctx.textBaseline = 'top';
 
-            // Add text background to prevent overlap with lines/shapes
-            const metrics = ctx.measureText(s.text);
-            const padding = 4; // Increased padding for better clearance
-            const bgX = s.x - padding;
-            const bgY = s.y - padding;
-            const bgW = metrics.width + (padding * 2);
-            const bgH = fontSize + (padding * 2);
+            // Measure max line width
+            let maxWidth = 0;
+            for (const line of lines) {
+                maxWidth = Math.max(maxWidth, ctx.measureText(line).width);
+            }
+            const totalHeight = lines.length * lineHeight;
+            const padding = 4;
 
-            // Draw solid background with border to prevent overlap
-            ctx.fillStyle = 'rgba(255, 255, 255, 1)'; // Made fully opaque
-            ctx.fillRect(bgX, bgY, bgW, bgH);
+            if (s.background) {
+                // Draw solid background with border
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                ctx.fillRect(s.x - padding, s.y - padding, maxWidth + padding * 2, totalHeight + padding * 2);
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(s.x - padding, s.y - padding, maxWidth + padding * 2, totalHeight + padding * 2);
+            } else {
+                // Draw text outline/shadow for readability without background
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.lineWidth = 3;
+                ctx.lineJoin = 'round';
+                for (let i = 0; i < lines.length; i++) {
+                    ctx.strokeText(lines[i], s.x, s.y + i * lineHeight);
+                }
+            }
 
-            // Add subtle border for better definition
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(bgX, bgY, bgW, bgH);
-
-            // Draw text with original color
+            // Draw text lines
             ctx.fillStyle = s.color || this.color;
-            ctx.fillText(s.text, s.x, s.y);
+            for (let i = 0; i < lines.length; i++) {
+                ctx.fillText(lines[i], s.x, s.y + i * lineHeight);
+            }
         }
     },
 

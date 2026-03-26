@@ -107,7 +107,7 @@
                 <button class="btn btn-sm annotate-tool" data-tool="arrow" onclick="Dialogs.setAnnotateTool('arrow')" title="Arrow">&#10132;</button>
                 <button class="btn btn-sm annotate-tool" data-tool="circle" onclick="Dialogs.setAnnotateTool('circle')" title="Circle / Ellipse">&#9711;</button>
                 <button class="btn btn-sm annotate-tool" data-tool="rect" onclick="Dialogs.setAnnotateTool('rect')" title="Rectangle">&#9633;</button>
-                <button class="btn btn-sm annotate-tool" data-tool="text" onclick="Dialogs.setAnnotateTool('text')" title="Text (double-click to place)">T</button>
+                <button class="btn btn-sm annotate-tool" data-tool="text" onclick="Dialogs.setAnnotateTool('text')" title="Text (click to place, double-click to edit)">T</button>
             </div>
             <div class="annotate-options">
                 <input type="color" id="annotate-color" value="#ff3b30" onchange="Annotate.color = this.value" title="Color">
@@ -116,6 +116,16 @@
                     <option value="3" selected>Medium</option>
                     <option value="5">Thick</option>
                 </select>
+                <select id="annotate-font-size" onchange="Annotate.fontSize = +this.value" title="Font size">
+                    <option value="12">12px</option>
+                    <option value="16" selected>16px</option>
+                    <option value="20">20px</option>
+                    <option value="28">28px</option>
+                    <option value="36">36px</option>
+                </select>
+                <label class="annotate-bg-toggle" title="Text background">
+                    <input type="checkbox" id="annotate-text-bg" onchange="Annotate.textBackground = this.checked"> Bg
+                </label>
                 <button class="btn btn-sm" onclick="Annotate.pasteFromClipboard()" title="Paste image from clipboard">📋 Paste</button>
             </div>
             <div class="annotate-hint">Drop images onto the canvas, paste from clipboard, or use the Paste button</div>
