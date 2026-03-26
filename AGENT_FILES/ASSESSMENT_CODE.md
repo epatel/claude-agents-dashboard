@@ -1,8 +1,8 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-03-25
+**Date**: 2026-03-26
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 6 — Reassessment after file browser feature.
+**Revision**: 7 — Maintenance reassessment with updated line counts and statistics.
 
 ---
 
@@ -124,7 +124,7 @@ graph TB
 | `constants.py` | 12 | A | Centralized `AVAILABLE_MODELS` dict and `DEFAULT_MODEL` |
 | `models.py` | 98 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
-| `web/app.py` | 46 | A | Proper lifespan management, clean factory pattern |
+| `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
 | `web/routes.py` | 566 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
 | `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
@@ -157,8 +157,8 @@ graph TB
 | `request-changes-dialog.js` | 24 | A | Focused request-changes form |
 | `attachments.js` | 43 | A | Attachment viewing and deletion |
 | `annotation-canvas.js` | 52 | A | Canvas annotation integration bridge |
-| `annotate.js` | 771 | A- | Self-contained canvas component |
-| `file-browser.js` | 592 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering |
+| `annotate.js` | 936 | A- | Self-contained canvas component |
+| `file-browser.js` | 630 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering |
 | `api.js` | 77 | A | Clean HTTP helpers |
 | `diff.js` | 61 | A- | Functional diff viewer |
 | `theme.js` | 24 | A | Simple, correct theme toggle |
@@ -168,10 +168,10 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `style.css` | 756 | A- | Main styles with CSS variables |
+| `style.css` | 775 | A- | Main styles with CSS variables |
 | `board.css` | 221 | A | Board-specific layout and card styles |
 | `dialog.css` | 74 | A | Dialog component styles |
-| `file-browser.css` | 509 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
+| `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 66 | A | Light/dark theme definitions |
 
 ---
@@ -291,7 +291,7 @@ stateDiagram-v2
 | 11 | No request timeout for blocking operations | ✅ `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT` on approve route |
 | 12 | Migration class discovery uses string comparison | ✅ Justified — `issubclass` fails with dynamic module loading |
 | 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (405), DatabaseService (181), NotificationService (95), GitService (93), SessionService (152). Orchestrator now 110-line facade |
-| 14 | `dialogs.js` too large (801 lines) | ✅ Split into 10 specialized modules with coordinator pattern. Largest module is `item-dialog.js` at 191 lines |
+| 14 | `dialogs.js` too large (801 lines) | ✅ Split into 10 specialized modules with coordinator pattern. Largest module is `item-dialog.js` at 190 lines |
 
 ### Remaining Issues
 
@@ -383,11 +383,11 @@ graph LR
 | Category | Files | Lines |
 |----------|-------|-------|
 | Python backend (src/) | 32 | ~3,728 |
-| JavaScript frontend | 20 | ~3,341 |
-| CSS styles | 5 | ~1,626 |
-| HTML templates | 3 | ~457 |
-| Tests | 8 | ~2,206 |
-| **Grand total** | **68** | **~11,358** |
+| JavaScript frontend | 19 | ~3,544 |
+| CSS styles | 5 | ~1,693 |
+| HTML templates | 3 | ~471 |
+| Tests | 8 | ~2,216 |
+| **Grand total** | **67** | **~11,652** |
 
 ---
 

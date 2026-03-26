@@ -152,12 +152,12 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (111 lines) that delegates to 5 focused services:
+- **Service layer architecture**: The orchestrator is a thin facade (110 lines) that delegates to 5 focused services:
   - `WorkflowService` (405 lines): Coordinates agent workflows, state transitions, callback creation, and merge conflict auto-resolution
-  - `DatabaseService` (182 lines): All database operations (items, logs, config, attachments, token usage)
-  - `NotificationService` (96 lines): WebSocket broadcasting and tool use formatting
-  - `GitService` (94 lines): Worktree management, merge operations, and cleanup
-  - `SessionService` (153 lines): Agent session lifecycle, commit messages, plugin parsing
+  - `DatabaseService` (181 lines): All database operations (items, logs, config, attachments, token usage)
+  - `NotificationService` (95 lines): WebSocket broadcasting and tool use formatting
+  - `GitService` (93 lines): Worktree management, merge operations, and cleanup
+  - `SessionService` (152 lines): Agent session lifecycle, commit messages, plugin parsing
 
 - **Agent start is non-blocking**: `WorkflowService.start_agent()` creates a session via `SessionService.create_session()` and launches it via `SessionService.start_session_task()` which uses `asyncio.create_task()` so the HTTP response returns immediately. The agent streams progress via WebSocket.
 
