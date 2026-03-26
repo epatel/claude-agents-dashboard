@@ -96,3 +96,4 @@ class AgentConfig(BaseModel):
     mcp_servers: Optional[str] = "{}"
     mcp_enabled: bool = False
     plugins: Optional[str] = "[]"
+    allowed_commands: Optional[str] = "[]"
