@@ -404,6 +404,14 @@ If agents seem stuck or unresponsive, check the work log in the UI for error mes
 
 Each project gets its own server instance. Run `run.sh` from different repos — ports auto-increment (8000, 8001, 8002, ...).
 
+## Agent documentation
+
+The `AGENT_FILES/` directory contains supplementary documentation for agents working on this project:
+
+- `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings
+- `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
+- `TESTING.md` — Detailed testing guide with test inventory and writing guidelines
+
 ## License
 
 [MIT](LICENSE)

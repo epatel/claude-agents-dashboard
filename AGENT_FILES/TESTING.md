@@ -3,7 +3,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 73 tests
+./run-tests.sh              # Run all 108 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -22,11 +22,12 @@ tests/
 │   ├── migrations/
 │   │   ├── test_migration_runner.py    # Migration up/down/status (14 tests)
 │   │   └── test_migration_edge_cases.py # Edge cases, discovery (14 tests)
-│   ├── test_path_validation.py         # Path traversal prevention (19 tests)
-│   └── test_git_timeout.py            # Git timeout handling (6 tests)
+│   ├── test_path_validation.py         # Path traversal prevention (14 tests)
+│   ├── test_git_timeout.py            # Git timeout handling (5 tests)
+│   └── test_file_routes.py            # File browser routes (35 tests)
 ├── integration/
 │   └── test_orchestrator_lifecycle.py  # Full agent workflow (14 tests)
-└── TESTING.md                          # This file
+└── README.md
 ```
 
 ## Test Categories
@@ -45,18 +46,26 @@ Tests the migration runner in isolation using raw SQLite (no app schema):
 - Edge cases: malformed files, concurrent apply, long versions, empty methods
 - Performance: 100-file discovery under 1 second
 
-### Unit Tests — Path Validation (19 tests)
+### Unit Tests — Path Validation (14 tests)
 Tests `validate_file_path()` security:
 - Path traversal patterns (`..`, absolute paths)
 - Null bytes, control characters, Windows separators
 - Symlink-aware validation
 - Length limits
 
-### Unit Tests — Git Timeout (6 tests)
+### Unit Tests — Git Timeout (5 tests)
 Tests timeout handling in git operations:
 - Default timeout configuration
 - Merge-specific timeout
 - Timeout abort and recovery
+
+### Unit Tests — File Browser Routes (35 tests)
+Tests `file_routes.py` endpoints:
+- Path validation and security (traversal, symlinks, null bytes)
+- Secret file detection and hiding
+- Language/extension mapping
+- Directory tree scanning with depth limits
+- File content reading (text, binary, images)
 
 ### Integration Tests (14 tests)
 Tests the full orchestrator lifecycle through the service layer:

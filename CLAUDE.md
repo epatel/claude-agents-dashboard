@@ -299,6 +299,10 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 ## Project structure
 
 ```
+AGENT_FILES/
++-- ASSESSMENT_CODE.md               # Full code assessment and quality ratings
++-- COMMIT_POLICY.md                 # Commit policies (e.g. annotation images)
++-- TESTING.md                       # Detailed testing guide and test inventory
 src/
 +-- main.py                           # Entry point, port discovery
 +-- config.py                         # Column definitions, timeouts, rate limits, default config, file browser settings

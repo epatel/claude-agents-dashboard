@@ -8,13 +8,16 @@ This directory contains the automated test suite for the Agent Dashboard applica
 tests/
 ├── conftest.py                                   # Shared fixtures and test configuration
 ├── unit/                                         # Unit tests (fast, isolated)
-│   └── migrations/
-│       ├── test_migration_runner.py             # Core migration functionality
-│       └── test_migration_edge_cases.py         # Edge cases and error scenarios
+│   ├── migrations/
+│   │   ├── test_migration_runner.py             # Core migration functionality (14 tests)
+│   │   └── test_migration_edge_cases.py         # Edge cases and error scenarios (14 tests)
+│   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
+│   ├── test_git_timeout.py                      # Git timeout handling (5 tests)
+│   └── test_file_routes.py                      # File browser routes (35 tests)
 ├── integration/                                  # Integration tests (slower, multi-component)
-│   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing
+│   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (14 tests)
 ├── smoke/                                        # Smoke tests (basic functionality)
-│   └── test_basic_functionality.py              # Quick regression checks
+│   └── test_basic_functionality.py              # Quick regression checks (12 tests)
 └── README.md                                     # This file
 ```
 
@@ -45,16 +48,16 @@ Tests migration operations:
 
 ### Quick Start
 ```bash
-# Run all tests
-python run_tests.py all
-
-# Run only P0 priority tests (recommended)
-python run_tests.py p0
+# Run all 108 tests
+./run-tests.sh
 
 # Run specific test categories
-python run_tests.py unit        # Fast unit tests only
-python run_tests.py integration # Slower integration tests
-python run_tests.py smoke       # Quick smoke tests
+./run-tests.sh tests/unit/        # Unit tests only
+./run-tests.sh tests/integration/ # Integration tests
+./run-tests.sh tests/smoke/       # Smoke tests
+
+# Filter by name
+./run-tests.sh -k "test_cancel"
 ```
 
 ### Using pytest directly
@@ -85,10 +88,7 @@ pytest -n auto
 ### Coverage Reports
 ```bash
 # Generate HTML coverage report
-python run_tests.py --coverage-report
-
-# Or with pytest directly
-pytest --cov=src --cov-report=html
+./run-tests.sh --cov=src --cov-report=html
 open htmlcov/index.html
 ```
 
@@ -187,14 +187,7 @@ The test suite is designed for continuous integration:
 ```yaml
 # Example GitHub Actions step
 - name: Run tests
-  run: |
-    python run_tests.py p0
-    python run_tests.py smoke
-
-- name: Upload coverage
-  uses: codecov/codecov-action@v3
-  with:
-    file: coverage.xml
+  run: ./run-tests.sh
 ```
 
 ## Troubleshooting
