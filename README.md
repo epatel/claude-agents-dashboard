@@ -20,7 +20,13 @@ Or pass the project path explicitly:
 path/to/claude-agents-dashboard/run.sh /path/to/your/project
 ```
 
-The server starts at `http://127.0.0.1:8000` (auto-increments ports 8000-8019 if busy). Your project must be a git repository. Requires Python 3.12+.
+The server starts at `http://127.0.0.1:8000` (auto-increments ports 8000-8019 if busy). Open the dashboard in your browser — on macOS:
+
+```bash
+open http://127.0.0.1:8000
+```
+
+Your project must be a git repository. Requires Python 3.12+.
 
 ### Running tests
 
