@@ -428,6 +428,19 @@ async def submit_clarification(request: Request, item_id: str, body: Clarificati
     return await orchestrator.submit_clarification(item_id, body.response)
 
 
+@router.post("/api/items/{item_id}/approve-command")
+async def approve_command(item_id: str, request: Request):
+    """Approve or deny a command access request from an agent."""
+    data = await request.json()
+    approved = data.get("approved", False)
+    response = "approved" if approved else "denied"
+
+    orchestrator = request.app.state.orchestrator
+    orchestrator.workflow_service.submit_clarification(item_id, response)
+
+    return {"status": "ok", "decision": response}
+
+
 # --- Agent config ---
 
 @router.get("/api/config")
