@@ -16,6 +16,7 @@ from claude_agent_sdk import (
     ToolUseBlock,
     ToolResultBlock,
     ThinkingBlock,
+    HookMatcher,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ class AgentSession:
         on_create_todo=None,
         on_set_commit_message=None,
         on_request_command=None,
+        on_request_tool=None,
         mcp_servers: str | None = None,
         mcp_enabled: bool = False,
         plugins: list[dict] | None = None,
@@ -71,6 +73,7 @@ class AgentSession:
         self.on_create_todo = on_create_todo  # async callback(title: str, description: str) -> dict
         self.on_set_commit_message = on_set_commit_message  # async callback(message: str) -> str
         self.on_request_command = on_request_command  # async callback(command: str, reason: str) -> str
+        self.on_request_tool = on_request_tool      # async callback(tool_name: str, reason: str) -> str
         self.mcp_servers = mcp_servers      # JSON string of MCP server configurations from agent config
         self.mcp_enabled = mcp_enabled      # Whether MCP is enabled from agent config
         self.plugins = plugins              # List of plugin configs: [{"type": "local", "path": "..."}]
@@ -95,6 +98,9 @@ class AgentSession:
         if self.on_request_command:
             from .command_access import create_command_access_server
             mcp_servers["command_access"] = create_command_access_server(self.on_request_command)
+        if self.on_request_tool:
+            from .tool_access import create_tool_access_server
+            mcp_servers["tool_access"] = create_tool_access_server(self.on_request_tool)
 
         # Load MCP servers from agent configuration (database)
         if self.mcp_enabled and self.mcp_servers:
@@ -135,7 +141,11 @@ class AgentSession:
             "\n\nIf a shell command is blocked, use the request_command_access tool "
             "to ask the user for permission. Provide the command name and reason."
         )
-        full_system_prompt = (self.system_prompt or "") + cwd_note + clarify_note + commit_note + command_note
+        tool_note = (
+            "\n\nIf a built-in tool (like WebSearch or WebFetch) is blocked, use the "
+            "request_tool_access tool to ask the user for permission."
+        )
+        full_system_prompt = (self.system_prompt or "") + cwd_note + clarify_note + commit_note + command_note + tool_note
 
         # Configure allowed MCP tools
         allowed_tools = []
@@ -147,10 +157,12 @@ class AgentSession:
             allowed_tools.append("mcp__commit_message__set_commit_message")
         if "command_access" in mcp_servers:
             allowed_tools.append("mcp__command_access__request_command_access")
+        if "tool_access" in mcp_servers:
+            allowed_tools.append("mcp__tool_access__request_tool_access")
 
         # Allow all tools from external MCP servers (using wildcard for each server)
         for server_name, server_config in mcp_servers.items():
-            if server_name not in ["clarification", "todo", "commit_message", "command_access"]:  # Skip our built-in servers
+            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access"]:  # Skip our built-in servers
                 allowed_tools.append(f"mcp__{server_name}__*")
                 logger.info(f"Allowing all tools from external MCP server: {server_name}")
 
@@ -171,24 +183,37 @@ class AgentSession:
         # PreToolUse hook handle actual command filtering.
         allowed_tools.append("Bash")
 
-        # Add user-enabled built-in tools (e.g. WebSearch, WebFetch)
-        for tool_name in self.allowed_builtin_tools:
+        # Always add optional built-in tools to the whitelist — the PreToolUse
+        # hook filters disabled ones and directs the agent to request access.
+        from .tool_filter import OPTIONAL_TOOL_NAMES
+        for tool_name in OPTIONAL_TOOL_NAMES:
             if tool_name not in allowed_tools:
                 allowed_tools.append(tool_name)
-                logger.info(f"Allowing built-in tool: {tool_name}")
 
         hooks = None
+        hook_matchers = []
+
         if not self.bash_yolo and self.allowed_commands:
-            from claude_agent_sdk import HookMatcher
             from .command_filter import make_command_filter_hook
-            hooks = {
-                "PreToolUse": [
-                    HookMatcher(
-                        matcher="Bash",
-                        hooks=[make_command_filter_hook(self.allowed_commands, session=self)],
-                    )
-                ]
-            }
+            hook_matchers.append(
+                HookMatcher(
+                    matcher="Bash",
+                    hooks=[make_command_filter_hook(self.allowed_commands, session=self)],
+                )
+            )
+
+        # Add tool filter hook for optional built-in tools
+        from .tool_filter import make_tool_filter_hook
+        for tool_name in OPTIONAL_TOOL_NAMES:
+            hook_matchers.append(
+                HookMatcher(
+                    matcher=tool_name,
+                    hooks=[make_tool_filter_hook(self.allowed_builtin_tools)],
+                )
+            )
+
+        if hook_matchers:
+            hooks = {"PreToolUse": hook_matchers}
 
         options = ClaudeAgentOptions(
             cwd=self.worktree_path,

@@ -74,6 +74,7 @@ class WorkflowService:
             on_create_todo=self._create_on_create_todo_callback(item_id),
             on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
             on_request_command=self._create_on_request_command_callback(item_id),
+            on_request_tool=self._create_on_request_tool_callback(item_id),
         )
 
         # Build prompt and fetch attachments
@@ -240,6 +241,7 @@ class WorkflowService:
             on_create_todo=self._create_on_create_todo_callback(item_id),
             on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
             on_request_command=self._create_on_request_command_callback(item_id),
+            on_request_tool=self._create_on_request_tool_callback(item_id),
         )
 
         # Fetch attachments for context
@@ -460,6 +462,72 @@ class WorkflowService:
             return response
 
         return on_request_command
+
+    def _create_on_request_tool_callback(self, item_id: str):
+        async def on_request_tool(tool_name: str, reason: str) -> str:
+            item = await self.db.update_item(
+                item_id, column_name="questions", status=None
+            )
+            await self.notifications.broadcast_item_updated(item)
+            await self._log_and_notify(
+                item_id, "system",
+                f"Agent requests permission to use '{tool_name}': {reason}"
+            )
+
+            # Store as clarification so it persists and can be retrieved on card click
+            prompt = f"__tool_request__|{tool_name}|{reason}"
+            await self.db.store_clarification(item_id, prompt, None)
+
+            await self.notifications.ws_manager.broadcast(
+                "tool_permission_requested",
+                {
+                    "item_id": item_id,
+                    "tool_name": tool_name,
+                    "reason": reason,
+                },
+            )
+
+            event = asyncio.Event()
+            self._clarify_events[item_id] = event
+            await event.wait()
+
+            response = self._clarify_responses.pop(item_id, "denied")
+            self._clarify_events.pop(item_id, None)
+
+            if response == "approved":
+                await self.db.save_allowed_builtin_tool(tool_name)
+                await self._log_and_notify(
+                    item_id, "system",
+                    f"Tool '{tool_name}' approved — restarting session with updated permissions"
+                )
+
+                old_session = self.sessions.sessions.get(item_id)
+                resume_id = None
+                if old_session:
+                    resume_id = getattr(old_session, 'current_session_id', None)
+
+                item = await self.db.get_item(item_id)
+                asyncio.create_task(
+                    self._restart_session_with_new_permissions(
+                        item_id, tool_name, resume_id, item
+                    )
+                )
+
+                return "approved"
+            else:
+                await self._log_and_notify(
+                    item_id, "system",
+                    f"Tool '{tool_name}' access denied"
+                )
+
+            item = await self.db.update_item(
+                item_id, column_name="doing", status="running"
+            )
+            await self.notifications.broadcast_item_updated(item)
+
+            return response
+
+        return on_request_tool
 
     def _create_on_create_todo_callback(self, item_id: str):
         async def on_create_todo(title: str, description: str) -> Dict[str, Any]:

@@ -28,6 +28,11 @@ const ClarificationDialog = {
                     const command = parts[1] || '';
                     const reason = parts.slice(2).join('|') || '';
                     this.showPermissionRequest(itemId, command, reason);
+                } else if (data.prompt && data.prompt.startsWith('__tool_request__|')) {
+                    const parts = data.prompt.split('|');
+                    const toolName = parts[1] || '';
+                    const reason = parts.slice(2).join('|') || '';
+                    this.showToolPermissionRequest(itemId, toolName, reason);
                 } else {
                     const choices = data.choices ? JSON.parse(data.choices) : [];
                     this.showClarification(itemId, data.prompt || '(Agent is waiting for your response)', choices);
@@ -95,6 +100,49 @@ const ClarificationDialog = {
     },
 
     async denyCommand(itemId) {
+        await Api.request('POST', '/api/items/' + itemId + '/approve-command', {
+            approved: false
+        });
+        DialogCore.close('clarify-dialog');
+        this._restoreFormHTML();
+    },
+
+    showToolPermissionRequest(itemId, toolName, reason) {
+        this._saveFormHTML();
+        const form = document.getElementById('clarify-form');
+        form.innerHTML = `
+            <div class="form-group">
+                <div style="margin-bottom: 12px;">
+                    <strong>Agent requests tool access</strong>
+                </div>
+                <div style="margin-bottom: 8px;">
+                    Tool: <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;">${toolName}</code>
+                </div>
+                <div style="margin-bottom: 16px; color: var(--text-muted);">
+                    Reason: ${reason}
+                </div>
+            </div>
+            <div class="modal-footer" style="display:flex;gap:8px;">
+                <button type="button" class="btn btn-primary" onclick="ClarificationDialog.approveTool('${itemId}', '${toolName}')">
+                    Allow
+                </button>
+                <button type="button" class="btn" onclick="ClarificationDialog.denyTool('${itemId}')">
+                    Deny
+                </button>
+            </div>
+        `;
+        DialogCore.open('clarify-dialog');
+    },
+
+    async approveTool(itemId, toolName) {
+        await Api.request('POST', '/api/items/' + itemId + '/approve-command', {
+            approved: true, command: toolName
+        });
+        DialogCore.close('clarify-dialog');
+        this._restoreFormHTML();
+    },
+
+    async denyTool(itemId) {
         await Api.request('POST', '/api/items/' + itemId + '/approve-command', {
             approved: false
         });

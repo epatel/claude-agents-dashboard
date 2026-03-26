@@ -158,11 +158,11 @@ class TestAllowedToolsWhitelist:
 
     @patch("src.agent.session.ClaudeSDKClient")
     async def test_hook_only_set_with_allowed_commands(self, mock_sdk):
-        """PreToolUse hook should only be set when allowed_commands is configured (and not yolo)."""
+        """PreToolUse hooks: tool filter hooks always present, Bash hook only with allowed_commands."""
         mock_client = AsyncMock()
         mock_sdk.return_value = mock_client
 
-        # No commands, no yolo — no hook
+        # No commands, no yolo — tool filter hooks still present (for WebSearch/WebFetch)
         session = self._make_session()
         with patch.object(session, '_receive_loop', new_callable=AsyncMock):
             try:
@@ -170,9 +170,13 @@ class TestAllowedToolsWhitelist:
             except Exception:
                 pass
         options = mock_sdk.call_args.kwargs.get("options") or mock_sdk.call_args.args[0]
-        assert options.hooks is None
+        assert options.hooks is not None
+        assert "PreToolUse" in options.hooks
+        matchers = options.hooks["PreToolUse"]
+        bash_matchers = [m for m in matchers if m.matcher == "Bash"]
+        assert len(bash_matchers) == 0  # No Bash hook without allowed_commands
 
-        # With commands — hook should be set
+        # With commands — Bash hook should also be set
         mock_sdk.reset_mock()
         session = self._make_session(allowed_commands=["flutter"])
         with patch.object(session, '_receive_loop', new_callable=AsyncMock):
@@ -183,6 +187,9 @@ class TestAllowedToolsWhitelist:
         options = mock_sdk.call_args.kwargs.get("options") or mock_sdk.call_args.args[0]
         assert options.hooks is not None
         assert "PreToolUse" in options.hooks
+        matchers = options.hooks["PreToolUse"]
+        bash_matchers = [m for m in matchers if m.matcher == "Bash"]
+        assert len(bash_matchers) == 1
 
 
 from src.agent.command_access import create_command_access_server

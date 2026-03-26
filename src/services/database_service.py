@@ -171,6 +171,24 @@ class DatabaseService:
                 await conn.commit()
         return commands
 
+    async def save_allowed_builtin_tool(self, tool_name: str):
+        """Add a tool to the allowed_builtin_tools list in agent_config."""
+        config = await self.get_agent_config()
+        raw = config.get("allowed_builtin_tools", "[]")
+        try:
+            tools = json.loads(raw) if isinstance(raw, str) else (raw or [])
+        except (json.JSONDecodeError, TypeError):
+            tools = []
+        if tool_name not in tools:
+            tools.append(tool_name)
+            async with self.db.connect() as conn:
+                await conn.execute(
+                    "UPDATE agent_config SET allowed_builtin_tools = ?, updated_at = datetime('now') WHERE id = 1",
+                    (json.dumps(tools),),
+                )
+                await conn.commit()
+        return tools
+
     async def delete_item_and_related(self, item_id: str) -> Optional[Dict[str, Any]]:
         """Delete an item and all related records, return the deleted item."""
         async with self.db.connect() as conn:
