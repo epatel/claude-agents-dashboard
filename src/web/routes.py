@@ -436,7 +436,7 @@ async def approve_command(item_id: str, request: Request):
     response = "approved" if approved else "denied"
 
     orchestrator = request.app.state.orchestrator
-    orchestrator.workflow_service.submit_clarification(item_id, response)
+    await orchestrator.submit_clarification(item_id, response)
 
     return {"status": "ok", "decision": response}
 
