@@ -50,6 +50,13 @@ class SessionService:
         # Parse plugins from config
         plugins = self._parse_plugins(config.get("plugins"))
 
+        # Parse allowed commands from config
+        allowed_commands_raw = config.get("allowed_commands", "[]")
+        try:
+            allowed_commands = json.loads(allowed_commands_raw) if isinstance(allowed_commands_raw, str) else (allowed_commands_raw or [])
+        except (json.JSONDecodeError, TypeError):
+            allowed_commands = []
+
         session = AgentSession(
             worktree_path=worktree_path,
             system_prompt=system_prompt,
@@ -65,6 +72,7 @@ class SessionService:
             mcp_servers=config.get("mcp_servers"),
             mcp_enabled=config.get("mcp_enabled", False),
             plugins=plugins,
+            allowed_commands=allowed_commands,
         )
 
         self.sessions[item_id] = session

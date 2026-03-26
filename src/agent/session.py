@@ -51,10 +51,12 @@ class AgentSession:
         mcp_servers: str | None = None,
         mcp_enabled: bool = False,
         plugins: list[dict] | None = None,
+        allowed_commands: list[str] | None = None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
         self.model = model
+        self.allowed_commands = allowed_commands or []
         self.on_message = on_message        # async callback(text: str)
         self.on_tool_use = on_tool_use      # async callback(tool_name: str, input: dict)
         self.on_thinking = on_thinking      # async callback(thinking: str)
@@ -140,6 +142,21 @@ class AgentSession:
                     plugins.append({"type": "local", "path": plugin_path})
                     logger.info(f"Loading plugin from: {plugin_path}")
 
+        # Command filter hook for allowed bash commands
+        hooks = None
+        if self.allowed_commands:
+            allowed_tools.append("Bash")
+            from .command_filter import make_command_filter_hook
+            from claude_agent_sdk import HookMatcher
+            hooks = {
+                "PreToolUse": [
+                    HookMatcher(
+                        matcher="Bash",
+                        hooks=[make_command_filter_hook(self.allowed_commands)],
+                    )
+                ]
+            }
+
         options = ClaudeAgentOptions(
             cwd=self.worktree_path,
             system_prompt=full_system_prompt,
@@ -150,6 +167,7 @@ class AgentSession:
             add_dirs=[str(self.worktree_path)],
             thinking={"type": "enabled", "budget_tokens": 10000},
             plugins=plugins if plugins else None,
+            hooks=hooks,
         )
 
         if resume_session_id:
