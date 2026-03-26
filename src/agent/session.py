@@ -52,6 +52,7 @@ class AgentSession:
         on_request_command=None,
         on_request_tool=None,
         on_view_board=None,
+        on_delete_todo=None,
         mcp_servers: str | None = None,
         mcp_enabled: bool = False,
         plugins: list[dict] | None = None,
@@ -76,6 +77,7 @@ class AgentSession:
         self.on_request_command = on_request_command  # async callback(command: str, reason: str) -> str
         self.on_request_tool = on_request_tool      # async callback(tool_name: str, reason: str) -> str
         self.on_view_board = on_view_board          # async callback() -> str
+        self.on_delete_todo = on_delete_todo        # async callback(item_id: str) -> str
         self.mcp_servers = mcp_servers      # JSON string of MCP server configurations from agent config
         self.mcp_enabled = mcp_enabled      # Whether MCP is enabled from agent config
         self.plugins = plugins              # List of plugin configs: [{"type": "local", "path": "..."}]
@@ -94,7 +96,7 @@ class AgentSession:
         if self.on_clarify:
             mcp_servers["clarification"] = create_clarification_server(self.on_clarify)
         if self.on_create_todo:
-            mcp_servers["todo"] = create_todo_server(self.on_create_todo)
+            mcp_servers["todo"] = create_todo_server(self.on_create_todo, self.on_delete_todo)
         if self.on_set_commit_message:
             mcp_servers["commit_message"] = create_commit_message_server(self.on_set_commit_message)
         if self.on_request_command:
@@ -159,6 +161,7 @@ class AgentSession:
             allowed_tools.append("mcp__clarification__ask_user")
         if "todo" in mcp_servers:
             allowed_tools.append("mcp__todo__create_todo")
+            allowed_tools.append("mcp__todo__delete_todo")
         if "commit_message" in mcp_servers:
             allowed_tools.append("mcp__commit_message__set_commit_message")
         if "command_access" in mcp_servers:

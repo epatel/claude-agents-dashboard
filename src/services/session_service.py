@@ -32,7 +32,8 @@ class SessionService:
                            on_set_commit_message: Optional[Callable] = None,
                            on_request_command: Optional[Callable] = None,
                            on_request_tool: Optional[Callable] = None,
-                           on_view_board: Optional[Callable] = None) -> AgentSession:
+                           on_view_board: Optional[Callable] = None,
+                           on_delete_todo: Optional[Callable] = None) -> AgentSession:
         """Create a new agent session with all callbacks."""
         # Use provided model or fall back to config model
         session_model = model or config.get("model")
@@ -82,6 +83,7 @@ class SessionService:
             on_request_command=on_request_command,
             on_request_tool=on_request_tool,
             on_view_board=on_view_board,
+            on_delete_todo=on_delete_todo,
             mcp_servers=config.get("mcp_servers"),
             mcp_enabled=config.get("mcp_enabled", False),
             plugins=plugins,

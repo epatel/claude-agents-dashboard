@@ -76,6 +76,7 @@ class WorkflowService:
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
             on_view_board=self._create_on_view_board_callback(),
+            on_delete_todo=self._create_on_delete_todo_callback(item_id),
         )
 
         # Build prompt and fetch attachments
@@ -244,6 +245,7 @@ class WorkflowService:
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
             on_view_board=self._create_on_view_board_callback(),
+            on_delete_todo=self._create_on_delete_todo_callback(item_id),
         )
 
         # Fetch attachments for context
@@ -539,6 +541,22 @@ class WorkflowService:
             return item
         return on_create_todo
 
+    def _create_on_delete_todo_callback(self, item_id: str):
+        async def on_delete_todo(target_id: str) -> str:
+            # Only allow deleting items in the todo column
+            target = await self.db.get_item(target_id)
+            if not target:
+                return f"Item '{target_id}' not found."
+            if target["column_name"] != "todo":
+                return f"Cannot delete item '{target['title']}' — it is in the '{target['column_name']}' column. Only todo items can be deleted."
+            deleted = await self.db.delete_item_and_related(target_id)
+            if deleted:
+                await self._log_and_notify(item_id, "system", f"Deleted todo item: {deleted['title']}")
+                await self.notifications.ws_manager.broadcast("item_deleted", {"item_id": target_id})
+                return f"Deleted todo item: {deleted['title']}"
+            return f"Failed to delete item '{target_id}'."
+        return on_delete_todo
+
     def _create_on_set_commit_message_callback(self, item_id: str):
         async def on_set_commit_message(message: str) -> str:
             result = self.sessions.set_commit_message(item_id, message)
@@ -564,7 +582,7 @@ class WorkflowService:
                 if col_items:
                     for item in col_items:
                         status = f" [{item['status']}]" if item.get("status") else ""
-                        lines.append(f"- {item['title']}{status}")
+                        lines.append(f"- [{item['id']}] {item['title']}{status}")
                 else:
                     lines.append("  (empty)")
                 lines.append("")
