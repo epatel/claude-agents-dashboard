@@ -188,8 +188,11 @@ class AgentSession:
                     # Allow plugin tools through the whitelist.
                     # SDK names plugin tools as mcp__plugin_{name}_{server}__{tool}
                     plugin_name = Path(plugin_path).name
+                    # Wildcard at the server__tool boundary
+                    allowed_tools.append(f"mcp__plugin_{plugin_name}_*__*")
+                    # Fallback: wildcard right after plugin name
                     allowed_tools.append(f"mcp__plugin_{plugin_name}_*")
-                    logger.info(f"Loading plugin from: {plugin_path}")
+                    logger.info(f"Loading plugin '{plugin_name}', allowing tools: mcp__plugin_{plugin_name}_*__* and mcp__plugin_{plugin_name}_*")
 
         # Always allow Bash in the tool whitelist — permission_mode and the
         # PreToolUse hook handle actual command filtering.
