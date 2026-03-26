@@ -171,7 +171,7 @@ class WorkflowService:
                     logger.warning(f"Failed to reset worktree: {e}")
 
                 # Restart agent with the diff as context
-                item = await self.db.update_item(item_id, column_name="doing", status="running")
+                item = await self.db.update_item(item_id, column_name="doing", status="resolving_conflicts")
                 await self.notifications.broadcast_item_updated(item)
 
                 config = await self.db.get_agent_config()

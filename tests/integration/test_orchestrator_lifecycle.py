@@ -190,7 +190,17 @@ class TestOrchestratorLifecycle:
 
         with patch.object(test_orchestrator.git_service, 'merge_agent_work',
                           new_callable=AsyncMock,
-                          return_value=(False, "Merge conflict in file.txt")):
+                          return_value=(False, "Merge conflict in file.txt")), \
+             patch('src.git.operations.run_git',
+                   new_callable=AsyncMock,
+                   return_value="diff --git a/file.txt\n+changed"), \
+             patch('src.git.operations.get_current_branch',
+                   new_callable=AsyncMock,
+                   return_value="main"), \
+             patch.object(test_orchestrator.session_service, 'create_session',
+                          new_callable=AsyncMock), \
+             patch.object(test_orchestrator.session_service, 'start_session_task',
+                          new_callable=AsyncMock):
             result = await test_orchestrator.approve_item(item_id)
             assert result["status"] == "resolving_conflicts"
 
