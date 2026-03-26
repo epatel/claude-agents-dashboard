@@ -154,7 +154,7 @@ class TestAllowedToolsWhitelist:
                 pass
 
         options = mock_sdk.call_args.kwargs.get("options") or mock_sdk.call_args.args[0]
-        assert "mcp__context-mode__*" in options.allowed_tools
+        assert "mcp__plugin_context-mode_*" in options.allowed_tools
 
     @patch("src.agent.session.ClaudeSDKClient")
     async def test_hook_only_set_with_allowed_commands(self, mock_sdk):
