@@ -5,6 +5,9 @@ const ConfigDialog = {
     // Plugins state
     _configPlugins: [],
 
+    // Allowed commands state
+    _configAllowedCommands: [],
+
     switchConfigTab(tabName) {
         document.querySelectorAll('#config-dialog .review-tab').forEach(t => {
             t.classList.toggle('active', t.dataset.tab === tabName);
@@ -30,6 +33,14 @@ const ConfigDialog = {
                 this._configPlugins = [];
             }
             this._renderPluginsList();
+
+            // Load allowed commands
+            try {
+                this._configAllowedCommands = JSON.parse(config.allowed_commands || '[]');
+            } catch {
+                this._configAllowedCommands = [];
+            }
+            this._renderAllowedCommandsList();
 
             this.switchConfigTab('general');
             DialogCore.open('config-dialog');
@@ -68,6 +79,35 @@ const ConfigDialog = {
         this._renderPluginsList();
     },
 
+    _renderAllowedCommandsList() {
+        const container = document.getElementById('config-allowed-commands-list');
+        if (this._configAllowedCommands.length === 0) {
+            container.innerHTML = '<div class="text-muted" style="font-size:13px;">No commands configured. Agents can request access at runtime.</div>';
+            return;
+        }
+        container.innerHTML = this._configAllowedCommands.map((cmd, i) => `
+            <div class="plugin-entry" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <code style="flex:1;background:var(--bg-secondary);padding:2px 8px;border-radius:4px;">${cmd}</code>
+                <button class="btn btn-sm" onclick="ConfigDialog.removeAllowedCommand(${i})" title="Remove">&#10005;</button>
+            </div>
+        `).join('');
+    },
+
+    addAllowedCommand() {
+        const input = document.getElementById('config-allowed-command-input');
+        const cmd = input.value.trim().split(/\s+/)[0];
+        if (!cmd) return;
+        if (this._configAllowedCommands.includes(cmd)) return;
+        this._configAllowedCommands.push(cmd);
+        this._renderAllowedCommandsList();
+        input.value = '';
+    },
+
+    removeAllowedCommand(index) {
+        this._configAllowedCommands.splice(index, 1);
+        this._renderAllowedCommandsList();
+    },
+
     async submitConfig(event) {
         event.preventDefault();
         const config = {
@@ -77,6 +117,7 @@ const ConfigDialog = {
             mcp_enabled: document.getElementById('config-mcp-enabled').checked,
             mcp_servers: document.getElementById('config-mcp-servers').value,
             plugins: JSON.stringify(this._configPlugins),
+            allowed_commands: JSON.stringify(this._configAllowedCommands),
         };
         try {
             await Api.request('PUT', '/api/config', config);

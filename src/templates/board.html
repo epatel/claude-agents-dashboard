@@ -270,6 +270,18 @@
                         <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
                     </select>
                 </div>
+                <div class="form-group" style="margin-top: 16px;">
+                    <label>Allowed Commands</label>
+                    <p class="text-muted" style="font-size: 12px; margin: 4px 0 8px;">
+                        Shell commands agents can run (e.g., flutter, npm, cargo). Agents can also request access at runtime.
+                    </p>
+                    <div id="config-allowed-commands-list"></div>
+                    <div style="display:flex;gap:8px;margin-top:8px;">
+                        <input type="text" id="config-allowed-command-input" placeholder="e.g. flutter" style="flex:1;"
+                               onkeydown="if(event.key==='Enter'){event.preventDefault();ConfigDialog.addAllowedCommand();}">
+                        <button class="btn btn-sm" onclick="ConfigDialog.addAllowedCommand()">Add</button>
+                    </div>
+                </div>
                 <div class="form-group">
                     <label for="config-system-prompt">System Prompt <span class="tooltip" data-tip="Instructions prepended to every agent task. Use this to define coding style, conventions, or constraints that apply to all work in this project.">?</span></label>
                     <textarea id="config-system-prompt" rows="6" placeholder="e.g. Use TypeScript with strict mode. Follow existing patterns in the codebase. Write tests for new features."></textarea>
