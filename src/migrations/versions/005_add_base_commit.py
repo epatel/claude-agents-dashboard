@@ -17,7 +17,7 @@ class AddBaseCommitMigration(Migration):
 
     def __init__(self):
         super().__init__(
-            version="003",
+            version="005",
             description="Add base_commit column to items table"
         )
 
