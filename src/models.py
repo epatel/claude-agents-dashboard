@@ -97,3 +97,4 @@ class AgentConfig(BaseModel):
     mcp_enabled: bool = False
     plugins: Optional[str] = "[]"
     allowed_commands: Optional[str] = "[]"
+    bash_yolo: bool = False

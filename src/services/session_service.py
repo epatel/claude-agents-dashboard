@@ -75,6 +75,7 @@ class SessionService:
             mcp_enabled=config.get("mcp_enabled", False),
             plugins=plugins,
             allowed_commands=allowed_commands,
+            bash_yolo=config.get("bash_yolo", False),
         )
 
         self.sessions[item_id] = session

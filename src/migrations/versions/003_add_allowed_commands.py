@@ -23,6 +23,9 @@ class AddAllowedCommands(Migration):
         await db.execute(
             "ALTER TABLE agent_config ADD COLUMN allowed_commands TEXT DEFAULT '[]'"
         )
+        await db.execute(
+            "ALTER TABLE agent_config ADD COLUMN bash_yolo BOOLEAN DEFAULT 0"
+        )
 
     async def down(self, db: aiosqlite.Connection) -> None:
         await db.execute("""

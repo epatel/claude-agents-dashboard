@@ -53,11 +53,13 @@ class AgentSession:
         mcp_enabled: bool = False,
         plugins: list[dict] | None = None,
         allowed_commands: list[str] | None = None,
+        bash_yolo: bool = False,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
         self.model = model
         self.allowed_commands = allowed_commands or []
+        self.bash_yolo = bash_yolo
         self.on_message = on_message        # async callback(text: str)
         self.on_tool_use = on_tool_use      # async callback(tool_name: str, input: dict)
         self.on_thinking = on_thinking      # async callback(thinking: str)
@@ -169,8 +171,10 @@ class AgentSession:
             ]
         }
 
-        # Command filter hook for allowed bash commands
-        if self.allowed_commands:
+        # Bash access: yolo mode allows all commands, otherwise filter by allowed list
+        if self.bash_yolo:
+            allowed_tools.append("Bash")
+        elif self.allowed_commands:
             allowed_tools.append("Bash")
             from .command_filter import make_command_filter_hook
             hooks["PreToolUse"].append(

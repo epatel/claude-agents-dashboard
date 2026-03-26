@@ -34,13 +34,15 @@ const ConfigDialog = {
             }
             this._renderPluginsList();
 
-            // Load allowed commands
+            // Load allowed commands + yolo mode
             try {
                 this._configAllowedCommands = JSON.parse(config.allowed_commands || '[]');
             } catch {
                 this._configAllowedCommands = [];
             }
+            document.getElementById('config-bash-yolo').checked = config.bash_yolo || false;
             this._renderAllowedCommandsList();
+            this._updateYoloState(config.bash_yolo || false);
 
             this.switchConfigTab('general');
             DialogCore.open('config-dialog');
@@ -108,6 +110,19 @@ const ConfigDialog = {
         this._renderAllowedCommandsList();
     },
 
+    toggleYolo(checked) {
+        this._updateYoloState(checked);
+    },
+
+    _updateYoloState(yolo) {
+        const list = document.getElementById('config-allowed-commands-list');
+        const input = document.getElementById('config-allowed-command-input');
+        const addBtn = input?.nextElementSibling;
+        if (list) list.style.opacity = yolo ? '0.4' : '1';
+        if (input) input.disabled = yolo;
+        if (addBtn) addBtn.disabled = yolo;
+    },
+
     async submitConfig(event) {
         event.preventDefault();
         const config = {
@@ -118,6 +133,7 @@ const ConfigDialog = {
             mcp_servers: document.getElementById('config-mcp-servers').value,
             plugins: JSON.stringify(this._configPlugins),
             allowed_commands: JSON.stringify(this._configAllowedCommands),
+            bash_yolo: document.getElementById('config-bash-yolo').checked,
         };
         try {
             await Api.request('PUT', '/api/config', config);
