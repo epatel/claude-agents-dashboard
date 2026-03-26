@@ -55,13 +55,26 @@ async def get_main_branch(repo: Path) -> str:
             await run_git(repo, "rev-parse", "--verify", "master")
             return "master"
         except subprocess.CalledProcessError:
-            # Fallback: use whatever HEAD points to
-            return (await run_git(repo, "rev-parse", "--abbrev-ref", "HEAD"))
+            # Fallback: use whatever HEAD points to (handles empty repos too)
+            return await get_current_branch(repo)
 
 
 async def get_current_branch(repo: Path) -> str:
-    """Get the currently checked-out branch name."""
-    return (await run_git(repo, "rev-parse", "--abbrev-ref", "HEAD")).strip()
+    """Get the currently checked-out branch name.
+
+    Returns the branch name, or a fallback if HEAD doesn't exist yet
+    (e.g. in an empty repo with no commits).
+    """
+    try:
+        return (await run_git(repo, "rev-parse", "--abbrev-ref", "HEAD")).strip()
+    except subprocess.CalledProcessError:
+        # Empty repo: HEAD exists but points to an unborn branch.
+        # Try to read the symbolic ref directly.
+        try:
+            ref = (await run_git(repo, "symbolic-ref", "--short", "HEAD")).strip()
+            return ref
+        except subprocess.CalledProcessError:
+            return "main"
 
 
 async def get_diff(repo: Path, branch: str, base: str | None = None, worktree_path: Path | None = None) -> str:
