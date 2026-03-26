@@ -70,8 +70,16 @@ def main():
     print(f"Data directory: {data_dir}")
     print(f"Starting on: http://127.0.0.1:{port}")
 
+    import logging
     import uvicorn
     from .web.app import create_app
+
+    # Suppress noisy polling endpoint from access logs
+    class _QuietStatsFilter(logging.Filter):
+        def filter(self, record):
+            return "/api/stats" not in record.getMessage()
+
+    logging.getLogger("uvicorn.access").addFilter(_QuietStatsFilter())
 
     app = create_app(target_project, data_dir)
     uvicorn.run(app, host="127.0.0.1", port=port)
