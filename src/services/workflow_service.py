@@ -403,7 +403,7 @@ class WorkflowService:
             prompt = f"__permission_request__|{command}|{reason}"
             await self.db.store_clarification(item_id, prompt, None)
 
-            await self.notifications.broadcast(
+            await self.notifications.ws_manager.broadcast(
                 "permission_requested",
                 {
                     "item_id": item_id,
@@ -421,6 +421,15 @@ class WorkflowService:
 
             if response == "approved":
                 await self.db.save_allowed_command(command)
+
+                # Update the running session's allowed_commands list so the
+                # PreToolUse hook immediately allows this command (the hook
+                # closure references the same list object).
+                session = self.sessions.sessions.get(item_id)
+                if session and hasattr(session, 'allowed_commands'):
+                    if command not in session.allowed_commands:
+                        session.allowed_commands.append(command)
+
                 await self._log_and_notify(
                     item_id, "system",
                     f"Command '{command}' approved and added to allowed commands"
