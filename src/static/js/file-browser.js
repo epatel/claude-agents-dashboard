@@ -435,12 +435,31 @@ const FileBrowser = {
         }
     },
 
-    _renderMarkdownContent(mdDiv, content) {
+    _renderMarkdownContent(mdDiv, content, filePath) {
         if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
-            mdDiv.innerHTML = DOMPurify.sanitize(marked.parse(content));
+            mdDiv.innerHTML = DOMPurify.sanitize(marked.parse(content), {
+                ADD_TAGS: ['img'],
+                ADD_ATTR: ['src', 'alt', 'height', 'width'],
+            });
         } else {
             mdDiv.textContent = content;
             return;
+        }
+        // Rewrite relative image paths to load via API
+        if (filePath) {
+            const dir = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : '';
+            mdDiv.querySelectorAll('img').forEach(img => {
+                const src = img.getAttribute('src');
+                if (src && !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('/')) {
+                    const imgPath = dir ? `${dir}/${src}` : src;
+                    // Load image via API and replace src with base64
+                    Api.request('GET', `/api/files/content?path=${encodeURIComponent(imgPath)}`).then(data => {
+                        if (data.content && data.binary) {
+                            img.src = data.content;
+                        }
+                    }).catch(() => {});
+                }
+            });
         }
         // Render mermaid diagrams
         if (typeof mermaid !== 'undefined') {
@@ -472,7 +491,7 @@ const FileBrowser = {
         if (this._fontSize !== 13) {
             mdDiv.style.fontSize = this._fontSize + 'px';
         }
-        this._renderMarkdownContent(mdDiv, tab.content);
+        this._renderMarkdownContent(mdDiv, tab.content, tab.path);
 
         toggle.addEventListener('click', () => {
             showSource = !showSource;
@@ -482,7 +501,7 @@ const FileBrowser = {
                 mdDiv.className = '';
             } else {
                 mdDiv.className = 'file-markdown-viewer';
-                this._renderMarkdownContent(mdDiv, tab.content);
+                this._renderMarkdownContent(mdDiv, tab.content, tab.path);
             }
         });
 

@@ -699,17 +699,21 @@ const Annotate = {
 
         if (s.type === 'arrow') {
             const { x1, y1, x2, y2 } = s;
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            const headLen = 10 + (s.lineWidth || this.lineWidth) * 2;
+            const headHalf = 0.4;
+            // Shorten the line so it stops at the arrowhead base
+            const baseX = x2 - headLen * Math.cos(angle);
+            const baseY = y2 - headLen * Math.sin(angle);
             ctx.beginPath();
             ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
+            ctx.lineTo(baseX, baseY);
             ctx.stroke();
-            // Arrowhead
-            const angle = Math.atan2(y2 - y1, x2 - x1);
-            const headLen = 14;
+            // Arrowhead as a filled triangle from tip
             ctx.beginPath();
             ctx.moveTo(x2, y2);
-            ctx.lineTo(x2 - headLen * Math.cos(angle - 0.4), y2 - headLen * Math.sin(angle - 0.4));
-            ctx.lineTo(x2 - headLen * Math.cos(angle + 0.4), y2 - headLen * Math.sin(angle + 0.4));
+            ctx.lineTo(x2 - headLen * Math.cos(angle - headHalf), y2 - headLen * Math.sin(angle - headHalf));
+            ctx.lineTo(x2 - headLen * Math.cos(angle + headHalf), y2 - headLen * Math.sin(angle + headHalf));
             ctx.closePath();
             ctx.fill();
         } else if (s.type === 'circle') {
