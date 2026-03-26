@@ -12,7 +12,7 @@ STATIC_DIR = DASHBOARD_DIR / "src" / "static"
 COLUMNS = [
     {"id": "todo", "label": "📝 Todo"},
     {"id": "doing", "label": "🚧 Doing"},
-    {"id": "clarify", "label": "❓ Clarify"},
+    {"id": "questions", "label": "❓ Questions"},
     {"id": "review", "label": "👀 Review"},
     {"id": "done", "label": "✅ Done"},
     {"id": "archive", "label": "📦 Archive"},

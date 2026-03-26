@@ -73,7 +73,7 @@ class AgentOrchestrator:
         return await self.workflow_service.cancel_review(item_id)
 
     async def submit_clarification(self, item_id: str, response: str) -> Dict[str, Any]:
-        """Submit a clarification response to a waiting agent."""
+        """Submit a question response to a waiting agent."""
         return await self.workflow_service.submit_clarification(item_id, response)
 
     async def delete_item(self, item_id: str) -> Dict[str, Any]:

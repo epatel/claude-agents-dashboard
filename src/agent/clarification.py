@@ -1,8 +1,8 @@
-"""Clarification tool for agents.
+"""Questions tool for agents.
 
 Creates an MCP server with an 'ask_user' tool that agents can call
 when they need user input. The orchestrator intercepts the tool call,
-moves the item to Clarify, and waits for the user's response.
+moves the item to Questions, and waits for the user's response.
 """
 
 from claude_agent_sdk import tool, create_sdk_mcp_server
@@ -42,7 +42,7 @@ def create_clarification_server(on_clarify):
         ASK_USER_SCHEMA,
     )
     async def ask_user(input: dict) -> dict:
-        """Ask the user for clarification."""
+        """Ask the user a question."""
         question = input.get("question", "")
         choices = input.get("choices")
         response = await on_clarify(question, choices)
