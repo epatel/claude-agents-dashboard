@@ -23,6 +23,23 @@
     {% endfor %}
 </main>
 
+<!-- Notifications Dialog -->
+<dialog id="notification-dialog" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>System Notifications</h3>
+            <button class="btn-close" onclick="Dialogs.close('notification-dialog')">&times;</button>
+        </div>
+        <div id="notification-list" class="notification-list">
+            <p class="notification-empty">No notifications</p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-sm" id="clear-notifications-btn" onclick="NotificationDialog.clearAll()">Clear All</button>
+            <button type="button" class="btn btn-sm" onclick="Dialogs.close('notification-dialog')">Close</button>
+        </div>
+    </div>
+</dialog>
+
 <!-- New / Edit Item Dialog -->
 <dialog id="item-dialog" class="modal modal-large">
     <div class="modal-content">

@@ -551,6 +551,59 @@ async def delete_attachment(request: Request, attachment_id: int):
     return {"ok": True}
 
 
+# --- System Notifications ---
+
+# In-memory notification store (transient — cleared on restart)
+_notifications: list[dict] = []
+_next_notification_id = 0
+_ws_manager_ref = None  # Set during first request via dependency
+
+
+def add_notification(level: str, message: str, source: str = "") -> dict:
+    """Add a system notification (error/warning/info). Returns the notification."""
+    global _next_notification_id
+    _next_notification_id += 1
+    entry = {
+        "id": _next_notification_id,
+        "level": level,
+        "message": message,
+        "source": source,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    _notifications.append(entry)
+    # Best-effort async broadcast
+    if _ws_manager_ref:
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_ws_manager_ref.broadcast("notification_added", entry))
+        except RuntimeError:
+            pass
+    return entry
+
+
+@router.get("/api/notifications")
+async def list_notifications(request: Request):
+    global _ws_manager_ref
+    if _ws_manager_ref is None:
+        _ws_manager_ref = request.app.state.ws_manager
+    return _notifications
+
+
+@router.delete("/api/notifications/{notification_id}")
+async def dismiss_notification(notification_id: int):
+    global _notifications
+    _notifications = [n for n in _notifications if n["id"] != notification_id]
+    return {"ok": True}
+
+
+@router.delete("/api/notifications")
+async def clear_notifications():
+    global _notifications
+    _notifications.clear()
+    return {"ok": True}
+
+
 # --- Stats ---
 
 @router.get("/api/stats")

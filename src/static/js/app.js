@@ -29,9 +29,15 @@ const App = {
         document.getElementById('new-item-btn')?.addEventListener('click', () => {
             Dialogs.openNewItem();
         });
+        document.getElementById('notifications-btn')?.addEventListener('click', () => {
+            Dialogs.openNotifications();
+        });
         document.getElementById('config-btn')?.addEventListener('click', () => {
             Dialogs.openConfig();
         });
+
+        // Initialize notification polling
+        NotificationDialog.init();
 
         // Close dialogs on backdrop click
         document.querySelectorAll('.modal').forEach(dialog => {
@@ -349,6 +355,9 @@ const App = {
                 ClarificationDialog.showToolPermissionRequest(
                     data.item_id, data.tool_name, data.reason
                 );
+                break;
+            case 'notification_added':
+                NotificationDialog.addFromEvent(data);
                 break;
             default:
                 console.log('Unknown event:', type, data);

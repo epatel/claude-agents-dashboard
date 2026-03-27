@@ -137,6 +137,123 @@ body {
     cursor: pointer;
 }
 
+/* Notification bell */
+#notifications-btn {
+    position: relative;
+}
+
+.notification-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+    font-weight: bold;
+    line-height: 16px;
+    text-align: center;
+    color: #fff;
+    background: #e53e3e;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#notifications-btn.has-notifications .bell-icon {
+    animation: bell-shake 0.5s ease-in-out;
+}
+
+@keyframes bell-shake {
+    0%, 100% { transform: rotate(0); }
+    25% { transform: rotate(10deg); }
+    75% { transform: rotate(-10deg); }
+}
+
+/* Notification dialog */
+.notification-list {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 8px 0;
+}
+
+.notification-empty {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 24px;
+}
+
+.notification-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.notification-item:last-child {
+    border-bottom: none;
+}
+
+.notification-icon {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    color: #fff;
+}
+
+.notification-error .notification-icon {
+    background: #e53e3e;
+}
+
+.notification-warning .notification-icon {
+    background: #d69e2e;
+}
+
+.notification-info .notification-icon {
+    background: #3182ce;
+}
+
+.notification-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.notification-message {
+    display: block;
+    font-size: 13px;
+    word-break: break-word;
+}
+
+.notification-meta {
+    display: block;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.notification-dismiss {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.notification-dismiss:hover {
+    color: var(--text-primary);
+}
+
 .btn-sm {
     padding: 4px 10px;
     font-size: 12px;

@@ -40,6 +40,9 @@ const Dialogs = {
     openRequestChanges: (itemId) => RequestChangesDialog.openRequestChanges(itemId),
     submitChanges: (event) => RequestChangesDialog.submitChanges(event),
 
+    // Notification dialog - delegate to NotificationDialog
+    openNotifications: () => NotificationDialog.open(),
+
     // Config dialog - delegate to ConfigDialog
     openConfig: () => ConfigDialog.openConfig(),
     switchConfigTab: (tabName) => ConfigDialog.switchConfigTab(tabName),

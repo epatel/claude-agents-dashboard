@@ -257,6 +257,10 @@ class AgentSession:
 
         self.client = ClaudeSDKClient(options=options)
         await self.client.connect()
+
+        # Check MCP server status and report issues
+        await self._check_mcp_status()
+
         self._task = asyncio.create_task(self._receive_loop())
 
         # Copy attachments into worktree and reference in prompt
@@ -368,6 +372,36 @@ class AgentSession:
         """Send a follow-up message to the agent (e.g., clarification response)."""
         if self.client:
             await self.client.query(text)
+
+    async def _check_mcp_status(self) -> None:
+        """Check MCP server connection status and report issues."""
+        if not self.client:
+            return
+        try:
+            status = await self.client.get_mcp_status()
+            servers = status.get("mcpServers", [])
+            for server in servers:
+                name = server.get("name", "unknown")
+                state = server.get("status", "unknown")
+                if state in ("failed", "disconnected", "needs-auth"):
+                    error_msg = server.get("error", "")
+                    msg = f"MCP server '{name}' {state}"
+                    if error_msg:
+                        msg += f": {error_msg}"
+                    logger.warning(msg)
+                    if self.on_message:
+                        await self.on_message(f"[warning] {msg}")
+                    try:
+                        from ..web.routes import add_notification
+                        add_notification("error", msg, source=f"mcp:{name}")
+                    except Exception:
+                        pass
+                elif state == "connected":
+                    tools = server.get("tools", [])
+                    tool_names = [t.get("name", "") for t in tools]
+                    logger.info(f"MCP server '{name}' connected with {len(tools)} tools: {tool_names}")
+        except Exception as e:
+            logger.warning(f"Failed to check MCP status: {e}")
 
     async def cancel(self) -> None:
         """Cancel the running agent."""

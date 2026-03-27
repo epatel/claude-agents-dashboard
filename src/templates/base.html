@@ -47,6 +47,10 @@
 
         <div class="top-bar-actions">
             <button id="files-btn" class="btn btn-secondary btn-sm" onclick="FileBrowser.open()">Files</button>
+            <button id="notifications-btn" class="btn btn-icon" title="System notifications">
+                <span class="bell-icon">&#x1F514;</span>
+                <span class="notification-badge" id="notification-badge" style="display:none">0</span>
+            </button>
             <button id="config-btn" class="btn btn-icon" title="Agent config">⚙</button>
             <button id="theme-toggle" class="btn btn-icon" title="Toggle theme">
                 <span class="theme-icon-light">☀</span>
@@ -80,6 +84,8 @@
     <script src="/static/js/request-changes-dialog.js"></script>
     <script src="/static/js/config-dialog.js"></script>
     <script src="/static/js/annotation-canvas.js"></script>
+
+    <script src="/static/js/notification-dialog.js"></script>
 
     <!-- Main dialog coordinator - loads after all modules -->
     <script src="/static/js/dialogs.js"></script>

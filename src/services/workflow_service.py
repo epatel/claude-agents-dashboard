@@ -100,7 +100,7 @@ class WorkflowService:
         return item
 
     async def retry_agent(self, item_id: str) -> Dict[str, Any]:
-        """Retry a failed agent — restart from scratch in existing worktree."""
+        """Retry a failed agent — resume previous session if available."""
         await self.sessions.cleanup_session(item_id)
 
         item = await self.db.get_item(item_id)
@@ -118,8 +118,44 @@ class WorkflowService:
                 worktree_path=str(worktree_path),
             )
 
-        await self._log_and_notify(item_id, "system", "Agent retrying")
-        return await self.start_agent(item_id)
+        resume_id = item.get("session_id")
+        if resume_id:
+            await self._log_and_notify(item_id, "system", f"Agent resuming session {resume_id[:8]}...")
+        else:
+            await self._log_and_notify(item_id, "system", "Agent retrying (no session to resume)")
+
+        # Re-read item to get updated worktree_path
+        item = await self.db.get_item(item_id)
+        config = await self.db.get_agent_config()
+        worktree_path = Path(item["worktree_path"])
+
+        # Update item state
+        item = await self.db.update_item(item_id, column_name="doing", status="running")
+        await self.notifications.broadcast_item_updated(item)
+
+        # Create session and start with resume
+        model = item.get("model") or config.get("model")
+        session = await self.sessions.create_session(
+            item_id, worktree_path, config, model,
+            on_message=self._create_on_message_callback(item_id),
+            on_tool_use=self._create_on_tool_use_callback(item_id),
+            on_thinking=self._create_on_thinking_callback(item_id),
+            on_complete=self._create_on_complete_callback(item_id),
+            on_error=self._create_on_error_callback(item_id),
+            on_clarify=self._create_on_clarify_callback(item_id),
+            on_create_todo=self._create_on_create_todo_callback(item_id),
+            on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
+            on_request_command=self._create_on_request_command_callback(item_id),
+            on_request_tool=self._create_on_request_tool_callback(item_id),
+            on_view_board=self._create_on_view_board_callback(),
+            on_delete_todo=self._create_on_delete_todo_callback(item_id),
+        )
+
+        prompt = f"Task: {item['title']}\n\n{item['description']}"
+        attachments = await self.db.get_attachments(item_id)
+        await self.sessions.start_session_task(item_id, session, prompt, attachments, resume_id)
+
+        return item
 
     async def approve_item(self, item_id: str) -> Dict[str, Any]:
         """Approve a reviewed item — merge back into the base branch."""
@@ -357,8 +393,9 @@ class WorkflowService:
                 await self.notifications.broadcast_item_updated(item)
             else:
                 await self._log_and_notify(item_id, "error", f"Agent failed: {result.error}")
-                item = await self.db.update_item(item_id, status="failed")
+                item = await self.db.update_item(item_id, status="failed", session_id=result.session_id)
                 await self.notifications.broadcast_item_updated(item)
+                self._add_failure_notification(item_id, result.error)
 
         return on_complete
 
@@ -367,7 +404,17 @@ class WorkflowService:
             await self._log_and_notify(item_id, "error", f"Agent error: {error}")
             item = await self.db.update_item(item_id, status="failed")
             await self.notifications.broadcast_item_updated(item)
+            self._add_failure_notification(item_id, error)
         return on_error
+
+    def _add_failure_notification(self, item_id: str, error: str):
+        """Add a system notification for agent failures."""
+        try:
+            from ..web.routes import add_notification
+            short_error = error[:200] if len(error) > 200 else error
+            add_notification("error", f"Agent {item_id[:8]} failed: {short_error}", source=f"agent:{item_id[:8]}")
+        except Exception:
+            pass
 
     def _create_on_clarify_callback(self, item_id: str):
         async def on_clarify(prompt: str, choices: Optional[List[str]]) -> str:
