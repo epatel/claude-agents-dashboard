@@ -94,20 +94,27 @@ graph TB
 
 ### Request flow
 
-```
-Browser <-WebSocket-> ConnectionManager (websocket.py)
-Browser <-HTTP-> FastAPI routes (routes.py) + file_routes.py
-                |
-         AgentOrchestrator (facade, orchestrator.py)
-                |
-         WorkflowService (workflow_service.py)
-           |         |         |           |
-    SessionService  GitService  DBService  NotificationService
-         |              |          |            |
-    AgentSession    Git ops    SQLite DB    WebSocket broadcast
-    (session.py)    (git/)     (database.py)
-         |
-    ClaudeSDKClient (claude-agent-sdk)
+```mermaid
+graph TB
+    Browser["Browser"]
+
+    Browser <-->|"HTTP"| Routes["routes.py + file_routes.py"]
+    Browser <-->|"WebSocket"| WS["ConnectionManager"]
+
+    Routes --> Orch["AgentOrchestrator (facade)"]
+    Orch --> WF["WorkflowService"]
+
+    WF --> SS["SessionService"]
+    WF --> GS["GitService"]
+    WF --> DBS["DatabaseService"]
+    WF --> NS["NotificationService"]
+
+    SS --> Sess["AgentSession"]
+    GS --> Git["Git ops (git/)"]
+    DBS --> DB["SQLite (database.py)"]
+    NS --> WS
+
+    Sess --> SDK["ClaudeSDKClient (claude-agent-sdk)"]
 ```
 
 ### Agent lifecycle
