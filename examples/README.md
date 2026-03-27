@@ -12,14 +12,22 @@ The server communicates via **newline-delimited JSON** (NDJSON) over stdio. The 
 
 Protocol flow:
 
-```
-CLI → server:  {"method": "initialize", "params": {...}, "id": 0}
-server → CLI:  {"result": {"protocolVersion": "...", "capabilities": {...}}, "id": 0}
-CLI → server:  {"method": "notifications/initialized"}
-CLI → server:  {"method": "tools/list", "id": 1}
-server → CLI:  {"result": {"tools": [...]}, "id": 1}
-CLI → server:  {"method": "tools/call", "params": {"name": "get_secret"}, "id": 2}
-server → CLI:  {"result": {"content": [{"type": "text", "text": "..."}]}, "id": 2}
+```mermaid
+sequenceDiagram
+    participant CLI as Claude CLI
+    participant MCP as mini-mcp server
+
+    CLI->>MCP: initialize (protocolVersion, capabilities)
+    MCP->>CLI: serverInfo, capabilities
+    CLI-->>MCP: notifications/initialized
+
+    CLI->>MCP: tools/list
+    MCP->>CLI: [{name: "get_secret", ...}]
+
+    CLI->>MCP: tools/call (name: "get_secret")
+    MCP->>CLI: {text: "FEC52599-..."}
+
+    Note over CLI,MCP: NDJSON over stdio<br/>One JSON object per line<br/>No Content-Length framing
 ```
 
 ### Running standalone
