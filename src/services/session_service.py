@@ -140,6 +140,16 @@ class SessionService:
             except Exception:
                 pass
 
+    def remove_session(self, item_id: str):
+        """Remove a finished session from tracking without cancelling it.
+
+        Unlike cleanup_session(), this doesn't cancel the session or task —
+        it just removes the dict entry so the session no longer counts as active.
+        Safe to call from on_complete/on_error callbacks where the session
+        has already finished naturally.
+        """
+        self.sessions.pop(item_id, None)
+
     def get_session(self, item_id: str) -> Optional[AgentSession]:
         """Get session for an item."""
         return self.sessions.get(item_id)

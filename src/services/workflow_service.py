@@ -397,6 +397,9 @@ class WorkflowService:
                 await self.notifications.broadcast_item_updated(item)
                 self._add_failure_notification(item_id, result.error)
 
+            # Remove finished session from tracking so it no longer counts as active
+            self.sessions.remove_session(item_id)
+
         return on_complete
 
     def _create_on_error_callback(self, item_id: str):
@@ -405,6 +408,8 @@ class WorkflowService:
             item = await self.db.update_item(item_id, status="failed")
             await self.notifications.broadcast_item_updated(item)
             self._add_failure_notification(item_id, error)
+            # Remove finished session from tracking so it no longer counts as active
+            self.sessions.remove_session(item_id)
         return on_error
 
     def _add_failure_notification(self, item_id: str, error: str):
