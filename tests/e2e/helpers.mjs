@@ -12,6 +12,31 @@ export const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const MAX_WAIT = 120_000;
 const POLL_INTERVAL = 3000;
 
+/** Check if -v or --verbose was passed as a CLI argument. */
+export const VERBOSE = process.argv.includes('-v') || process.argv.includes('--verbose');
+
+/** ANSI color helpers. */
+const GREEN = '\x1b[32m';
+const RED = '\x1b[31m';
+const YELLOW = '\x1b[33m';
+const RESET = '\x1b[0m';
+
+/** Print a colored PASS message. */
+export function pass(msg) {
+  console.log(`\n${GREEN}*** PASS: ${msg} ***${RESET}`);
+}
+
+/** Print a colored FAIL message and exit. */
+export function fail(msg) {
+  console.error(`\n${RED}*** FAIL: ${msg} ***${RESET}`);
+  process.exit(1);
+}
+
+/** Print a colored WARNING message. */
+export function warn(msg) {
+  console.warn(`${YELLOW}WARNING: ${msg}${RESET}`);
+}
+
 /** Start the server and return { port, proc } once it's ready. */
 export function startServer(targetRepo) {
   return new Promise((resolve, reject) => {
@@ -30,7 +55,7 @@ export function startServer(targetRepo) {
     function onData(chunk) {
       const text = chunk.toString();
       output += text;
-      process.stderr.write(text);
+      if (VERBOSE) process.stderr.write(text);
 
       const match = text.match(/running on http:\/\/127\.0\.0\.1:(\d+)/);
       if (match) {

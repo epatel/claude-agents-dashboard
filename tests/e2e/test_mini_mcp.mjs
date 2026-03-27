@@ -9,7 +9,7 @@
  * Usage: node tests/e2e/test_mini_mcp.mjs <target-repo-path>
  */
 import { chromium } from 'playwright';
-import { startServer, runAgentTask, deleteItem, printWorkLog, PROJECT_ROOT } from './helpers.mjs';
+import { startServer, runAgentTask, deleteItem, printWorkLog, pass, fail, warn, PROJECT_ROOT } from './helpers.mjs';
 import path from 'node:path';
 
 const TARGET_REPO = process.argv[2];
@@ -81,17 +81,12 @@ async function main() {
     printWorkLog(workLog);
 
     // Check: agent should have completed
-    if (!finished) {
-      console.error('\n*** FAIL: Agent did not complete ***');
-      process.exit(1);
-    }
+    if (!finished) fail('Agent did not complete');
 
     // Check: secret should appear in work log
     const allContent = workLog.map(e => e.message || e.content || '').join(' ');
     if (!allContent.includes(EXPECTED_SECRET)) {
-      console.error(`\n*** FAIL: Secret ${EXPECTED_SECRET} not found in work log ***`);
-      console.error('Work log content (last 500 chars):', allContent.slice(-500));
-      process.exit(1);
+      fail(`Secret ${EXPECTED_SECRET} not found in work log`);
     }
 
     // Check: the agent should have used the MCP tool
@@ -100,13 +95,13 @@ async function main() {
       return msg.includes('get_secret') || msg.includes('mcp__mini-mcp');
     });
     if (!usedMcpTool) {
-      console.warn('WARNING: Could not confirm get_secret tool was called (secret found but tool use not logged)');
+      warn('Could not confirm get_secret tool was called (secret found but tool use not logged)');
     }
 
     // Clean up
     await deleteItem(page, BASE, itemId);
 
-    console.log('\n*** PASS: Agent retrieved secret via mini-mcp MCP tool ***');
+    pass('Agent retrieved secret via mini-mcp MCP tool');
 
   } catch (err) {
     console.error('Test error:', err);

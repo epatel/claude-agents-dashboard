@@ -5,7 +5,7 @@
  * Usage: node tests/e2e/test_allowed_tools.mjs <target-repo-path>
  */
 import { chromium } from 'playwright';
-import { startServer, runAgentTask, deleteItem, printWorkLog } from './helpers.mjs';
+import { startServer, runAgentTask, deleteItem, printWorkLog, pass, fail } from './helpers.mjs';
 
 const TARGET_REPO = process.argv[2];
 if (!TARGET_REPO) {
@@ -51,9 +51,9 @@ async function main() {
 
     await deleteItem(page, BASE, itemId);
 
-    if (bashDenied) { console.error('\n*** FAIL: Bash commands were denied ***'); process.exit(1); }
-    if (!finished) { console.error('\n*** FAIL: Agent did not complete ***'); process.exit(1); }
-    console.log('\n*** PASS: Agent ran Bash commands without being blocked ***');
+    if (bashDenied) fail('Bash commands were denied');
+    if (!finished) fail('Agent did not complete');
+    pass('Agent ran Bash commands without being blocked');
 
   } catch (err) {
     console.error('Test error:', err);

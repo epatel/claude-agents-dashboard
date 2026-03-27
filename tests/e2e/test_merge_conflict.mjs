@@ -8,7 +8,7 @@
  * Usage: node tests/e2e/test_merge_conflict.mjs <target-repo-path>
  */
 import { chromium } from 'playwright';
-import { startServer, deleteItem, printWorkLog } from './helpers.mjs';
+import { startServer, deleteItem, printWorkLog, pass, fail } from './helpers.mjs';
 
 const TARGET_REPO = process.argv[2];
 if (!TARGET_REPO) {
@@ -104,15 +104,13 @@ async function main() {
     const first = await waitForBothReview(page, BASE, snailId, butterflyId, MAX_WAIT);
 
     if (!first.firstId) {
-      console.error('\n*** FAIL: Neither agent reached review ***');
-      process.exit(1);
+      fail('Neither agent reached review');
     }
 
     console.log(`\nFirst to review: ${first.firstId === snailId ? 'snail' : 'butterfly'}`);
 
     if (!first.secondId) {
-      console.error('\n*** FAIL: Second agent did not reach review ***');
-      process.exit(1);
+      fail('Second agent did not reach review');
     }
 
     console.log(`Second to review: ${first.secondId === snailId ? 'snail' : 'butterfly'}`);
@@ -178,7 +176,7 @@ async function main() {
 
         if (resolved.log) printWorkLog(resolved.log, 5);
       } else {
-        console.error('\n*** FAIL: Conflict resolution agent did not finish ***');
+        fail('Conflict resolution agent did not finish');
       }
     } else {
       // Maybe there was no conflict (race condition — both wrote different content)
@@ -192,10 +190,9 @@ async function main() {
     console.log(`Conflict on second merge: ${conflictDetected}`);
 
     if (!conflictDetected) {
-      // Even without conflict, the test passes if both completed
-      console.log('\n*** PASS: Both agents completed (no conflict occurred — both merged cleanly) ***');
+      pass('Both agents completed (no conflict occurred — both merged cleanly)');
     } else {
-      console.log('\n*** PASS: Merge conflict detected and auto-resolved ***');
+      pass('Merge conflict detected and auto-resolved');
     }
 
   } catch (err) {

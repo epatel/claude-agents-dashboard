@@ -7,7 +7,7 @@
  * Usage: node tests/e2e/test_clarification.mjs <target-repo-path>
  */
 import { chromium } from 'playwright';
-import { startServer, deleteItem, printWorkLog } from './helpers.mjs';
+import { startServer, deleteItem, printWorkLog, pass, fail } from './helpers.mjs';
 
 const TARGET_REPO = process.argv[2];
 if (!TARGET_REPO) {
@@ -90,10 +90,9 @@ async function main() {
     }
 
     if (!questionReceived) {
-      console.error('\n*** FAIL: Agent did not ask a clarification question ***');
       printWorkLog(await getWorkLog(page, BASE, itemId));
       await deleteItem(page, BASE, itemId);
-      process.exit(1);
+      fail('Agent did not ask a clarification question');
     }
 
     console.log(`\nAgent asked: "${clarificationPrompt}"`);
@@ -174,9 +173,9 @@ async function main() {
 
     await deleteItem(page, BASE, itemId);
 
-    if (!finished) { console.error('\n*** FAIL: Agent did not complete after clarification ***'); process.exit(1); }
-    if (!diffHasAnswer) { console.error('\n*** FAIL: Diff does not contain our answer ***'); process.exit(1); }
-    console.log('\n*** PASS: Clarification flow works — agent asked, received answer, and used it ***');
+    if (!finished) fail('Agent did not complete after clarification');
+    if (!diffHasAnswer) fail('Diff does not contain our answer');
+    pass('Clarification flow works — agent asked, received answer, and used it');
 
   } catch (err) {
     console.error('Test error:', err);

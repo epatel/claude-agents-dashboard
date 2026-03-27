@@ -6,7 +6,7 @@
  * Usage: node tests/e2e/test_append_readme.mjs <target-repo-path>
  */
 import { chromium } from 'playwright';
-import { startServer, runAgentTask, deleteItem, printWorkLog } from './helpers.mjs';
+import { startServer, runAgentTask, deleteItem, printWorkLog, pass, fail } from './helpers.mjs';
 
 const TARGET_REPO = process.argv[2];
 if (!TARGET_REPO) {
@@ -68,10 +68,10 @@ async function main() {
 
     await deleteItem(page, BASE, itemId);
 
-    if (!finished) { console.error('\n*** FAIL: Agent did not complete ***'); process.exit(1); }
-    if (!diffHasAppend) { console.error('\n*** FAIL: Diff does not contain "appended by e2e test" ***'); process.exit(1); }
-    if (!diffHasTimestamp) { console.error('\n*** FAIL: Diff does not contain a timestamp ***'); process.exit(1); }
-    console.log('\n*** PASS: Agent appended timestamp and text to README.md ***');
+    if (!finished) fail('Agent did not complete');
+    if (!diffHasAppend) fail('Diff does not contain "appended by e2e test"');
+    if (!diffHasTimestamp) fail('Diff does not contain a timestamp');
+    pass('Agent appended timestamp and text to README.md');
 
   } catch (err) {
     console.error('Test error:', err);

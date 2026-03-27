@@ -4,6 +4,21 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(pwd)/claude-agents-dashboard-e2e-test"
 
+# Colors
+GREEN=$'\033[32m'
+RED=$'\033[31m'
+RESET=$'\033[0m'
+
+# Parse flags — pass remaining args to test scripts
+VERBOSE=""
+TEST_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        -v|--verbose) VERBOSE="-v" ;;
+        *) TEST_ARGS+=("$arg") ;;
+    esac
+done
+
 # Ensure playwright is installed
 if ! node -e "require('playwright')" 2>/dev/null; then
     echo "Installing playwright..."
@@ -51,6 +66,7 @@ fi
 
 echo ""
 echo "=== Running E2E tests ==="
+[ -n "$VERBOSE" ] && echo "(verbose mode)"
 echo ""
 
 # Collect test files
@@ -63,7 +79,7 @@ failed_names=()
 for test_file in "${tests[@]}"; do
     name="$(basename "$test_file")"
     echo "--- Running: $name ---"
-    if node "$test_file" "$REPO_DIR" 2>&1; then
+    if node "$test_file" "$REPO_DIR" $VERBOSE "${TEST_ARGS[@]+"${TEST_ARGS[@]}"}" 2>&1; then
         ((passed++))
     else
         ((failed++))
@@ -72,11 +88,13 @@ for test_file in "${tests[@]}"; do
     echo ""
 done
 
-echo "=== E2E Results: $passed/$total passed, $failed failed ==="
 if [ $failed -gt 0 ]; then
-    echo "Failed tests:"
+    echo "${RED}=== E2E Results: $passed/$total passed, $failed failed ===${RESET}"
+    echo "${RED}Failed tests:${RESET}"
     for name in "${failed_names[@]}"; do
-        echo "  - $name"
+        echo "  ${RED}- $name${RESET}"
     done
     exit 1
+else
+    echo "${GREEN}=== E2E Results: $passed/$total passed ===${RESET}"
 fi
