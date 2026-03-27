@@ -43,8 +43,29 @@ const ReviewDialog = {
                 filesContainer.innerHTML = '<div class="changed-files-list">' +
                     data.files.map(f => {
                         const cls = f.status === 'A' ? 'file-added' : f.status === 'D' ? 'file-deleted' : 'file-modified';
-                        return `<span class="file-badge ${cls}">${f.status_label || f.status} ${f.path}</span>`;
+                        const escapedPath = f.path.replace(/"/g, '&quot;');
+                        return `<button type="button" class="file-badge ${cls}" data-target-file="${escapedPath}">${f.status_label || f.status} ${f.path}</button>`;
                     }).join('') + '</div>';
+
+                // Wire up scroll-to-diff on click
+                filesContainer.querySelectorAll('.file-badge[data-target-file]').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        // Switch to diff tab first
+                        ReviewDialog.switchReviewTab('diff');
+                        // Find matching diff-file element and scroll to it
+                        const targetPath = btn.dataset.targetFile;
+                        const diffContainer = document.getElementById('review-diff');
+                        const diffFile = diffContainer.querySelector(`.diff-file[data-file-path="${CSS.escape(targetPath)}"]`);
+                        if (diffFile) {
+                            // Ensure the diff body is expanded
+                            const body = diffFile.querySelector('.diff-file-body');
+                            if (body && body.style.display === 'none') {
+                                body.style.display = '';
+                            }
+                            diffFile.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    });
+                });
             } else {
                 filesContainer.innerHTML = '';
             }
