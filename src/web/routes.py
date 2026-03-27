@@ -559,9 +559,13 @@ _next_notification_id = 0
 _ws_manager_ref = None  # Set during first request via dependency
 
 
-def add_notification(level: str, message: str, source: str = "") -> dict:
-    """Add a system notification (error/warning/info). Returns the notification."""
+def add_notification(level: str, message: str, source: str = "") -> dict | None:
+    """Add a system notification (error/warning/info). Deduplicates by message. Returns the notification or None if duplicate."""
     global _next_notification_id
+    # Skip if an identical message already exists
+    for existing in _notifications:
+        if existing["message"] == message:
+            return None
     _next_notification_id += 1
     entry = {
         "id": _next_notification_id,
