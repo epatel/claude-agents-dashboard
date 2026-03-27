@@ -176,6 +176,13 @@
     color: var(--warning);
 }
 
+.card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
 .card-log-count {
     font-size: 12px;
     background: var(--bg-hover);
@@ -183,7 +190,7 @@
     padding: 1px 7px;
     border-radius: 10px;
     font-weight: 500;
-    margin-left: auto;
+    flex-shrink: 0;
 }
 
 .card-actions {
