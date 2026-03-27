@@ -339,6 +339,7 @@ const App = {
                 break;
             case 'agent_log':
                 this.appendLog(data);
+                this.incrementLogCount(data.item_id);
                 break;
             case 'clarification_requested':
                 Dialogs.showClarification(
@@ -396,6 +397,32 @@ const App = {
             reviewLogEl.appendChild(entry);
             // Use the reliable auto-scroll utility
             this.autoScroll(reviewLogEl);
+        }
+    },
+
+    incrementLogCount(itemId) {
+        // Update the items cache so count survives card re-renders
+        if (Board.items[itemId]) {
+            Board.items[itemId].log_count = (Board.items[itemId].log_count || 0) + 1;
+        }
+
+        const el = document.querySelector(`[data-log-count="${itemId}"]`);
+        if (el) {
+            const current = parseInt(el.textContent.replace(/\D/g, ''), 10) || 0;
+            el.textContent = `💬 ${current + 1}`;
+        } else {
+            // Card exists but no counter yet — add one
+            const card = document.querySelector(`.card[data-id="${itemId}"]`);
+            if (card) {
+                const actions = card.querySelector('.card-actions');
+                if (actions) {
+                    const counter = document.createElement('div');
+                    counter.className = 'card-log-count';
+                    counter.setAttribute('data-log-count', itemId);
+                    counter.textContent = '💬 1';
+                    card.insertBefore(counter, actions);
+                }
+            }
         }
     },
 };

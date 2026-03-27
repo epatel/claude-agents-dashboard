@@ -303,9 +303,15 @@ const Board = {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;
         }
 
+        let logCountHtml = '';
+        if (col === 'doing' && item.log_count > 0) {
+            logCountHtml = `<div class="card-log-count" data-log-count="${item.id}">💬 ${item.log_count}</div>`;
+        }
+
         div.innerHTML = `
             <div class="card-title">${this.escapeHtml(item.title)}</div>
             ${statusHtml}
+            ${logCountHtml}
             <div class="card-actions">${actionsHtml}</div>
         `;
         return div;
@@ -318,6 +324,11 @@ const Board = {
     },
 
     updateCard(item) {
+        // Preserve log_count from previous state if not in new data
+        const prev = this.items[item.id];
+        if (prev && prev.log_count && !item.log_count) {
+            item.log_count = prev.log_count;
+        }
         this.items[item.id] = item;
 
         // Remove old card if exists

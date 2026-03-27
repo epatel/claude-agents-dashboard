@@ -21,7 +21,12 @@ class DatabaseService:
         """Get all items ordered by column and position."""
         async with self.db.connect() as conn:
             cursor = await conn.execute(
-                "SELECT id, title, description, column_name, status FROM items ORDER BY column_name, position"
+                "SELECT i.id, i.title, i.description, i.column_name, i.status,"
+                " COALESCE(wl.cnt, 0) AS log_count"
+                " FROM items i"
+                " LEFT JOIN (SELECT item_id, COUNT(*) AS cnt FROM work_log GROUP BY item_id) wl"
+                " ON i.id = wl.item_id"
+                " ORDER BY i.column_name, i.position"
             )
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]

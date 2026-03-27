@@ -17,6 +17,9 @@
         {% endif %}
     </div>
     {% endif %}
+    {% if item.column_name == 'doing' and item.log_count is defined and item.log_count > 0 %}
+    <div class="card-log-count" data-log-count="{{ item.id }}">💬 {{ item.log_count }}</div>
+    {% endif %}
     <div class="card-actions">
         {% if item.column_name == 'todo' %}
         <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startAgent('{{ item.id }}')" title="Start agent">▶</button>
