@@ -602,7 +602,7 @@ class WorkflowService:
             deleted = await self.db.delete_item_and_related(target_id)
             if deleted:
                 await self._log_and_notify(item_id, "system", f"Deleted todo item: {deleted['title']}")
-                await self.notifications.ws_manager.broadcast("item_deleted", {"item_id": target_id})
+                await self.notifications.broadcast_item_deleted(target_id)
                 return f"Deleted todo item: {deleted['title']}"
             return f"Failed to delete item '{target_id}'."
         return on_delete_todo
