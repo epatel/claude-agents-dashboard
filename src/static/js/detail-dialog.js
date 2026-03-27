@@ -123,7 +123,7 @@ const DetailDialog = {
         await Attachments._loadAttachments(itemId);
 
         // Preselect Work Log tab if agent is running or item is done, otherwise show description tab
-        const defaultTab = (isRunning || item.column_name === 'done') ? 'detail-wlog' : 'detail-desc';
+        const defaultTab = (isAgentActive || item.column_name === 'done') ? 'detail-wlog' : 'detail-desc';
         this.switchDetailTab(defaultTab);
 
         DialogCore.open('detail-dialog');

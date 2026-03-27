@@ -86,6 +86,7 @@ const App = {
         // Tooltips — append inside the nearest dialog (top layer) or body
         let tipEl = null;
         document.addEventListener('mouseenter', (e) => {
+            if (!e.target || !e.target.closest) return;
             const t = e.target.closest('.tooltip');
             if (!t) return;
             const html = t.getAttribute('data-tip-html');
