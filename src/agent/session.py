@@ -132,6 +132,13 @@ class AgentSession:
             "Use conventional style: start with a verb (Add, Fix, Update, Refactor, Remove). "
             "This is required — do not skip it."
         )
+        todo_note = (
+            "\n\nIMPORTANT: To create todo items on the board, you MUST use the create_todo MCP tool "
+            "(mcp__todo__create_todo). Do NOT use TodoWrite, TaskCreate, or any other built-in tool "
+            "for creating todos — those are internal tools that do not add items to the board. "
+            "To delete a todo item, use mcp__todo__delete_todo. "
+            "To see existing board items, use mcp__board_view__view_board."
+        )
         command_note = (
             "\n\nIf a shell command is blocked, use the request_command_access tool "
             "to ask the user for permission. Provide the command name and reason."
@@ -141,7 +148,7 @@ class AgentSession:
             "mcp__tool_access__request_tool_access tool to ask the user for permission. "
             "Do NOT use ToolSearch to find it — call it directly."
         )
-        full_system_prompt = (self.system_prompt or "") + cwd_note + clarify_note + commit_note + command_note + tool_note
+        full_system_prompt = (self.system_prompt or "") + cwd_note + clarify_note + commit_note + todo_note + command_note + tool_note
 
         # Configure allowed MCP tools
         allowed_tools = []
