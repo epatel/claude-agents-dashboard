@@ -177,9 +177,13 @@
 }
 
 .card-log-count {
-    font-size: 0.75rem;
+    font-size: 12px;
+    background: var(--bg-hover);
     color: var(--text-muted);
-    margin-top: 2px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 500;
+    margin-left: auto;
 }
 
 .card-actions {
