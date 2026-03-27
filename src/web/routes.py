@@ -325,6 +325,20 @@ async def cancel_agent(request: Request, item_id: str):
     return await orchestrator.cancel_agent(item_id)
 
 
+@router.post("/api/items/{item_id}/pause")
+async def pause_agent(request: Request, item_id: str):
+    orchestrator = request.app.state.orchestrator
+    return await orchestrator.pause_agent(item_id)
+
+
+@router.post("/api/items/{item_id}/resume")
+async def resume_agent(request: Request, item_id: str):
+    orchestrator = request.app.state.orchestrator
+    result = await orchestrator.resume_agent(item_id)
+    _invalidate_stats_cache()
+    return result
+
+
 @router.post("/api/items/{item_id}/retry")
 async def retry_agent(request: Request, item_id: str):
     orchestrator = request.app.state.orchestrator

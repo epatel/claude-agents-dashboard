@@ -54,11 +54,11 @@ const DetailDialog = {
         const oldRerun = document.getElementById('detail-rerun-btn');
         if (oldRerun) oldRerun.remove();
 
-        const isRunning = item.status === 'running' || item.status === 'resolving_conflicts';
+        const isAgentActive = item.status === 'running' || item.status === 'resolving_conflicts' || item.status === 'paused';
 
         // Hide edit/delete when agent is active
-        editBtn.style.display = isRunning ? 'none' : '';
-        deleteBtn.style.display = isRunning ? 'none' : '';
+        editBtn.style.display = isAgentActive ? 'none' : '';
+        deleteBtn.style.display = isAgentActive ? 'none' : '';
         editBtn.onclick = () => {
             DialogCore.close('detail-dialog');
             ItemDialog.openEditItem(item);
@@ -179,9 +179,9 @@ const DetailDialog = {
             }
         } catch { logEl.innerHTML = ''; }
 
-        // Preselect Work Log tab if agent is running or item is done, otherwise show description tab
-        const isRunning = item.status === 'running' || item.status === 'resolving_conflicts';
-        const defaultTab = (isRunning || item.column_name === 'done') ? 'detail-wlog' : 'detail-desc';
+        // Preselect Work Log tab if agent is active or item is done, otherwise show description tab
+        const isAgentActiveOrDone = item.status === 'running' || item.status === 'resolving_conflicts' || item.status === 'paused';
+        const defaultTab = (isAgentActiveOrDone || item.column_name === 'done') ? 'detail-wlog' : 'detail-desc';
         this.switchDetailTab(defaultTab);
 
         DialogCore.open('detail-dialog');

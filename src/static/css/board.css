@@ -160,6 +160,10 @@
     color: var(--danger);
 }
 
+.card-status-paused {
+    color: var(--warning);
+}
+
 .card-status-cancelled {
     color: var(--text-muted);
 }

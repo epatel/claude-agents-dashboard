@@ -99,6 +99,60 @@ class WorkflowService:
         await self.notifications.broadcast_item_updated(item)
         return item
 
+    async def pause_agent(self, item_id: str) -> Dict[str, Any]:
+        """Pause a running agent — save session for later resumption."""
+        session_id = await self.sessions.pause_session(item_id)
+
+        update_kwargs: Dict[str, Any] = dict(status="paused")
+        if session_id:
+            update_kwargs["session_id"] = session_id
+
+        item = await self.db.update_item(item_id, **update_kwargs)
+        await self._log_and_notify(item_id, "system", "Agent paused by user")
+        await self.notifications.broadcast_item_updated(item)
+        return item
+
+    async def resume_agent(self, item_id: str) -> Dict[str, Any]:
+        """Resume a paused agent using its saved session."""
+        item = await self.db.get_item(item_id)
+        if not item:
+            raise ValueError(f"Item {item_id} not found")
+
+        resume_id = item.get("session_id")
+        if resume_id:
+            await self._log_and_notify(item_id, "system", f"Agent resuming session {resume_id[:8]}...")
+        else:
+            await self._log_and_notify(item_id, "system", "Agent resuming (no session to resume — starting fresh)")
+
+        config = await self.db.get_agent_config()
+        worktree_path = Path(item["worktree_path"])
+
+        item = await self.db.update_item(item_id, status="running")
+        await self.notifications.broadcast_item_updated(item)
+
+        model = item.get("model") or config.get("model")
+        session = await self.sessions.create_session(
+            item_id, worktree_path, config, model,
+            on_message=self._create_on_message_callback(item_id),
+            on_tool_use=self._create_on_tool_use_callback(item_id),
+            on_thinking=self._create_on_thinking_callback(item_id),
+            on_complete=self._create_on_complete_callback(item_id),
+            on_error=self._create_on_error_callback(item_id),
+            on_clarify=self._create_on_clarify_callback(item_id),
+            on_create_todo=self._create_on_create_todo_callback(item_id),
+            on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
+            on_request_command=self._create_on_request_command_callback(item_id),
+            on_request_tool=self._create_on_request_tool_callback(item_id),
+            on_view_board=self._create_on_view_board_callback(),
+            on_delete_todo=self._create_on_delete_todo_callback(item_id),
+        )
+
+        prompt = f"Continue working on your task:\nTask: {item['title']}\n\n{item['description']}"
+        attachments = await self.db.get_attachments(item_id)
+        await self.sessions.start_session_task(item_id, session, prompt, attachments, resume_id)
+
+        return item
+
     async def retry_agent(self, item_id: str) -> Dict[str, Any]:
         """Retry a failed agent — resume previous session if available."""
         await self.sessions.cleanup_session(item_id)

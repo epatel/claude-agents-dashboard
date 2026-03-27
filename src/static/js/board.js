@@ -133,6 +133,22 @@ const Board = {
         }
     },
 
+    async pauseAgent(itemId) {
+        try {
+            await Api.pauseAgent(itemId);
+        } catch (err) {
+            console.error('Failed to pause agent:', err);
+        }
+    },
+
+    async resumeAgent(itemId) {
+        try {
+            await Api.resumeAgent(itemId);
+        } catch (err) {
+            console.error('Failed to resume agent:', err);
+        }
+    },
+
     async cancelAgent(itemId) {
         try {
             await Api.cancelAgent(itemId);
@@ -256,6 +272,7 @@ const Board = {
         if (item.status) {
             const labels = {
                 running: '<span class="spinner"></span> Running',
+                paused: '⏸ Paused',
                 failed: '✕ Failed',
                 cancelled: '⊘ Cancelled',
                 conflict: '⚠ Merge conflict',
@@ -273,7 +290,11 @@ const Board = {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.retryAgent('${item.id}')" title="Retry">↻ Retry</button>
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>`;
         } else if (col === 'doing' && item.status === 'running') {
-            actionsHtml = `<button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')">✕</button>`;
+            actionsHtml = `<button class="btn btn-xs btn-warning" onclick="event.stopPropagation(); Board.pauseAgent('${item.id}')" title="Pause">⏸</button>
+                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')">✕</button>`;
+        } else if (col === 'doing' && item.status === 'paused') {
+            actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.resumeAgent('${item.id}')" title="Resume">▶</button>
+                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')">✕</button>`;
         } else if (col === 'review') {
             actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.approveItem('${item.id}')">✓ Approve</button>
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')">↩</button>

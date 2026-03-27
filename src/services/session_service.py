@@ -111,6 +111,17 @@ class SessionService:
         self._agent_tasks[item_id] = task
         return task
 
+    async def pause_session(self, item_id: str) -> str | None:
+        """Pause a running session — capture session_id, then cancel.
+
+        Returns the session_id for later resumption, or None.
+        """
+        session = self.sessions.get(item_id)
+        session_id = getattr(session, 'current_session_id', None) if session else None
+
+        await self.cleanup_session(item_id)
+        return session_id
+
     async def cleanup_session(self, item_id: str):
         """Cancel and clean up any running agent session for an item."""
         session = self.sessions.pop(item_id, None)

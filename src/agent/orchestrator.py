@@ -56,6 +56,14 @@ class AgentOrchestrator:
         """Cancel a running agent."""
         return await self.workflow_service.cancel_agent(item_id)
 
+    async def pause_agent(self, item_id: str) -> Dict[str, Any]:
+        """Pause a running agent — save session for later resumption."""
+        return await self.workflow_service.pause_agent(item_id)
+
+    async def resume_agent(self, item_id: str) -> Dict[str, Any]:
+        """Resume a paused agent."""
+        return await self.workflow_service.resume_agent(item_id)
+
     async def retry_agent(self, item_id: str) -> Dict[str, Any]:
         """Retry a failed agent — restart from scratch in existing worktree."""
         return await self.workflow_service.retry_agent(item_id)

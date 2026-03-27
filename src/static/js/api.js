@@ -43,6 +43,14 @@ const Api = {
         return this.request('POST', `/api/items/${id}/cancel`);
     },
 
+    pauseAgent(id) {
+        return this.request('POST', `/api/items/${id}/pause`);
+    },
+
+    resumeAgent(id) {
+        return this.request('POST', `/api/items/${id}/resume`);
+    },
+
     retryAgent(id) {
         return this.request('POST', `/api/items/${id}/retry`);
     },

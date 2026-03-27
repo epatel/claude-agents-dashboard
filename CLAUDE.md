@@ -212,6 +212,8 @@ sequenceDiagram
 
 - **Stats dashboard**: The `/api/stats` endpoint aggregates token usage, cost, message counts, tool calls, item status distribution, and recent activity. Server-side stats caching with 30s TTL (`_stats_cache` in routes.py) reduces DB load, with cache invalidation on mutations (create, delete, move, start, approve). The frontend `StatsManager` (in `stats.js`) renders a stats bar in the header, auto-refreshes every 10 seconds, and updates on WebSocket events (item_created, item_updated, item_moved, agent_log) with debouncing. Stats bar is hidden on small screens (< 768px).
 
+- **Pause/resume agents**: `WorkflowService.pause_agent()` captures the running session's `current_session_id` via `SessionService.pause_session()`, cancels the session/subprocess, saves the session_id to the DB, and sets item status to `"paused"` (stays in "doing" column). `WorkflowService.resume_agent()` creates a fresh session and resumes the saved session via `ClaudeAgentOptions(resume=session_id, continue_conversation=True)` so the agent picks up where it left off. Routes: `POST /api/items/{item_id}/pause` and `POST /api/items/{item_id}/resume`. The UI shows a ⏸ pause button on running cards and a ▶ resume button on paused cards.
+
 - **Retry reuses worktree**: `WorkflowService.retry_agent()` cleans up any existing session via `SessionService`, reuses the existing worktree via `GitService.create_or_reuse_worktree()` if present, and starts a fresh agent run. It does not resume the previous session.
 
 - **Cancel review**: `WorkflowService.cancel_review()` discards review changes by cleaning up the worktree and branch via `GitService`, then moves the item back to "Todo" status with cleared git metadata. Route: `POST /api/items/{item_id}/cancel-review`.
