@@ -11,6 +11,7 @@ const DiffViewer = {
         for (const file of files) {
             const fileEl = document.createElement('div');
             fileEl.className = 'diff-file';
+            fileEl.dataset.filePath = file.path;
 
             const header = document.createElement('div');
             header.className = 'diff-file-header';

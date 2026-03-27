@@ -769,24 +769,35 @@ body {
 .file-badge {
     font-family: monospace;
     font-size: 12px;
-    padding: 3px 8px;
-    border-radius: var(--radius-sm);
+    padding: 3px 10px;
+    border-radius: 999px;
     background: var(--bg-hover);
+    border: 1px solid var(--border-light);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.file-badge:hover {
+    background: var(--bg-tertiary, var(--bg-hover));
+    border-color: var(--text-muted);
 }
 
 .file-added {
     color: var(--success);
     background: rgba(52, 199, 89, 0.1);
+    border-color: rgba(52, 199, 89, 0.3);
 }
 
 .file-deleted {
     color: var(--danger);
     background: rgba(255, 59, 48, 0.1);
+    border-color: rgba(255, 59, 48, 0.3);
 }
 
 .file-modified {
     color: var(--accent);
     background: rgba(0, 113, 227, 0.08);
+    border-color: rgba(0, 113, 227, 0.2);
 }
 
 /* Review dialog */
