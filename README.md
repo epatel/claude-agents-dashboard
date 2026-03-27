@@ -84,14 +84,15 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Tool access requests** — agents can request permission to use optional built-in tools (WebSearch, WebFetch) at runtime via the `request_tool_access` MCP tool with user approval prompt
 - **Stats dashboard** — real-time header bar showing total cost, token usage, active agents, and items completed today; auto-refreshes every 10 seconds and on WebSocket events
 - **Cost & token tracking** — agent completion logs USD cost and token consumption (input/output/total) per task, persisted to a dedicated `token_usage` table
-- **Retry & cancel** — cancel a running agent or retry a failed one; retries reuse the existing worktree
-- **Cancel review** — discard changes during review, clean up worktree/branch, and move item back to Todo
-- **Session persistence** — request changes resumes the agent's conversation with full context
+- **System notifications** — bell icon in header with badge counter; surfaces MCP server connection failures, agent errors, and warnings; dismiss individually or clear all
+- **MCP status monitoring** — automatically checks MCP server status after agent session connect; failed/disconnected/needs-auth servers create system notifications
+- **Retry with session resume** — retry resumes the agent's previous session via session_id, preserving conversation context; falls back to fresh start if no session available
+- **Cancel & cancel review** — cancel a running agent or discard review changes, clean up worktree/branch
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
 - **Per-item model selection** — choose between Claude Sonnet 4, Claude Opus 3, and Claude Haiku 3 per item (falls back to global config)
 - **Agent config** — set system prompt, model, project context, MCP servers, and plugins
-- **MCP support** — connect external tools and data sources via Model Context Protocol
+- **MCP support** — connect external tools and data sources via Model Context Protocol; includes an example stdio server (`examples/mini-mcp/`) for reference
 - **Plugin support** — load local Claude Code plugins via directory paths
 - **Merge conflict auto-resolution** — on merge conflict, captures the agent's diff, resets the worktree to the latest base branch, and restarts the agent with the previous diff as context for automated recovery
 - **Item cleanup** — deleting an item stops running agents, removes worktrees and branches, and cleans up attachment files
@@ -113,7 +114,7 @@ graph TB
     subgraph Frontend["Frontend (Vanilla JS, No Build Step)"]
         Browser["Browser"]
         JS["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js"]
-        Dlg["dialogs.js (coordinator)<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog<br/>request-changes-dialog | attachments<br/>dialog-core | dialog-utils | annotation-canvas"]
+        Dlg["dialogs.js (coordinator)<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog | notification-dialog<br/>request-changes-dialog | attachments<br/>dialog-core | dialog-utils | annotation-canvas"]
     end
 
     subgraph Backend["Backend (Python 3.12+ / FastAPI)"]
@@ -168,7 +169,7 @@ graph TB
 ### Technology stack
 
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~4,600 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (10 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~3,800 lines JS + ~1,700 lines CSS
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (11 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~3,900 lines JS + ~1,800 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 6 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -372,6 +373,9 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `DELETE` | `/api/attachments/{id}` | Delete attachment |
 | `GET` | `/api/assets/{filename}` | Serve uploaded files |
 | `GET/PUT` | `/api/config` | Agent configuration |
+| `GET` | `/api/notifications` | List system notifications |
+| `DELETE` | `/api/notifications/{id}` | Dismiss a notification |
+| `DELETE` | `/api/notifications` | Clear all notifications |
 | `GET` | `/api/stats` | Usage & activity stats |
 | `GET` | `/api/files/tree` | Directory tree (lazy, depth-limited) |
 | `GET` | `/api/files/content` | File content (text, image, binary) |
@@ -387,6 +391,7 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `item_deleted` | Server → Client | Item removed |
 | `agent_log` | Server → Client | Agent activity (message, tool use, thinking) |
 | `clarification_requested` | Server → Client | Agent needs user input |
+| `notification_added` | Server → Client | System notification (MCP error, agent failure) |
 
 ## Troubleshooting
 
