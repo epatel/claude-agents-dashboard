@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (143 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations, security, git operations, and agent tools.
+This directory contains the automated test suite (139 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations, security, git operations, and agent tools.
 
 ## Test Structure
 
@@ -9,17 +9,18 @@ tests/
 ├── conftest.py                                   # Shared fixtures and test configuration
 ├── unit/                                         # Unit tests (fast, isolated)
 │   ├── migrations/
-│   │   ├── test_migration_runner.py             # Core migration functionality (15 tests)
-│   │   └── test_migration_edge_cases.py         # Edge cases and error scenarios (15 tests)
-│   ├── test_path_validation.py                  # Path traversal prevention (16 tests)
+│   │   ├── test_migration_runner.py             # Core migration functionality (14 tests)
+│   │   └── test_migration_edge_cases.py         # Edge cases and error scenarios (14 tests)
+│   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
 │   ├── test_git_timeout.py                      # Git timeout handling (5 tests)
-│   ├── test_file_routes.py                      # File browser routes (41 tests)
-│   ├── test_allowed_commands.py                 # Command filter + access MCP tool (15 tests)
-│   └── test_diff_mixing.py                      # Diff isolation between items (6 tests)
+│   ├── test_file_routes.py                      # File browser routes (35 tests)
+│   ├── test_allowed_commands.py                 # Command filter + access MCP tool (14 tests)
+│   ├── test_diff_mixing.py                      # Diff isolation between items (6 tests)
+│   └── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
 ├── integration/                                  # Integration tests (slower, multi-component)
-│   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (17 tests)
+│   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (14 tests)
 ├── smoke/                                        # Smoke tests (basic functionality)
-│   └── test_basic_functionality.py              # Quick regression checks (13 tests)
+│   └── test_basic_functionality.py              # Quick regression checks (12 tests)
 └── README.md                                     # This file
 ```
 
@@ -58,11 +59,23 @@ Tests migration operations:
 - ✅ **Error Handling**: Failure scenarios and recovery
 - ✅ **Edge Cases**: Malformed files, concurrent access, orphaned records
 
+### 4. E2E Tests
+**Directory: `tests/e2e/`**
+
+End-to-end tests that run real agent sessions against a test project:
+- ✅ **Append README**: Agent creates/modifies a file end-to-end
+- ✅ **Clarification**: Agent asks a question, receives user response, continues
+- ✅ **Merge conflict**: Agent handles merge conflict auto-resolution
+- ✅ **Allowed tools**: Agent requests and uses optional built-in tools
+- ✅ **Mini-MCP**: External MCP server integration via stdio
+
+Run with: `./run-e2e-tests.sh` (supports `--verbose` flag for colored output)
+
 ## Running Tests
 
 ### Quick Start
 ```bash
-# Run all 143 tests
+# Run all 139 tests
 ./run-tests.sh
 
 # Run specific test categories

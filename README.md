@@ -34,7 +34,7 @@ Your project must be a git repository. Requires Python 3.12+.
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 143 tests across smoke, unit, and integration tiers.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 139 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -80,6 +80,8 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Clarification flow** — agents can ask the user questions mid-task via custom MCP tool
 - **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items
 - **Custom commit messages** — agents set meaningful commit messages via MCP tool, used when merging
+- **Board introspection** — agents can view the current board state (all items by column) via the `view_board` MCP tool to understand project context
+- **Tool access requests** — agents can request permission to use optional built-in tools (WebSearch, WebFetch) at runtime via the `request_tool_access` MCP tool with user approval prompt
 - **Stats dashboard** — real-time header bar showing total cost, token usage, active agents, and items completed today; auto-refreshes every 10 seconds and on WebSocket events
 - **Cost & token tracking** — agent completion logs USD cost and token consumption (input/output/total) per task, persisted to a dedicated `token_usage` table
 - **Retry & cancel** — cancel a running agent or retry a failed one; retries reuse the existing worktree
@@ -134,6 +136,9 @@ graph TB
         Ask["ask_user"]
         TodoTool["create_todo"]
         CommitTool["set_commit_message"]
+        CmdAccess["request_command_access"]
+        BoardView["view_board"]
+        ToolAccess["request_tool_access"]
     end
 
     subgraph GitLayer["Git Layer"]
@@ -162,9 +167,9 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~4,200 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (10 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~3,800 lines JS + ~1,600 lines CSS
-- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 4 built-in MCP tools
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~4,600 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (10 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~3,800 lines JS + ~1,700 lines CSS
+- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 6 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
 
@@ -265,6 +270,7 @@ erDiagram
         text plugins
         text allowed_commands
         bool bash_yolo
+        text allowed_builtin_tools
         text updated_at
     }
 
@@ -423,7 +429,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 
 - `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `TESTING.md` — Detailed testing guide with test inventory (143 tests) and writing guidelines
+- `TESTING.md` — Detailed testing guide with test inventory (139 unit/integration tests + E2E tests) and writing guidelines
 
 ## License
 

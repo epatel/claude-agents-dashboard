@@ -1,14 +1,14 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-03-26
+**Date**: 2026-03-27
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 9 — Maintenance reassessment with updated test counts (143), line counts, and codebase statistics.
+**Revision**: 10 — Maintenance reassessment with updated test counts (139), line counts, codebase statistics, and new agent tools (board_view, tool_access, tool_filter).
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 10 specialized dialog modules on the frontend. Since the previous assessment, a **file browser** has been added, along with **allowed commands** with runtime approval, **bash YOLO mode**, and **base commit pinning** for stable diffs. The test suite has grown to **143 automated tests** across smoke, unit, and integration tiers, with expanded coverage for diff isolation, command filtering, file browser routes, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 10 specialized dialog modules on the frontend. Since the previous assessment, a **file browser** has been added, along with **allowed commands** with runtime approval, **bash YOLO mode**, **base commit pinning** for stable diffs, **board introspection** (view_board MCP tool), **tool access requests** (request_tool_access MCP tool), and **tool filtering** (PreToolUse hook for optional built-in tools). The test suite includes **139 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -48,6 +48,9 @@ graph TB
         Clarify[ask_user<br/>clarification.py]
         Todo[create_todo<br/>todo.py]
         Commit[set_commit_message<br/>commit_message.py]
+        CmdAccess[request_command_access<br/>command_access.py]
+        BoardView[view_board<br/>board_view.py]
+        ToolAccess[request_tool_access<br/>tool_access.py]
     end
 
     subgraph Git["Git Layer"]
@@ -109,11 +112,11 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 537 | A | Core workflow coordination with callback factory pattern and merge conflict auto-resolution |
-| `services/database_service.py` | 199 | A | All DB operations extracted; parameterized queries throughout |
+| `services/workflow_service.py` | 656 | A | Core workflow coordination with callback factory pattern and merge conflict auto-resolution |
+| `services/database_service.py` | 226 | A | All DB operations extracted; parameterized queries throughout |
 | `services/notification_service.py` | 95 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 94 | A | Git worktree and merge operations with proper error handling |
-| `services/session_service.py` | 163 | A | Session lifecycle, commit messages, plugin parsing |
+| `services/session_service.py` | 177 | A | Session lifecycle, commit messages, plugin parsing |
 
 ### Backend Python — Core
 
@@ -125,14 +128,19 @@ graph TB
 | `models.py` | 100 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
-| `web/routes.py` | 580 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
+| `web/routes.py` | 586 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
 | `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 110 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
-| `agent/session.py` | 342 | A- | Clean SDK wrapper; good token extraction with fallbacks |
+| `agent/session.py` | 398 | A- | Clean SDK wrapper; good token extraction with fallbacks |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
-| `agent/todo.py` | 56 | A | Clean MCP tool definition |
+| `agent/todo.py` | 94 | A | Clean MCP tool definition |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
+| `agent/command_access.py` | 42 | A | Clean MCP tool for runtime command approval |
+| `agent/command_filter.py` | 42 | A | PreToolUse hook for bash command filtering |
+| `agent/board_view.py` | 42 | A | Board introspection MCP tool |
+| `agent/tool_access.py` | 42 | A | Runtime tool access request MCP tool |
+| `agent/tool_filter.py` | 38 | A | PreToolUse hook for optional built-in tool filtering |
 | `git/operations.py` | 313 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
 | `git/worktree.py` | 73 | A | Simple and correct; returns base branch for tracking |
 | `migrations/runner.py` | 198 | A- | Solid migration system; class discovery uses string comparison (justified) |
@@ -142,6 +150,7 @@ graph TB
 | `migrations/versions/003_add_allowed_commands.py` | 36 | A | Adds `allowed_commands` to agent_config |
 | `migrations/versions/004_add_bash_yolo.py` | 27 | A | Adds `bash_yolo` flag to agent_config |
 | `migrations/versions/005_add_base_commit.py` | 32 | A | Adds `base_commit` SHA to items table |
+| `migrations/versions/006_add_allowed_builtin_tools.py` | 31 | A | Adds `allowed_builtin_tools` JSON array to agent_config |
 
 ### Frontend JavaScript
 
@@ -312,19 +321,20 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 143 automated tests across 10 test files via `./run-tests.sh`.
+**Current state**: 139 automated tests across 10 test files via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
-| `tests/smoke/test_basic_functionality.py` | Smoke | 13 | Imports, DB basics, config |
-| `tests/unit/test_path_validation.py` | Unit | 16 | Path traversal prevention |
+| `tests/smoke/test_basic_functionality.py` | Smoke | 12 | Imports, DB basics, config |
+| `tests/unit/test_path_validation.py` | Unit | 14 | Path traversal prevention |
 | `tests/unit/test_git_timeout.py` | Unit | 5 | Git operation timeout behavior |
-| `tests/unit/test_file_routes.py` | Unit | 41 | File browser path validation, secret detection, language mapping, directory scanning, file content reading |
-| `tests/unit/test_allowed_commands.py` | Unit | 15 | Command filter hook, command access MCP tool, permission persistence, YOLO mode |
+| `tests/unit/test_file_routes.py` | Unit | 35 | File browser path validation, secret detection, language mapping, directory scanning, file content reading |
+| `tests/unit/test_allowed_commands.py` | Unit | 14 | Command filter hook, command access MCP tool, permission persistence, YOLO mode |
 | `tests/unit/test_diff_mixing.py` | Unit | 6 | Diff isolation between items, concurrent diffs, base commit pinning |
-| `tests/unit/migrations/test_migration_runner.py` | Unit | 15 | Migration engine |
-| `tests/unit/migrations/test_migration_edge_cases.py` | Unit | 15 | Migration edge cases |
-| `tests/integration/test_orchestrator_lifecycle.py` | Integration | 17 | Orchestrator lifecycle |
+| `tests/unit/test_mini_mcp.py` | Unit | 11 | Mini-MCP server stdio protocol, JSON-RPC messages, tool invocation |
+| `tests/unit/migrations/test_migration_runner.py` | Unit | 14 | Migration engine |
+| `tests/unit/migrations/test_migration_edge_cases.py` | Unit | 14 | Migration edge cases |
+| `tests/integration/test_orchestrator_lifecycle.py` | Integration | 14 | Orchestrator lifecycle |
 | `tests/conftest.py` | Fixtures | — | Shared test fixtures |
 
 ### Recommended Additional Tests
@@ -389,12 +399,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 31 | ~4,184 |
-| JavaScript frontend | 19 | ~3,802 |
-| CSS styles | 5 | ~1,629 |
-| HTML templates | 3 | ~491 |
-| Tests | 10 | ~3,014 |
-| **Grand total** | **68** | **~13,120** |
+| Python backend (src/) | 41 | ~4,604 |
+| JavaScript frontend | 19 | ~3,796 |
+| CSS styles | 5 | ~1,693 |
+| HTML templates | 3 | ~495 |
+| Tests | 11 | ~2,892 |
+| **Grand total** | **79** | **~13,480** |
 
 ---
 

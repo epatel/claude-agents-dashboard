@@ -17,12 +17,12 @@ path/to/claude-agents-dashboard/run.sh
 ## Running tests
 
 ```bash
-./run-tests.sh              # Run all 143 tests
+./run-tests.sh              # Run all 139 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ```
 
-Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (13 tests — imports, DB basics), unit (113 tests — path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing), integration (17 tests — orchestrator lifecycle). See `tests/README.md` for details.
+Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (12 tests — imports, DB basics), unit (113 tests — path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing, mini-MCP server), integration (14 tests — orchestrator lifecycle). E2E tests run separately via `./run-e2e-tests.sh`. See `tests/README.md` for details.
 
 ## Architecture
 
@@ -60,6 +60,9 @@ graph TB
         C["ask_user"]
         T["create_todo"]
         CM["set_commit_message"]
+        CA["request_command_access"]
+        BV["view_board"]
+        TA["request_tool_access"]
     end
 
     subgraph Git["Git Layer"]
@@ -79,6 +82,9 @@ graph TB
     Sess --> C
     Sess --> T
     Sess --> CM
+    Sess --> CA
+    Sess --> BV
+    Sess --> TA
     DBS --> D
     NS --> WSM
     D --> M
@@ -152,12 +158,12 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (110 lines) that delegates to 5 focused services (total ~1,088 lines):
-  - `WorkflowService` (537 lines): Coordinates agent workflows, state transitions, callback creation, and merge conflict auto-resolution
-  - `DatabaseService` (199 lines): All database operations (items, logs, config, attachments, token usage)
+- **Service layer architecture**: The orchestrator is a thin facade (110 lines) that delegates to 5 focused services (total ~1,248 lines):
+  - `WorkflowService` (656 lines): Coordinates agent workflows, state transitions, callback creation, and merge conflict auto-resolution
+  - `DatabaseService` (226 lines): All database operations (items, logs, config, attachments, token usage)
   - `NotificationService` (95 lines): WebSocket broadcasting and tool use formatting
   - `GitService` (94 lines): Worktree management, merge operations, and cleanup
-  - `SessionService` (163 lines): Agent session lifecycle, commit messages, plugin parsing
+  - `SessionService` (177 lines): Agent session lifecycle, commit messages, plugin parsing
 
 - **Agent start is non-blocking**: `WorkflowService.start_agent()` creates a session via `SessionService.create_session()` and launches it via `SessionService.start_session_task()` which uses `asyncio.create_task()` so the HTTP response returns immediately. The agent streams progress via WebSocket.
 
@@ -182,6 +188,12 @@ sequenceDiagram
 - **Bash YOLO mode**: When `bash_yolo` is enabled in agent config (migration 004), agents run with `permission_mode="bypassPermissions"` instead of `acceptEdits`, granting unrestricted bash access. This skips the command filter hook entirely. Useful for trusted environments where command restrictions are unnecessary.
 
 - **Configurable built-in tools**: Users can enable optional built-in Claude Code tools (e.g., WebSearch, WebFetch) via the "Tools" tab in Agent Configuration. Enabled tools are stored as a JSON array in `agent_config.allowed_builtin_tools` (migration 006) and appended to the `allowed_tools` list at session creation. Available tools are defined in `constants.py` as `OPTIONAL_BUILTIN_TOOLS` and served via `GET /api/config/available-tools`.
+
+- **Tool filtering via PreToolUse hook**: `tool_filter.py` creates a `PreToolUse` hook that blocks disabled optional built-in tools. When an agent tries to use a tool not in `allowed_builtin_tools`, the hook denies it and directs the agent to use the `request_tool_access` MCP tool instead.
+
+- **Tool access requests**: Agents can request permission to use disabled built-in tools at runtime via the `request_tool_access` MCP tool (`tool_access.py`). The user is prompted to approve or deny. Approved tools are saved to `agent_config.allowed_builtin_tools` for future sessions.
+
+- **Board introspection**: Agents can view the current board state via the `view_board` MCP tool (`board_view.py`). Returns all items grouped by column (Todo, Doing, Review, Done) so agents can understand project context and coordinate work.
 
 - **Merge commits worktree first**: `merge_branch()` calls `commit_worktree_changes()` before merging, handling agents that leave uncommitted work. Uses agent-provided commit messages when available (via `set_commit_message` MCP tool).
 
@@ -284,7 +296,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 #### Migration System
 
 - **Migration runner**: `src/migrations/runner.py` manages applying/rolling back migrations
-- **Migration files**: `src/migrations/versions/XXX_description.py` contain versioned schema changes (`001_initial_schema.py` for base schema, `002_add_base_branch.py` for base branch tracking, `003_add_allowed_commands.py` for command allowlist, `004_add_bash_yolo.py` for unrestricted bash mode, `005_add_base_commit.py` for stable diff pinning)
+- **Migration files**: `src/migrations/versions/XXX_description.py` contain versioned schema changes (`001_initial_schema.py` for base schema, `002_add_base_branch.py` for base branch tracking, `003_add_allowed_commands.py` for command allowlist, `004_add_bash_yolo.py` for unrestricted bash mode, `005_add_base_commit.py` for stable diff pinning, `006_add_allowed_builtin_tools.py` for configurable built-in tools)
 - **Schema tracking**: `schema_migrations` table tracks which migrations have been applied
 - **CLI management**: `python -m src.manage` for migration commands
 - **Auto-migration**: Database automatically runs pending migrations on startup
@@ -314,6 +326,9 @@ AGENT_FILES/
 +-- ASSESSMENT_CODE.md               # Full code assessment and quality ratings
 +-- COMMIT_POLICY.md                 # Commit policies (e.g. annotation images)
 +-- TESTING.md                       # Detailed testing guide and test inventory
+examples/
++-- mini-mcp/
+    +-- server.py                    # Minimal MCP server example (stdio, no deps)
 src/
 +-- main.py                           # Entry point, port discovery
 +-- config.py                         # Column definitions, timeouts, rate limits, default config, file browser settings
@@ -334,6 +349,9 @@ src/
 |   +-- commit_message.py            # set_commit_message MCP tool
 |   +-- command_filter.py              # PreToolUse hook for bash command filtering
 |   +-- command_access.py              # request_command_access MCP tool
+|   +-- board_view.py                  # view_board MCP tool
+|   +-- tool_access.py                 # request_tool_access MCP tool
+|   +-- tool_filter.py                 # PreToolUse hook for optional built-in tools
 +-- services/
 |   +-- __init__.py                  # Re-exports all services
 |   +-- workflow_service.py          # Agent workflow coordination + state transitions
@@ -410,7 +428,7 @@ src/
 
 ### Testing changes
 
-Run the automated test suite (143 tests):
+Run the automated test suite (139 tests):
 ```bash
 ./run-tests.sh              # All tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
@@ -468,3 +486,5 @@ The system includes several built-in MCP tools for agents:
 - **`create_todo`** (todo creation): Enables agents to create new todo items with title and optional description. Items are automatically positioned in the todo column and broadcast to all connected clients.
 - **`set_commit_message`** (commit message): Allows agents to set a custom commit message for their work. Stored in the database and used during merge instead of the generic "Agent work on agent/xxx" message.
 - **`request_command_access`** (command access): Allows agents to request permission to run blocked shell commands. Shows an approve/deny prompt in the UI. Approved commands are saved to agent config for future sessions.
+- **`view_board`** (board introspection): Allows agents to see all items on the board grouped by column (Todo, Doing, Review, Done). Helps agents understand project context and coordinate with other tasks.
+- **`request_tool_access`** (tool access): Allows agents to request permission to use disabled optional built-in tools (e.g., WebSearch, WebFetch). Shows an approve/deny prompt in the UI. Approved tools are saved to agent config.

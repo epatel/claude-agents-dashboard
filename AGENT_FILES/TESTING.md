@@ -3,7 +3,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 143 tests
+./run-tests.sh              # Run all 139 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -17,38 +17,39 @@ The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio
 tests/
 ├── conftest.py                         # Shared fixtures
 ├── smoke/
-│   └── test_basic_functionality.py     # Imports, DB, config checks (13 tests)
+│   └── test_basic_functionality.py     # Imports, DB, config checks (12 tests)
 ├── unit/
 │   ├── migrations/
-│   │   ├── test_migration_runner.py    # Migration up/down/status (15 tests)
-│   │   └── test_migration_edge_cases.py # Edge cases, discovery (15 tests)
-│   ├── test_path_validation.py         # Path traversal prevention (16 tests)
+│   │   ├── test_migration_runner.py    # Migration up/down/status (14 tests)
+│   │   └── test_migration_edge_cases.py # Edge cases, discovery (14 tests)
+│   ├── test_path_validation.py         # Path traversal prevention (14 tests)
 │   ├── test_git_timeout.py            # Git timeout handling (5 tests)
-│   ├── test_file_routes.py            # File browser routes (41 tests)
-│   ├── test_allowed_commands.py       # Command filter + access MCP (15 tests)
-│   └── test_diff_mixing.py           # Diff isolation between items (6 tests)
+│   ├── test_file_routes.py            # File browser routes (35 tests)
+│   ├── test_allowed_commands.py       # Command filter + access MCP (14 tests)
+│   ├── test_diff_mixing.py           # Diff isolation between items (6 tests)
+│   └── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
 ├── integration/
-│   └── test_orchestrator_lifecycle.py  # Full agent workflow (17 tests)
+│   └── test_orchestrator_lifecycle.py  # Full agent workflow (14 tests)
 └── README.md
 ```
 
 ## Test Categories
 
-### Smoke Tests (13 tests)
+### Smoke Tests (12 tests)
 Quick checks that core components work:
 - Database connection and CRUD
 - Module imports (core, web, git)
 - Migration runner initialization
 - Requirements and config validation
 
-### Unit Tests — Migrations (30 tests)
+### Unit Tests — Migrations (28 tests)
 Tests the migration runner in isolation using raw SQLite (no app schema):
 - Apply/rollback single and multiple migrations
 - Migration discovery from files
 - Edge cases: malformed files, concurrent apply, long versions, empty methods
 - Performance: 100-file discovery under 1 second
 
-### Unit Tests — Path Validation (16 tests)
+### Unit Tests — Path Validation (14 tests)
 Tests `validate_file_path()` security:
 - Path traversal patterns (`..`, absolute paths)
 - Null bytes, control characters, Windows separators
@@ -61,7 +62,7 @@ Tests timeout handling in git operations:
 - Merge-specific timeout
 - Timeout abort and recovery
 
-### Unit Tests — File Browser Routes (41 tests)
+### Unit Tests — File Browser Routes (35 tests)
 Tests `file_routes.py` endpoints:
 - Path validation and security (traversal, symlinks, null bytes)
 - Secret file detection and hiding
@@ -69,7 +70,7 @@ Tests `file_routes.py` endpoints:
 - Directory tree scanning with depth limits
 - File content reading (text, binary, images)
 
-### Unit Tests — Allowed Commands (15 tests)
+### Unit Tests — Allowed Commands (14 tests)
 Tests command filtering and runtime access:
 - Command filter hook: allow/deny bash commands by first-word prefix
 - Non-bash tools pass through without filtering
@@ -89,7 +90,14 @@ Tests diff isolation between concurrent agent items:
 - Concurrent diff requests return correct results
 - Diff while merge is in progress (race condition testing)
 
-### Integration Tests (17 tests)
+### Unit Tests — Mini-MCP Server (11 tests)
+Tests the mini-MCP example server via stdio JSON-RPC protocol:
+- Server initialization and JSON-RPC handshake
+- Tool listing and invocation
+- Protocol compliance (NDJSON over stdio)
+- Error handling for malformed requests
+
+### Integration Tests (14 tests)
 Tests the full orchestrator lifecycle through the service layer:
 - **Happy path**: start → complete → approve → done
 - **Failure**: agent error → failed status
@@ -156,3 +164,23 @@ async def test_apply_migration(self, raw_db, runner):
 2. Use `@pytest.mark.unit`, `@pytest.mark.integration`, or `@pytest.mark.smoke`
 3. Async tests work automatically (no `@pytest.mark.asyncio` needed)
 4. Run `./run-tests.sh` to verify all tests pass
+
+## E2E Tests
+
+End-to-end tests live in `tests/e2e/` as `.mjs` files and run via `./run-e2e-tests.sh`:
+
+```bash
+./run-e2e-tests.sh           # Run all E2E tests
+./run-e2e-tests.sh --verbose # Verbose with colored output
+```
+
+| Test File | Focus |
+|-----------|-------|
+| `test_append_readme.mjs` | Agent creates/modifies a file end-to-end |
+| `test_clarification.mjs` | Agent asks question, user responds, agent continues |
+| `test_merge_conflict.mjs` | Merge conflict detection and auto-resolution |
+| `test_allowed_tools.mjs` | Optional built-in tool access request flow |
+| `test_mini_mcp.mjs` | External MCP server integration via stdio |
+| `helpers.mjs` | Shared test utilities |
+
+E2E tests run real agent sessions against a temporary test project and require a running server instance.
