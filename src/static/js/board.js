@@ -270,8 +270,8 @@ const Board = {
         if (col === 'todo') {
             actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startAgent('${item.id}')">▶</button>${deleteBtn}`;
         } else if (col === 'doing' && item.status === 'failed') {
-            actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.retryAgent('${item.id}')">↻ Retry</button>
-                <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')">→ Todo</button>`;
+            actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.retryAgent('${item.id}')" title="Retry">↻ Retry</button>
+                <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>`;
         } else if (col === 'doing' && item.status === 'running') {
             actionsHtml = `<button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')">✕</button>`;
         } else if (col === 'review') {
