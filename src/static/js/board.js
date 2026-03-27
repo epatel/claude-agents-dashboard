@@ -305,14 +305,16 @@ const Board = {
 
         let logCountHtml = '';
         if (col === 'doing' && item.log_count > 0) {
-            logCountHtml = `<div class="card-log-count" data-log-count="${item.id}">💬 ${item.log_count}</div>`;
+            logCountHtml = `<div class="card-log-count" data-log-count="${item.id}">${item.log_count}</div>`;
         }
 
         div.innerHTML = `
             <div class="card-title">${this.escapeHtml(item.title)}</div>
             ${statusHtml}
-            ${logCountHtml}
-            <div class="card-actions">${actionsHtml}</div>
+            <div class="card-bottom">
+                <div class="card-actions">${actionsHtml}</div>
+                ${logCountHtml}
+            </div>
         `;
         return div;
     },

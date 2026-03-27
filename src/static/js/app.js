@@ -409,18 +409,18 @@ const App = {
         const el = document.querySelector(`[data-log-count="${itemId}"]`);
         if (el) {
             const current = parseInt(el.textContent.replace(/\D/g, ''), 10) || 0;
-            el.textContent = `💬 ${current + 1}`;
+            el.textContent = `${current + 1}`;
         } else {
-            // Card exists but no counter yet — add one
+            // Card exists but no counter yet — add one inside card-bottom
             const card = document.querySelector(`.card[data-id="${itemId}"]`);
             if (card) {
-                const actions = card.querySelector('.card-actions');
-                if (actions) {
+                const bottom = card.querySelector('.card-bottom');
+                if (bottom) {
                     const counter = document.createElement('div');
                     counter.className = 'card-log-count';
                     counter.setAttribute('data-log-count', itemId);
-                    counter.textContent = '💬 1';
-                    card.insertBefore(counter, actions);
+                    counter.textContent = '1';
+                    bottom.appendChild(counter);
                 }
             }
         }
