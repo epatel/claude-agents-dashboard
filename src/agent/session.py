@@ -273,12 +273,18 @@ class AgentSession:
         # Copy attachments into worktree and reference in prompt
         if attachments:
             import shutil
+            attach_dir = self.worktree_path / ".agent-attachments"
+            attach_dir.mkdir(exist_ok=True)
+            # Gitignore the attachments directory so they never get committed
+            gitignore = attach_dir / ".gitignore"
+            if not gitignore.exists():
+                gitignore.write_text("*\n")
             attachment_refs = []
             for attachment in attachments:
                 try:
                     asset_path = Path(attachment["asset_path"])
                     if asset_path.exists():
-                        dest = self.worktree_path / attachment["filename"]
+                        dest = attach_dir / attachment["filename"]
                         shutil.copy2(asset_path, dest)
                         attachment_refs.append(str(dest))
                         logger.info(f"Copied attachment to worktree: {attachment['filename']}")
