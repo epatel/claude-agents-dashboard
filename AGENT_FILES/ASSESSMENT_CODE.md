@@ -1,14 +1,14 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-03-27
+**Date**: 2026-03-28
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 10 — Maintenance reassessment with updated test counts (139), line counts, codebase statistics, and new agent tools (board_view, tool_access, tool_filter).
+**Revision**: 11 — Maintenance reassessment with updated line counts across all modules (services, agents, routes, frontend), corrected codebase statistics, and notification-dialog.js addition.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 10 specialized dialog modules on the frontend. Since the previous assessment, a **file browser** has been added, along with **allowed commands** with runtime approval, **bash YOLO mode**, **base commit pinning** for stable diffs, **board introspection** (view_board MCP tool), **tool access requests** (request_tool_access MCP tool), and **tool filtering** (PreToolUse hook for optional built-in tools). The test suite includes **139 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, a **file browser** has been added, along with **allowed commands** with runtime approval, **bash YOLO mode**, **base commit pinning** for stable diffs, **board introspection** (view_board MCP tool), **tool access requests** (request_tool_access MCP tool), and **tool filtering** (PreToolUse hook for optional built-in tools). The test suite includes **139 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -91,7 +91,7 @@ graph TB
 
 1. **Clean service layer architecture**: Orchestrator is now a thin facade delegating to 5 focused services
 2. **Single-responsibility modules**: Each service has a clear, bounded responsibility (DB, git, notifications, sessions, workflows)
-3. **Modular frontend**: Dialog functionality split into 10 specialized modules with a coordinator pattern
+3. **Modular frontend**: Dialog functionality split into 11 specialized modules with a coordinator pattern
 4. **Async-first design**: Proper use of `asyncio` throughout — non-blocking agent starts, event-based clarification flow
 5. **Real-time streaming**: WebSocket broadcasting with reconnection keeps the UI responsive
 6. **Isolation via worktrees**: Each agent gets its own git worktree — safe parallel execution
@@ -112,11 +112,11 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 656 | A | Core workflow coordination with callback factory pattern and merge conflict auto-resolution |
-| `services/database_service.py` | 226 | A | All DB operations extracted; parameterized queries throughout |
+| `services/workflow_service.py` | 762 | A | Core workflow coordination with callback factory pattern and merge conflict auto-resolution |
+| `services/database_service.py` | 231 | A | All DB operations extracted; parameterized queries throughout |
 | `services/notification_service.py` | 95 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 94 | A | Git worktree and merge operations with proper error handling |
-| `services/session_service.py` | 177 | A | Session lifecycle, commit messages, plugin parsing |
+| `services/session_service.py` | 198 | A | Session lifecycle, commit messages, plugin parsing |
 
 ### Backend Python — Core
 
@@ -124,15 +124,15 @@ graph TB
 |--------|-------|---------|-------|
 | `main.py` | 89 | A | Clean entry point, proper git validation, port discovery |
 | `config.py` | 109 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
-| `constants.py` | 12 | A | Centralized `AVAILABLE_MODELS` dict and `DEFAULT_MODEL` |
-| `models.py` | 100 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
+| `constants.py` | 19 | A | Centralized `AVAILABLE_MODELS` dict, `DEFAULT_MODEL`, and `OPTIONAL_BUILTIN_TOOLS` |
+| `models.py` | 101 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
-| `web/routes.py` | 586 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
+| `web/routes.py` | 657 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
 | `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
-| `agent/orchestrator.py` | 110 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
-| `agent/session.py` | 398 | A- | Clean SDK wrapper; good token extraction with fallbacks |
+| `agent/orchestrator.py` | 118 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
+| `agent/session.py` | 445 | A- | Clean SDK wrapper; good token extraction with fallbacks |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
 | `agent/todo.py` | 94 | A | Clean MCP tool definition |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
@@ -147,32 +147,33 @@ graph TB
 | `migrations/migration.py` | 28 | A | Clean base class |
 | `migrations/versions/001_initial_schema.py` | 158 | A | Complete initial schema with all 8 tables |
 | `migrations/versions/002_add_base_branch.py` | 32 | A | Adds `base_branch` column to items table |
-| `migrations/versions/003_add_allowed_commands.py` | 36 | A | Adds `allowed_commands` to agent_config |
-| `migrations/versions/004_add_bash_yolo.py` | 27 | A | Adds `bash_yolo` flag to agent_config |
-| `migrations/versions/005_add_base_commit.py` | 32 | A | Adds `base_commit` SHA to items table |
-| `migrations/versions/006_add_allowed_builtin_tools.py` | 31 | A | Adds `allowed_builtin_tools` JSON array to agent_config |
+| `migrations/versions/003_add_allowed_commands.py` | 35 | A | Adds `allowed_commands` to agent_config |
+| `migrations/versions/004_add_bash_yolo.py` | 26 | A | Adds `bash_yolo` flag to agent_config |
+| `migrations/versions/005_add_base_commit.py` | 31 | A | Adds `base_commit` SHA to items table |
+| `migrations/versions/006_add_allowed_builtin_tools.py` | 30 | A | Adds `allowed_builtin_tools` JSON array to agent_config |
 
 ### Frontend JavaScript
 
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
-| `app.js` | 392 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
-| `board.js` | 346 | B+ | Drag-drop works well; card rendering could use templating |
-| `dialogs.js` | 83 | A | Clean coordinator pattern — delegates to 10 specialized modules |
-| `dialog-core.js` | 53 | A | Core dialog open/close/confirm utilities |
+| `app.js` | 430 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
+| `board.js` | 380 | B+ | Drag-drop works well; card rendering could use templating |
+| `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 11 specialized modules |
+| `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
 | `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
 | `item-dialog.js` | 190 | A- | New/edit item forms with attachment handling |
 | `detail-dialog.js` | 188 | A- | Item detail view with tabbed interface |
-| `review-dialog.js` | 102 | A | Review dialog with diff viewer and work log |
-| `config-dialog.js` | 144 | A | Agent configuration (system prompt, MCP, plugins) |
-| `clarification-dialog.js` | 117 | A | Clean clarification prompt/response UI |
+| `review-dialog.js` | 123 | A | Review dialog with diff viewer and work log |
+| `config-dialog.js` | 189 | A | Agent configuration (system prompt, MCP, plugins) |
+| `clarification-dialog.js` | 165 | A | Clean clarification prompt/response UI |
+| `notification-dialog.js` | 103 | A | System notification display, bell icon, badge counter |
 | `request-changes-dialog.js` | 24 | A | Focused request-changes form |
 | `attachments.js` | 43 | A | Attachment viewing and deletion |
 | `annotation-canvas.js` | 52 | A | Canvas annotation integration bridge |
 | `annotate.js` | 936 | A- | Self-contained canvas component |
 | `file-browser.js` | 630 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering |
-| `api.js` | 77 | A | Clean HTTP helpers |
-| `diff.js` | 61 | A- | Functional diff viewer |
+| `api.js` | 85 | A | Clean HTTP helpers |
+| `diff.js` | 62 | A- | Functional diff viewer |
 | `theme.js` | 24 | A | Simple, correct theme toggle |
 | `stats.js` | 184 | A- | Good auto-refresh and WebSocket update pattern |
 
@@ -180,13 +181,13 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `style.css` | 775 | A- | Main styles with CSS variables |
-| `board.css` | 221 | A | Board-specific layout and card styles |
+| `style.css` | 909 | A- | Main styles with CSS variables |
+| `board.css` | 242 | A | Board-specific layout and card styles |
 | `dialog.css` | 74 | A | Dialog component styles |
 | `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 66 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~1,629 lines across 5 modules.
+**Note**: CSS total is ~1,848 lines across 5 modules.
 
 ---
 
@@ -304,8 +305,8 @@ stateDiagram-v2
 | 10 | No WebSocket rate limiting | ✅ Per-IP rate limiting with concurrent connection limits and windowed attempt tracking |
 | 11 | No request timeout for blocking operations | ✅ `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT` on approve route |
 | 12 | Migration class discovery uses string comparison | ✅ Justified — `issubclass` fails with dynamic module loading |
-| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (537), DatabaseService (199), NotificationService (95), GitService (94), SessionService (163). Orchestrator now 110-line facade |
-| 14 | `dialogs.js` too large (801 lines) | ✅ Split into 10 specialized modules with coordinator pattern. Largest module is `item-dialog.js` at 190 lines |
+| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (762), DatabaseService (231), NotificationService (95), GitService (94), SessionService (198). Orchestrator now 118-line facade |
+| 14 | `dialogs.js` too large (801 lines) | ✅ Split into 11 specialized modules with coordinator pattern. Largest module is `item-dialog.js` at 190 lines |
 
 ### Remaining Issues
 
@@ -321,7 +322,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 139 automated tests across 10 test files via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`.
+**Current state**: 139 automated tests across 11 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -376,7 +377,7 @@ graph LR
 2. **Facade pattern**: `AgentOrchestrator` provides a stable API while delegating to services
 3. **Callback factory pattern**: `WorkflowService._create_on_*_callback()` methods keep callback creation centralized and consistent
 4. **`_log_and_notify` helper**: Centralizes DB logging + WebSocket broadcast — prevents missed notifications
-5. **Dialog coordinator pattern**: `dialogs.js` delegates to 10 specialized modules while preserving backward compatibility
+5. **Dialog coordinator pattern**: `dialogs.js` delegates to 11 specialized modules while preserving backward compatibility
 6. **Commit message via MCP tool**: Agents produce meaningful commit messages rather than generic ones
 7. **Worktree reuse on retry**: Preserves agent's previous work when retrying
 8. **Dead WebSocket cleanup**: Broadcast loop silently removes failed connections
@@ -399,12 +400,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 41 | ~4,604 |
-| JavaScript frontend | 19 | ~3,796 |
-| CSS styles | 5 | ~1,693 |
-| HTML templates | 3 | ~495 |
+| Python backend (src/) | 41 | ~4,862 |
+| JavaScript frontend | 20 | ~4,003 |
+| CSS styles | 5 | ~1,848 |
+| HTML templates | 3 | ~530 |
 | Tests | 11 | ~2,892 |
-| **Grand total** | **79** | **~13,480** |
+| **Grand total** | **80** | **~14,135** |
 
 ---
 
