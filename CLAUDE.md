@@ -165,12 +165,12 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (110 lines) that delegates to 5 focused services (total ~1,248 lines):
-  - `WorkflowService` (656 lines): Coordinates agent workflows, state transitions, callback creation, and merge conflict auto-resolution
-  - `DatabaseService` (226 lines): All database operations (items, logs, config, attachments, token usage)
+- **Service layer architecture**: The orchestrator is a thin facade (118 lines) that delegates to 5 focused services (total ~1,394 lines):
+  - `WorkflowService` (762 lines): Coordinates agent workflows, state transitions, callback creation, and merge conflict auto-resolution
+  - `DatabaseService` (231 lines): All database operations (items, logs, config, attachments, token usage)
   - `NotificationService` (95 lines): WebSocket broadcasting and tool use formatting
   - `GitService` (94 lines): Worktree management, merge operations, and cleanup
-  - `SessionService` (177 lines): Agent session lifecycle, commit messages, plugin parsing
+  - `SessionService` (198 lines): Agent session lifecycle, commit messages, plugin parsing
 
 - **Agent start is non-blocking**: `WorkflowService.start_agent()` creates a session via `SessionService.create_session()` and launches it via `SessionService.start_session_task()` which uses `asyncio.create_task()` so the HTTP response returns immediately. The agent streams progress via WebSocket.
 
@@ -244,7 +244,7 @@ Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base
 
 **Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates), `file-browser.js` (project file browser with tree, tabs, syntax highlighting, markdown/mermaid rendering).
 
-**Dialog modules** (modular architecture): `dialogs.js` is a thin coordinator that delegates to 10 specialized modules:
+**Dialog modules** (modular architecture): `dialogs.js` is a thin coordinator that delegates to 11 specialized modules:
 - `dialog-core.js` — open/close/confirm utilities
 - `dialog-utils.js` — markdown rendering, model display names
 - `item-dialog.js` — new/edit item forms with attachments
@@ -252,6 +252,7 @@ Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base
 - `review-dialog.js` — review dialog with diff viewer and work log
 - `config-dialog.js` — agent configuration (system prompt, MCP, plugins)
 - `clarification-dialog.js` — clarification prompt/response UI
+- `notification-dialog.js` — system notification display and management
 - `request-changes-dialog.js` — request changes form
 - `attachments.js` — attachment viewing and deletion
 - `annotation-canvas.js` — canvas annotation integration bridge
@@ -393,6 +394,7 @@ src/
 |   |   +-- review-dialog.js         # Review + diff
 |   |   +-- config-dialog.js         # Agent config
 |   |   +-- clarification-dialog.js  # Clarification UI
+|   |   +-- notification-dialog.js   # System notifications
 |   |   +-- request-changes-dialog.js # Request changes form
 |   |   +-- attachments.js           # Attachment management
 |   |   +-- annotation-canvas.js     # Canvas bridge
