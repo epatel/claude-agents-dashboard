@@ -359,6 +359,21 @@ async def delete_items_by_date(request: Request, body: DeleteByDateRequest):
 @router.post("/api/items/{item_id}/move")
 async def move_item(request: Request, item_id: str, body: ItemMove):
     db = request.app.state.db
+    orchestrator = request.app.state.orchestrator
+
+    # Clean up agent resources when moving to archive
+    if body.column_name == "archive":
+        async with db.connect() as conn:
+            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            old_item = dict(await cursor.fetchone())
+        # Stop any running session
+        await orchestrator.session_service.cleanup_session(item_id)
+        # Clean up worktree and branch
+        if old_item.get("worktree_path") and old_item.get("branch_name"):
+            from pathlib import Path
+            await orchestrator.git_service.cleanup_worktree_and_branch(
+                Path(old_item["worktree_path"]), old_item["branch_name"])
+
     async with db.connect() as conn:
         # Shift positions in target column
         await conn.execute(
@@ -368,15 +383,19 @@ async def move_item(request: Request, item_id: str, body: ItemMove):
         # Set done_at when moving to done/archive (if not already set), clear when leaving
         from datetime import datetime, timezone
         done_at_clause = ""
+        extra_clauses = ""
         params = [body.column_name, body.position]
         if body.column_name in ("done", "archive"):
             done_at_clause = ", done_at = COALESCE(done_at, ?)"
             params.append(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"))
         else:
             done_at_clause = ", done_at = NULL"
+        # Clear git metadata when archiving
+        if body.column_name == "archive":
+            extra_clauses = ", status = NULL, worktree_path = NULL"
         params.append(item_id)
         await conn.execute(
-            f"UPDATE items SET column_name = ?, position = ?{done_at_clause}, updated_at = datetime('now') WHERE id = ?",
+            f"UPDATE items SET column_name = ?, position = ?{done_at_clause}{extra_clauses}, updated_at = datetime('now') WHERE id = ?",
             params,
         )
         await conn.commit()
