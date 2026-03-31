@@ -73,9 +73,8 @@ async def test_merge_branch_handles_timeout():
     """Test that merge_branch propagates timeout errors."""
     with patch('src.git.operations.get_current_branch', return_value="main"):
         with patch('src.git.operations.run_git') as mock_run_git:
-            # First call (checkout) succeeds, second call (merge) times out,
-            # third call (merge --abort) succeeds
-            mock_run_git.side_effect = [None, asyncio.TimeoutError("Merge timed out"), None]
+            # status --porcelain (clean), checkout succeeds, merge times out, abort succeeds
+            mock_run_git.side_effect = ["", None, asyncio.TimeoutError("Merge timed out"), None]
 
             success, message = await merge_branch(Path("/fake/repo"), "feature-branch")
 
@@ -88,8 +87,9 @@ async def test_merge_branch_aborts_on_timeout():
     """Test that merge_branch calls merge --abort when timeout occurs."""
     with patch('src.git.operations.get_current_branch', return_value="main"):
         with patch('src.git.operations.run_git') as mock_run_git:
-            # Checkout succeeds, merge times out, abort succeeds
+            # status --porcelain (clean), checkout succeeds, merge times out, abort succeeds
             mock_run_git.side_effect = [
+                "",    # status --porcelain
                 None,  # checkout
                 asyncio.TimeoutError("Merge timed out"),  # merge
                 None   # abort
