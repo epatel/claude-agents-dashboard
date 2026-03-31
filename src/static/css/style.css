@@ -471,9 +471,13 @@ body {
     border: 1px solid var(--border-light);
     border-radius: 4px;
     cursor: pointer;
-    padding: 1px 4px;
-    font-size: 0.75em;
-    line-height: 1;
+    padding: 3px 4px;
+    line-height: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    color: var(--text-secondary, #666);
     opacity: 0.6;
     transition: opacity 0.15s;
 }
