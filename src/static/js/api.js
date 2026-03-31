@@ -39,6 +39,10 @@ const Api = {
         return this.request('POST', `/api/items/${id}/start`);
     },
 
+    startCopyAgent(id) {
+        return this.request('POST', `/api/items/${id}/start-copy`);
+    },
+
     cancelAgent(id) {
         return this.request('POST', `/api/items/${id}/cancel`);
     },

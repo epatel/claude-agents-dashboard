@@ -365,6 +365,15 @@ async def start_agent(request: Request, item_id: str):
     return result
 
 
+@router.post("/api/items/{item_id}/start-copy")
+async def start_copy_agent(request: Request, item_id: str):
+    """Copy a todo item and start the copy, leaving the original in todo."""
+    orchestrator = request.app.state.orchestrator
+    result = await orchestrator.start_copy_agent(item_id)
+    _invalidate_stats_cache()
+    return result
+
+
 @router.post("/api/items/{item_id}/cancel")
 async def cancel_agent(request: Request, item_id: str):
     orchestrator = request.app.state.orchestrator

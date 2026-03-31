@@ -48,9 +48,11 @@ const DetailDialog = {
         const deleteBtn = document.getElementById('detail-delete-btn');
         const actionsEl = document.getElementById('detail-header-actions');
 
-        // Remove any previously added play/rerun buttons
+        // Remove any previously added play/rerun/start-copy buttons
         const oldPlay = document.getElementById('detail-play-btn');
         if (oldPlay) oldPlay.remove();
+        const oldStartCopy = document.getElementById('detail-start-copy-btn');
+        if (oldStartCopy) oldStartCopy.remove();
         const oldRerun = document.getElementById('detail-rerun-btn');
         if (oldRerun) oldRerun.remove();
 
@@ -75,7 +77,7 @@ const DetailDialog = {
             }
         };
 
-        // Add play button in Todo
+        // Add play button and start copy button in Todo
         if (item.column_name === 'todo') {
             const playBtn = document.createElement('button');
             playBtn.id = 'detail-play-btn';
@@ -86,6 +88,17 @@ const DetailDialog = {
                 DialogCore.close('detail-dialog');
             };
             actionsEl.insertBefore(playBtn, editBtn);
+
+            const startCopyBtn = document.createElement('button');
+            startCopyBtn.id = 'detail-start-copy-btn';
+            startCopyBtn.className = 'btn btn-sm';
+            startCopyBtn.textContent = '▶⧉ Start Copy';
+            startCopyBtn.title = 'Start a copy (keep original in Todo)';
+            startCopyBtn.onclick = async () => {
+                await Board.startCopyAgent(item.id);
+                DialogCore.close('detail-dialog');
+            };
+            actionsEl.insertBefore(startCopyBtn, editBtn);
         }
 
         // Add re-run button in Done

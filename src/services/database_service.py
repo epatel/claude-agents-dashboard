@@ -115,6 +115,52 @@ class DatabaseService:
 
         return item
 
+    async def copy_item(self, item_id: str) -> Dict[str, Any]:
+        """Copy an item (title, description, model) and its attachments. Returns the new item."""
+        import shutil
+        from ..models import new_id
+
+        item = await self.get_item(item_id)
+        if not item:
+            raise ValueError(f"Item {item_id} not found")
+
+        copy_id = new_id()
+
+        async with self.db.connect() as conn:
+            # Get next position in todo column
+            cursor = await conn.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM items WHERE column_name = 'todo'"
+            )
+            row = await cursor.fetchone()
+            position = row[0] if row else 0
+
+            # Create copied item
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, position, model) VALUES (?, ?, ?, 'todo', ?, ?)",
+                (copy_id, item["title"], item.get("description", ""), position, item.get("model")),
+            )
+
+            # Copy attachments
+            attachments = await self.get_attachments(item_id)
+            for att in attachments:
+                src_path = Path(att["asset_path"])
+                if src_path.exists():
+                    # Create new asset with unique name
+                    new_filename = f"{copy_id}_{src_path.name}"
+                    dst_path = src_path.parent / new_filename
+                    shutil.copy2(str(src_path), str(dst_path))
+                    await conn.execute(
+                        "INSERT INTO attachments (item_id, filename, asset_path) VALUES (?, ?, ?)",
+                        (copy_id, att["filename"], str(dst_path)),
+                    )
+
+            await conn.commit()
+
+            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (copy_id,))
+            new_item = dict(await cursor.fetchone())
+
+        return new_item
+
     async def store_clarification(self, item_id: str, prompt: str, choices: Optional[List[str]]):
         """Store a question request in the database."""
         async with self.db.connect() as conn:
