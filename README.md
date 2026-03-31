@@ -107,6 +107,10 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Bash YOLO mode** — optional mode that grants agents unrestricted bash access (configurable per project via agent config)
 - **Base branch tracking** — worktrees record which branch they were created from for reliable merge targeting
 - **Base commit pinning** — worktrees record the exact commit SHA at creation time, ensuring diffs remain stable even when the base branch moves forward (e.g., after merging other items)
+- **Merge commit tracking** — stores the merge commit SHA when items are approved, enabling traceability from board items to git history
+- **Dirty repo detection** — blocks merge if your working tree has uncommitted changes overlapping with the agent's files; moves the item to the Questions column with guidance to commit or stash first
+- **Search** — spotlight-style search dialog (Cmd/Ctrl+K) to find items across all columns and search work log entries
+- **Archive cleanup** — archiving items automatically cleans up their worktree and session resources
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture
@@ -116,7 +120,7 @@ graph TB
     subgraph Frontend["Frontend (Vanilla JS, No Build Step)"]
         Browser["Browser"]
         JS["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js"]
-        Dlg["dialogs.js (coordinator)<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog | notification-dialog<br/>request-changes-dialog | attachments<br/>dialog-core | dialog-utils | annotation-canvas"]
+        Dlg["dialogs.js (coordinator)<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog | notification-dialog<br/>search-dialog | request-changes-dialog | attachments<br/>dialog-core | dialog-utils | annotation-canvas"]
     end
 
     subgraph Backend["Backend (Python 3.12+ / FastAPI)"]
@@ -170,8 +174,8 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~4,900 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (11 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~4,184 lines JS + ~1,922 lines CSS
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~5,200 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~4,618 lines JS + ~2,191 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 6 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -213,7 +217,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–007) adding columns incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–008) adding columns incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -240,6 +244,7 @@ erDiagram
         text base_branch
         text base_commit
         text done_at
+        text merge_commit
         text created_at
         text updated_at
     }
@@ -366,6 +371,8 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `POST` | `/api/items/{id}/retry` | Retry failed agent |
 | `POST` | `/api/items/{id}/approve` | Approve & merge |
 | `POST` | `/api/items/{id}/request-changes` | Send feedback to agent |
+| `POST` | `/api/items/{id}/pause` | Pause running agent |
+| `POST` | `/api/items/{id}/resume` | Resume paused agent |
 | `POST` | `/api/items/{id}/cancel-review` | Discard review changes |
 | `GET` | `/api/items/{id}/log` | Work log entries |
 | `GET` | `/api/items/{id}/diff` | Diff + changed files |
@@ -380,6 +387,7 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `DELETE` | `/api/notifications/{id}` | Dismiss a notification |
 | `DELETE` | `/api/notifications` | Clear all notifications |
 | `GET` | `/api/stats` | Usage & activity stats |
+| `GET` | `/api/search/worklog` | Search work log entries |
 | `GET` | `/api/files/tree` | Directory tree (lazy, depth-limited) |
 | `GET` | `/api/files/content` | File content (text, image, binary) |
 | `WebSocket` | `/ws` | Real-time event stream |

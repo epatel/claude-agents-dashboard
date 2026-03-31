@@ -2,13 +2,13 @@
 
 **Date**: 2026-03-31
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 12 — Maintenance reassessment with migration 007 (done_at timestamp), Done column day grouping with collapsible sections and bulk archive, Start Copy for Todo items, and updated line counts across all modules.
+**Revision**: 13 — Maintenance reassessment with migration 008 (merge_commit tracking), dirty repo overlap detection before merge, search dialog, archive cleanup, and updated line counts across all modules.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, **Done column day grouping** with collapsible sections, compact title lists, and bulk archive has been added, along with **Start Copy** for Todo items, **done_at timestamp tracking** (migration 007), and various UI refinements (SVG chevrons, expanded view fixes). The test suite includes **139 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, **merge commit SHA tracking** (migration 008), **dirty repo overlap detection** before merge, **search dialog** (spotlight-style item/worklog search), **archive cleanup** (worktree/session cleanup on archive), and **questions column archive** have been added. The test suite includes **139 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -22,7 +22,7 @@ graph TB
         UI[board.html + Jinja2]
         WS_Client[WebSocket Client]
         JS_Modules["app.js | board.js | stats.js<br/>api.js | diff.js | theme.js"]
-        Dialog_Modules["dialogs.js (coordinator)<br/>dialog-core.js | dialog-utils.js<br/>item-dialog.js | detail-dialog.js<br/>review-dialog.js | config-dialog.js<br/>clarification-dialog.js<br/>request-changes-dialog.js<br/>attachments.js | annotation-canvas.js"]
+        Dialog_Modules["dialogs.js (coordinator)<br/>dialog-core.js | dialog-utils.js<br/>item-dialog.js | detail-dialog.js<br/>review-dialog.js | config-dialog.js<br/>clarification-dialog.js | search-dialog.js<br/>request-changes-dialog.js<br/>attachments.js | annotation-canvas.js"]
         Annotate[annotate.js]
         FileBrowser[file-browser.js]
     end
@@ -91,7 +91,7 @@ graph TB
 
 1. **Clean service layer architecture**: Orchestrator is now a thin facade delegating to 5 focused services
 2. **Single-responsibility modules**: Each service has a clear, bounded responsibility (DB, git, notifications, sessions, workflows)
-3. **Modular frontend**: Dialog functionality split into 11 specialized modules with a coordinator pattern
+3. **Modular frontend**: Dialog functionality split into 12 specialized modules with a coordinator pattern
 4. **Async-first design**: Proper use of `asyncio` throughout — non-blocking agent starts, event-based clarification flow
 5. **Real-time streaming**: WebSocket broadcasting with reconnection keeps the UI responsive
 6. **Isolation via worktrees**: Each agent gets its own git worktree — safe parallel execution
@@ -112,7 +112,7 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 778 | A | Core workflow coordination with callback factory pattern and merge conflict auto-resolution |
+| `services/workflow_service.py` | 840 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, and dirty repo overlap detection |
 | `services/database_service.py` | 285 | A | All DB operations extracted; parameterized queries throughout |
 | `services/notification_service.py` | 95 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 94 | A | Git worktree and merge operations with proper error handling |
@@ -128,7 +128,7 @@ graph TB
 | `models.py` | 101 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
-| `web/routes.py` | 712 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
+| `web/routes.py` | 790 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; delete delegates to orchestrator |
 | `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 122 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
@@ -141,7 +141,7 @@ graph TB
 | `agent/board_view.py` | 42 | A | Board introspection MCP tool |
 | `agent/tool_access.py` | 42 | A | Runtime tool access request MCP tool |
 | `agent/tool_filter.py` | 38 | A | PreToolUse hook for optional built-in tool filtering |
-| `git/operations.py` | 313 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
+| `git/operations.py` | 315 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
 | `git/worktree.py` | 73 | A | Simple and correct; returns base branch for tracking |
 | `migrations/runner.py` | 198 | A- | Solid migration system; class discovery uses string comparison (justified) |
 | `migrations/migration.py` | 28 | A | Clean base class |
@@ -152,28 +152,30 @@ graph TB
 | `migrations/versions/005_add_base_commit.py` | 31 | A | Adds `base_commit` SHA to items table |
 | `migrations/versions/006_add_allowed_builtin_tools.py` | 30 | A | Adds `allowed_builtin_tools` JSON array to agent_config |
 | `migrations/versions/007_add_done_at.py` | 34 | A | Adds `done_at` timestamp to items, backfills existing done items |
+| `migrations/versions/008_add_merge_commit.py` | 32 | A | Adds `merge_commit` SHA to items table |
 
 ### Frontend JavaScript
 
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
-| `app.js` | 436 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
-| `board.js` | 534 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
+| `app.js` | 439 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
+| `board.js` | 628 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
 | `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 11 specialized modules |
 | `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
 | `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
 | `item-dialog.js` | 190 | A- | New/edit item forms with attachment handling |
-| `detail-dialog.js` | 201 | A- | Item detail view with tabbed interface |
+| `detail-dialog.js` | 241 | A- | Item detail view with tabbed interface |
 | `review-dialog.js` | 123 | A | Review dialog with diff viewer and work log |
 | `config-dialog.js` | 189 | A | Agent configuration (system prompt, MCP, plugins) |
-| `clarification-dialog.js` | 165 | A | Clean clarification prompt/response UI |
+| `clarification-dialog.js` | 208 | A | Clean clarification prompt/response UI |
 | `notification-dialog.js` | 103 | A | System notification display, bell icon, badge counter |
+| `search-dialog.js` | 246 | A | Spotlight-style search across items and work logs |
 | `request-changes-dialog.js` | 24 | A | Focused request-changes form |
 | `attachments.js` | 43 | A | Attachment viewing and deletion |
 | `annotation-canvas.js` | 52 | A | Canvas annotation integration bridge |
 | `annotate.js` | 936 | A- | Self-contained canvas component |
 | `file-browser.js` | 630 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering |
-| `api.js` | 93 | A | Clean HTTP helpers |
+| `api.js` | 101 | A | Clean HTTP helpers |
 | `diff.js` | 62 | A- | Functional diff viewer |
 | `theme.js` | 24 | A | Simple, correct theme toggle |
 | `stats.js` | 184 | A- | Good auto-refresh and WebSocket update pattern |
@@ -182,13 +184,13 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `style.css` | 909 | A- | Main styles with CSS variables |
+| `style.css` | 951 | A- | Main styles with CSS variables |
 | `board.css` | 316 | A | Board layout, card styles, Done day grouping with collapsible sections |
-| `dialog.css` | 74 | A | Dialog component styles |
+| `dialog.css` | 301 | A | Dialog component styles |
 | `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 66 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~1,922 lines across 5 modules.
+**Note**: CSS total is ~2,191 lines across 5 modules.
 
 ---
 
@@ -306,8 +308,8 @@ stateDiagram-v2
 | 10 | No WebSocket rate limiting | ✅ Per-IP rate limiting with concurrent connection limits and windowed attempt tracking |
 | 11 | No request timeout for blocking operations | ✅ `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT` on approve route |
 | 12 | Migration class discovery uses string comparison | ✅ Justified — `issubclass` fails with dynamic module loading |
-| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (778), DatabaseService (285), NotificationService (95), GitService (94), SessionService (198). Orchestrator now 122-line facade |
-| 14 | `dialogs.js` too large (801 lines) | ✅ Split into 11 specialized modules with coordinator pattern. Largest module is `item-dialog.js` at 190 lines |
+| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (840), DatabaseService (285), NotificationService (95), GitService (94), SessionService (198). Orchestrator now 122-line facade |
+| 14 | `dialogs.js` too large (801 lines) | ✅ Split into 12 specialized modules with coordinator pattern. Largest module is `search-dialog.js` at 246 lines |
 
 ### Remaining Issues
 
@@ -323,7 +325,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 139 automated tests across 11 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`.
+**Current state**: 139 automated tests across 11 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 8 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -378,7 +380,7 @@ graph LR
 2. **Facade pattern**: `AgentOrchestrator` provides a stable API while delegating to services
 3. **Callback factory pattern**: `WorkflowService._create_on_*_callback()` methods keep callback creation centralized and consistent
 4. **`_log_and_notify` helper**: Centralizes DB logging + WebSocket broadcast — prevents missed notifications
-5. **Dialog coordinator pattern**: `dialogs.js` delegates to 11 specialized modules while preserving backward compatibility
+5. **Dialog coordinator pattern**: `dialogs.js` delegates to 12 specialized modules while preserving backward compatibility
 6. **Commit message via MCP tool**: Agents produce meaningful commit messages rather than generic ones
 7. **Worktree reuse on retry**: Preserves agent's previous work when retrying
 8. **Dead WebSocket cleanup**: Broadcast loop silently removes failed connections
@@ -397,6 +399,10 @@ graph LR
 21. **Done column day grouping**: Completed items organized by date with collapsible sections, compact title lists, and per-day bulk archive — keeps the Done column manageable
 22. **Done timestamp tracking**: `done_at` column with migration backfill ensures accurate completion tracking without relying on `updated_at` which changes on any modification
 23. **Start Copy**: Creates a duplicate item and starts an agent on the copy, preserving the original Todo item for reuse — useful for iterative task refinement
+24. **Merge commit tracking**: `merge_commit` column stores the SHA of the merge commit on approval, enabling traceability from board items to git history
+25. **Dirty repo overlap detection**: Before merge, checks if the base repo has uncommitted changes overlapping with agent's files — blocks merge and moves to "questions" column with guidance, preventing silent data loss
+26. **Archive cleanup**: Archiving items automatically cleans up worktree and session resources, preventing orphaned state
+27. **Search dialog**: Spotlight-style search (Cmd/Ctrl+K) across items and work logs with keyboard navigation — fast item discovery in large boards
 
 ---
 
@@ -404,12 +410,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 42 | ~4,900 |
-| JavaScript frontend | 20 | ~4,184 |
-| CSS styles | 5 | ~1,922 |
-| HTML templates | 3 | ~530 |
-| Tests | 11 | ~2,892 |
-| **Grand total** | **81** | **~14,428** |
+| Python backend (src/) | 43 | ~5,199 |
+| JavaScript frontend | 21 | ~4,618 |
+| CSS styles | 5 | ~2,191 |
+| HTML templates | 3 | ~563 |
+| Tests | 11 | ~2,899 |
+| **Grand total** | **83** | **~15,470** |
 
 ---
 
