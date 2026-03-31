@@ -428,16 +428,29 @@ const Board = {
 
             group.appendChild(header);
 
-            // Cards container
+            // Sort items within group by done_at descending (fallback to updated_at)
+            items.sort((a, b) => (b.done_at || b.updated_at || '').localeCompare(a.done_at || a.updated_at || ''));
+
             if (!isCollapsed) {
+                // Full card rendering when expanded
                 const cardsContainer = document.createElement('div');
                 cardsContainer.className = 'done-day-cards';
-                // Sort items within group by done_at descending (fallback to updated_at)
-                items.sort((a, b) => (b.done_at || b.updated_at || '').localeCompare(a.done_at || a.updated_at || ''));
                 for (const item of items) {
                     cardsContainer.appendChild(this.renderCard(item));
                 }
                 group.appendChild(cardsContainer);
+            } else {
+                // Compact title list when collapsed
+                const titleList = document.createElement('div');
+                titleList.className = 'done-day-titles';
+                for (const item of items) {
+                    const titleRow = document.createElement('div');
+                    titleRow.className = 'done-day-title-row';
+                    titleRow.textContent = item.title;
+                    titleRow.onclick = (e) => { e.stopPropagation(); Dialogs.showDetail(item.id); };
+                    titleList.appendChild(titleRow);
+                }
+                group.appendChild(titleList);
             }
 
             col.appendChild(group);
