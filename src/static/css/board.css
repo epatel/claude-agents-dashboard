@@ -217,6 +217,73 @@
     color: var(--danger);
 }
 
+/* Done column: day groups */
+.done-day-group {
+    margin-bottom: 4px;
+}
+
+.done-day-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    user-select: none;
+    font-size: 11px;
+    color: var(--text-secondary);
+    transition: background-color 0.15s;
+}
+
+.done-day-header:hover {
+    background: var(--bg-hover);
+}
+
+.done-day-toggle {
+    font-size: 10px;
+    width: 12px;
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+
+.done-day-label {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.done-day-count {
+    font-size: 11px;
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    padding: 0 6px;
+    border-radius: 8px;
+    font-weight: 500;
+    line-height: 18px;
+}
+
+.done-day-archive {
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity 0.15s;
+    font-size: 11px;
+    padding: 1px 6px;
+}
+
+.done-day-header:hover .done-day-archive {
+    opacity: 1;
+}
+
+.done-day-cards {
+    padding-left: 0;
+}
+
+.card-timestamp {
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
 /* Collapsed column (archive) */
 .column.collapsed .column-cards {
     display: none;

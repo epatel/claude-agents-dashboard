@@ -82,4 +82,8 @@ const Api = {
             data: data,
         });
     },
+
+    archiveByDate(date) {
+        return this.request('POST', '/api/items/archive-by-date', { date });
+    },
 };

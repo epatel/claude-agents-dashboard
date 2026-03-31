@@ -2,10 +2,14 @@ const Board = {
     // Client-side items cache
     items: {},
 
+    // Track collapsed state of done day groups (date string -> boolean)
+    _collapsedDoneGroups: {},
+
     init(initialItems) {
         for (const item of initialItems) {
             this.items[item.id] = item;
         }
+        this.renderDoneColumn();
         this.updateCounts();
     },
 
@@ -122,6 +126,15 @@ const Board = {
             await Api.moveItem(itemId, targetColumn, 0);
         } catch (err) {
             console.error('Failed to move item:', err);
+        }
+    },
+
+    async archiveByDate(dateStr) {
+        if (!await Dialogs.confirm(`Archive all items from ${dateStr}?`)) return;
+        try {
+            await Api.archiveByDate(dateStr);
+        } catch (err) {
+            console.error('Failed to archive items:', err);
         }
     },
 
@@ -253,11 +266,19 @@ const Board = {
         this.items = {};
         // Clear all column cards
         document.querySelectorAll('.column-cards').forEach(col => {
-            col.querySelectorAll('.card').forEach(card => card.remove());
+            col.innerHTML = '';
         });
         for (const item of items) {
-            this.updateCard(item);
+            this.items[item.id] = item;
+            if (item.column_name !== 'done') {
+                const targetCol = document.querySelector(`.column-cards[data-column="${item.column_name}"]`);
+                if (targetCol) {
+                    targetCol.appendChild(this.renderCard(item));
+                }
+            }
         }
+        this.renderDoneColumn();
+        this.updateCounts();
     },
 
     renderCard(item) {
@@ -300,7 +321,8 @@ const Board = {
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')">↩</button>
                 <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelReview('${item.id}')">✕</button>`;
         } else if (col === 'done') {
-            actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;
+            actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.rerunItem('${item.id}')" title="Re-run">↻</button>`
+                + `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦</button>`;
         }
 
         let logCountHtml = '';
@@ -308,15 +330,117 @@ const Board = {
             logCountHtml = `<div class="card-log-count" data-log-count="${item.id}">${item.log_count}</div>`;
         }
 
+        let timestampHtml = '';
+        if (col === 'done' && item.updated_at) {
+            const d = new Date(item.updated_at + 'Z');
+            const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            timestampHtml = `<span class="card-timestamp">${timeStr}</span>`;
+        }
+
         div.innerHTML = `
             <div class="card-title">${this.escapeHtml(item.title)}</div>
             ${statusHtml}
             <div class="card-bottom">
                 <div class="card-actions">${actionsHtml}</div>
+                ${timestampHtml}
                 ${logCountHtml}
             </div>
         `;
         return div;
+    },
+
+    _getDoneDateKey(item) {
+        if (!item.updated_at) return 'Unknown';
+        const d = new Date(item.updated_at + 'Z');
+        return d.toISOString().split('T')[0]; // YYYY-MM-DD
+    },
+
+    _formatDateLabel(dateStr) {
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+        if (dateStr === todayStr) return 'Today';
+        if (dateStr === yesterdayStr) return 'Yesterday';
+        if (dateStr === 'Unknown') return 'Unknown date';
+        const d = new Date(dateStr + 'T00:00:00');
+        return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    },
+
+    _isTodayGroup(dateStr) {
+        const today = new Date().toISOString().split('T')[0];
+        return dateStr === today;
+    },
+
+    renderDoneColumn() {
+        const col = document.querySelector('.column-cards[data-column="done"]');
+        if (!col) return;
+
+        // Collect done items
+        const doneItems = Object.values(this.items).filter(i => i.column_name === 'done');
+
+        // Group by date
+        const groups = {};
+        for (const item of doneItems) {
+            const key = this._getDoneDateKey(item);
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(item);
+        }
+
+        // Sort date keys descending (most recent first)
+        const sortedDates = Object.keys(groups).sort((a, b) => {
+            if (a === 'Unknown') return 1;
+            if (b === 'Unknown') return -1;
+            return b.localeCompare(a);
+        });
+
+        // Clear column
+        col.innerHTML = '';
+
+        for (const dateStr of sortedDates) {
+            const items = groups[dateStr];
+            const isToday = this._isTodayGroup(dateStr);
+            const isCollapsed = dateStr in this._collapsedDoneGroups
+                ? this._collapsedDoneGroups[dateStr]
+                : !isToday; // default: today expanded, others collapsed
+
+            // Create group container
+            const group = document.createElement('div');
+            group.className = 'done-day-group' + (isCollapsed ? ' collapsed' : '');
+            group.dataset.date = dateStr;
+
+            // Group header
+            const header = document.createElement('div');
+            header.className = 'done-day-header';
+            header.innerHTML = `
+                <div class="done-day-toggle">${isCollapsed ? '▸' : '▾'}</div>
+                <span class="done-day-label">${this._formatDateLabel(dateStr)}</span>
+                <span class="done-day-count">${items.length}</span>
+                <button class="btn btn-xs done-day-archive" onclick="event.stopPropagation(); Board.archiveByDate('${dateStr}')" title="Archive all from ${this._formatDateLabel(dateStr)}">📦</button>
+            `;
+            header.addEventListener('click', () => {
+                this._collapsedDoneGroups[dateStr] = !isCollapsed;
+                this.renderDoneColumn();
+            });
+
+            group.appendChild(header);
+
+            // Cards container
+            if (!isCollapsed) {
+                const cardsContainer = document.createElement('div');
+                cardsContainer.className = 'done-day-cards';
+                // Sort items within group by updated_at descending
+                items.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+                for (const item of items) {
+                    cardsContainer.appendChild(this.renderCard(item));
+                }
+                group.appendChild(cardsContainer);
+            }
+
+            col.appendChild(group);
+        }
     },
 
     escapeHtml(text) {
@@ -337,6 +461,18 @@ const Board = {
         const oldCard = document.querySelector(`.card[data-id="${item.id}"]`);
         if (oldCard) oldCard.remove();
 
+        // Done column uses grouped rendering
+        if (item.column_name === 'done') {
+            this.renderDoneColumn();
+            this.updateCounts();
+            return;
+        }
+
+        // If item was previously in done, re-render done column to remove it
+        if (prev && prev.column_name === 'done' && item.column_name !== 'done') {
+            this.renderDoneColumn();
+        }
+
         // Add new card to correct column
         const targetCol = document.querySelector(`.column-cards[data-column="${item.column_name}"]`);
         if (targetCol) {
@@ -354,16 +490,24 @@ const Board = {
     },
 
     removeCard(itemId) {
+        const wasInDone = this.items[itemId] && this.items[itemId].column_name === 'done';
         delete this.items[itemId];
         const card = document.querySelector(`.card[data-id="${itemId}"]`);
         if (card) card.remove();
+        if (wasInDone) this.renderDoneColumn();
         this.updateCounts();
     },
 
     updateCounts() {
         document.querySelectorAll('.column').forEach(col => {
             const colName = col.dataset.column;
-            const count = col.querySelectorAll('.card').length;
+            let count;
+            if (colName === 'done') {
+                // Count from items cache since cards may be hidden in collapsed groups
+                count = Object.values(this.items).filter(i => i.column_name === 'done').length;
+            } else {
+                count = col.querySelectorAll('.card').length;
+            }
             const badge = col.querySelector('.column-count');
             if (badge) badge.textContent = count;
         });
