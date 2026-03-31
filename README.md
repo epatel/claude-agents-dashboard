@@ -439,6 +439,8 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
 - `TESTING.md` — Detailed testing guide with test inventory (139 unit/integration tests + E2E tests) and writing guidelines
 
+## Second test
+
 ## License
 
 [MIT](LICENSE)
