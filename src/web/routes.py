@@ -272,6 +272,42 @@ async def delete_item(request: Request, item_id: str):
     return result
 
 
+class ArchiveByDateRequest(BaseModel):
+    date: str  # YYYY-MM-DD
+
+
+@router.post("/api/items/archive-by-date")
+async def archive_items_by_date(request: Request, body: ArchiveByDateRequest):
+    """Archive all done items from a specific date."""
+    db = request.app.state.db
+    async with db.connect() as conn:
+        # Find all done items updated on the given date
+        cursor = await conn.execute(
+            "SELECT id FROM items WHERE column_name = 'done' AND DATE(updated_at) = ?",
+            (body.date,),
+        )
+        rows = await cursor.fetchall()
+        item_ids = [row[0] for row in rows]
+
+        if not item_ids:
+            return {"archived": 0}
+
+        # Move all to archive
+        placeholders = ",".join("?" for _ in item_ids)
+        await conn.execute(
+            f"UPDATE items SET column_name = 'archive', updated_at = datetime('now') WHERE id IN ({placeholders})",
+            item_ids,
+        )
+        await conn.commit()
+
+    # Broadcast removal for each item
+    for item_id in item_ids:
+        await request.app.state.ws_manager.broadcast("item_deleted", {"id": item_id})
+
+    _invalidate_stats_cache()
+    return {"archived": len(item_ids)}
+
+
 @router.post("/api/items/{item_id}/move")
 async def move_item(request: Request, item_id: str, body: ItemMove):
     db = request.app.state.db
