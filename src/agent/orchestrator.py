@@ -52,6 +52,10 @@ class AgentOrchestrator:
         """Start an agent for an item. Creates worktree, launches agent."""
         return await self.workflow_service.start_agent(item_id)
 
+    async def start_copy_agent(self, item_id: str) -> Dict[str, Any]:
+        """Copy a todo item and start the copy, leaving the original in todo."""
+        return await self.workflow_service.start_copy_agent(item_id)
+
     async def cancel_agent(self, item_id: str) -> Dict[str, Any]:
         """Cancel a running agent."""
         return await self.workflow_service.cancel_agent(item_id)

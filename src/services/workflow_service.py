@@ -90,6 +90,22 @@ class WorkflowService:
 
         return item
 
+    async def start_copy_agent(self, item_id: str) -> Dict[str, Any]:
+        """Copy a todo item and start the copy, leaving the original in todo."""
+        # Verify source item exists and is in todo
+        source_item = await self.db.get_item(item_id)
+        if not source_item:
+            raise ValueError(f"Item {item_id} not found")
+        if source_item.get("column_name") != "todo":
+            raise ValueError("Can only start-copy items in the todo column")
+
+        # Copy the item (including attachments)
+        new_item = await self.db.copy_item(item_id)
+        await self.notifications.broadcast_item_created(new_item)
+
+        # Start the copy
+        return await self.start_agent(new_item["id"])
+
     async def cancel_agent(self, item_id: str) -> Dict[str, Any]:
         """Cancel a running agent."""
         await self.sessions.cleanup_session(item_id)

@@ -146,6 +146,14 @@ const Board = {
         }
     },
 
+    async startCopyAgent(itemId) {
+        try {
+            await Api.startCopyAgent(itemId);
+        } catch (err) {
+            console.error('Failed to start copy of agent:', err);
+        }
+    },
+
     async pauseAgent(itemId) {
         try {
             await Api.pauseAgent(itemId);
@@ -306,7 +314,7 @@ const Board = {
         const col = item.column_name;
         const deleteBtn = `<button class="btn btn-xs btn-delete" onclick="event.stopPropagation(); Board.deleteItem('${item.id}')" title="Delete">✕</button>`;
         if (col === 'todo') {
-            actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startAgent('${item.id}')">▶</button>${deleteBtn}`;
+            actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startAgent('${item.id}')" title="Start Agent">▶</button><button class="btn btn-xs" onclick="event.stopPropagation(); Board.startCopyAgent('${item.id}')" title="Start Copy (keep original in Todo)">▶⧉</button>${deleteBtn}`;
         } else if (col === 'doing' && item.status === 'failed') {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.retryAgent('${item.id}')" title="Retry">↻ Retry</button>
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>`;
