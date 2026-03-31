@@ -416,7 +416,7 @@ const Board = {
             const header = document.createElement('div');
             header.className = 'done-day-header';
             header.innerHTML = `
-                <div class="done-day-toggle">${isCollapsed ? '▸' : '▾'}</div>
+                <svg class="done-day-chevron${isCollapsed ? '' : ' expanded'}" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
                 <span class="done-day-label">${this._formatDateLabel(dateStr)}</span>
                 <span class="done-day-count">${items.length}</span>
                 <button class="btn btn-xs done-day-archive" onclick="event.stopPropagation(); Board.archiveByDate('${dateStr}')" title="Archive all from ${this._formatDateLabel(dateStr)}">📦</button>
