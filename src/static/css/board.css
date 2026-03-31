@@ -239,11 +239,16 @@
     background: var(--bg-hover);
 }
 
-.done-day-toggle {
-    font-size: 10px;
-    width: 12px;
+.done-day-chevron {
+    width: 14px;
+    height: 14px;
     flex-shrink: 0;
     color: var(--text-muted);
+    transition: transform 0.15s ease;
+}
+
+.done-day-chevron.expanded {
+    transform: rotate(90deg);
 }
 
 .done-day-label {
