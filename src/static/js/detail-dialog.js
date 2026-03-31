@@ -54,7 +54,48 @@ const DetailDialog = {
             content += `<div class="detail-model-info"><strong>Merge commit:</strong> <code>${shortSha}</code></div>`;
         }
 
+        // Add git metadata (branch, base commit) if available
+        if (item.branch_name) {
+            content += `<div class="detail-model-info detail-git-info">`;
+            content += `<div class="detail-info-row"><strong>Branch:</strong> <code class="sha-text">${item.branch_name}</code> <button type="button" class="copy-sha-btn" data-copy="${item.branch_name}" title="Copy branch name">📋</button></div>`;
+            if (item.base_commit) {
+                const shortSha = item.base_commit.substring(0, 7);
+                content += `<div class="detail-info-row"><strong>Base commit:</strong> <code class="sha-text" title="${item.base_commit}">${shortSha}</code> <button type="button" class="copy-sha-btn" data-copy="${item.base_commit}" title="Copy full SHA">📋</button></div>`;
+            }
+            if (item.base_branch) {
+                content += `<div class="detail-info-row"><strong>Base branch:</strong> <code class="sha-text">${item.base_branch}</code> <button type="button" class="copy-sha-btn" data-copy="${item.base_branch}" title="Copy base branch">📋</button></div>`;
+            }
+            content += `</div>`;
+        }
+
         body.innerHTML = content;
+
+        // Wire up copy buttons
+        body.querySelectorAll('.copy-sha-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const text = btn.dataset.copy;
+                try {
+                    await navigator.clipboard.writeText(text);
+                    const orig = btn.textContent;
+                    btn.textContent = '✅';
+                    setTimeout(() => { btn.textContent = orig; }, 1500);
+                } catch {
+                    // Fallback for non-HTTPS contexts
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    const orig = btn.textContent;
+                    btn.textContent = '✅';
+                    setTimeout(() => { btn.textContent = orig; }, 1500);
+                }
+            });
+        });
 
         // Header actions based on item state
         const editBtn = document.getElementById('detail-edit-btn');
