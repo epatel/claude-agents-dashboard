@@ -36,7 +36,7 @@ graph TB
         UI["board.html + base.html + Jinja2"]
         WS["WebSocket Client"]
         Modules["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js"]
-        DlgModules["dialogs.js (coordinator)<br/>dialog-core | dialog-utils<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog<br/>request-changes-dialog | attachments | annotation-canvas"]
+        DlgModules["dialogs.js (coordinator)<br/>dialog-core | dialog-utils<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog | search-dialog<br/>request-changes-dialog | attachments | annotation-canvas"]
     end
 
     subgraph Backend["Backend (Python / FastAPI)"]
@@ -165,8 +165,8 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,464 lines):
-  - `WorkflowService` (778 lines): Coordinates agent workflows, state transitions, callback creation, and merge conflict auto-resolution
+- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,526 lines):
+  - `WorkflowService` (840 lines): Coordinates agent workflows, state transitions, callback creation, merge conflict auto-resolution, and dirty repo overlap detection
   - `DatabaseService` (285 lines): All database operations (items, logs, config, attachments, token usage)
   - `NotificationService` (95 lines): WebSocket broadcasting and tool use formatting
   - `GitService` (94 lines): Worktree management, merge operations, and cleanup
@@ -244,6 +244,14 @@ sequenceDiagram
 
 - **Start copy**: Todo items have a "Start Copy" action that creates a duplicate of the item and starts an agent on the copy, while keeping the original item in the Todo column. Useful for running variations of a task without losing the original.
 
+- **Merge commit tracking**: When an item is approved and merged, the merge commit SHA is stored in the item's `merge_commit` column (migration 008). This allows tracing which commit in the base branch corresponds to a completed item.
+
+- **Dirty repo overlap detection**: Before merging, `WorkflowService.approve_item()` checks if the base repo has uncommitted changes that overlap with the agent's modified files. If overlap is found, the merge is blocked and the item is moved to the "questions" column with an explanation, prompting the user to commit or stash their changes first.
+
+- **Archive cleanup**: When items are moved to the "archive" column, their worktree and session are cleaned up automatically via `WorkflowService`. The questions column also has an archive button that sets `done_at` on archive.
+
+- **Search**: `search-dialog.js` provides a spotlight-style search dialog for finding items across all columns. The `/api/search/worklog` endpoint enables searching work log entries by keyword.
+
 - **Keep in sync**: JavaScript-rendered cards and the server-rendered Jinja2 template needs to be in sync.
 
 ### Frontend
@@ -252,7 +260,7 @@ Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base
 
 **Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates), `file-browser.js` (project file browser with tree, tabs, syntax highlighting, markdown/mermaid rendering).
 
-**Dialog modules** (modular architecture): `dialogs.js` is a thin coordinator that delegates to 11 specialized modules:
+**Dialog modules** (modular architecture): `dialogs.js` is a thin coordinator that delegates to 12 specialized modules:
 - `dialog-core.js` — open/close/confirm utilities
 - `dialog-utils.js` — markdown rendering, model display names
 - `item-dialog.js` — new/edit item forms with attachments
@@ -261,6 +269,7 @@ Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base
 - `config-dialog.js` — agent configuration (system prompt, MCP, plugins)
 - `clarification-dialog.js` — clarification prompt/response UI
 - `notification-dialog.js` — system notification display and management
+- `search-dialog.js` — spotlight-style search across items and work logs
 - `request-changes-dialog.js` — request changes form
 - `attachments.js` — attachment viewing and deletion
 - `annotation-canvas.js` — canvas annotation integration bridge
@@ -288,6 +297,7 @@ erDiagram
         text base_branch
         text base_commit
         text done_at
+        text merge_commit
     }
 
     agent_config {
@@ -308,7 +318,7 @@ erDiagram
     }
 ```
 
-SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 7 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items, `006_add_allowed_builtin_tools.py` adds configurable built-in tools to agent config, `007_add_done_at.py` adds done_at timestamp to items). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit + done_at), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 8 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items, `006_add_allowed_builtin_tools.py` adds configurable built-in tools to agent config, `007_add_done_at.py` adds done_at timestamp to items, `008_add_merge_commit.py` adds merge commit SHA to items). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit + done_at + merge_commit), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
 
 Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested under items) since attachments have their own integer IDs.
 
@@ -323,6 +333,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
   - `005_add_base_commit.py` — stable diff pinning
   - `006_add_allowed_builtin_tools.py` — configurable built-in tools
   - `007_add_done_at.py` — done timestamp tracking with backfill
+  - `008_add_merge_commit.py` — merge commit SHA tracking
 - **Schema tracking**: `schema_migrations` table tracks which migrations have been applied
 - **CLI management**: `python -m src.manage` for migration commands
 - **Auto-migration**: Database automatically runs pending migrations on startup
@@ -399,6 +410,7 @@ src/
 |       +-- 005_add_base_commit.py  # Base commit SHA for stable diffs
 |       +-- 006_add_allowed_builtin_tools.py # Configurable built-in tools
 |       +-- 007_add_done_at.py         # Done timestamp tracking
+|       +-- 008_add_merge_commit.py  # Merge commit SHA tracking
 +-- static/
 |   +-- js/
 |   |   +-- app.js                   # WebSocket + init
@@ -412,6 +424,7 @@ src/
 |   |   +-- config-dialog.js         # Agent config
 |   |   +-- clarification-dialog.js  # Clarification UI
 |   |   +-- notification-dialog.js   # System notifications
+|   |   +-- search-dialog.js        # Spotlight-style search
 |   |   +-- request-changes-dialog.js # Request changes form
 |   |   +-- attachments.js           # Attachment management
 |   |   +-- annotation-canvas.js     # Canvas bridge
