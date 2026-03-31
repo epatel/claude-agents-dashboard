@@ -439,18 +439,6 @@ const Board = {
                     cardsContainer.appendChild(this.renderCard(item));
                 }
                 group.appendChild(cardsContainer);
-            } else {
-                // Compact title list when collapsed
-                const titleList = document.createElement('div');
-                titleList.className = 'done-day-titles';
-                for (const item of items) {
-                    const titleRow = document.createElement('div');
-                    titleRow.className = 'done-day-title-row';
-                    titleRow.textContent = item.title;
-                    titleRow.onclick = (e) => { e.stopPropagation(); Dialogs.showDetail(item.id); };
-                    titleList.appendChild(titleRow);
-                }
-                group.appendChild(titleList);
             }
 
             col.appendChild(group);

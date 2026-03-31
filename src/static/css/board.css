@@ -283,25 +283,6 @@
     padding-left: 0;
 }
 
-.done-day-titles {
-    padding: 2px 0 4px 20px;
-}
-
-.done-day-title-row {
-    font-size: 12px;
-    color: var(--text-secondary);
-    padding: 2px 6px;
-    cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    border-radius: 3px;
-}
-
-.done-day-title-row:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-}
 
 .card-timestamp,
 .card-done-date {
