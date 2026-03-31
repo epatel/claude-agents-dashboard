@@ -1,4 +1,8 @@
-<div class="card" data-id="{{ item.id }}" draggable="true"
+<div class="card" data-id="{{ item.id }}" data-column="{{ item.column_name }}"
+     data-status="{{ item.status or '' }}"
+     data-done-at="{{ item.done_at or '' }}"
+     data-updated-at="{{ item.updated_at or '' }}"
+     draggable="true"
      ondragstart="Board.handleDragStart(event)"
      onclick="Dialogs.showDetail('{{ item.id }}')">
     <div class="card-title">{{ item.title }}</div>

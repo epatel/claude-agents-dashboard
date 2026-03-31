@@ -17,11 +17,16 @@ const App = {
     init() {
         Theme.init();
 
-        // Initialize board with server-rendered items
+        // Initialize board with server-rendered items (include data attrs so
+        // renderDoneColumn() can group done cards by date instead of clearing them)
         const cards = document.querySelectorAll('.card');
         const items = [];
         cards.forEach(card => {
-            items.push({ id: card.dataset.id });
+            const item = { id: card.dataset.id, column_name: card.dataset.column };
+            if (card.dataset.status) item.status = card.dataset.status;
+            if (card.dataset.doneAt) item.done_at = card.dataset.doneAt;
+            if (card.dataset.updatedAt) item.updated_at = card.dataset.updatedAt;
+            items.push(item);
         });
         Board.init(items);
 
