@@ -247,9 +247,12 @@ class WorkflowService:
             for line in status_output.strip().splitlines():
                 if not line or line.startswith("??"):
                     continue  # skip untracked files
-                # porcelain format: XY filename (or XY old -> new for renames)
-                filepath = line[3:].split(" -> ")[-1].strip()
-                dirty_files.add(filepath)
+                # porcelain format: XY<space>filename (XY = 2 status chars)
+                # Use --porcelain -z would be cleaner, but just find first non-space after pos 1
+                rest = line[2:]  # skip XY status chars
+                filepath = rest.lstrip(" ").split(" -> ")[-1].strip()
+                if filepath:
+                    dirty_files.add(filepath)
 
             if dirty_files and worktree_path:
                 # Get files changed by the agent's branch (committed + uncommitted)
@@ -269,8 +272,8 @@ class WorkflowService:
                     # Staged but not committed
                     staged = await run_git(worktree_path, "diff", "--name-only", "--cached")
                     agent_files.update(f.strip() for f in staged.strip().splitlines() if f.strip())
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to get worktree uncommitted files: {e}")
 
                 overlap = dirty_files & agent_files
                 if overlap:
