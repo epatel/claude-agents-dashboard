@@ -1,7 +1,7 @@
 """Add done_at column to items table.
 
 Tracks when an item was moved to the 'done' column.
-Backfills existing done items with 2026-03-28.
+Backfills existing done items with their updated_at timestamp.
 """
 
 import sys
@@ -25,9 +25,9 @@ class AddDoneAtMigration(Migration):
             ALTER TABLE items
             ADD COLUMN done_at TEXT DEFAULT NULL
         """)
-        # Backfill existing done items
+        # Backfill existing done items with their updated_at timestamp
         await db.execute("""
-            UPDATE items SET done_at = '2026-03-28T00:00:00' WHERE column_name = 'done' AND done_at IS NULL
+            UPDATE items SET done_at = updated_at WHERE column_name = 'done' AND done_at IS NULL
         """)
 
     async def down(self, db: aiosqlite.Connection) -> None:
