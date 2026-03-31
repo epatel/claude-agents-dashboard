@@ -252,14 +252,25 @@ class WorkflowService:
                 dirty_files.add(filepath)
 
             if dirty_files and worktree_path:
-                # Get files changed by the agent's branch
+                # Get files changed by the agent's branch (committed + uncommitted)
                 base = base_branch or "main"
+                agent_files = set()
                 try:
-                    agent_diff = await run_git(
+                    # Committed changes vs base
+                    committed = await run_git(
                         worktree_path, "diff", "--name-only", base, "HEAD")
-                    agent_files = set(f.strip() for f in agent_diff.strip().splitlines() if f.strip())
+                    agent_files.update(f.strip() for f in committed.strip().splitlines() if f.strip())
                 except Exception:
-                    agent_files = set()
+                    pass
+                try:
+                    # Uncommitted changes in the worktree
+                    uncommitted = await run_git(worktree_path, "diff", "--name-only")
+                    agent_files.update(f.strip() for f in uncommitted.strip().splitlines() if f.strip())
+                    # Staged but not committed
+                    staged = await run_git(worktree_path, "diff", "--name-only", "--cached")
+                    agent_files.update(f.strip() for f in staged.strip().splitlines() if f.strip())
+                except Exception:
+                    pass
 
                 overlap = dirty_files & agent_files
                 if overlap:
