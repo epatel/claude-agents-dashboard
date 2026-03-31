@@ -346,6 +346,8 @@ const Board = {
             actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.approveItem('${item.id}')" title="Approve">✓ Approve</button>
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')" title="Request changes">↩</button>
                 <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelReview('${item.id}')" title="Cancel review">✕</button>`;
+        } else if (col === 'questions') {
+            actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;
         } else if (col === 'done') {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.rerunItem('${item.id}')" title="Re-run">↻</button>`
                 + `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;

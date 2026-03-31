@@ -365,12 +365,12 @@ async def move_item(request: Request, item_id: str, body: ItemMove):
             "UPDATE items SET position = position + 1 WHERE column_name = ? AND position >= ? AND id != ?",
             (body.column_name, body.position, item_id),
         )
-        # Set done_at when moving to done, clear when leaving
+        # Set done_at when moving to done/archive (if not already set), clear when leaving
         from datetime import datetime, timezone
         done_at_clause = ""
         params = [body.column_name, body.position]
-        if body.column_name == "done":
-            done_at_clause = ", done_at = ?"
+        if body.column_name in ("done", "archive"):
+            done_at_clause = ", done_at = COALESCE(done_at, ?)"
             params.append(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"))
         else:
             done_at_clause = ", done_at = NULL"
