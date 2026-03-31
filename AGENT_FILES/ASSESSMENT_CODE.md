@@ -1,14 +1,14 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-03-28
+**Date**: 2026-03-31
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 11 — Maintenance reassessment with updated line counts across all modules (services, agents, routes, frontend), corrected codebase statistics, and notification-dialog.js addition.
+**Revision**: 12 — Maintenance reassessment with migration 007 (done_at timestamp), Done column day grouping with collapsible sections and bulk archive, Start Copy for Todo items, and updated line counts across all modules.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, a **file browser** has been added, along with **allowed commands** with runtime approval, **bash YOLO mode**, **base commit pinning** for stable diffs, **board introspection** (view_board MCP tool), **tool access requests** (request_tool_access MCP tool), and **tool filtering** (PreToolUse hook for optional built-in tools). The test suite includes **139 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, **Done column day grouping** with collapsible sections, compact title lists, and bulk archive has been added, along with **Start Copy** for Todo items, **done_at timestamp tracking** (migration 007), and various UI refinements (SVG chevrons, expanded view fixes). The test suite includes **139 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -112,8 +112,8 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 762 | A | Core workflow coordination with callback factory pattern and merge conflict auto-resolution |
-| `services/database_service.py` | 231 | A | All DB operations extracted; parameterized queries throughout |
+| `services/workflow_service.py` | 778 | A | Core workflow coordination with callback factory pattern and merge conflict auto-resolution |
+| `services/database_service.py` | 285 | A | All DB operations extracted; parameterized queries throughout |
 | `services/notification_service.py` | 95 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 94 | A | Git worktree and merge operations with proper error handling |
 | `services/session_service.py` | 198 | A | Session lifecycle, commit messages, plugin parsing |
@@ -128,10 +128,10 @@ graph TB
 | `models.py` | 101 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
-| `web/routes.py` | 657 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
+| `web/routes.py` | 712 | A- | Comprehensive REST API; stats caching with TTL; delete delegates to orchestrator |
 | `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
-| `agent/orchestrator.py` | 118 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
+| `agent/orchestrator.py` | 122 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
 | `agent/session.py` | 445 | A- | Clean SDK wrapper; good token extraction with fallbacks |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
 | `agent/todo.py` | 94 | A | Clean MCP tool definition |
@@ -151,18 +151,19 @@ graph TB
 | `migrations/versions/004_add_bash_yolo.py` | 26 | A | Adds `bash_yolo` flag to agent_config |
 | `migrations/versions/005_add_base_commit.py` | 31 | A | Adds `base_commit` SHA to items table |
 | `migrations/versions/006_add_allowed_builtin_tools.py` | 30 | A | Adds `allowed_builtin_tools` JSON array to agent_config |
+| `migrations/versions/007_add_done_at.py` | 34 | A | Adds `done_at` timestamp to items, backfills existing done items |
 
 ### Frontend JavaScript
 
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
-| `app.js` | 430 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
-| `board.js` | 380 | B+ | Drag-drop works well; card rendering could use templating |
+| `app.js` | 436 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
+| `board.js` | 534 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
 | `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 11 specialized modules |
 | `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
 | `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
 | `item-dialog.js` | 190 | A- | New/edit item forms with attachment handling |
-| `detail-dialog.js` | 188 | A- | Item detail view with tabbed interface |
+| `detail-dialog.js` | 201 | A- | Item detail view with tabbed interface |
 | `review-dialog.js` | 123 | A | Review dialog with diff viewer and work log |
 | `config-dialog.js` | 189 | A | Agent configuration (system prompt, MCP, plugins) |
 | `clarification-dialog.js` | 165 | A | Clean clarification prompt/response UI |
@@ -172,7 +173,7 @@ graph TB
 | `annotation-canvas.js` | 52 | A | Canvas annotation integration bridge |
 | `annotate.js` | 936 | A- | Self-contained canvas component |
 | `file-browser.js` | 630 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering |
-| `api.js` | 85 | A | Clean HTTP helpers |
+| `api.js` | 93 | A | Clean HTTP helpers |
 | `diff.js` | 62 | A- | Functional diff viewer |
 | `theme.js` | 24 | A | Simple, correct theme toggle |
 | `stats.js` | 184 | A- | Good auto-refresh and WebSocket update pattern |
@@ -182,12 +183,12 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `style.css` | 909 | A- | Main styles with CSS variables |
-| `board.css` | 242 | A | Board-specific layout and card styles |
+| `board.css` | 316 | A | Board layout, card styles, Done day grouping with collapsible sections |
 | `dialog.css` | 74 | A | Dialog component styles |
 | `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 66 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~1,848 lines across 5 modules.
+**Note**: CSS total is ~1,922 lines across 5 modules.
 
 ---
 
@@ -305,7 +306,7 @@ stateDiagram-v2
 | 10 | No WebSocket rate limiting | ✅ Per-IP rate limiting with concurrent connection limits and windowed attempt tracking |
 | 11 | No request timeout for blocking operations | ✅ `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT` on approve route |
 | 12 | Migration class discovery uses string comparison | ✅ Justified — `issubclass` fails with dynamic module loading |
-| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (762), DatabaseService (231), NotificationService (95), GitService (94), SessionService (198). Orchestrator now 118-line facade |
+| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (778), DatabaseService (285), NotificationService (95), GitService (94), SessionService (198). Orchestrator now 122-line facade |
 | 14 | `dialogs.js` too large (801 lines) | ✅ Split into 11 specialized modules with coordinator pattern. Largest module is `item-dialog.js` at 190 lines |
 
 ### Remaining Issues
@@ -393,6 +394,9 @@ graph LR
 18. **Merge conflict auto-resolution**: On conflict, captures agent's diff, resets worktree to latest base, and restarts agent with previous diff as context — fully automated recovery
 19. **File browser with defense in depth**: Path validation (null bytes, control chars, traversal, symlink escape), secret file hiding via configurable patterns, binary detection, configurable size limits, excluded dirs/files — all constants centralized in `config.py`
 20. **Lazy tree loading**: File browser loads directory children on-demand with configurable depth limit, reducing initial payload for large projects
+21. **Done column day grouping**: Completed items organized by date with collapsible sections, compact title lists, and per-day bulk archive — keeps the Done column manageable
+22. **Done timestamp tracking**: `done_at` column with migration backfill ensures accurate completion tracking without relying on `updated_at` which changes on any modification
+23. **Start Copy**: Creates a duplicate item and starts an agent on the copy, preserving the original Todo item for reuse — useful for iterative task refinement
 
 ---
 
@@ -400,12 +404,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 41 | ~4,862 |
-| JavaScript frontend | 20 | ~4,003 |
-| CSS styles | 5 | ~1,848 |
+| Python backend (src/) | 42 | ~4,900 |
+| JavaScript frontend | 20 | ~4,184 |
+| CSS styles | 5 | ~1,922 |
 | HTML templates | 3 | ~530 |
 | Tests | 11 | ~2,892 |
-| **Grand total** | **80** | **~14,135** |
+| **Grand total** | **81** | **~14,428** |
 
 ---
 

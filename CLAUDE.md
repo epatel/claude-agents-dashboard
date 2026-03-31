@@ -165,9 +165,9 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (118 lines) that delegates to 5 focused services (total ~1,394 lines):
-  - `WorkflowService` (762 lines): Coordinates agent workflows, state transitions, callback creation, and merge conflict auto-resolution
-  - `DatabaseService` (231 lines): All database operations (items, logs, config, attachments, token usage)
+- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,464 lines):
+  - `WorkflowService` (778 lines): Coordinates agent workflows, state transitions, callback creation, and merge conflict auto-resolution
+  - `DatabaseService` (285 lines): All database operations (items, logs, config, attachments, token usage)
   - `NotificationService` (95 lines): WebSocket broadcasting and tool use formatting
   - `GitService` (94 lines): Worktree management, merge operations, and cleanup
   - `SessionService` (198 lines): Agent session lifecycle, commit messages, plugin parsing
@@ -238,6 +238,12 @@ sequenceDiagram
 
 - **Commit message storage**: `SessionService._commit_messages` dict stores commit messages set by agents via MCP tool. Retrieved via `get_commit_message()` and persisted to DB on agent completion by `WorkflowService._create_on_complete_callback()`.
 
+- **Done timestamp tracking**: Items record when they were moved to the "done" column via the `done_at` column (migration 007). `WorkflowService.approve_item()` sets `done_at` to the current UTC timestamp on approval. Existing done items were backfilled with their `updated_at` timestamp during migration.
+
+- **Done column day grouping**: The Done column groups completed items by day (e.g., "Today", "Yesterday", "March 28, 2026") with collapsible sections using SVG chevron toggles. Each day group shows a compact title list when collapsed and full cards when expanded. Includes a "Bulk Archive" button per day group to archive all items from that day at once.
+
+- **Start copy**: Todo items have a "Start Copy" action that creates a duplicate of the item and starts an agent on the copy, while keeping the original item in the Todo column. Useful for running variations of a task without losing the original.
+
 ### Frontend
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base template + board template + card partial); JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
@@ -279,6 +285,7 @@ erDiagram
         text model
         text base_branch
         text base_commit
+        text done_at
     }
 
     agent_config {
@@ -299,14 +306,21 @@ erDiagram
     }
 ```
 
-SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 6 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items, `006_add_allowed_builtin_tools.py` adds configurable built-in tools to agent config). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 7 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items, `006_add_allowed_builtin_tools.py` adds configurable built-in tools to agent config, `007_add_done_at.py` adds done_at timestamp to items). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit + done_at), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
 
 Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested under items) since attachments have their own integer IDs.
 
 #### Migration System
 
 - **Migration runner**: `src/migrations/runner.py` manages applying/rolling back migrations
-- **Migration files**: `src/migrations/versions/XXX_description.py` contain versioned schema changes (`001_initial_schema.py` for base schema, `002_add_base_branch.py` for base branch tracking, `003_add_allowed_commands.py` for command allowlist, `004_add_bash_yolo.py` for unrestricted bash mode, `005_add_base_commit.py` for stable diff pinning, `006_add_allowed_builtin_tools.py` for configurable built-in tools)
+- **Migration files**: `src/migrations/versions/XXX_description.py` contain versioned schema changes:
+  - `001_initial_schema.py` — base schema (8 tables)
+  - `002_add_base_branch.py` — base branch tracking
+  - `003_add_allowed_commands.py` — command allowlist
+  - `004_add_bash_yolo.py` — unrestricted bash mode
+  - `005_add_base_commit.py` — stable diff pinning
+  - `006_add_allowed_builtin_tools.py` — configurable built-in tools
+  - `007_add_done_at.py` — done timestamp tracking with backfill
 - **Schema tracking**: `schema_migrations` table tracks which migrations have been applied
 - **CLI management**: `python -m src.manage` for migration commands
 - **Auto-migration**: Database automatically runs pending migrations on startup
@@ -382,6 +396,7 @@ src/
 |       +-- 004_add_bash_yolo.py    # Bash YOLO mode flag
 |       +-- 005_add_base_commit.py  # Base commit SHA for stable diffs
 |       +-- 006_add_allowed_builtin_tools.py # Configurable built-in tools
+|       +-- 007_add_done_at.py         # Done timestamp tracking
 +-- static/
 |   +-- js/
 |   |   +-- app.js                   # WebSocket + init

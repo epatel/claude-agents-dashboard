@@ -50,7 +50,7 @@ graph LR
     F -->|User Responds| C
 ```
 
-1. **Create items** on the kanban board (Todo → Doing → Clarify → Review → Done → Archive)
+1. **Create items** on the kanban board (Todo → Doing → Questions → Review → Done → Archive)
 2. **Start an agent** on a Todo item — it gets its own git worktree and runs autonomously
 3. **Watch progress** in real-time via the work log (thinking, tool use, messages)
 4. **Review changes** — browse the diff, approve to merge into main, or request changes
@@ -73,6 +73,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 
 - **Kanban board** with drag-and-drop (smooth card spacing), create/edit/delete items
 - **Save & Start** — create an item and immediately launch an agent in one click
+- **Start Copy** — start a copy of a Todo item while keeping the original, useful for running task variations
 - **Agent orchestration** via Claude Agent SDK — multiple agents can run simultaneously
 - **Git worktrees** — each agent works in isolation, branched off main
 - **Live work log** — streaming agent output via WebSocket (messages, thinking, tool use)
@@ -82,6 +83,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Custom commit messages** — agents set meaningful commit messages via MCP tool, used when merging
 - **Board introspection** — agents can view the current board state (all items by column) via the `view_board` MCP tool to understand project context
 - **Tool access requests** — agents can request permission to use optional built-in tools (WebSearch, WebFetch) at runtime via the `request_tool_access` MCP tool with user approval prompt
+- **Done column day grouping** — completed items grouped by day (Today, Yesterday, etc.) with collapsible sections, compact title lists, and bulk archive per day group
 - **Stats dashboard** — real-time header bar showing total cost, token usage, active agents, and items completed today; auto-refreshes every 10 seconds and on WebSocket events
 - **Cost & token tracking** — agent completion logs USD cost and token consumption (input/output/total) per task, persisted to a dedicated `token_usage` table
 - **System notifications** — bell icon in header with badge counter; surfaces MCP server connection failures, agent errors, and warnings; dismiss individually or clear all
@@ -168,8 +170,8 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~4,862 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (11 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~4,003 lines JS + ~1,848 lines CSS
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~4,900 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (11 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~4,184 lines JS + ~1,922 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 6 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -211,7 +213,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations adding columns incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–007) adding columns incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -237,6 +239,7 @@ erDiagram
         text commit_message
         text base_branch
         text base_commit
+        text done_at
         text created_at
         text updated_at
     }
