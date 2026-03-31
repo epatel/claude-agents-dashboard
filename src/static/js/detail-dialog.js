@@ -51,7 +51,7 @@ const DetailDialog = {
         // Show merge commit SHA for done/archive items
         if ((item.column_name === 'done' || item.column_name === 'archive') && item.merge_commit) {
             const shortSha = item.merge_commit.slice(0, 8);
-            content += `<div class="detail-model-info detail-git-info"><div class="detail-info-row"><strong>Merge commit:</strong> <code class="sha-text" title="${item.merge_commit}">${shortSha}</code> <button type="button" class="copy-sha-btn" data-copy="${item.merge_commit}" title="Copy full SHA">📋</button></div></div>`;
+            content += `<div class="detail-model-info detail-git-info"><div class="detail-info-row"><strong>Merge commit:</strong> <code class="sha-text" title="${item.merge_commit}">${shortSha}</code> <button type="button" class="copy-sha-btn" data-copy="${item.merge_commit}" title="Copy full SHA"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></div>`;
         }
 
         body.innerHTML = content;
@@ -63,9 +63,9 @@ const DetailDialog = {
                 const text = btn.dataset.copy;
                 try {
                     await navigator.clipboard.writeText(text);
-                    const orig = btn.textContent;
-                    btn.textContent = '✅';
-                    setTimeout(() => { btn.textContent = orig; }, 1500);
+                    const orig = btn.innerHTML;
+                    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                    setTimeout(() => { btn.innerHTML = orig; }, 1500);
                 } catch {
                     // Fallback for non-HTTPS contexts
                     const ta = document.createElement('textarea');
@@ -76,9 +76,9 @@ const DetailDialog = {
                     ta.select();
                     document.execCommand('copy');
                     document.body.removeChild(ta);
-                    const orig = btn.textContent;
-                    btn.textContent = '✅';
-                    setTimeout(() => { btn.textContent = orig; }, 1500);
+                    const orig = btn.innerHTML;
+                    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                    setTimeout(() => { btn.innerHTML = orig; }, 1500);
                 }
             });
         });
