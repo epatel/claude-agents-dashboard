@@ -46,6 +46,8 @@
             {% elif item.column_name == 'done' %}
             <button class="btn btn-xs" onclick="event.stopPropagation(); Board.rerunItem('{{ item.id }}')" title="Re-run">↻</button>
             <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'archive')" title="📦 Archive">📦 Archive</button>
+            {% elif item.column_name == 'archive' %}
+            <button class="btn btn-xs btn-delete" onclick="event.stopPropagation(); Board.deleteItem('{{ item.id }}')" title="Delete">✕</button>
             {% endif %}
         </div>
         {% if item.column_name == 'doing' and item.log_count is defined and item.log_count > 0 %}

@@ -46,6 +46,7 @@
         </div>
 
         <div class="top-bar-actions">
+            <button id="search-btn" class="btn btn-icon" onclick="SearchDialog.open()" title="Search items">🔍</button>
             <button id="files-btn" class="btn btn-secondary btn-sm" onclick="FileBrowser.open()">Files</button>
             <button id="notifications-btn" class="btn btn-icon" title="System notifications">
                 <span class="bell-icon">&#x1F514;</span>
@@ -90,6 +91,7 @@
     <!-- Main dialog coordinator - loads after all modules -->
     <script src="/static/js/dialogs.js"></script>
     <script src="/static/js/file-browser.js"></script>
+    <script src="/static/js/search-dialog.js"></script>
     <script src="/static/js/stats.js"></script>
     <script src="/static/js/board.js"></script>
     <script src="/static/js/app.js"></script>

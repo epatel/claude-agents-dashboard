@@ -90,4 +90,12 @@ const Api = {
     archiveByDate(date) {
         return this.request('POST', '/api/items/archive-by-date', { date });
     },
+
+    deleteByDate(date, columnName) {
+        return this.request('POST', '/api/items/delete-by-date', { date, column_name: columnName });
+    },
+
+    searchWorklog(query) {
+        return this.request('GET', `/api/search/worklog?q=${encodeURIComponent(query)}`);
+    },
 };

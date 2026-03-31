@@ -85,6 +85,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h3 id="detail-title"></h3>
+            <span id="detail-column-badge" class="detail-column-badge"></span>
             <div class="modal-header-actions" id="detail-header-actions">
                 <button class="btn btn-sm" id="detail-delete-btn" title="Delete item" style="color: var(--danger)">&#128465;</button>
                 <button class="btn btn-sm" id="detail-edit-btn">Edit</button>
@@ -382,6 +383,21 @@
                 </div>
             </div>
         </div>
+    </div>
+</dialog>
+<!-- Search Dialog -->
+<dialog id="search-dialog" class="search-dialog">
+    <div class="search-container">
+        <div class="search-input-wrap">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/></svg>
+            <input type="text" id="search-input" placeholder="Search items..." autocomplete="off" spellcheck="false">
+            <kbd class="search-esc" onclick="SearchDialog.close()">esc</kbd>
+        </div>
+        <div class="search-filters" id="search-filters"></div>
+        <div class="search-options">
+            <label><input type="checkbox" id="search-worklog"> Include work log</label>
+        </div>
+        <div class="search-results" id="search-results"></div>
     </div>
 </dialog>
 {% endblock %}

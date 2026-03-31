@@ -177,7 +177,7 @@ async def board_page(request: Request):
     db = request.app.state.db
     async with db.connect() as conn:
         cursor = await conn.execute(
-            "SELECT * FROM items WHERE column_name != 'archive' ORDER BY column_name, position"
+            "SELECT * FROM items ORDER BY column_name, position"
         )
         rows = await cursor.fetchall()
         items = [dict(row) for row in rows]
@@ -204,6 +204,23 @@ async def list_items(request: Request):
     db = request.app.state.db
     async with db.connect() as conn:
         cursor = await conn.execute("SELECT * FROM items ORDER BY column_name, position")
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+@router.get("/api/search/worklog")
+async def search_worklog(request: Request, q: str = ""):
+    """Search work log entries and return matching item IDs with snippets."""
+    if not q or len(q) < 2:
+        return []
+    db = request.app.state.db
+    async with db.connect() as conn:
+        cursor = await conn.execute(
+            "SELECT DISTINCT w.item_id, w.content, i.title, i.column_name "
+            "FROM work_log w JOIN items i ON w.item_id = i.id "
+            "WHERE w.content LIKE ? ORDER BY w.timestamp DESC LIMIT 50",
+            (f"%{q}%",),
+        )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
@@ -300,12 +317,43 @@ async def archive_items_by_date(request: Request, body: ArchiveByDateRequest):
         )
         await conn.commit()
 
-    # Broadcast removal for each item
-    for item_id in item_ids:
-        await request.app.state.ws_manager.broadcast("item_deleted", {"id": item_id})
+    # Broadcast move for each archived item
+    async with db.connect() as conn:
+        for item_id in item_ids:
+            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            item = dict(await cursor.fetchone())
+            await request.app.state.ws_manager.broadcast("item_moved", item)
 
     _invalidate_stats_cache()
     return {"archived": len(item_ids)}
+
+
+class DeleteByDateRequest(BaseModel):
+    date: str  # YYYY-MM-DD
+    column_name: str  # e.g. 'archive'
+
+
+@router.post("/api/items/delete-by-date")
+async def delete_items_by_date(request: Request, body: DeleteByDateRequest):
+    """Delete all items from a specific column and date."""
+    db = request.app.state.db
+    orchestrator = request.app.state.orchestrator
+    async with db.connect() as conn:
+        cursor = await conn.execute(
+            "SELECT id FROM items WHERE column_name = ? AND DATE(COALESCE(done_at, updated_at)) = ?",
+            (body.column_name, body.date),
+        )
+        rows = await cursor.fetchall()
+        item_ids = [row[0] for row in rows]
+
+    if not item_ids:
+        return {"deleted": 0}
+
+    for item_id in item_ids:
+        await orchestrator.delete_item(item_id)
+
+    _invalidate_stats_cache()
+    return {"deleted": len(item_ids)}
 
 
 @router.post("/api/items/{item_id}/move")

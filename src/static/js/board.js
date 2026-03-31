@@ -2,14 +2,16 @@ const Board = {
     // Client-side items cache
     items: {},
 
-    // Track collapsed state of done day groups (date string -> boolean)
+    // Track collapsed state of done/archive day groups (date string -> boolean)
     _collapsedDoneGroups: {},
+    _collapsedArchiveGroups: {},
 
     init(initialItems) {
         for (const item of initialItems) {
             this.items[item.id] = item;
         }
         this.renderDoneColumn();
+        this.renderArchiveColumn();
         this.updateCounts();
     },
 
@@ -130,11 +132,20 @@ const Board = {
     },
 
     async archiveByDate(dateStr) {
-        if (!await Dialogs.confirm(`Archive all items from ${dateStr}?`)) return;
+        if (!await Dialogs.confirm(`Archive all items from ${dateStr}?`, 'Confirm', 'Archive')) return;
         try {
             await Api.archiveByDate(dateStr);
         } catch (err) {
             console.error('Failed to archive items:', err);
+        }
+    },
+
+    async deleteByDate(dateStr, columnName) {
+        if (!await Dialogs.confirm(`Delete all ${columnName} items from ${dateStr}?`)) return;
+        try {
+            await Api.deleteByDate(dateStr, columnName);
+        } catch (err) {
+            console.error('Failed to delete items:', err);
         }
     },
 
@@ -278,7 +289,7 @@ const Board = {
         });
         for (const item of items) {
             this.items[item.id] = item;
-            if (item.column_name !== 'done') {
+            if (item.column_name !== 'done' && item.column_name !== 'archive') {
                 const targetCol = document.querySelector(`.column-cards[data-column="${item.column_name}"]`);
                 if (targetCol) {
                     targetCol.appendChild(this.renderCard(item));
@@ -286,6 +297,7 @@ const Board = {
             }
         }
         this.renderDoneColumn();
+        this.renderArchiveColumn();
         this.updateCounts();
     },
 
@@ -319,7 +331,7 @@ const Board = {
         const col = item.column_name;
         const deleteBtn = `<button class="btn btn-xs btn-delete" onclick="event.stopPropagation(); Board.deleteItem('${item.id}')" title="Delete">✕</button>`;
         if (col === 'todo') {
-            actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startAgent('${item.id}')" title="Start Agent">▶</button><button class="btn btn-xs" onclick="event.stopPropagation(); Board.startCopyAgent('${item.id}')" title="Start Copy (keep original in Todo)">▶⧉</button>${deleteBtn}`;
+            actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startAgent('${item.id}')" title="Start agent">▶</button><button class="btn btn-xs" onclick="event.stopPropagation(); Board.startCopyAgent('${item.id}')" title="Start Copy (keep original in Todo)">▶⧉</button>${deleteBtn}`;
         } else if (col === 'doing' && item.status === 'failed') {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.retryAgent('${item.id}')" title="Retry">↻ Retry</button>
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>`;
@@ -336,6 +348,8 @@ const Board = {
         } else if (col === 'done') {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.rerunItem('${item.id}')" title="Re-run">↻</button>`
                 + `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;
+        } else if (col === 'archive') {
+            actionsHtml = deleteBtn;
         }
 
         let logCountHtml = '';
@@ -458,6 +472,67 @@ const Board = {
         }
     },
 
+    renderArchiveColumn() {
+        const col = document.querySelector('.column-cards[data-column="archive"]');
+        if (!col) return;
+
+        const archiveItems = Object.values(this.items).filter(i => i.column_name === 'archive');
+
+        const groups = {};
+        for (const item of archiveItems) {
+            const key = this._getDoneDateKey(item);
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(item);
+        }
+
+        const sortedDates = Object.keys(groups).sort((a, b) => {
+            if (a === 'Unknown') return 1;
+            if (b === 'Unknown') return -1;
+            return b.localeCompare(a);
+        });
+
+        col.innerHTML = '';
+
+        for (const dateStr of sortedDates) {
+            const items = groups[dateStr];
+            const isCollapsed = dateStr in this._collapsedArchiveGroups
+                ? this._collapsedArchiveGroups[dateStr]
+                : true; // default: all collapsed
+
+            const group = document.createElement('div');
+            group.className = 'done-day-group' + (isCollapsed ? ' collapsed' : '');
+            group.dataset.date = dateStr;
+
+            const header = document.createElement('div');
+            header.className = 'done-day-header';
+            header.innerHTML = `
+                <svg class="done-day-chevron${isCollapsed ? '' : ' expanded'}" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
+                <span class="done-day-label">${this._formatDateLabel(dateStr)}</span>
+                <span class="done-day-count">${items.length}</span>
+                <button class="btn btn-xs btn-delete done-day-archive" onclick="event.stopPropagation(); Board.deleteByDate('${dateStr}', 'archive')" title="Delete all from ${this._formatDateLabel(dateStr)}">✕</button>
+            `;
+            header.addEventListener('click', () => {
+                this._collapsedArchiveGroups[dateStr] = !isCollapsed;
+                this.renderArchiveColumn();
+            });
+
+            group.appendChild(header);
+
+            items.sort((a, b) => (b.done_at || b.updated_at || '').localeCompare(a.done_at || a.updated_at || ''));
+
+            if (!isCollapsed) {
+                const cardsContainer = document.createElement('div');
+                cardsContainer.className = 'done-day-cards';
+                for (const item of items) {
+                    cardsContainer.appendChild(this.renderCard(item));
+                }
+                group.appendChild(cardsContainer);
+            }
+
+            col.appendChild(group);
+        }
+    },
+
     escapeHtml(text) {
         const d = document.createElement('div');
         d.textContent = text;
@@ -476,16 +551,26 @@ const Board = {
         const oldCard = document.querySelector(`.card[data-id="${item.id}"]`);
         if (oldCard) oldCard.remove();
 
-        // Done column uses grouped rendering
-        if (item.column_name === 'done') {
-            this.renderDoneColumn();
+        // Done and archive columns use grouped rendering
+        if (item.column_name === 'done' || item.column_name === 'archive') {
+            if (prev && prev.column_name === 'done' && item.column_name !== 'done') {
+                this.renderDoneColumn();
+            }
+            if (prev && prev.column_name === 'archive' && item.column_name !== 'archive') {
+                this.renderArchiveColumn();
+            }
+            if (item.column_name === 'done') this.renderDoneColumn();
+            if (item.column_name === 'archive') this.renderArchiveColumn();
             this.updateCounts();
             return;
         }
 
-        // If item was previously in done, re-render done column to remove it
+        // If item was previously in done/archive, re-render that column to remove it
         if (prev && prev.column_name === 'done' && item.column_name !== 'done') {
             this.renderDoneColumn();
+        }
+        if (prev && prev.column_name === 'archive' && item.column_name !== 'archive') {
+            this.renderArchiveColumn();
         }
 
         // Add new card to correct column
@@ -505,11 +590,12 @@ const Board = {
     },
 
     removeCard(itemId) {
-        const wasInDone = this.items[itemId] && this.items[itemId].column_name === 'done';
+        const prev = this.items[itemId];
         delete this.items[itemId];
         const card = document.querySelector(`.card[data-id="${itemId}"]`);
         if (card) card.remove();
-        if (wasInDone) this.renderDoneColumn();
+        if (prev && prev.column_name === 'done') this.renderDoneColumn();
+        if (prev && prev.column_name === 'archive') this.renderArchiveColumn();
         this.updateCounts();
     },
 

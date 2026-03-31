@@ -20,6 +20,13 @@ const DetailDialog = {
 
         document.getElementById('detail-title').textContent = item.title;
 
+        const columnLabels = {
+            todo: '📝 Todo', doing: '🚧 Doing', questions: '❓ Questions',
+            review: '👀 Review', done: '✅ Done', archive: '📦 Archive',
+        };
+        const badge = document.getElementById('detail-column-badge');
+        badge.textContent = columnLabels[item.column_name] || item.column_name;
+
         const body = document.getElementById('detail-body');
 
         // Build content with description and model info
