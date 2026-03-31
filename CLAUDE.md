@@ -244,6 +244,8 @@ sequenceDiagram
 
 - **Start copy**: Todo items have a "Start Copy" action that creates a duplicate of the item and starts an agent on the copy, while keeping the original item in the Todo column. Useful for running variations of a task without losing the original.
 
+- **Keep in sync**: JavaScript-rendered cards and the server-rendered Jinja2 template needs to be in sync.
+
 ### Frontend
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base template + board template + card partial); JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
