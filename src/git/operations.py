@@ -294,9 +294,11 @@ async def merge_branch(repo: Path, branch: str, base: str | None = None,
 
         # Perform the merge with explicit timeout
         merge_msg = commit_message or f"Merge {branch} into {base}"
-        output = await run_git(repo, "merge", branch, "--no-ff",
-                               "-m", merge_msg, timeout=GIT_MERGE_TIMEOUT)
-        return True, output
+        await run_git(repo, "merge", branch, "--no-ff",
+                      "-m", merge_msg, timeout=GIT_MERGE_TIMEOUT)
+        # Get the merge commit SHA
+        sha = (await run_git(repo, "rev-parse", "HEAD")).strip()
+        return True, sha
     except asyncio.TimeoutError as e:
         # Timeout during merge operation
         try:

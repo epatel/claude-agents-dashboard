@@ -93,6 +93,7 @@ class TestAllowedToolsWhitelist:
     async def test_bash_in_whitelist_with_no_commands(self, mock_sdk):
         """Bash must be in allowed_tools even without allowed_commands or bash_yolo."""
         mock_client = AsyncMock()
+        mock_client.get_mcp_status.return_value = {"mcpServers": []}
         mock_sdk.return_value = mock_client
 
         session = self._make_session()
@@ -111,6 +112,7 @@ class TestAllowedToolsWhitelist:
     async def test_bash_in_whitelist_with_allowed_commands(self, mock_sdk):
         """Bash must be in allowed_tools when allowed_commands is set."""
         mock_client = AsyncMock()
+        mock_client.get_mcp_status.return_value = {"mcpServers": []}
         mock_sdk.return_value = mock_client
 
         session = self._make_session(allowed_commands=["flutter", "npm"])
@@ -127,6 +129,7 @@ class TestAllowedToolsWhitelist:
     async def test_bash_in_whitelist_with_bash_yolo(self, mock_sdk):
         """Bash must be in allowed_tools when bash_yolo is enabled."""
         mock_client = AsyncMock()
+        mock_client.get_mcp_status.return_value = {"mcpServers": []}
         mock_sdk.return_value = mock_client
 
         session = self._make_session(bash_yolo=True)
@@ -143,6 +146,7 @@ class TestAllowedToolsWhitelist:
     async def test_plugin_tools_in_whitelist(self, mock_sdk):
         """Plugin tools must be allowed via can_use_tool callback."""
         mock_client = AsyncMock()
+        mock_client.get_mcp_status.return_value = {"mcpServers": []}
         mock_sdk.return_value = mock_client
 
         plugins = [{"type": "local", "path": "/home/user/.claude/plugins/context-mode"}]
@@ -167,6 +171,7 @@ class TestAllowedToolsWhitelist:
     async def test_hook_only_set_with_allowed_commands(self, mock_sdk):
         """PreToolUse hooks: tool filter hooks always present, Bash hook only with allowed_commands."""
         mock_client = AsyncMock()
+        mock_client.get_mcp_status.return_value = {"mcpServers": []}
         mock_sdk.return_value = mock_client
 
         # No commands, no yolo — tool filter hooks still present (for WebSearch/WebFetch)

@@ -48,6 +48,12 @@ const DetailDialog = {
             }
         }
 
+        // Show merge commit SHA for done/archive items
+        if ((item.column_name === 'done' || item.column_name === 'archive') && item.merge_commit) {
+            const shortSha = item.merge_commit.slice(0, 8);
+            content += `<div class="detail-model-info"><strong>Merge commit:</strong> <code>${shortSha}</code></div>`;
+        }
+
         body.innerHTML = content;
 
         // Header actions based on item state

@@ -243,8 +243,11 @@ class WorkflowService:
         )
 
         if success:
+            merge_sha = message  # on success, message contains the merge commit SHA
             target = base_branch or "current branch"
-            await self._log_and_notify(item_id, "system", f"Merged {branch} into {target}")
+            short_sha = merge_sha[:8] if merge_sha else ""
+            await self._log_and_notify(item_id, "system",
+                f"Merged {branch} into {target} ({short_sha})")
 
             # Clean up worktree
             if worktree_path:
@@ -255,6 +258,7 @@ class WorkflowService:
                 column_name="done",
                 status=None,
                 worktree_path=None,
+                merge_commit=merge_sha,
             )
         else:
             await self._log_and_notify(item_id, "system",
