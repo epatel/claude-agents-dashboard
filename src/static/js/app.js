@@ -24,6 +24,7 @@ const App = {
         cards.forEach(card => {
             const item = { id: card.dataset.id, column_name: card.dataset.column };
             if (card.dataset.status) item.status = card.dataset.status;
+            if (card.dataset.title) item.title = card.dataset.title;
             if (card.dataset.doneAt) item.done_at = card.dataset.doneAt;
             if (card.dataset.updatedAt) item.updated_at = card.dataset.updatedAt;
             items.push(item);
