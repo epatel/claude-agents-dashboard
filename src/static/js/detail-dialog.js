@@ -51,21 +51,7 @@ const DetailDialog = {
         // Show merge commit SHA for done/archive items
         if ((item.column_name === 'done' || item.column_name === 'archive') && item.merge_commit) {
             const shortSha = item.merge_commit.slice(0, 8);
-            content += `<div class="detail-model-info"><strong>Merge commit:</strong> <code>${shortSha}</code></div>`;
-        }
-
-        // Add git metadata (branch, base commit) if available
-        if (item.branch_name) {
-            content += `<div class="detail-model-info detail-git-info">`;
-            content += `<div class="detail-info-row"><strong>Branch:</strong> <code class="sha-text">${item.branch_name}</code> <button type="button" class="copy-sha-btn" data-copy="${item.branch_name}" title="Copy branch name">📋</button></div>`;
-            if (item.base_commit) {
-                const shortSha = item.base_commit.substring(0, 7);
-                content += `<div class="detail-info-row"><strong>Base commit:</strong> <code class="sha-text" title="${item.base_commit}">${shortSha}</code> <button type="button" class="copy-sha-btn" data-copy="${item.base_commit}" title="Copy full SHA">📋</button></div>`;
-            }
-            if (item.base_branch) {
-                content += `<div class="detail-info-row"><strong>Base branch:</strong> <code class="sha-text">${item.base_branch}</code> <button type="button" class="copy-sha-btn" data-copy="${item.base_branch}" title="Copy base branch">📋</button></div>`;
-            }
-            content += `</div>`;
+            content += `<div class="detail-model-info detail-git-info"><div class="detail-info-row"><strong>Merge commit:</strong> <code class="sha-text" title="${item.merge_commit}">${shortSha}</code> <button type="button" class="copy-sha-btn" data-copy="${item.merge_commit}" title="Copy full SHA">📋</button></div></div>`;
         }
 
         body.innerHTML = content;
