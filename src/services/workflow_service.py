@@ -238,22 +238,46 @@ class WorkflowService:
         worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
         commit_msg = item.get("commit_message")
 
-        # Check if base repo is dirty before attempting merge
+        # Check if base repo has dirty files that overlap with the agent's changes
         from ..git.operations import run_git
         try:
+            # Get locally modified tracked files (exclude untracked with no '??' prefix)
             status_output = await run_git(self.git.target_project, "status", "--porcelain")
-            if status_output.strip():
-                await self._log_and_notify(item_id, "system",
-                    f"Cannot merge — target repo has uncommitted changes")
-                item = await self.db.update_item(item_id,
-                    column_name="questions", status="merge_blocked")
-                await self.notifications.broadcast_item_updated(item)
-                await self.notifications.ws_manager.broadcast("merge_blocked", {
-                    "item_id": item_id,
-                    "message": "Cannot merge because the target repo has uncommitted changes. "
-                               "Please commit or stash your changes, then try again.",
-                })
-                return item
+            dirty_files = set()
+            for line in status_output.strip().splitlines():
+                if not line or line.startswith("??"):
+                    continue  # skip untracked files
+                # porcelain format: XY filename (or XY old -> new for renames)
+                filepath = line[3:].split(" -> ")[-1].strip()
+                dirty_files.add(filepath)
+
+            if dirty_files and worktree_path:
+                # Get files changed by the agent's branch
+                base = base_branch or "main"
+                try:
+                    agent_diff = await run_git(
+                        worktree_path, "diff", "--name-only", base, "HEAD")
+                    agent_files = set(f.strip() for f in agent_diff.strip().splitlines() if f.strip())
+                except Exception:
+                    agent_files = set()
+
+                overlap = dirty_files & agent_files
+                if overlap:
+                    file_list = ", ".join(sorted(overlap)[:5])
+                    if len(overlap) > 5:
+                        file_list += f" (+{len(overlap) - 5} more)"
+                    await self._log_and_notify(item_id, "system",
+                        f"Cannot merge — conflicting uncommitted changes in: {file_list}")
+                    item = await self.db.update_item(item_id,
+                        column_name="questions", status="merge_blocked")
+                    await self.notifications.broadcast_item_updated(item)
+                    await self.notifications.ws_manager.broadcast("merge_blocked", {
+                        "item_id": item_id,
+                        "message": f"Cannot merge because these files have uncommitted changes "
+                                   f"in the target repo: {file_list}. "
+                                   f"Please commit or stash your changes, then try again.",
+                    })
+                    return item
         except Exception as e:
             logger.warning(f"Failed to check repo status: {e}")
 
