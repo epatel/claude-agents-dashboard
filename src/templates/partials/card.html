@@ -36,6 +36,7 @@
             <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('{{ item.id }}')" title="Request changes">↩</button>
             <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelReview('{{ item.id }}')" title="Cancel review">✕</button>
             {% elif item.column_name == 'done' %}
+            {% if item.done_at %}<span class="card-done-date">{{ item.done_at[:10] }}</span>{% endif %}
             <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'archive')" title="📦 Archive">📦 Archive</button>
             {% endif %}
         </div>

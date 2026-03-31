@@ -281,9 +281,9 @@ async def archive_items_by_date(request: Request, body: ArchiveByDateRequest):
     """Archive all done items from a specific date."""
     db = request.app.state.db
     async with db.connect() as conn:
-        # Find all done items updated on the given date
+        # Find all done items completed on the given date
         cursor = await conn.execute(
-            "SELECT id FROM items WHERE column_name = 'done' AND DATE(updated_at) = ?",
+            "SELECT id FROM items WHERE column_name = 'done' AND DATE(COALESCE(done_at, updated_at)) = ?",
             (body.date,),
         )
         rows = await cursor.fetchall()
@@ -317,9 +317,19 @@ async def move_item(request: Request, item_id: str, body: ItemMove):
             "UPDATE items SET position = position + 1 WHERE column_name = ? AND position >= ? AND id != ?",
             (body.column_name, body.position, item_id),
         )
+        # Set done_at when moving to done, clear when leaving
+        from datetime import datetime, timezone
+        done_at_clause = ""
+        params = [body.column_name, body.position]
+        if body.column_name == "done":
+            done_at_clause = ", done_at = ?"
+            params.append(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"))
+        else:
+            done_at_clause = ", done_at = NULL"
+        params.append(item_id)
         await conn.execute(
-            "UPDATE items SET column_name = ?, position = ?, updated_at = datetime('now') WHERE id = ?",
-            (body.column_name, body.position, item_id),
+            f"UPDATE items SET column_name = ?, position = ?{done_at_clause}, updated_at = datetime('now') WHERE id = ?",
+            params,
         )
         await conn.commit()
 
