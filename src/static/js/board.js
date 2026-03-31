@@ -331,8 +331,8 @@ const Board = {
         }
 
         let timestampHtml = '';
-        if (col === 'done' && item.updated_at) {
-            const d = new Date(item.updated_at + 'Z');
+        if (col === 'done' && (item.done_at || item.updated_at)) {
+            const d = new Date((item.done_at || item.updated_at) + 'Z');
             const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             timestampHtml = `<span class="card-timestamp">${timeStr}</span>`;
         }
@@ -350,8 +350,9 @@ const Board = {
     },
 
     _getDoneDateKey(item) {
-        if (!item.updated_at) return 'Unknown';
-        const d = new Date(item.updated_at + 'Z');
+        const ts = item.done_at || item.updated_at;
+        if (!ts) return 'Unknown';
+        const d = new Date(ts + 'Z');
         return d.toISOString().split('T')[0]; // YYYY-MM-DD
     },
 
@@ -431,8 +432,8 @@ const Board = {
             if (!isCollapsed) {
                 const cardsContainer = document.createElement('div');
                 cardsContainer.className = 'done-day-cards';
-                // Sort items within group by updated_at descending
-                items.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+                // Sort items within group by done_at descending (fallback to updated_at)
+                items.sort((a, b) => (b.done_at || b.updated_at || '').localeCompare(a.done_at || a.updated_at || ''));
                 for (const item of items) {
                     cardsContainer.appendChild(this.renderCard(item));
                 }

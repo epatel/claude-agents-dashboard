@@ -2,6 +2,7 @@
 
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -22,7 +23,7 @@ class DatabaseService:
         async with self.db.connect() as conn:
             cursor = await conn.execute(
                 "SELECT i.id, i.title, i.description, i.column_name, i.status,"
-                " COALESCE(wl.cnt, 0) AS log_count"
+                " i.done_at, i.updated_at, COALESCE(wl.cnt, 0) AS log_count"
                 " FROM items i"
                 " LEFT JOIN (SELECT item_id, COUNT(*) AS cnt FROM work_log GROUP BY item_id) wl"
                 " ON i.id = wl.item_id"
@@ -50,6 +51,13 @@ class DatabaseService:
                 )
                 row = await cursor.fetchone()
                 kwargs["position"] = row[0]
+
+            # Auto-set done_at when moving to done, clear when leaving
+            if "column_name" in kwargs:
+                if kwargs["column_name"] == "done" and "done_at" not in kwargs:
+                    kwargs["done_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+                elif kwargs["column_name"] != "done":
+                    kwargs["done_at"] = None
 
             sets = ", ".join(f"{k} = ?" for k in kwargs)
             vals = list(kwargs.values()) + [item_id]

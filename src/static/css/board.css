@@ -278,7 +278,8 @@
     padding-left: 0;
 }
 
-.card-timestamp {
+.card-timestamp,
+.card-done-date {
     font-size: 10px;
     color: var(--text-muted);
     flex-shrink: 0;
