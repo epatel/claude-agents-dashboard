@@ -293,6 +293,11 @@ const Board = {
         const div = document.createElement('div');
         div.className = 'card';
         div.dataset.id = item.id;
+        div.dataset.column = item.column_name;
+        div.dataset.status = item.status || '';
+        div.dataset.title = item.title;
+        div.dataset.doneAt = item.done_at || '';
+        div.dataset.updatedAt = item.updated_at || '';
         div.draggable = true;
         div.ondragstart = (e) => Board.handleDragStart(e);
         div.onclick = () => Dialogs.showDetail(item.id);
@@ -320,17 +325,17 @@ const Board = {
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>`;
         } else if (col === 'doing' && item.status === 'running') {
             actionsHtml = `<button class="btn btn-xs btn-warning" onclick="event.stopPropagation(); Board.pauseAgent('${item.id}')" title="Pause">⏸</button>
-                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')">✕</button>`;
+                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')" title="Cancel">✕</button>`;
         } else if (col === 'doing' && item.status === 'paused') {
             actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.resumeAgent('${item.id}')" title="Resume">▶</button>
-                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')">✕</button>`;
+                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')" title="Cancel">✕</button>`;
         } else if (col === 'review') {
-            actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.approveItem('${item.id}')">✓ Approve</button>
-                <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')">↩</button>
-                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelReview('${item.id}')">✕</button>`;
+            actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.approveItem('${item.id}')" title="Approve">✓ Approve</button>
+                <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')" title="Request changes">↩</button>
+                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelReview('${item.id}')" title="Cancel review">✕</button>`;
         } else if (col === 'done') {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.rerunItem('${item.id}')" title="Re-run">↻</button>`
-                + `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦</button>`;
+                + `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;
         }
 
         let logCountHtml = '';

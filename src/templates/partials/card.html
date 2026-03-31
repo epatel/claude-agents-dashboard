@@ -17,6 +17,8 @@
         ⊘ Cancelled
         {% elif item.status == 'paused' %}
         ⏸ Paused
+        {% elif item.status == 'conflict' %}
+        ⚠ Merge conflict
         {% elif item.status == 'resolving_conflicts' %}
         <span class="spinner"></span> Resolving conflicts
         {% endif %}
@@ -26,6 +28,7 @@
         <div class="card-actions">
             {% if item.column_name == 'todo' %}
             <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startAgent('{{ item.id }}')" title="Start agent">▶</button>
+            <button class="btn btn-xs" onclick="event.stopPropagation(); Board.startCopyAgent('{{ item.id }}')" title="Start Copy (keep original in Todo)">▶⧉</button>
             <button class="btn btn-xs btn-delete" onclick="event.stopPropagation(); Board.deleteItem('{{ item.id }}')" title="Delete">✕</button>
             {% elif item.column_name == 'doing' and item.status == 'failed' %}
             <button class="btn btn-xs" onclick="event.stopPropagation(); Board.retryAgent('{{ item.id }}')" title="Retry">↻ Retry</button>
@@ -41,7 +44,7 @@
             <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('{{ item.id }}')" title="Request changes">↩</button>
             <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelReview('{{ item.id }}')" title="Cancel review">✕</button>
             {% elif item.column_name == 'done' %}
-            {% if item.done_at %}<span class="card-done-date">{{ item.done_at[:10] }}</span>{% endif %}
+            <button class="btn btn-xs" onclick="event.stopPropagation(); Board.rerunItem('{{ item.id }}')" title="Re-run">↻</button>
             <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'archive')" title="📦 Archive">📦 Archive</button>
             {% endif %}
         </div>
