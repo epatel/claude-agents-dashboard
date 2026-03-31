@@ -19,6 +19,8 @@
         ⏸ Paused
         {% elif item.status == 'conflict' %}
         ⚠ Merge conflict
+        {% elif item.status == 'merge_blocked' %}
+        ⚠ Merge blocked
         {% elif item.status == 'resolving_conflicts' %}
         <span class="spinner"></span> Resolving conflicts
         {% endif %}

@@ -18,6 +18,15 @@ const ClarificationDialog = {
     },
 
     async reopenClarification(itemId) {
+        // Check if this is a merge_blocked item
+        const item = Board.items[itemId];
+        if (item && item.status === 'merge_blocked') {
+            this.showMergeBlocked(itemId,
+                'Cannot merge because the target repo has uncommitted changes. '
+                + 'Please commit or stash your changes, then try again.');
+            return;
+        }
+
         // Fetch pending clarification from DB
         try {
             const data = await Api.request('GET', `/api/items/${itemId}/clarification`);
@@ -148,6 +157,40 @@ const ClarificationDialog = {
         });
         DialogCore.close('clarify-dialog');
         this._restoreFormHTML();
+    },
+
+    showMergeBlocked(itemId, message) {
+        this._saveFormHTML();
+        const form = document.getElementById('clarify-form');
+        form.innerHTML = `
+            <div class="form-group">
+                <div style="margin-bottom: 12px;">
+                    <strong>Merge blocked</strong>
+                </div>
+                <div style="margin-bottom: 16px; color: var(--text-secondary);">
+                    ${message}
+                </div>
+            </div>
+            <div class="modal-footer" style="display:flex;gap:8px;">
+                <button type="button" class="btn btn-primary" onclick="ClarificationDialog.retryMerge('${itemId}')">
+                    Fixed, try again
+                </button>
+                <button type="button" class="btn" onclick="DialogCore.close('clarify-dialog'); ClarificationDialog._restoreFormHTML();">
+                    Dismiss
+                </button>
+            </div>
+        `;
+        DialogCore.open('clarify-dialog');
+    },
+
+    async retryMerge(itemId) {
+        DialogCore.close('clarify-dialog');
+        this._restoreFormHTML();
+        try {
+            await Api.request('POST', `/api/items/${itemId}/retry-merge`);
+        } catch (err) {
+            console.error('Failed to retry merge:', err);
+        }
     },
 
     async submitClarification(event) {

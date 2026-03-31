@@ -283,18 +283,11 @@ async def merge_branch(repo: Path, branch: str, base: str | None = None,
     if base is None:
         base = await get_current_branch(repo)
 
-    stashed = False
     try:
         # Commit uncommitted changes in the worktree first
         if worktree_path and worktree_path.exists():
             msg = commit_message or f"Agent work on {branch}"
             committed = await commit_worktree_changes(worktree_path, msg)
-
-        # Stash any dirty state in the base repo before checkout
-        status = await run_git(repo, "status", "--porcelain")
-        if status.strip():
-            await run_git(repo, "stash", "push", "-m", f"auto-stash before merge of {branch}")
-            stashed = True
 
         # Checkout base in the main repo
         await run_git(repo, "checkout", base)
@@ -320,10 +313,3 @@ async def merge_branch(repo: Path, branch: str, base: str | None = None,
         except (subprocess.CalledProcessError, asyncio.TimeoutError):
             pass
         return False, e.stderr.decode() if e.stderr else str(e)
-    finally:
-        # Restore stashed changes
-        if stashed:
-            try:
-                await run_git(repo, "stash", "pop")
-            except (subprocess.CalledProcessError, asyncio.TimeoutError):
-                logger.warning("Failed to restore stashed changes after merge")

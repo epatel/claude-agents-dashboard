@@ -188,12 +188,15 @@ class TestOrchestratorLifecycle:
             worktree_path="/mock/worktree"
         )
 
+        async def mock_run_git(repo, *args, **kwargs):
+            if args and args[0] == "status":
+                return ""  # clean repo
+            return "diff --git a/file.txt\n+changed"
+
         with patch.object(test_orchestrator.git_service, 'merge_agent_work',
                           new_callable=AsyncMock,
                           return_value=(False, "Merge conflict in file.txt")), \
-             patch('src.git.operations.run_git',
-                   new_callable=AsyncMock,
-                   return_value="diff --git a/file.txt\n+changed"), \
+             patch('src.git.operations.run_git', side_effect=mock_run_git), \
              patch('src.git.operations.get_current_branch',
                    new_callable=AsyncMock,
                    return_value="main"), \

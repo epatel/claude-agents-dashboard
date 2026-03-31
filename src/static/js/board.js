@@ -322,6 +322,7 @@ const Board = {
                 failed: '✕ Failed',
                 cancelled: '⊘ Cancelled',
                 conflict: '⚠ Merge conflict',
+                merge_blocked: '⚠ Merge blocked',
                 resolving_conflicts: '<span class="spinner"></span> Resolving conflicts',
             };
             statusHtml = `<div class="card-status card-status-${item.status}">${labels[item.status] || item.status}</div>`;

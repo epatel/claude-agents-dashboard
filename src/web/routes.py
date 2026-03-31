@@ -540,6 +540,17 @@ async def cancel_review(request: Request, item_id: str):
     return await orchestrator.cancel_review(item_id)
 
 
+@router.post("/api/items/{item_id}/retry-merge")
+async def retry_merge(request: Request, item_id: str):
+    """Move item back to review and re-trigger approve."""
+    orchestrator = request.app.state.orchestrator
+    # Move back to review first
+    item = await orchestrator.db_service.update_item(item_id, column_name="review", status=None)
+    await orchestrator.ws_manager.broadcast("item_moved", item)
+    # Re-trigger approve
+    return await orchestrator.approve_item(item_id)
+
+
 @router.post("/api/items/{item_id}/clarify")
 async def submit_clarification(request: Request, item_id: str, body: ClarificationResponse):
     orchestrator = request.app.state.orchestrator

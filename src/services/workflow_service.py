@@ -238,6 +238,25 @@ class WorkflowService:
         worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
         commit_msg = item.get("commit_message")
 
+        # Check if base repo is dirty before attempting merge
+        from ..git.operations import run_git
+        try:
+            status_output = await run_git(self.git.target_project, "status", "--porcelain")
+            if status_output.strip():
+                await self._log_and_notify(item_id, "system",
+                    f"Cannot merge — target repo has uncommitted changes")
+                item = await self.db.update_item(item_id,
+                    column_name="questions", status="merge_blocked")
+                await self.notifications.broadcast_item_updated(item)
+                await self.notifications.ws_manager.broadcast("merge_blocked", {
+                    "item_id": item_id,
+                    "message": "Cannot merge because the target repo has uncommitted changes. "
+                               "Please commit or stash your changes, then try again.",
+                })
+                return item
+        except Exception as e:
+            logger.warning(f"Failed to check repo status: {e}")
+
         success, message = await self.git.merge_agent_work(
             branch, base_branch, worktree_path, commit_msg
         )
@@ -262,7 +281,8 @@ class WorkflowService:
             )
         else:
             await self._log_and_notify(item_id, "system",
-                f"Merge conflict detected — capturing diff and retrying with updated base")
+                f"Merge failed — {message[:200]}. "
+                f"Capturing diff and retrying with updated base")
 
             # Capture the agent's work as a diff before resetting
             try:

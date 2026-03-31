@@ -359,6 +359,9 @@ const App = {
                     data.item_id, data.command, data.reason
                 );
                 break;
+            case 'merge_blocked':
+                ClarificationDialog.showMergeBlocked(data.item_id, data.message);
+                break;
             case 'tool_permission_requested':
                 ClarificationDialog.showToolPermissionRequest(
                     data.item_id, data.tool_name, data.reason
