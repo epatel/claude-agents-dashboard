@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -31,6 +32,62 @@ class AgentResult:
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
+
+
+_ANNOTATION_PREFIX_RE = re.compile(r"^(annotation_\d+)_(original|annotated)\.jpg$")
+
+
+def build_attachment_prompt(attachments: list[dict]) -> str:
+    """Build prompt text describing attached images.
+
+    Groups paired annotation files (original + annotations overlay) and
+    includes annotation summaries. Plain attachments are listed individually.
+    """
+    if not attachments:
+        return ""
+
+    # Group by annotation timestamp prefix
+    groups: dict[str, dict] = {}  # prefix -> {"original": ..., "annotations": ..., "summary": ...}
+    ungrouped: list[dict] = []
+
+    for att in attachments:
+        m = _ANNOTATION_PREFIX_RE.match(att["filename"])
+        if m:
+            prefix = m.group(1)
+            kind = m.group(2)
+            if prefix not in groups:
+                groups[prefix] = {}
+            groups[prefix][kind] = att["dest"]
+            if att.get("annotation_summary"):
+                groups[prefix]["summary"] = att["annotation_summary"]
+        else:
+            ungrouped.append(att)
+
+    lines = []
+
+    # Render grouped annotation pairs
+    for prefix, group in groups.items():
+        if "original" in group and "annotated" in group:
+            lines.append("The following annotated screenshot is attached:")
+            lines.append(f"- {group['original']} (clean screenshot without annotations)")
+            lines.append(f"- {group['annotated']} (same screenshot with annotation markers drawn on it)")
+            if "summary" in group:
+                lines.append(f"- Annotations: {group['summary']}")
+        else:
+            # Unpaired — treat as simple attachment
+            dest = group.get("original") or group.get("annotated")
+            if dest:
+                ungrouped.append({"dest": dest})
+
+    # Render ungrouped / plain attachments
+    if ungrouped:
+        if lines:
+            lines.append("")
+        lines.append("Attached reference images (use Read tool to view):")
+        for att in ungrouped:
+            lines.append(f"- {att['dest']}")
+
+    return "\n".join(lines)
 
 
 class AgentSession:
@@ -279,20 +336,24 @@ class AgentSession:
             gitignore = attach_dir / ".gitignore"
             if not gitignore.exists():
                 gitignore.write_text("*\n")
-            attachment_refs = []
+            processed = []
             for attachment in attachments:
                 try:
                     asset_path = Path(attachment["asset_path"])
                     if asset_path.exists():
                         dest = attach_dir / attachment["filename"]
                         shutil.copy2(asset_path, dest)
-                        attachment_refs.append(str(dest))
+                        processed.append({
+                            "filename": attachment["filename"],
+                            "dest": str(dest),
+                            "annotation_summary": attachment.get("annotation_summary"),
+                        })
                         logger.info(f"Copied attachment to worktree: {attachment['filename']}")
                 except Exception as e:
                     logger.warning(f"Failed to copy attachment {attachment.get('filename', 'unknown')}: {e}")
-            if attachment_refs:
-                prompt += "\n\nAttached reference images (use Read tool to view):\n"
-                prompt += "\n".join(f"- {ref}" for ref in attachment_refs)
+            attachment_prompt = build_attachment_prompt(processed)
+            if attachment_prompt:
+                prompt += "\n\n" + attachment_prompt
 
         await self.client.query(prompt)
 

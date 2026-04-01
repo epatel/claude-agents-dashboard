@@ -119,6 +119,7 @@ const ItemDialog = {
                     item_id: itemId,
                     filename: a.filename,
                     data: a.dataUrl,
+                    annotation_summary: a.annotation_summary || null,
                 });
             }
             this._pendingAttachments = [];
@@ -157,6 +158,7 @@ const ItemDialog = {
                     item_id: itemId,
                     filename: a.filename,
                     data: a.dataUrl,
+                    annotation_summary: a.annotation_summary || null,
                 });
             }
             this._pendingAttachments = [];

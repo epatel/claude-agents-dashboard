@@ -933,4 +933,71 @@ const Annotate = {
         this.render();
         return new Promise(resolve => this.canvas.toBlob(resolve, 'image/png'));
     },
+
+    toBackgroundDataURL() {
+        // Render only background images (no annotations) as JPG
+        if (this.images.length === 0) return null;
+
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = this.canvas.width;
+        tmpCanvas.height = this.canvas.height;
+        const tmpCtx = tmpCanvas.getContext('2d');
+
+        // Fill white background (JPG has no transparency)
+        tmpCtx.fillStyle = '#ffffff';
+        tmpCtx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
+
+        for (const img of this.images) {
+            tmpCtx.drawImage(img.img, img.x, img.y, img.w, img.h);
+        }
+        return tmpCanvas.toDataURL('image/jpeg', 0.85);
+    },
+
+    toAnnotatedDataURL() {
+        // Render background images + annotations combined as JPG
+        if (this.images.length === 0 && this.annotations.length === 0) return null;
+
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = this.canvas.width;
+        tmpCanvas.height = this.canvas.height;
+        const tmpCtx = tmpCanvas.getContext('2d');
+
+        // Fill white background (JPG has no transparency)
+        tmpCtx.fillStyle = '#ffffff';
+        tmpCtx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
+
+        // Draw background images
+        for (const img of this.images) {
+            tmpCtx.drawImage(img.img, img.x, img.y, img.w, img.h);
+        }
+
+        // Draw annotations on top
+        const origCtx = this.ctx;
+        this.ctx = tmpCtx;
+        for (const ann of this.annotations) {
+            this._drawShape(ann);
+        }
+        this.ctx = origCtx;
+
+        return tmpCanvas.toDataURL('image/jpeg', 0.85);
+    },
+
+    getAnnotationSummary() {
+        // Return a human-readable count of annotations by type
+        if (this.annotations.length === 0) return '';
+
+        const counts = {};
+        for (const ann of this.annotations) {
+            const type = ann.type;
+            counts[type] = (counts[type] || 0) + 1;
+        }
+
+        const labels = { arrow: 'arrow', circle: 'circle', rect: 'rectangle', text: 'text label' };
+        const parts = [];
+        for (const [type, count] of Object.entries(counts)) {
+            const label = labels[type] || type;
+            parts.push(`${count} ${label}${count > 1 ? 's' : ''}`);
+        }
+        return parts.join(', ');
+    },
 };

@@ -637,6 +637,7 @@ class UploadAnnotation(BaseModel):
     item_id: str
     filename: str
     data: str  # base64 PNG data URL
+    annotation_summary: str | None = None
 
 
 @router.post("/api/items/{item_id}/attachments")
@@ -660,8 +661,8 @@ async def upload_attachment(request: Request, item_id: str, body: UploadAnnotati
     # Store in DB
     async with db.connect() as conn:
         await conn.execute(
-            "INSERT INTO attachments (item_id, filename, asset_path) VALUES (?, ?, ?)",
-            (item_id, body.filename, str(asset_path)),
+            "INSERT INTO attachments (item_id, filename, asset_path, annotation_summary) VALUES (?, ?, ?, ?)",
+            (item_id, body.filename, str(asset_path), body.annotation_summary),
         )
         await conn.commit()
         cursor = await conn.execute(

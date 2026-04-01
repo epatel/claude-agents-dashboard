@@ -312,13 +312,22 @@ erDiagram
         text allowed_builtin_tools
     }
 
+    attachments {
+        int id PK
+        text item_id FK
+        text filename
+        text asset_path
+        text annotation_summary
+        text created_at
+    }
+
     schema_migrations {
         text version PK
         text applied_at
     }
 ```
 
-SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 8 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items, `006_add_allowed_builtin_tools.py` adds configurable built-in tools to agent config, `007_add_done_at.py` adds done_at timestamp to items, `008_add_merge_commit.py` adds merge commit SHA to items). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit + done_at + merge_commit), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 9 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items, `006_add_allowed_builtin_tools.py` adds configurable built-in tools to agent config, `007_add_done_at.py` adds done_at timestamp to items, `008_add_merge_commit.py` adds merge commit SHA to items, `009_add_annotation_summary.py` adds annotation summary to attachments). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit + done_at + merge_commit), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
 
 Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested under items) since attachments have their own integer IDs.
 
@@ -334,6 +343,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
   - `006_add_allowed_builtin_tools.py` — configurable built-in tools
   - `007_add_done_at.py` — done timestamp tracking with backfill
   - `008_add_merge_commit.py` — merge commit SHA tracking
+  - `009_add_annotation_summary.py` — annotation summary for attachments
 - **Schema tracking**: `schema_migrations` table tracks which migrations have been applied
 - **CLI management**: `python -m src.manage` for migration commands
 - **Auto-migration**: Database automatically runs pending migrations on startup
@@ -348,7 +358,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 - Never use browser `confirm()` or `prompt()` in dialogs — they block and conflict with `<dialog>` modals. Use `Dialogs.confirm()` which returns a Promise.
 - Tooltips use JS positioning (`position: fixed`, appended to the nearest open `<dialog>` or `document.body`) so they appear above modal dialogs. Use `data-tip` for plain text, `data-tip-html` for rich formatted tooltips.
 - Avoid duplicate `from pathlib import Path` inside functions — it's imported at file top and local imports cause `UnboundLocalError`.
-- Attachments are stored as PNG files in `agents-lab/assets/` and referenced in the `attachments` table. Cleaned up on item delete.
+- Attachments are stored as PNG files in `agents-lab/assets/` and referenced in the `attachments` table. Cleaned up on item delete. Annotations are exported as two separate PNGs: `annotation_{ts}_original.png` (clean screenshot) and `annotation_{ts}_annotations.png` (transparent overlay with annotation shapes). The `annotation_summary` column stores a text count of annotations (e.g., '2 arrows, 1 circle'). The agent prompt groups paired files and labels them for the agent.
 - The annotation canvas (`annotate.js`) is a self-contained component: `Annotate.init(canvasEl)` to start, `Annotate.toDataURL()` to export. Supports image drop, scale (wheel + corner handles), and annotation tools.
 - Card action buttons use `event.stopPropagation()` on individual buttons, not on the wrapper div, to avoid click blind spots.
 - MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` in `WorkflowService` for user response, todo creation immediately returns success and broadcasts via `NotificationService`, commit message stores in-memory (`SessionService._commit_messages` dict) and persists to DB on agent completion.
@@ -411,6 +421,7 @@ src/
 |       +-- 006_add_allowed_builtin_tools.py # Configurable built-in tools
 |       +-- 007_add_done_at.py         # Done timestamp tracking
 |       +-- 008_add_merge_commit.py  # Merge commit SHA tracking
+|       +-- 009_add_annotation_summary.py # Annotation summary for attachments
 +-- static/
 |   +-- js/
 |   |   +-- app.js                   # WebSocket + init
