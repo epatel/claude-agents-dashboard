@@ -4,8 +4,17 @@ set -euo pipefail
 # Resolve the directory where this script lives (the dashboard repo)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Target project is the first argument, or the current working directory
-TARGET_PROJECT="${1:-$(pwd)}"
+# Parse arguments: first positional arg is target project, rest are forwarded
+TARGET_PROJECT=""
+EXTRA_ARGS=()
+for arg in "$@"; do
+    if [ -z "$TARGET_PROJECT" ] && [[ "$arg" != --* ]]; then
+        TARGET_PROJECT="$arg"
+    else
+        EXTRA_ARGS+=("$arg")
+    fi
+done
+TARGET_PROJECT="${TARGET_PROJECT:-$(pwd)}"
 TARGET_PROJECT="$(cd "$TARGET_PROJECT" && pwd)"
 
 # Verify target is a git repo
@@ -26,4 +35,4 @@ fi
 
 # Launch the server (must run from the dashboard directory for module imports)
 cd "$SCRIPT_DIR"
-exec "$VENV_DIR/bin/python" -m src.main "$TARGET_PROJECT"
+exec "$VENV_DIR/bin/python" -m src.main "$TARGET_PROJECT" "${EXTRA_ARGS[@]}"

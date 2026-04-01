@@ -23,7 +23,8 @@ COLUMN_IDS = [c["id"] for c in COLUMNS]
 # Data directory name created in target project
 DATA_DIR_NAME = "agents-lab"
 
-# Default starting port
+# Default host and starting port
+DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 MAX_PORT_TRIES = 20
 
