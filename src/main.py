@@ -1,16 +1,17 @@
+import argparse
 import sys
 import socket
 import subprocess
 from pathlib import Path
 
-from .config import DATA_DIR_NAME, DEFAULT_PORT, MAX_PORT_TRIES
+from .config import DATA_DIR_NAME, DEFAULT_HOST, DEFAULT_PORT, MAX_PORT_TRIES
 
 
-def find_available_port(start: int = DEFAULT_PORT) -> int:
+def find_available_port(host: str = DEFAULT_HOST, start: int = DEFAULT_PORT) -> int:
     for port in range(start, start + MAX_PORT_TRIES):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
-                s.bind(("127.0.0.1", port))
+                s.bind((host, port))
                 return port
             except OSError:
                 continue
@@ -29,10 +30,18 @@ def get_project_name(target: Path) -> str:
 
 
 def main():
-    if len(sys.argv) > 1:
-        target_project = Path(sys.argv[1]).resolve()
-    else:
-        target_project = Path.cwd().resolve()
+    parser = argparse.ArgumentParser(description="Agents Dashboard — scrum board for Claude agents")
+    parser.add_argument("target", nargs="?", default=str(Path.cwd()),
+                        help="Path to the target git project (default: current directory)")
+    parser.add_argument("--host", default=DEFAULT_HOST,
+                        help=f"Host address to bind to (default: {DEFAULT_HOST}). "
+                             "Use 0.0.0.0 to accept connections from any network interface.")
+    parser.add_argument("--port", type=int, default=None,
+                        help=f"Port to bind to (default: auto-detect starting from {DEFAULT_PORT})")
+    args = parser.parse_args()
+
+    target_project = Path(args.target).resolve()
+    host = args.host
 
     # Verify it's a git repo
     try:
@@ -62,13 +71,19 @@ def main():
     else:
         gitignore.write_text(f"{ignore_entry}\n")
 
-    port = find_available_port()
+    if args.port is not None:
+        port = args.port
+    else:
+        port = find_available_port(host)
     project_name = get_project_name(target_project)
 
+    display_host = "127.0.0.1" if host == "0.0.0.0" else host
     print(f"Agents Dashboard for: {project_name}")
     print(f"Target project: {target_project}")
     print(f"Data directory: {data_dir}")
-    print(f"Starting on: http://127.0.0.1:{port}")
+    print(f"Starting on: http://{display_host}:{port}")
+    if host == "0.0.0.0":
+        print(f"⚠️  Accepting connections from all network interfaces")
 
     import logging
     import uvicorn
@@ -82,7 +97,7 @@ def main():
     logging.getLogger("uvicorn.access").addFilter(_QuietStatsFilter())
 
     app = create_app(target_project, data_dir)
-    uvicorn.run(app, host="127.0.0.1", port=port)
+    uvicorn.run(app, host=host, port=port)
 
 
 if __name__ == "__main__":
