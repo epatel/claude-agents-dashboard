@@ -17,6 +17,10 @@ CREATE_TODO_SCHEMA = {
             "type": "string",
             "description": "Optional detailed description of the todo item.",
         },
+        "epic_id": {
+            "type": "string",
+            "description": "Optional epic ID to assign this todo to. Use view_board to see available epics.",
+        },
     },
     "required": ["title"],
 }
@@ -37,7 +41,7 @@ def create_todo_server(on_create_todo, on_delete_todo=None):
     """Create an MCP server with todo management tools.
 
     Args:
-        on_create_todo: async callback(title, description) -> dict
+        on_create_todo: async callback(title, description, epic_id=None) -> dict
             Called when agent uses the create_todo tool.
             Should return the created item info (id, title, etc).
         on_delete_todo: async callback(item_id) -> str
@@ -57,7 +61,8 @@ def create_todo_server(on_create_todo, on_delete_todo=None):
         """Create a new todo item."""
         title = input.get("title", "")
         description = input.get("description", "")
-        item_info = await on_create_todo(title, description)
+        epic_id = input.get("epic_id")
+        item_info = await on_create_todo(title, description, epic_id)
         return {
             "content": [
                 {

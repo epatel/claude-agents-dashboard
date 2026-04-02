@@ -721,8 +721,8 @@ class WorkflowService:
         return on_request_tool
 
     def _create_on_create_todo_callback(self, item_id: str):
-        async def on_create_todo(title: str, description: str) -> Dict[str, Any]:
-            item = await self.db.create_todo_item(title, description)
+        async def on_create_todo(title: str, description: str, epic_id: str = None) -> Dict[str, Any]:
+            item = await self.db.create_todo_item(title, description, epic_id)
             await self._log_and_notify(item_id, "system", f"Created todo item: {title}")
             await self.notifications.broadcast_item_created(item)
             return item
@@ -755,6 +755,9 @@ class WorkflowService:
         async def on_view_board() -> str:
             from ..config import COLUMNS
             items = await self.db.get_all_items()
+            epics = await self.db.get_epics()
+            epic_map = {e["id"]: e["title"] for e in epics}
+
             # Group by column
             by_column = {}
             for item in items:
@@ -762,6 +765,14 @@ class WorkflowService:
                 by_column.setdefault(col, []).append(item)
 
             lines = []
+
+            # Show available epics
+            if epics:
+                lines.append("## Epics")
+                for epic in epics:
+                    lines.append(f"- [{epic['id']}] {epic['title']} (color: {epic.get('color', 'blue')})")
+                lines.append("")
+
             for col in COLUMNS:
                 col_id = col["id"]
                 col_items = by_column.get(col_id, [])
@@ -769,7 +780,8 @@ class WorkflowService:
                 if col_items:
                     for item in col_items:
                         status = f" [{item['status']}]" if item.get("status") else ""
-                        lines.append(f"- [{item['id']}] {item['title']}{status}")
+                        epic_text = f" [Epic: {epic_map.get(item.get('epic_id', ''), '')}]" if item.get('epic_id') else ""
+                        lines.append(f"- [{item['id']}] {item['title']}{status}{epic_text}")
                 else:
                     lines.append("  (empty)")
                 lines.append("")

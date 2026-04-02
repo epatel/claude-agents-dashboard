@@ -89,7 +89,7 @@ class DatabaseService:
                 return dict(row)
             return {}
 
-    async def create_todo_item(self, title: str, description: str) -> Dict[str, Any]:
+    async def create_todo_item(self, title: str, description: str, epic_id: str = None) -> Dict[str, Any]:
         """Create a new todo item and return it."""
         from ..models import new_id
 
@@ -105,8 +105,8 @@ class DatabaseService:
 
             # Create new todo item
             await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, 'todo', ?)",
-                (todo_id, title, description, position),
+                "INSERT INTO items (id, title, description, column_name, position, epic_id) VALUES (?, ?, ?, 'todo', ?, ?)",
+                (todo_id, title, description, position, epic_id),
             )
             await conn.commit()
 
