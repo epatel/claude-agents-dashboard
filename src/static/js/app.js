@@ -8,6 +8,7 @@ const App = {
     connectionState: 'disconnected', // 'connecting', 'connected', 'disconnected', 'error'
     reconnectTimer: null,
     isPageVisible: true,
+    _epicRefreshTimer: null,
 
     // Delegate auto-scroll to DialogCore
     autoScroll(element) {
@@ -317,12 +318,19 @@ const App = {
         setTimeout(() => this.connectWS(), 100);
     },
 
+    _refreshEpicsDebounced() {
+        clearTimeout(this._epicRefreshTimer);
+        this._epicRefreshTimer = setTimeout(() => Board.loadEpics(), 500);
+    },
+
     handleEvent(type, data) {
         switch (type) {
             case 'item_created':
             case 'item_updated':
             case 'item_moved':
                 Board.updateCard(data);
+                // Refresh epic progress — column changes affect done/total counts
+                this._refreshEpicsDebounced();
 
                 // Auto-transition: if the detail dialog is open for this item
                 // and the task ended (moved column or status changed), transition
@@ -343,6 +351,7 @@ const App = {
                 break;
             case 'item_deleted':
                 Board.removeCard(data.id);
+                this._refreshEpicsDebounced();
                 break;
             case 'agent_log':
                 this.appendLog(data);
