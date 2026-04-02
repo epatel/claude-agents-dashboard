@@ -13,6 +13,7 @@ class ItemCreate(BaseModel):
     title: str
     description: str = ""
     model: Optional[str] = None
+    epic_id: Optional[str] = None
 
 
 class ItemUpdate(BaseModel):
@@ -22,6 +23,18 @@ class ItemUpdate(BaseModel):
     position: Optional[int] = None
     status: Optional[str] = None
     model: Optional[str] = None
+    epic_id: Optional[str] = None
+
+
+class EpicCreate(BaseModel):
+    title: str
+    color: str = "blue"
+
+
+class EpicUpdate(BaseModel):
+    title: Optional[str] = None
+    color: Optional[str] = None
+    position: Optional[int] = None
 
 
 class ItemMove(BaseModel):
