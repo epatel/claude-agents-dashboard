@@ -19,6 +19,16 @@
     --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.12);
     --radius: 8px;
     --radius-sm: 4px;
+
+    /* Epic colors */
+    --epic-red: #dc2626;
+    --epic-orange: #ea580c;
+    --epic-amber: #d97706;
+    --epic-green: #16a34a;
+    --epic-teal: #0d9488;
+    --epic-blue: #2563eb;
+    --epic-purple: #7c3aed;
+    --epic-pink: #db2777;
 }
 
 /* Dark theme */
@@ -40,6 +50,16 @@
     --warning: #ffd60a;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
+
+    /* Epic colors */
+    --epic-red: #f87171;
+    --epic-orange: #fb923c;
+    --epic-amber: #fbbf24;
+    --epic-green: #4ade80;
+    --epic-teal: #2dd4a1;
+    --epic-blue: #60a5fa;
+    --epic-purple: #a78bfa;
+    --epic-pink: #f472b6;
 }
 
 /* System preference when set to auto */

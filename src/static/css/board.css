@@ -314,3 +314,166 @@
 .column.collapsed .column-count {
     display: none;
 }
+
+/* --- Epic panel --- */
+
+.epic-panel-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    user-select: none;
+}
+.epic-panel-toggle:hover { color: var(--text-primary); }
+.epic-panel-toggle svg { transition: transform 0.15s; }
+.epic-panel-toggle.expanded svg { transform: rotate(90deg); }
+
+.epic-panel {
+    display: none;
+    padding: 8px 20px 12px;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    border-bottom: 1px solid var(--border-light);
+}
+.epic-panel.visible { display: flex; }
+
+.epic-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 13px;
+    transition: border-color 0.15s;
+    min-width: 140px;
+}
+.epic-card:hover { border-color: var(--accent); }
+.epic-card.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.epic-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.epic-card-title {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.epic-progress-bar {
+    width: 60px;
+    height: 4px;
+    background: var(--border-light);
+    border-radius: 2px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.epic-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+.epic-progress-count {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.epic-filter-clear {
+    font-size: 12px;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 4px 8px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: none;
+}
+.epic-filter-clear:hover {
+    background: var(--accent);
+    color: white;
+}
+
+/* --- Epic badge on cards --- */
+
+.card-epic-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+.card-epic-badge .epic-dot {
+    width: 8px;
+    height: 8px;
+}
+
+/* --- Todo column epic grouping --- */
+
+.todo-epic-group { margin-bottom: 8px; }
+
+.todo-epic-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    border-radius: var(--radius-sm);
+}
+.todo-epic-header:hover { background: var(--bg-hover); }
+
+.todo-epic-header svg { transition: transform 0.15s; }
+.todo-epic-header.expanded svg { transform: rotate(90deg); }
+
+.todo-epic-count {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+/* --- Epic dropdown in item dialog --- */
+
+.epic-color-swatches {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+}
+.epic-color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+.epic-color-swatch:hover { border-color: var(--text-secondary); }
+.epic-color-swatch.selected { border-color: var(--accent); }
+
+.epic-inline-create {
+    display: none;
+    padding: 8px;
+    margin-top: 4px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-hover);
+}
+.epic-inline-create.visible { display: block; }
