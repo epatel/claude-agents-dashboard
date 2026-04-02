@@ -178,7 +178,9 @@ async def board_page(request: Request):
     db = request.app.state.db
     async with db.connect() as conn:
         cursor = await conn.execute(
-            "SELECT * FROM items ORDER BY column_name, position"
+            "SELECT items.*, epics.title as epic_title, epics.color as epic_color "
+            "FROM items LEFT JOIN epics ON items.epic_id = epics.id "
+            "ORDER BY items.column_name, items.position"
         )
         rows = await cursor.fetchall()
         items = [dict(row) for row in rows]
