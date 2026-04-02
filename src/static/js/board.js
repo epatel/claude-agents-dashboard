@@ -442,9 +442,9 @@ const Board = {
 
     _isEpicFullyArchived(epic) {
         const p = epic.progress || {};
-        const total = (p.total || 0);
         const archived = (p.archive || 0);
-        return total > 0 && total === archived;
+        // Epic has items and all are archived (total excludes archive, so check it's 0)
+        return archived > 0 && (p.total || 0) === 0;
     },
 
     _renderEpicPanel() {
