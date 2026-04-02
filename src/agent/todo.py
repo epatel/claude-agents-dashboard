@@ -1,7 +1,7 @@
-"""Todo management tools for agents.
+"""Todo and epic management tools for agents.
 
-Creates an MCP server with 'create_todo' and 'delete_todo' tools that agents
-can call to manage todo items on the board.
+Creates an MCP server with 'create_todo', 'delete_todo', and 'create_epic'
+tools that agents can call to manage todo items and epics on the board.
 """
 
 from claude_agent_sdk import tool, create_sdk_mcp_server
@@ -25,6 +25,22 @@ CREATE_TODO_SCHEMA = {
     "required": ["title"],
 }
 
+CREATE_EPIC_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": "The title of the epic. Should describe a higher-level work stream or feature area.",
+        },
+        "color": {
+            "type": "string",
+            "description": "Color for the epic. One of: red, orange, amber, green, teal, blue, purple, pink. Defaults to blue.",
+            "enum": ["red", "orange", "amber", "green", "teal", "blue", "purple", "pink"],
+        },
+    },
+    "required": ["title"],
+}
+
 DELETE_TODO_SCHEMA = {
     "type": "object",
     "properties": {
@@ -37,8 +53,8 @@ DELETE_TODO_SCHEMA = {
 }
 
 
-def create_todo_server(on_create_todo, on_delete_todo=None):
-    """Create an MCP server with todo management tools.
+def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None):
+    """Create an MCP server with todo and epic management tools.
 
     Args:
         on_create_todo: async callback(title, description, epic_id=None) -> dict
@@ -47,6 +63,9 @@ def create_todo_server(on_create_todo, on_delete_todo=None):
         on_delete_todo: async callback(item_id) -> str
             Called when agent uses the delete_todo tool.
             Should return a confirmation message.
+        on_create_epic: async callback(title, color) -> dict
+            Called when agent uses the create_epic tool.
+            Should return the created epic info (id, title, color).
     """
 
     @tool(
@@ -95,5 +114,28 @@ def create_todo_server(on_create_todo, on_delete_todo=None):
                 ]
             }
         tools.append(delete_todo)
+
+    if on_create_epic:
+        @tool(
+            "create_epic",
+            "Create a new epic to group related todo items into a higher-level work stream. "
+            "Use this when you identify a set of related tasks that belong together. "
+            "Provide a descriptive title and optionally a color.",
+            CREATE_EPIC_SCHEMA,
+        )
+        async def create_epic(input: dict) -> dict:
+            """Create a new epic."""
+            title = input.get("title", "")
+            color = input.get("color", "blue")
+            epic_info = await on_create_epic(title, color)
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Created epic: {epic_info['title']} (ID: {epic_info['id']}, color: {epic_info['color']})"
+                    }
+                ]
+            }
+        tools.append(create_epic)
 
     return create_sdk_mcp_server("todo", tools=tools)

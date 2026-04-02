@@ -72,6 +72,7 @@ class WorkflowService:
             on_error=self._create_on_error_callback(item_id),
             on_clarify=self._create_on_clarify_callback(item_id),
             on_create_todo=self._create_on_create_todo_callback(item_id),
+            on_create_epic=self._create_on_create_epic_callback(item_id),
             on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
@@ -156,6 +157,7 @@ class WorkflowService:
             on_error=self._create_on_error_callback(item_id),
             on_clarify=self._create_on_clarify_callback(item_id),
             on_create_todo=self._create_on_create_todo_callback(item_id),
+            on_create_epic=self._create_on_create_epic_callback(item_id),
             on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
@@ -214,6 +216,7 @@ class WorkflowService:
             on_error=self._create_on_error_callback(item_id),
             on_clarify=self._create_on_clarify_callback(item_id),
             on_create_todo=self._create_on_create_todo_callback(item_id),
+            on_create_epic=self._create_on_create_epic_callback(item_id),
             on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
@@ -359,6 +362,7 @@ class WorkflowService:
                     on_error=self._create_on_error_callback(item_id),
                     on_clarify=self._create_on_clarify_callback(item_id),
                     on_create_todo=self._create_on_create_todo_callback(item_id),
+            on_create_epic=self._create_on_create_epic_callback(item_id),
                     on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
                     on_request_command=self._create_on_request_command_callback(item_id),
                     on_request_tool=self._create_on_request_tool_callback(item_id),
@@ -412,6 +416,7 @@ class WorkflowService:
             on_error=self._create_on_error_callback(item_id),
             on_clarify=self._create_on_clarify_callback(item_id),
             on_create_todo=self._create_on_create_todo_callback(item_id),
+            on_create_epic=self._create_on_create_epic_callback(item_id),
             on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
@@ -728,6 +733,14 @@ class WorkflowService:
             return item
         return on_create_todo
 
+    def _create_on_create_epic_callback(self, item_id: str):
+        async def on_create_epic(title: str, color: str) -> Dict[str, Any]:
+            epic = await self.db.create_epic(title, color)
+            await self._log_and_notify(item_id, "system", f"Created epic: {title}")
+            await self.notifications.broadcast_epic_created(epic)
+            return epic
+        return on_create_epic
+
     def _create_on_delete_todo_callback(self, item_id: str):
         async def on_delete_todo(target_id: str) -> str:
             # Only allow deleting items in the todo column
@@ -822,6 +835,7 @@ class WorkflowService:
                 on_error=self._create_on_error_callback(item_id),
                 on_clarify=self._create_on_clarify_callback(item_id),
                 on_create_todo=self._create_on_create_todo_callback(item_id),
+            on_create_epic=self._create_on_create_epic_callback(item_id),
                 on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
                 on_request_command=self._create_on_request_command_callback(item_id),
                 on_request_tool=self._create_on_request_tool_callback(item_id),
