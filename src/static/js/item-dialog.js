@@ -11,6 +11,9 @@ const ItemDialog = {
         document.getElementById('item-form-title').value = '';
         document.getElementById('item-form-desc').value = '';
         document.getElementById('item-form-model').value = '';
+        document.getElementById('item-form-epic').value = '';
+        this.hideInlineEpicCreate();
+        await this._populateEpicDropdown(null);
         this._pendingAttachments = [];
         this._renderFormAttachments();
         await this._updateDefaultModelDisplay();
@@ -27,6 +30,9 @@ const ItemDialog = {
         document.getElementById('item-form-title').value = item.title;
         document.getElementById('item-form-desc').value = item.description;
         document.getElementById('item-form-model').value = item.model || '';
+        document.getElementById('item-form-epic').value = item.epic_id || '';
+        this.hideInlineEpicCreate();
+        await this._populateEpicDropdown(item.epic_id);
         this._pendingAttachments = [];
         this._renderFormAttachments();
         // Load existing attachments for edit
@@ -99,17 +105,18 @@ const ItemDialog = {
         const title = document.getElementById('item-form-title').value.trim();
         const description = document.getElementById('item-form-desc').value;
         const model = document.getElementById('item-form-model').value || null;
+        const epic_id = document.getElementById('item-form-epic').value || null;
 
         if (!title) return;
 
         try {
             let itemId = id;
             if (id) {
-                const updateData = { title, description };
+                const updateData = { title, description, epic_id };
                 if (model !== null) updateData.model = model;
                 await Api.updateItem(id, updateData);
             } else {
-                const item = await Api.createItem(title, description, model);
+                const item = await Api.createItem(title, description, model, epic_id);
                 itemId = item.id;
             }
 
@@ -136,6 +143,7 @@ const ItemDialog = {
         const title = document.getElementById('item-form-title').value.trim();
         const description = document.getElementById('item-form-desc').value;
         const model = document.getElementById('item-form-model').value || null;
+        const epic_id = document.getElementById('item-form-epic').value || null;
 
         if (!title) return;
 
@@ -143,12 +151,12 @@ const ItemDialog = {
             let itemId = id;
             if (id) {
                 // For existing items, just update
-                const updateData = { title, description };
+                const updateData = { title, description, epic_id };
                 if (model !== null) updateData.model = model;
                 await Api.updateItem(id, updateData);
             } else {
                 // For new items, create first
-                const item = await Api.createItem(title, description, model);
+                const item = await Api.createItem(title, description, model, epic_id);
                 itemId = item.id;
             }
 
@@ -172,6 +180,75 @@ const ItemDialog = {
             console.error('Failed to save and start item:', err);
         }
     },
+
+    async _populateEpicDropdown(selectedEpicId) {
+        const select = document.getElementById('item-form-epic');
+        if (!select) return;
+
+        try {
+            const epics = await Api.request('GET', '/api/epics');
+            select.innerHTML = '<option value="">No Epic</option>';
+            for (const epic of epics) {
+                const opt = document.createElement('option');
+                opt.value = epic.id;
+                opt.textContent = epic.title;
+                if (epic.id === selectedEpicId) opt.selected = true;
+                select.appendChild(opt);
+            }
+        } catch (e) {
+            console.error('Failed to load epics:', e);
+        }
+    },
+
+    showInlineEpicCreate() {
+        const container = document.getElementById('epic-inline-create');
+        if (!container) return;
+        container.classList.add('visible');
+        document.getElementById('epic-create-title').value = '';
+        this._selectedEpicColor = 'blue';
+        this._renderColorSwatches();
+        document.getElementById('epic-create-title').focus();
+    },
+
+    hideInlineEpicCreate() {
+        const container = document.getElementById('epic-inline-create');
+        if (container) container.classList.remove('visible');
+    },
+
+    _renderColorSwatches() {
+        const container = document.getElementById('epic-color-swatches');
+        if (!container) return;
+        const colors = ['red', 'orange', 'amber', 'green', 'teal', 'blue', 'purple', 'pink'];
+        container.innerHTML = colors.map(c =>
+            `<div class="epic-color-swatch${c === this._selectedEpicColor ? ' selected' : ''}"
+                  style="background: var(--epic-${c})"
+                  onclick="ItemDialog._selectEpicColor('${c}')"></div>`
+        ).join('');
+    },
+
+    _selectEpicColor(color) {
+        this._selectedEpicColor = color;
+        this._renderColorSwatches();
+    },
+
+    async createEpicInline() {
+        const title = document.getElementById('epic-create-title').value.trim();
+        if (!title) return;
+
+        try {
+            const epic = await Api.request('POST', '/api/epics', {
+                title,
+                color: this._selectedEpicColor || 'blue',
+            });
+            this.hideInlineEpicCreate();
+            await this._populateEpicDropdown(epic.id);
+            Board.loadEpics();
+        } catch (e) {
+            console.error('Failed to create epic:', e);
+        }
+    },
+
+    _selectedEpicColor: 'blue',
 
     async _updateDefaultModelDisplay() {
         try {
