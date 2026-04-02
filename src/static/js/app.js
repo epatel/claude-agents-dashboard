@@ -27,6 +27,7 @@ const App = {
             if (card.dataset.title) item.title = card.dataset.title;
             if (card.dataset.doneAt) item.done_at = card.dataset.doneAt;
             if (card.dataset.updatedAt) item.updated_at = card.dataset.updatedAt;
+            if (card.dataset.epicId) item.epic_id = card.dataset.epicId;
             items.push(item);
         });
         Board.init(items);

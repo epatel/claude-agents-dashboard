@@ -240,6 +240,11 @@ async def create_item(request: Request, body: ItemCreate):
         row = await cursor.fetchone()
         position = row[0]
 
+        if body.epic_id:
+            cursor = await conn.execute("SELECT id FROM epics WHERE id = ?", (body.epic_id,))
+            if not await cursor.fetchone():
+                raise HTTPException(status_code=400, detail="Epic not found")
+
         await conn.execute(
             "INSERT INTO items (id, title, description, column_name, position, model, epic_id) VALUES (?, ?, ?, 'todo', ?, ?, ?)",
             (item_id, body.title, body.description, position, body.model, body.epic_id),

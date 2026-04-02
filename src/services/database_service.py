@@ -339,7 +339,9 @@ class DatabaseService:
         async with self.db.connect() as conn:
             cursor = await conn.execute("SELECT * FROM epics WHERE id = ?", (epic_id,))
             row = await cursor.fetchone()
-            epic = dict(row) if row else None
+            if not row:
+                return None
+            epic = dict(row)
 
             await conn.execute("UPDATE items SET epic_id = NULL WHERE epic_id = ?", (epic_id,))
             await conn.execute("DELETE FROM epics WHERE id = ?", (epic_id,))
