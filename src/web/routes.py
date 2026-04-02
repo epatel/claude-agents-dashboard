@@ -9,7 +9,8 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
 from ..config import COLUMNS
-from ..models import ItemCreate, ItemUpdate, ItemMove, ClarificationResponse, AgentConfig, new_id
+from ..constants import EPIC_COLORS
+from ..models import ItemCreate, ItemUpdate, ItemMove, ClarificationResponse, AgentConfig, EpicCreate, EpicUpdate, new_id
 from ..git.operations import get_diff, get_changed_files, get_file_content, get_current_branch
 
 router = APIRouter()
@@ -238,8 +239,8 @@ async def create_item(request: Request, body: ItemCreate):
         position = row[0]
 
         await conn.execute(
-            "INSERT INTO items (id, title, description, column_name, position, model) VALUES (?, ?, ?, 'todo', ?, ?)",
-            (item_id, body.title, body.description, position, body.model),
+            "INSERT INTO items (id, title, description, column_name, position, model, epic_id) VALUES (?, ?, ?, 'todo', ?, ?, ?)",
+            (item_id, body.title, body.description, position, body.model, body.epic_id),
         )
         await conn.commit()
 
@@ -772,6 +773,65 @@ async def get_websocket_stats(request: Request):
     """Get WebSocket connection statistics for monitoring."""
     ws_manager = request.app.state.ws_manager
     return ws_manager.get_connection_stats()
+
+
+
+# --- Epics ---
+
+@router.get("/api/epics")
+async def get_epics(request: Request):
+    """Get all epics with progress stats."""
+    db_service = request.app.state.orchestrator.db
+    epics = await db_service.get_epics()
+    progress = await db_service.get_epic_progress()
+    for epic in epics:
+        epic["progress"] = progress.get(epic["id"], {
+            "todo": 0, "doing": 0, "questions": 0, "review": 0, "done": 0, "archive": 0, "total": 0
+        })
+    return epics
+
+
+@router.get("/api/epics/colors")
+async def get_epic_colors():
+    """Get the preset epic color palette."""
+    return EPIC_COLORS
+
+
+@router.post("/api/epics")
+async def create_epic(request: Request, body: EpicCreate):
+    """Create a new epic."""
+    db_service = request.app.state.orchestrator.db
+    ns = request.app.state.orchestrator.notifications
+    epic = await db_service.create_epic(body.title, body.color)
+    await ns.broadcast_epic_created(epic)
+    _invalidate_stats_cache()
+    return epic
+
+
+@router.put("/api/epics/{epic_id}")
+async def update_epic(request: Request, epic_id: str, body: EpicUpdate):
+    """Update an epic."""
+    db_service = request.app.state.orchestrator.db
+    ns = request.app.state.orchestrator.notifications
+    kwargs = body.model_dump(exclude_unset=True)
+    epic = await db_service.update_epic(epic_id, **kwargs)
+    if not epic:
+        raise HTTPException(status_code=404, detail="Epic not found")
+    await ns.broadcast_epic_updated(epic)
+    return epic
+
+
+@router.delete("/api/epics/{epic_id}")
+async def delete_epic(request: Request, epic_id: str):
+    """Delete an epic (nullifies epic_id on related items)."""
+    db_service = request.app.state.orchestrator.db
+    ns = request.app.state.orchestrator.notifications
+    epic = await db_service.delete_epic(epic_id)
+    if not epic:
+        raise HTTPException(status_code=404, detail="Epic not found")
+    await ns.broadcast_epic_deleted(epic_id)
+    _invalidate_stats_cache()
+    return {"success": True}
 
 
 # --- WebSocket ---
