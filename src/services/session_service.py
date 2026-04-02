@@ -181,21 +181,36 @@ class SessionService:
         return self._commit_messages.pop(item_id, None)
 
     def _parse_plugins(self, plugins_json: Optional[str]) -> Optional[List[Dict[str, Any]]]:
-        """Parse plugins JSON string from config into a list of plugin configs."""
-        if not plugins_json:
-            return None
-        try:
-            plugins = json.loads(plugins_json) if isinstance(plugins_json, str) else plugins_json
-            if not isinstance(plugins, list) or len(plugins) == 0:
-                return None
-            # Normalize: each entry can be a string (path) or dict with "path" key
-            result = []
-            for entry in plugins:
-                if isinstance(entry, str) and entry.strip():
-                    result.append({"type": "local", "path": entry.strip()})
-                elif isinstance(entry, dict) and entry.get("path"):
-                    result.append({"type": "local", "path": entry["path"]})
-            return result if result else None
-        except Exception as e:
-            logger.warning(f"Failed to parse plugins config: {e}")
-            return None
+        """Parse plugins JSON string from config into a list of plugin configs.
+
+        Also auto-discovers plugins in the dashboard's plugins/ directory.
+        """
+        result = []
+
+        # Auto-discover plugins from the dashboard's plugins/ directory
+        plugins_dir = Path(__file__).parent.parent.parent / "plugins"
+        if plugins_dir.is_dir():
+            for entry in sorted(plugins_dir.iterdir()):
+                manifest = entry / ".claude-plugin" / "plugin.json"
+                if entry.is_dir() and manifest.exists():
+                    result.append({"type": "local", "path": str(entry.resolve())})
+
+        # Parse user-configured plugins from agent config
+        if plugins_json:
+            try:
+                plugins = json.loads(plugins_json) if isinstance(plugins_json, str) else plugins_json
+                if isinstance(plugins, list):
+                    seen = {p["path"] for p in result}
+                    for entry in plugins:
+                        path = None
+                        if isinstance(entry, str) and entry.strip():
+                            path = entry.strip()
+                        elif isinstance(entry, dict) and entry.get("path"):
+                            path = entry["path"]
+                        if path and path not in seen:
+                            result.append({"type": "local", "path": path})
+                            seen.add(path)
+            except Exception as e:
+                logger.warning(f"Failed to parse plugins config: {e}")
+
+        return result if result else None
