@@ -94,3 +94,78 @@ async def test_delete_epic_nullifies_items(db):
         cursor = await conn.execute("SELECT epic_id FROM items WHERE id = ?", ("item-001",))
         row = await cursor.fetchone()
     assert row[0] is None
+
+
+from src.services.database_service import DatabaseService
+
+
+@pytest_asyncio.fixture
+async def db_service(db):
+    """Create a DatabaseService instance."""
+    return DatabaseService(db)
+
+
+@pytest.mark.asyncio
+async def test_db_service_create_epic(db_service):
+    epic = await db_service.create_epic("Auth Rewrite", "blue")
+    assert epic["title"] == "Auth Rewrite"
+    assert epic["color"] == "blue"
+    assert "id" in epic
+
+
+@pytest.mark.asyncio
+async def test_db_service_get_epics(db_service):
+    await db_service.create_epic("Epic A", "red")
+    await db_service.create_epic("Epic B", "green")
+    epics = await db_service.get_epics()
+    assert len(epics) == 2
+    assert epics[0]["title"] == "Epic A"
+    assert epics[1]["title"] == "Epic B"
+
+
+@pytest.mark.asyncio
+async def test_db_service_update_epic(db_service):
+    epic = await db_service.create_epic("Old Title", "blue")
+    updated = await db_service.update_epic(epic["id"], title="New Title", color="red")
+    assert updated["title"] == "New Title"
+    assert updated["color"] == "red"
+
+
+@pytest.mark.asyncio
+async def test_db_service_delete_epic(db_service):
+    epic = await db_service.create_epic("Temp Epic", "blue")
+    async with db_service.db.connect() as conn:
+        await conn.execute(
+            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
+            ("item-del-1", "Test Item", "todo", 0, epic["id"]),
+        )
+        await conn.commit()
+
+    deleted = await db_service.delete_epic(epic["id"])
+    assert deleted["id"] == epic["id"]
+
+    async with db_service.db.connect() as conn:
+        cursor = await conn.execute("SELECT epic_id FROM items WHERE id = ?", ("item-del-1",))
+        row = await cursor.fetchone()
+    assert row[0] is None
+
+
+@pytest.mark.asyncio
+async def test_db_service_get_epic_progress(db_service):
+    epic = await db_service.create_epic("Progress Epic", "blue")
+    async with db_service.db.connect() as conn:
+        await conn.execute(
+            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
+            ("item-p1", "Todo Item", "todo", 0, epic["id"]),
+        )
+        await conn.execute(
+            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
+            ("item-p2", "Done Item", "done", 0, epic["id"]),
+        )
+        await conn.commit()
+
+    progress = await db_service.get_epic_progress()
+    assert epic["id"] in progress
+    assert progress[epic["id"]]["todo"] == 1
+    assert progress[epic["id"]]["done"] == 1
+    assert progress[epic["id"]]["total"] == 2

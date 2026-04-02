@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from ..database import Database
 from ..agent.session import AgentResult
+from ..models import new_id
 
 logger = logging.getLogger(__name__)
 
@@ -284,3 +285,85 @@ class DatabaseService:
                 p.unlink()
 
         return item
+
+    # --- Epic operations ---
+
+    async def get_epics(self) -> List[Dict[str, Any]]:
+        """Get all epics ordered by position."""
+        async with self.db.connect() as conn:
+            cursor = await conn.execute("SELECT * FROM epics ORDER BY position, created_at")
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def create_epic(self, title: str, color: str) -> Dict[str, Any]:
+        """Create a new epic."""
+        epic_id = new_id()
+        async with self.db.connect() as conn:
+            cursor = await conn.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM epics")
+            row = await cursor.fetchone()
+            position = row[0]
+
+            await conn.execute(
+                "INSERT INTO epics (id, title, color, position) VALUES (?, ?, ?, ?)",
+                (epic_id, title, color, position),
+            )
+            await conn.commit()
+
+            cursor = await conn.execute("SELECT * FROM epics WHERE id = ?", (epic_id,))
+            return dict(await cursor.fetchone())
+
+    async def update_epic(self, epic_id: str, **kwargs) -> Optional[Dict[str, Any]]:
+        """Update an epic's fields."""
+        async with self.db.connect() as conn:
+            updates = []
+            values = []
+            for field, value in kwargs.items():
+                if value is not None:
+                    updates.append(f"{field} = ?")
+                    values.append(value)
+
+            if updates:
+                values.append(epic_id)
+                await conn.execute(
+                    f"UPDATE epics SET {', '.join(updates)} WHERE id = ?",
+                    values,
+                )
+                await conn.commit()
+
+            cursor = await conn.execute("SELECT * FROM epics WHERE id = ?", (epic_id,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def delete_epic(self, epic_id: str) -> Optional[Dict[str, Any]]:
+        """Delete an epic and nullify epic_id on related items."""
+        async with self.db.connect() as conn:
+            cursor = await conn.execute("SELECT * FROM epics WHERE id = ?", (epic_id,))
+            row = await cursor.fetchone()
+            epic = dict(row) if row else None
+
+            await conn.execute("UPDATE items SET epic_id = NULL WHERE epic_id = ?", (epic_id,))
+            await conn.execute("DELETE FROM epics WHERE id = ?", (epic_id,))
+            await conn.commit()
+
+        return epic
+
+    async def get_epic_progress(self) -> Dict[str, Dict[str, int]]:
+        """Get item counts per column per epic."""
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT epic_id, column_name, COUNT(*) as cnt "
+                "FROM items WHERE epic_id IS NOT NULL "
+                "GROUP BY epic_id, column_name"
+            )
+            rows = await cursor.fetchall()
+
+        progress = {}
+        for row in rows:
+            eid = row[0]
+            col = row[1]
+            cnt = row[2]
+            if eid not in progress:
+                progress[eid] = {"todo": 0, "doing": 0, "questions": 0, "review": 0, "done": 0, "archive": 0, "total": 0}
+            progress[eid][col] = cnt
+            progress[eid]["total"] += cnt
+        return progress
