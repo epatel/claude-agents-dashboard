@@ -17,12 +17,12 @@ path/to/claude-agents-dashboard/run.sh
 ## Running tests
 
 ```bash
-./run-tests.sh              # Run all 156 tests
+./run-tests.sh              # Run all 161 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ```
 
-Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (12 tests — imports, DB basics), unit (130 tests — path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing, mini-MCP server, epics, annotation summary, annotation prompt), integration (14 tests — orchestrator lifecycle). E2E tests run separately via `./run-e2e-tests.sh`. See `tests/README.md` for details.
+Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (12 tests — imports, DB basics), unit (135 tests — path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing, mini-MCP server, epics, annotation summary, annotation prompt), integration (14 tests — orchestrator lifecycle). E2E tests run separately via `./run-e2e-tests.sh`. See `tests/README.md` for details.
 
 ## Architecture
 
@@ -165,12 +165,12 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,526 lines):
-  - `WorkflowService` (840 lines): Coordinates agent workflows, state transitions, callback creation, merge conflict auto-resolution, and dirty repo overlap detection
-  - `DatabaseService` (285 lines): All database operations (items, logs, config, attachments, token usage)
-  - `NotificationService` (95 lines): WebSocket broadcasting and tool use formatting
+- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,653 lines):
+  - `WorkflowService` (866 lines): Coordinates agent workflows, state transitions, callback creation, merge conflict auto-resolution, and dirty repo overlap detection
+  - `DatabaseService` (371 lines): All database operations (items, logs, config, attachments, token usage)
+  - `NotificationService` (107 lines): WebSocket broadcasting and tool use formatting
   - `GitService` (94 lines): Worktree management, merge operations, and cleanup
-  - `SessionService` (198 lines): Agent session lifecycle, commit messages, plugin parsing
+  - `SessionService` (215 lines): Agent session lifecycle, commit messages, plugin parsing
 
 - **Agent start is non-blocking**: `WorkflowService.start_agent()` creates a session via `SessionService.create_session()` and launches it via `SessionService.start_session_task()` which uses `asyncio.create_task()` so the HTTP response returns immediately. The agent streams progress via WebSocket.
 
@@ -435,6 +435,7 @@ src/
 |       +-- 007_add_done_at.py         # Done timestamp tracking
 |       +-- 008_add_merge_commit.py  # Merge commit SHA tracking
 |       +-- 009_add_annotation_summary.py # Annotation summary for attachments
+|       +-- 010_add_epics.py         # Epics table and epic_id on items
 +-- static/
 |   +-- js/
 |   |   +-- app.js                   # WebSocket + init
@@ -493,7 +494,7 @@ src/
 
 ### Testing changes
 
-Run the automated test suite (139 tests):
+Run the automated test suite (161 tests):
 ```bash
 ./run-tests.sh              # All tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
