@@ -3,7 +3,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 139 tests
+./run-tests.sh              # Run all 156 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -27,7 +27,10 @@ tests/
 │   ├── test_file_routes.py            # File browser routes (35 tests)
 │   ├── test_allowed_commands.py       # Command filter + access MCP (14 tests)
 │   ├── test_diff_mixing.py           # Diff isolation between items (6 tests)
-│   └── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
+│   ├── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
+│   ├── test_epics.py               # Epic CRUD, progress, assignment (10 tests)
+│   ├── test_annotation_summary.py  # Annotation summary generation (2 tests)
+│   └── test_annotation_prompt.py   # Annotation prompt formatting (5 tests)
 ├── integration/
 │   └── test_orchestrator_lifecycle.py  # Full agent workflow (14 tests)
 └── README.md
@@ -96,6 +99,26 @@ Tests the mini-MCP example server via stdio JSON-RPC protocol:
 - Tool listing and invocation
 - Protocol compliance (NDJSON over stdio)
 - Error handling for malformed requests
+
+### Unit Tests — Epics (10 tests)
+Tests epic CRUD and item integration:
+- Epic creation with title and color
+- Epic listing with progress stats (item counts per column)
+- Epic update (title, color, position)
+- Epic deletion (nullifies epic_id on related items)
+- Item-epic assignment and unassignment
+
+### Unit Tests — Annotation Summary (2 tests)
+Tests annotation summary generation:
+- Summary text generation from annotation shapes
+- Empty annotation handling
+
+### Unit Tests — Annotation Prompt (5 tests)
+Tests annotation prompt formatting for agents:
+- Paired annotation file grouping (original + overlay)
+- Summary inclusion in agent prompts
+- Multiple attachment handling
+- Non-annotation file handling
 
 ### Integration Tests (14 tests)
 Tests the full orchestrator lifecycle through the service layer:

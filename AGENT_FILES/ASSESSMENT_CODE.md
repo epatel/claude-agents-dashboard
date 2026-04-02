@@ -1,14 +1,14 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-03-31
+**Date**: 2026-04-02
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 13 — Maintenance reassessment with migration 008 (merge_commit tracking), dirty repo overlap detection before merge, search dialog, archive cleanup, and updated line counts across all modules.
+**Revision**: 14 — Maintenance reassessment with migration 009 (annotation summary), migration 010 (epics), epic grouping feature (CRUD, progress panel, board filtering, Todo grouping, agent MCP integration), annotation prompt formatting, and updated line counts and test counts across all modules.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, **merge commit SHA tracking** (migration 008), **dirty repo overlap detection** before merge, **search dialog** (spotlight-style item/worklog search), **archive cleanup** (worktree/session cleanup on archive), and **questions column archive** have been added. The test suite includes **139 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), and **annotation prompt formatting** have been added. The test suite includes **156 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -124,7 +124,7 @@ graph TB
 |--------|-------|---------|-------|
 | `main.py` | 89 | A | Clean entry point, proper git validation, port discovery |
 | `config.py` | 109 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
-| `constants.py` | 19 | A | Centralized `AVAILABLE_MODELS` dict, `DEFAULT_MODEL`, and `OPTIONAL_BUILTIN_TOOLS` |
+| `constants.py` | 43 | A | Centralized `AVAILABLE_MODELS` dict, `DEFAULT_MODEL`, `OPTIONAL_BUILTIN_TOOLS`, and `EPIC_COLORS` |
 | `models.py` | 101 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
@@ -153,6 +153,8 @@ graph TB
 | `migrations/versions/006_add_allowed_builtin_tools.py` | 30 | A | Adds `allowed_builtin_tools` JSON array to agent_config |
 | `migrations/versions/007_add_done_at.py` | 34 | A | Adds `done_at` timestamp to items, backfills existing done items |
 | `migrations/versions/008_add_merge_commit.py` | 32 | A | Adds `merge_commit` SHA to items table |
+| `migrations/versions/009_add_annotation_summary.py` | 30 | A | Adds `annotation_summary` to attachments table |
+| `migrations/versions/010_add_epics.py` | 45 | A | Creates `epics` table and adds `epic_id` FK to items |
 
 ### Frontend JavaScript
 
@@ -190,7 +192,7 @@ graph TB
 | `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 66 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~2,191 lines across 5 modules.
+**Note**: CSS total is ~2,375 lines across 5 modules.
 
 ---
 
@@ -325,7 +327,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 139 automated tests across 11 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 8 migrations.
+**Current state**: 156 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 10 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -338,6 +340,9 @@ stateDiagram-v2
 | `tests/unit/test_mini_mcp.py` | Unit | 11 | Mini-MCP server stdio protocol, JSON-RPC messages, tool invocation |
 | `tests/unit/migrations/test_migration_runner.py` | Unit | 14 | Migration engine |
 | `tests/unit/migrations/test_migration_edge_cases.py` | Unit | 14 | Migration edge cases |
+| `tests/unit/test_epics.py` | Unit | 10 | Epic CRUD, progress stats, item assignment |
+| `tests/unit/test_annotation_summary.py` | Unit | 2 | Annotation summary generation |
+| `tests/unit/test_annotation_prompt.py` | Unit | 5 | Annotation prompt formatting for agents |
 | `tests/integration/test_orchestrator_lifecycle.py` | Integration | 14 | Orchestrator lifecycle |
 | `tests/conftest.py` | Fixtures | — | Shared test fixtures |
 
@@ -403,6 +408,8 @@ graph LR
 25. **Dirty repo overlap detection**: Before merge, checks if the base repo has uncommitted changes overlapping with agent's files — blocks merge and moves to "questions" column with guidance, preventing silent data loss
 26. **Archive cleanup**: Archiving items automatically cleans up worktree and session resources, preventing orphaned state
 27. **Search dialog**: Spotlight-style search (Cmd/Ctrl+K) across items and work logs with keyboard navigation — fast item discovery in large boards
+28. **Epic grouping**: Separate entity model (not items), collapsible progress panel, Todo column grouping, card badges, board filtering, inline creation, and agent MCP integration — clean implementation reusing existing patterns (day grouping for collapsible sections)
+29. **Annotation summary**: Text description of annotation shapes stored in DB and included in agent prompts — gives agents context about visual annotations without needing to parse images
 
 ---
 
@@ -410,12 +417,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 43 | ~5,199 |
-| JavaScript frontend | 21 | ~4,618 |
-| CSS styles | 5 | ~2,191 |
+| Python backend (src/) | 45 | ~5,556 |
+| JavaScript frontend | 21 | ~5,079 |
+| CSS styles | 5 | ~2,375 |
 | HTML templates | 3 | ~563 |
-| Tests | 11 | ~2,899 |
-| **Grand total** | **83** | **~15,470** |
+| Tests | 14 | ~3,200 |
+| **Grand total** | **88** | **~16,773** |
 
 ---
 
