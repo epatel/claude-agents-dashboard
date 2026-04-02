@@ -370,6 +370,14 @@ const App = {
             case 'notification_added':
                 NotificationDialog.addFromEvent(data);
                 break;
+            case 'epic_created':
+            case 'epic_updated':
+            case 'epic_deleted':
+                Board.loadEpics();
+                if (type === 'epic_deleted') {
+                    Board.loadAndRender();
+                }
+                break;
             default:
                 console.log('Unknown event:', type, data);
         }
