@@ -252,13 +252,15 @@ sequenceDiagram
 
 - **Search**: `search-dialog.js` provides a spotlight-style search dialog for finding items across all columns. The `/api/search/worklog` endpoint enables searching work log entries by keyword.
 
+- **Epic grouping**: Epics are a separate entity (`epics` table) linked to items via `epic_id` FK. CRUD via `/api/epics` endpoints. Frontend shows a collapsible progress panel above the board, groups Todo items by epic, adds colored badges to cards in all columns, and supports filtering the board by clicking an epic. Inline epic creation is available in the item dialog. 8 preset colors defined in `constants.py` as `EPIC_COLORS` with light/dark theme variants. Deleting an epic nullifies `epic_id` on related items. Agents can assign items to epics via `create_todo` MCP tool and see epic info via `view_board`.
+
 - **Keep in sync**: JavaScript-rendered cards and the server-rendered Jinja2 template needs to be in sync.
 
 ### Frontend
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base template + board template + card partial); JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
 
-**Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates), `file-browser.js` (project file browser with tree, tabs, syntax highlighting, markdown/mermaid rendering).
+**Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering + epic panel + epic filtering + todo grouping by epic), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates), `file-browser.js` (project file browser with tree, tabs, syntax highlighting, markdown/mermaid rendering).
 
 **Dialog modules** (modular architecture): `dialogs.js` is a thin coordinator that delegates to 12 specialized modules:
 - `dialog-core.js` — open/close/confirm utilities
@@ -285,6 +287,7 @@ erDiagram
     items ||--o{ clarifications : "questions"
     items ||--o{ attachments : "files"
     items ||--o{ token_usage : "cost"
+    items }o--o| epics : "grouped by"
 
     items {
         text id PK
@@ -297,6 +300,7 @@ erDiagram
         text base_branch
         text base_commit
         text done_at
+        text epic_id FK
         text merge_commit
     }
 
@@ -321,13 +325,21 @@ erDiagram
         text created_at
     }
 
+    epics {
+        text id PK
+        text title
+        text color
+        int position
+        text created_at
+    }
+
     schema_migrations {
         text version PK
         text applied_at
     }
 ```
 
-SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 9 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items, `006_add_allowed_builtin_tools.py` adds configurable built-in tools to agent config, `007_add_done_at.py` adds done_at timestamp to items, `008_add_merge_commit.py` adds merge commit SHA to items, `009_add_annotation_summary.py` adds annotation summary to attachments). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit + done_at + merge_commit), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 10 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items, `006_add_allowed_builtin_tools.py` adds configurable built-in tools to agent config, `007_add_done_at.py` adds done_at timestamp to items, `008_add_merge_commit.py` adds merge commit SHA to items, `009_add_annotation_summary.py` adds annotation summary to attachments, `010_add_epics.py` adds epics table and epic_id on items). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit + done_at + merge_commit + epic_id), `epics` (grouping entity with title, color, position), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
 
 Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested under items) since attachments have their own integer IDs.
 
@@ -344,6 +356,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
   - `007_add_done_at.py` — done timestamp tracking with backfill
   - `008_add_merge_commit.py` — merge commit SHA tracking
   - `009_add_annotation_summary.py` — annotation summary for attachments
+  - `010_add_epics.py` — epics table and epic_id on items
 - **Schema tracking**: `schema_migrations` table tracks which migrations have been applied
 - **CLI management**: `python -m src.manage` for migration commands
 - **Auto-migration**: Database automatically runs pending migrations on startup
@@ -379,7 +392,7 @@ examples/
 src/
 +-- main.py                           # Entry point, port discovery
 +-- config.py                         # Column definitions, timeouts, rate limits, default config, file browser settings
-+-- constants.py                      # AVAILABLE_MODELS, DEFAULT_MODEL, OPTIONAL_BUILTIN_TOOLS
++-- constants.py                      # AVAILABLE_MODELS, DEFAULT_MODEL, OPTIONAL_BUILTIN_TOOLS, EPIC_COLORS
 +-- models.py                         # Pydantic models
 +-- database.py                       # DB connection + migration init
 +-- manage.py                         # CLI for migrations
@@ -425,7 +438,7 @@ src/
 +-- static/
 |   +-- js/
 |   |   +-- app.js                   # WebSocket + init
-|   |   +-- board.js                 # Drag-drop + card rendering
+|   |   +-- board.js                 # Drag-drop + card rendering + epic panel + filtering + todo grouping
 |   |   +-- dialogs.js               # Dialog coordinator
 |   |   +-- dialog-core.js           # Open/close/confirm
 |   |   +-- dialog-utils.js          # Shared utilities
