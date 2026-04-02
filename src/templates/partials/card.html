@@ -6,6 +6,12 @@
      draggable="true"
      ondragstart="Board.handleDragStart(event)"
      onclick="Dialogs.showDetail('{{ item.id }}')">
+    {% if item.epic_title %}
+    <div class="card-epic-badge">
+        <span class="epic-dot" style="background: var(--epic-{{ item.epic_color or 'blue' }})"></span>
+        {{ item.epic_title }}
+    </div>
+    {% endif %}
     <div class="card-title">{{ item.title }}</div>
     {% if item.status %}
     <div class="card-status card-status-{{ item.status }}">

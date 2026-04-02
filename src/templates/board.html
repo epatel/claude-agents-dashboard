@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div class="epic-panel-toggle" onclick="Board.toggleEpicPanel()">
+    <svg class="epic-panel-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
+    Epics
+</div>
+<div class="epic-panel" id="epic-panel"></div>
 <main class="board">
     {% for col in columns %}
     <div class="column" data-column="{{ col.id }}">
@@ -65,6 +70,21 @@
                     <option value="claude-opus-4-6">Claude Opus 4.6</option>
                     <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
                 </select>
+            </div>
+            <div class="form-group">
+                <label for="item-form-epic">Epic <span class="tooltip" data-tip="Assign this item to an epic to group related tasks together.">?</span></label>
+                <select id="item-form-epic">
+                    <option value="">No Epic</option>
+                </select>
+                <button type="button" class="btn btn-xs" style="margin-top: 4px;" onclick="ItemDialog.showInlineEpicCreate()">+ New Epic</button>
+                <div id="epic-inline-create" class="epic-inline-create">
+                    <input type="text" id="epic-create-title" placeholder="Epic name" style="margin-bottom: 6px; width: 100%;">
+                    <div class="epic-color-swatches" id="epic-color-swatches"></div>
+                    <div style="margin-top: 8px; display: flex; gap: 6px;">
+                        <button type="button" class="btn btn-xs btn-primary" onclick="ItemDialog.createEpicInline()">Create</button>
+                        <button type="button" class="btn btn-xs" onclick="ItemDialog.hideInlineEpicCreate()">Cancel</button>
+                    </div>
+                </div>
             </div>
             <div class="form-group">
                 <label>Attachments <span class="tooltip" data-tip="Add annotated screenshots or reference images. The agent can see these when working on the task.">?</span></label>
