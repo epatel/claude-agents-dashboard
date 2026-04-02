@@ -196,6 +196,7 @@ class AgentSession:
             "(mcp__todo__create_todo). Do NOT use TodoWrite, TaskCreate, or any other built-in tool "
             "for creating todos — those are internal tools that do not add items to the board. "
             "To delete a todo item, use mcp__todo__delete_todo. "
+            "To create an epic for grouping related todos, use mcp__todo__create_epic. "
             "To see existing board items, use mcp__board_view__view_board."
         )
         command_note = (
@@ -216,6 +217,7 @@ class AgentSession:
         if "todo" in mcp_servers:
             allowed_tools.append("mcp__todo__create_todo")
             allowed_tools.append("mcp__todo__delete_todo")
+            allowed_tools.append("mcp__todo__create_epic")
         if "commit_message" in mcp_servers:
             allowed_tools.append("mcp__commit_message__set_commit_message")
         if "command_access" in mcp_servers:
