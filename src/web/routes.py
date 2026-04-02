@@ -788,7 +788,7 @@ async def get_websocket_stats(request: Request):
 @router.get("/api/epics")
 async def get_epics(request: Request):
     """Get all epics with progress stats."""
-    db_service = request.app.state.orchestrator.db
+    db_service = request.app.state.orchestrator.db_service
     epics = await db_service.get_epics()
     progress = await db_service.get_epic_progress()
     for epic in epics:
@@ -807,8 +807,8 @@ async def get_epic_colors():
 @router.post("/api/epics")
 async def create_epic(request: Request, body: EpicCreate):
     """Create a new epic."""
-    db_service = request.app.state.orchestrator.db
-    ns = request.app.state.orchestrator.notifications
+    db_service = request.app.state.orchestrator.db_service
+    ns = request.app.state.orchestrator.notification_service
     epic = await db_service.create_epic(body.title, body.color)
     await ns.broadcast_epic_created(epic)
     _invalidate_stats_cache()
@@ -818,8 +818,8 @@ async def create_epic(request: Request, body: EpicCreate):
 @router.put("/api/epics/{epic_id}")
 async def update_epic(request: Request, epic_id: str, body: EpicUpdate):
     """Update an epic."""
-    db_service = request.app.state.orchestrator.db
-    ns = request.app.state.orchestrator.notifications
+    db_service = request.app.state.orchestrator.db_service
+    ns = request.app.state.orchestrator.notification_service
     kwargs = body.model_dump(exclude_unset=True)
     epic = await db_service.update_epic(epic_id, **kwargs)
     if not epic:
@@ -831,8 +831,8 @@ async def update_epic(request: Request, epic_id: str, body: EpicUpdate):
 @router.delete("/api/epics/{epic_id}")
 async def delete_epic(request: Request, epic_id: str):
     """Delete an epic (nullifies epic_id on related items)."""
-    db_service = request.app.state.orchestrator.db
-    ns = request.app.state.orchestrator.notifications
+    db_service = request.app.state.orchestrator.db_service
+    ns = request.app.state.orchestrator.notification_service
     epic = await db_service.delete_epic(epic_id)
     if not epic:
         raise HTTPException(status_code=404, detail="Epic not found")
