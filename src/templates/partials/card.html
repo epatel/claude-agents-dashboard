@@ -7,7 +7,7 @@
      draggable="true"
      ondragstart="Board.handleDragStart(event)"
      onclick="Dialogs.showDetail('{{ item.id }}')">
-    {% if item.epic_title %}
+    {% if item.epic_title and item.column_name != 'todo' %}
     <div class="card-epic-badge">
         <span class="epic-dot" style="background: var(--epic-{{ item.epic_color or 'blue' }})"></span>
         {{ item.epic_title }}

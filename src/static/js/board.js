@@ -325,7 +325,7 @@ const Board = {
 
         // Epic badge
         let epicBadgeHtml = '';
-        if (item.epic_id && !this._epicFilter) {
+        if (item.epic_id && !this._epicFilter && item.column_name !== 'todo') {
             const epic = this._epics.find(e => e.id === item.epic_id);
             if (epic) {
                 epicBadgeHtml = `<div class="card-epic-badge"><span class="epic-dot" style="background: var(--epic-${epic.color})"></span>${this.escapeHtml(epic.title)}</div>`;
