@@ -367,5 +367,6 @@ class DatabaseService:
             if eid not in progress:
                 progress[eid] = {"todo": 0, "doing": 0, "questions": 0, "review": 0, "done": 0, "archive": 0, "total": 0}
             progress[eid][col] = cnt
-            progress[eid]["total"] += cnt
+            if col != "archive":
+                progress[eid]["total"] += cnt
         return progress
