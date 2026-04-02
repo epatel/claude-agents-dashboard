@@ -318,17 +318,18 @@
 /* --- Epic panel --- */
 
 .epic-panel-toggle {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 6px;
     padding: 4px 12px;
     cursor: pointer;
     color: var(--text-secondary);
     font-size: 13px;
+    line-height: 1;
     user-select: none;
 }
 .epic-panel-toggle:hover { color: var(--text-primary); }
-.epic-panel-toggle svg { transition: transform 0.15s; }
+.epic-panel-toggle svg { flex-shrink: 0; transition: transform 0.15s; }
 .epic-panel-toggle.expanded svg { transform: rotate(90deg); }
 
 .epic-panel {
