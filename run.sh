@@ -35,4 +35,4 @@ fi
 
 # Launch the server (must run from the dashboard directory for module imports)
 cd "$SCRIPT_DIR"
-exec "$VENV_DIR/bin/python" -m src.main "$TARGET_PROJECT" "${EXTRA_ARGS[@]}"
+exec "$VENV_DIR/bin/python" -m src.main "$TARGET_PROJECT" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
