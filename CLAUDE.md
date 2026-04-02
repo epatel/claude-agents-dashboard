@@ -17,12 +17,12 @@ path/to/claude-agents-dashboard/run.sh
 ## Running tests
 
 ```bash
-./run-tests.sh              # Run all 139 tests
+./run-tests.sh              # Run all 156 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ```
 
-Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (12 tests — imports, DB basics), unit (113 tests — path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing, mini-MCP server), integration (14 tests — orchestrator lifecycle). E2E tests run separately via `./run-e2e-tests.sh`. See `tests/README.md` for details.
+Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (12 tests — imports, DB basics), unit (130 tests — path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing, mini-MCP server, epics, annotation summary, annotation prompt), integration (14 tests — orchestrator lifecycle). E2E tests run separately via `./run-e2e-tests.sh`. See `tests/README.md` for details.
 
 ## Architecture
 

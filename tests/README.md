@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (139 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations, security, git operations, and agent tools.
+This directory contains the automated test suite (156 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations, security, git operations, and agent tools.
 
 ## Test Structure
 
@@ -16,7 +16,10 @@ tests/
 │   ├── test_file_routes.py                      # File browser routes (35 tests)
 │   ├── test_allowed_commands.py                 # Command filter + access MCP tool (14 tests)
 │   ├── test_diff_mixing.py                      # Diff isolation between items (6 tests)
-│   └── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
+│   ├── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
+│   ├── test_epics.py                            # Epic CRUD, progress, item assignment (10 tests)
+│   ├── test_annotation_summary.py               # Annotation summary generation (2 tests)
+│   └── test_annotation_prompt.py                # Annotation prompt formatting (5 tests)
 ├── integration/                                  # Integration tests (slower, multi-component)
 │   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (14 tests)
 ├── smoke/                                        # Smoke tests (basic functionality)
@@ -75,11 +78,11 @@ Run with: `./run-e2e-tests.sh` (supports `--verbose` flag for colored output)
 
 ### Quick Start
 ```bash
-# Run all 139 tests
+# Run all 156 tests
 ./run-tests.sh
 
 # Run specific test categories
-./run-tests.sh tests/unit/        # Unit tests only
+./run-tests.sh tests/unit/        # Unit tests only (130 tests)
 ./run-tests.sh tests/integration/ # Integration tests
 ./run-tests.sh tests/smoke/       # Smoke tests
 

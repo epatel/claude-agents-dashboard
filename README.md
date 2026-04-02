@@ -34,7 +34,7 @@ Your project must be a git repository. Requires Python 3.12+.
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 139 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 156 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -109,6 +109,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Base commit pinning** — worktrees record the exact commit SHA at creation time, ensuring diffs remain stable even when the base branch moves forward (e.g., after merging other items)
 - **Merge commit tracking** — stores the merge commit SHA when items are approved, enabling traceability from board items to git history
 - **Dirty repo detection** — blocks merge if your working tree has uncommitted changes overlapping with the agent's files; moves the item to the Questions column with guidance to commit or stash first
+- **Epic grouping** — organize items into epics with a collapsible progress panel above the board, colored badges on cards, Todo column grouping by epic, board filtering by epic, inline epic creation in the item dialog, and agent integration via MCP tools; 8 preset colors with light/dark theme variants
 - **Search** — spotlight-style search dialog (Cmd/Ctrl+K) to find items across all columns and search work log entries
 - **Archive cleanup** — archiving items automatically cleans up their worktree and session resources
 - **Light/dark mode** — respects system preference with manual toggle
@@ -174,8 +175,8 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~5,200 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~4,618 lines JS + ~2,191 lines CSS
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~5,556 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~5,079 lines JS + ~2,375 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 6 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -217,7 +218,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–008) adding columns incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–010) adding columns and tables incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -228,6 +229,7 @@ erDiagram
     items ||--o{ clarifications : "has"
     items ||--o{ attachments : "has"
     items ||--o{ token_usage : "tracks"
+    items }o--o| epics : "grouped by"
 
     items {
         text id PK
@@ -244,9 +246,18 @@ erDiagram
         text base_branch
         text base_commit
         text done_at
+        text epic_id FK
         text merge_commit
         text created_at
         text updated_at
+    }
+
+    epics {
+        text id PK
+        text title
+        text color
+        int position
+        text created_at
     }
 
     work_log {
@@ -298,6 +309,7 @@ erDiagram
         text item_id FK
         text filename
         text asset_path
+        text annotation_summary
         text created_at
     }
 
@@ -387,6 +399,10 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `DELETE` | `/api/notifications/{id}` | Dismiss a notification |
 | `DELETE` | `/api/notifications` | Clear all notifications |
 | `GET` | `/api/stats` | Usage & activity stats |
+| `GET` | `/api/epics` | List all epics with progress stats |
+| `POST` | `/api/epics` | Create epic |
+| `PUT` | `/api/epics/{id}` | Update epic |
+| `DELETE` | `/api/epics/{id}` | Delete epic (nullifies items' epic_id) |
 | `GET` | `/api/search/worklog` | Search work log entries |
 | `GET` | `/api/files/tree` | Directory tree (lazy, depth-limited) |
 | `GET` | `/api/files/content` | File content (text, image, binary) |
@@ -403,6 +419,9 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `agent_log` | Server → Client | Agent activity (message, tool use, thinking) |
 | `clarification_requested` | Server → Client | Agent needs user input |
 | `notification_added` | Server → Client | System notification (MCP error, agent failure) |
+| `epic_created` | Server → Client | New epic added |
+| `epic_updated` | Server → Client | Epic fields changed |
+| `epic_deleted` | Server → Client | Epic removed |
 
 ## Troubleshooting
 
@@ -445,7 +464,9 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 
 - `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `TESTING.md` — Detailed testing guide with test inventory (139 unit/integration tests + E2E tests) and writing guidelines
+- `EPIC_GROUPING_DESIGN.md` — Epic grouping feature design spec (data model, routes, frontend)
+- `EPIC_GROUPING_PLAN.md` — Detailed epic grouping implementation plan
+- `TESTING.md` — Detailed testing guide with test inventory (156 unit/integration tests + E2E tests) and writing guidelines
 
 ## License
 
