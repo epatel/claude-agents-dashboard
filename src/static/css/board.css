@@ -329,7 +329,7 @@
     user-select: none;
 }
 .epic-panel-toggle:hover { color: var(--text-primary); }
-.epic-panel-toggle svg { flex-shrink: 0; vertical-align: middle; transition: transform 0.15s; }
+.epic-panel-toggle svg { flex-shrink: 0; display: block; transition: transform 0.15s; }
 .epic-panel-toggle.expanded svg { transform: rotate(90deg); }
 
 .epic-panel {
