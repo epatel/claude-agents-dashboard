@@ -189,6 +189,12 @@ const ItemDialog = {
             const epics = await Api.request('GET', '/api/epics');
             select.innerHTML = '<option value="">No Epic</option>';
             for (const epic of epics) {
+                // Hide fully-archived epics (unless this item is assigned to it)
+                const p = epic.progress || {};
+                const total = (p.total || 0);
+                const archived = (p.archive || 0);
+                if (total > 0 && total === archived && epic.id !== selectedEpicId) continue;
+
                 const opt = document.createElement('option');
                 opt.value = epic.id;
                 opt.textContent = epic.title;

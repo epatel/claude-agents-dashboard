@@ -440,6 +440,13 @@ const Board = {
         this._renderEpicPanel();
     },
 
+    _isEpicFullyArchived(epic) {
+        const p = epic.progress || {};
+        const total = (p.total || 0);
+        const archived = (p.archive || 0);
+        return total > 0 && total === archived;
+    },
+
     _renderEpicPanel() {
         const toggle = document.querySelector('.epic-panel-toggle');
         const panel = document.getElementById('epic-panel');
@@ -456,6 +463,7 @@ const Board = {
 
         let html = '';
         for (const epic of this._epics) {
+            if (this._isEpicFullyArchived(epic)) continue;
             const p = epic.progress || {};
             const done = (p.done || 0);
             const total = (p.total || 0);
