@@ -464,8 +464,6 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 
 - `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `EPIC_GROUPING_DESIGN.md` — Epic grouping feature design spec (data model, routes, frontend)
-- `EPIC_GROUPING_PLAN.md` — Detailed epic grouping implementation plan
 - `TESTING.md` — Detailed testing guide with test inventory (156 unit/integration tests + E2E tests) and writing guidelines
 
 ## License
