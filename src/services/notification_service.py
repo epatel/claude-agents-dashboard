@@ -43,6 +43,18 @@ class NotificationService:
             "choices": json.dumps(choices) if choices else None,
         })
 
+    async def broadcast_epic_created(self, epic: Dict[str, Any]):
+        """Broadcast epic creation event."""
+        await self.ws_manager.broadcast("epic_created", epic)
+
+    async def broadcast_epic_updated(self, epic: Dict[str, Any]):
+        """Broadcast epic update event."""
+        await self.ws_manager.broadcast("epic_updated", epic)
+
+    async def broadcast_epic_deleted(self, epic_id: str):
+        """Broadcast epic deletion event."""
+        await self.ws_manager.broadcast("epic_deleted", {"id": epic_id})
+
     def format_tool_use(self, name: str, inp: Dict[str, Any]) -> str:
         """Format tool use for readable work log display."""
         if name == "Write":
