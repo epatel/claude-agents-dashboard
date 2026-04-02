@@ -6,10 +6,18 @@ const Board = {
     _collapsedDoneGroups: {},
     _collapsedArchiveGroups: {},
 
-    init(initialItems) {
+    // Epic state
+    _epics: [],
+    _epicFilter: null,  // currently filtered epic_id or null
+    _epicPanelExpanded: localStorage.getItem('epicPanelExpanded') === 'true',
+    _collapsedTodoEpicGroups: {},
+
+    async init(initialItems) {
         for (const item of initialItems) {
             this.items[item.id] = item;
         }
+        await this.loadEpics();
+        this.renderTodoColumn();
         this.renderDoneColumn();
         this.renderArchiveColumn();
         this.updateCounts();
@@ -289,13 +297,14 @@ const Board = {
         });
         for (const item of items) {
             this.items[item.id] = item;
-            if (item.column_name !== 'done' && item.column_name !== 'archive') {
+            if (item.column_name !== 'done' && item.column_name !== 'archive' && item.column_name !== 'todo') {
                 const targetCol = document.querySelector(`.column-cards[data-column="${item.column_name}"]`);
                 if (targetCol) {
                     targetCol.appendChild(this.renderCard(item));
                 }
             }
         }
+        this.renderTodoColumn();
         this.renderDoneColumn();
         this.renderArchiveColumn();
         this.updateCounts();
@@ -313,6 +322,15 @@ const Board = {
         div.draggable = true;
         div.ondragstart = (e) => Board.handleDragStart(e);
         div.onclick = () => Dialogs.showDetail(item.id);
+
+        // Epic badge
+        let epicBadgeHtml = '';
+        if (item.epic_id && !this._epicFilter) {
+            const epic = this._epics.find(e => e.id === item.epic_id);
+            if (epic) {
+                epicBadgeHtml = `<div class="card-epic-badge"><span class="epic-dot" style="background: var(--epic-${epic.color})"></span>${this.escapeHtml(epic.title)}</div>`;
+            }
+        }
 
         let statusHtml = '';
         if (item.status) {
@@ -368,6 +386,7 @@ const Board = {
         }
 
         div.innerHTML = `
+            ${epicBadgeHtml}
             <div class="card-title">${this.escapeHtml(item.title)}</div>
             ${statusHtml}
             <div class="card-bottom">
@@ -405,12 +424,205 @@ const Board = {
         return dateStr === today;
     },
 
+    toggleEpicPanel() {
+        this._epicPanelExpanded = !this._epicPanelExpanded;
+        localStorage.setItem('epicPanelExpanded', this._epicPanelExpanded);
+        this._renderEpicPanel();
+    },
+
+    async loadEpics() {
+        try {
+            this._epics = await Api.request('GET', '/api/epics');
+        } catch (e) {
+            console.error('Failed to load epics:', e);
+            this._epics = [];
+        }
+        this._renderEpicPanel();
+    },
+
+    _renderEpicPanel() {
+        const toggle = document.querySelector('.epic-panel-toggle');
+        const panel = document.getElementById('epic-panel');
+        if (!toggle || !panel) return;
+
+        if (this._epicPanelExpanded) {
+            toggle.classList.add('expanded');
+            panel.classList.add('visible');
+        } else {
+            toggle.classList.remove('expanded');
+            panel.classList.remove('visible');
+            return;
+        }
+
+        let html = '';
+        for (const epic of this._epics) {
+            const p = epic.progress || {};
+            const done = (p.done || 0);
+            const total = (p.total || 0);
+            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+            const isActive = this._epicFilter === epic.id;
+            html += `
+                <div class="epic-card${isActive ? ' active' : ''}" onclick="Board.filterByEpic('${epic.id}')">
+                    <span class="epic-dot" style="background: var(--epic-${epic.color})"></span>
+                    <span class="epic-card-title">${Board.escapeHtml(epic.title)}</span>
+                    <div class="epic-progress-bar">
+                        <div class="epic-progress-fill" style="width: ${pct}%; background: var(--epic-${epic.color})"></div>
+                    </div>
+                    <span class="epic-progress-count">${done}/${total}</span>
+                </div>
+            `;
+        }
+
+        if (this._epicFilter) {
+            html += `<button class="epic-filter-clear" onclick="Board.clearEpicFilter()">Clear filter</button>`;
+        }
+
+        panel.innerHTML = html;
+    },
+
+    filterByEpic(epicId) {
+        if (this._epicFilter === epicId) {
+            this.clearEpicFilter();
+            return;
+        }
+        this._epicFilter = epicId;
+        this._renderEpicPanel();
+        this._applyEpicFilter();
+    },
+
+    clearEpicFilter() {
+        this._epicFilter = null;
+        this._renderEpicPanel();
+        this._applyEpicFilter();
+    },
+
+    _applyEpicFilter() {
+        // Show/hide cards based on epic filter in non-grouped columns
+        document.querySelectorAll('.column-cards').forEach(col => {
+            const colName = col.dataset.column;
+            // Skip columns that use custom rendering
+            if (colName === 'todo' || colName === 'done' || colName === 'archive') return;
+            col.querySelectorAll('.card').forEach(card => {
+                const itemId = card.dataset.id;
+                const item = this.items[itemId];
+                if (!this._epicFilter || (item && item.epic_id === this._epicFilter)) {
+                    card.style.display = '';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
+        // Re-render columns that use grouped rendering
+        this.renderTodoColumn();
+        this.renderDoneColumn();
+        this.renderArchiveColumn();
+        this.updateCounts();
+    },
+
+    renderTodoColumn() {
+        const col = document.querySelector('.column-cards[data-column="todo"]');
+        if (!col) return;
+
+        const todoItems = Object.values(this.items).filter(i => i.column_name === 'todo');
+
+        // Apply epic filter
+        const filtered = this._epicFilter
+            ? todoItems.filter(i => i.epic_id === this._epicFilter)
+            : todoItems;
+
+        // If filtered to one epic or no epics exist, render flat
+        if (this._epicFilter || this._epics.length === 0) {
+            col.innerHTML = '';
+            filtered.sort((a, b) => (a.position || 0) - (b.position || 0));
+            for (const item of filtered) {
+                col.appendChild(this.renderCard(item));
+            }
+            return;
+        }
+
+        // Group by epic
+        const epicGroups = {};
+        const noEpic = [];
+        for (const item of filtered) {
+            if (item.epic_id) {
+                if (!epicGroups[item.epic_id]) epicGroups[item.epic_id] = [];
+                epicGroups[item.epic_id].push(item);
+            } else {
+                noEpic.push(item);
+            }
+        }
+
+        col.innerHTML = '';
+
+        // Render epic groups in epic position order
+        for (const epic of this._epics) {
+            const items = epicGroups[epic.id];
+            if (!items || items.length === 0) continue;
+
+            const isCollapsed = this._collapsedTodoEpicGroups[epic.id] || false;
+
+            const group = document.createElement('div');
+            group.className = 'todo-epic-group';
+
+            const header = document.createElement('div');
+            header.className = 'todo-epic-header' + (isCollapsed ? '' : ' expanded');
+            header.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
+                <span class="epic-dot" style="background: var(--epic-${epic.color})"></span>
+                ${Board.escapeHtml(epic.title)}
+                <span class="todo-epic-count">${items.length}</span>
+            `;
+            header.addEventListener('click', () => {
+                this._collapsedTodoEpicGroups[epic.id] = !isCollapsed;
+                this.renderTodoColumn();
+            });
+            group.appendChild(header);
+
+            if (!isCollapsed) {
+                items.sort((a, b) => (a.position || 0) - (b.position || 0));
+                for (const item of items) {
+                    group.appendChild(this.renderCard(item));
+                }
+            }
+
+            col.appendChild(group);
+        }
+
+        // "No Epic" group at the bottom
+        if (noEpic.length > 0) {
+            const group = document.createElement('div');
+            group.className = 'todo-epic-group';
+            const isCollapsed = this._collapsedTodoEpicGroups['__none__'] || false;
+            const header = document.createElement('div');
+            header.className = 'todo-epic-header' + (isCollapsed ? '' : ' expanded');
+            header.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
+                No Epic
+                <span class="todo-epic-count">${noEpic.length}</span>
+            `;
+            header.addEventListener('click', () => {
+                this._collapsedTodoEpicGroups['__none__'] = !isCollapsed;
+                this.renderTodoColumn();
+            });
+            group.appendChild(header);
+
+            if (!isCollapsed) {
+                noEpic.sort((a, b) => (a.position || 0) - (b.position || 0));
+                for (const item of noEpic) {
+                    group.appendChild(this.renderCard(item));
+                }
+            }
+            col.appendChild(group);
+        }
+    },
+
     renderDoneColumn() {
         const col = document.querySelector('.column-cards[data-column="done"]');
         if (!col) return;
 
         // Collect done items
-        const doneItems = Object.values(this.items).filter(i => i.column_name === 'done');
+        let doneItems = Object.values(this.items).filter(i => i.column_name === 'done');
+        if (this._epicFilter) doneItems = doneItems.filter(i => i.epic_id === this._epicFilter);
 
         // Group by date
         const groups = {};
@@ -479,7 +691,8 @@ const Board = {
         const col = document.querySelector('.column-cards[data-column="archive"]');
         if (!col) return;
 
-        const archiveItems = Object.values(this.items).filter(i => i.column_name === 'archive');
+        let archiveItems = Object.values(this.items).filter(i => i.column_name === 'archive');
+        if (this._epicFilter) archiveItems = archiveItems.filter(i => i.epic_id === this._epicFilter);
 
         const groups = {};
         for (const item of archiveItems) {
@@ -562,10 +775,27 @@ const Board = {
             if (prev && prev.column_name === 'archive' && item.column_name !== 'archive') {
                 this.renderArchiveColumn();
             }
+            if (prev && prev.column_name === 'todo' && item.column_name !== 'todo') {
+                this.renderTodoColumn();
+            }
             if (item.column_name === 'done') this.renderDoneColumn();
             if (item.column_name === 'archive') this.renderArchiveColumn();
             this.updateCounts();
             return;
+        }
+
+        // Todo column uses grouped rendering
+        if (item.column_name === 'todo') {
+            if (prev && prev.column_name === 'done') this.renderDoneColumn();
+            if (prev && prev.column_name === 'archive') this.renderArchiveColumn();
+            this.renderTodoColumn();
+            this.updateCounts();
+            return;
+        }
+
+        // If item was previously in todo, re-render that column
+        if (prev && prev.column_name === 'todo' && item.column_name !== 'todo') {
+            this.renderTodoColumn();
         }
 
         // If item was previously in done/archive, re-render that column to remove it
@@ -597,6 +827,7 @@ const Board = {
         delete this.items[itemId];
         const card = document.querySelector(`.card[data-id="${itemId}"]`);
         if (card) card.remove();
+        if (prev && prev.column_name === 'todo') this.renderTodoColumn();
         if (prev && prev.column_name === 'done') this.renderDoneColumn();
         if (prev && prev.column_name === 'archive') this.renderArchiveColumn();
         this.updateCounts();
@@ -606,11 +837,19 @@ const Board = {
         document.querySelectorAll('.column').forEach(col => {
             const colName = col.dataset.column;
             let count;
-            if (colName === 'done') {
+            if (colName === 'done' || colName === 'todo') {
                 // Count from items cache since cards may be hidden in collapsed groups
-                count = Object.values(this.items).filter(i => i.column_name === 'done').length;
+                const items = Object.values(this.items).filter(i => i.column_name === colName);
+                count = this._epicFilter
+                    ? items.filter(i => i.epic_id === this._epicFilter).length
+                    : items.length;
+            } else if (colName === 'archive') {
+                const items = Object.values(this.items).filter(i => i.column_name === 'archive');
+                count = this._epicFilter
+                    ? items.filter(i => i.epic_id === this._epicFilter).length
+                    : items.length;
             } else {
-                count = col.querySelectorAll('.card').length;
+                count = col.querySelectorAll('.card:not([style*="display: none"])').length;
             }
             const badge = col.querySelector('.column-count');
             if (badge) badge.textContent = count;
