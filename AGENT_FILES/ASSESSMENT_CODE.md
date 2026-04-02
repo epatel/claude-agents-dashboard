@@ -2,13 +2,13 @@
 
 **Date**: 2026-04-02
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 14 — Maintenance reassessment with migration 009 (annotation summary), migration 010 (epics), epic grouping feature (CRUD, progress panel, board filtering, Todo grouping, agent MCP integration), annotation prompt formatting, and updated line counts and test counts across all modules.
+**Revision**: 15 — Maintenance reassessment with migration 009 (annotation summary), migration 010 (epics), epic grouping feature (CRUD, progress panel, board filtering, Todo grouping, agent MCP integration), annotation prompt formatting, and updated line counts and test counts across all modules.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), and **annotation prompt formatting** have been added. The test suite includes **156 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), and **annotation prompt formatting** have been added. The test suite includes **161 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -112,27 +112,27 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 840 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, and dirty repo overlap detection |
-| `services/database_service.py` | 285 | A | All DB operations extracted; parameterized queries throughout |
-| `services/notification_service.py` | 95 | A | WebSocket broadcasting + tool formatting; clean separation |
+| `services/workflow_service.py` | 866 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, and dirty repo overlap detection |
+| `services/database_service.py` | 371 | A | All DB operations extracted; parameterized queries throughout |
+| `services/notification_service.py` | 107 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 94 | A | Git worktree and merge operations with proper error handling |
-| `services/session_service.py` | 198 | A | Session lifecycle, commit messages, plugin parsing |
+| `services/session_service.py` | 215 | A | Session lifecycle, commit messages, plugin parsing |
 
 ### Backend Python — Core
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `main.py` | 89 | A | Clean entry point, proper git validation, port discovery |
-| `config.py` | 109 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
+| `main.py` | 104 | A | Clean entry point, proper git validation, port discovery |
+| `config.py` | 110 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
 | `constants.py` | 43 | A | Centralized `AVAILABLE_MODELS` dict, `DEFAULT_MODEL`, `OPTIONAL_BUILTIN_TOOLS`, and `EPIC_COLORS` |
-| `models.py` | 101 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
+| `models.py` | 114 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
-| `web/routes.py` | 790 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; delete delegates to orchestrator |
+| `web/routes.py` | 858 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; delete delegates to orchestrator |
 | `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 122 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
-| `agent/session.py` | 445 | A- | Clean SDK wrapper; good token extraction with fallbacks |
+| `agent/session.py` | 510 | A- | Clean SDK wrapper; good token extraction with fallbacks |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
 | `agent/todo.py` | 94 | A | Clean MCP tool definition |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
@@ -160,12 +160,12 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
-| `app.js` | 439 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
-| `board.js` | 628 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
+| `app.js` | 457 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
+| `board.js` | 875 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
 | `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 11 specialized modules |
 | `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
 | `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
-| `item-dialog.js` | 190 | A- | New/edit item forms with attachment handling |
+| `item-dialog.js` | 274 | A- | New/edit item forms with attachment handling |
 | `detail-dialog.js` | 241 | A- | Item detail view with tabbed interface |
 | `review-dialog.js` | 123 | A | Review dialog with diff viewer and work log |
 | `config-dialog.js` | 189 | A | Agent configuration (system prompt, MCP, plugins) |
@@ -174,8 +174,8 @@ graph TB
 | `search-dialog.js` | 246 | A | Spotlight-style search across items and work logs |
 | `request-changes-dialog.js` | 24 | A | Focused request-changes form |
 | `attachments.js` | 43 | A | Attachment viewing and deletion |
-| `annotation-canvas.js` | 52 | A | Canvas annotation integration bridge |
-| `annotate.js` | 936 | A- | Self-contained canvas component |
+| `annotation-canvas.js` | 96 | A | Canvas annotation integration bridge |
+| `annotate.js` | 1003 | A- | Self-contained canvas component |
 | `file-browser.js` | 630 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering |
 | `api.js` | 101 | A | Clean HTTP helpers |
 | `diff.js` | 62 | A- | Functional diff viewer |
@@ -187,12 +187,12 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `style.css` | 951 | A- | Main styles with CSS variables |
-| `board.css` | 316 | A | Board layout, card styles, Done day grouping with collapsible sections |
+| `board.css` | 480 | A | Board layout, card styles, Done day grouping with collapsible sections |
 | `dialog.css` | 301 | A | Dialog component styles |
 | `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
-| `theme.css` | 66 | A | Light/dark theme definitions |
+| `theme.css` | 86 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~2,375 lines across 5 modules.
+**Note**: CSS total is ~2,375 lines across 5 modules (480+301+557+951+86).
 
 ---
 
@@ -310,7 +310,7 @@ stateDiagram-v2
 | 10 | No WebSocket rate limiting | ✅ Per-IP rate limiting with concurrent connection limits and windowed attempt tracking |
 | 11 | No request timeout for blocking operations | ✅ `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT` on approve route |
 | 12 | Migration class discovery uses string comparison | ✅ Justified — `issubclass` fails with dynamic module loading |
-| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (840), DatabaseService (285), NotificationService (95), GitService (94), SessionService (198). Orchestrator now 122-line facade |
+| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (866), DatabaseService (371), NotificationService (107), GitService (94), SessionService (215). Orchestrator now 122-line facade |
 | 14 | `dialogs.js` too large (801 lines) | ✅ Split into 12 specialized modules with coordinator pattern. Largest module is `search-dialog.js` at 246 lines |
 
 ### Remaining Issues
@@ -327,7 +327,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 156 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 10 migrations.
+**Current state**: 161 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 10 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -417,12 +417,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 45 | ~5,556 |
+| Python backend (src/) | 45 | ~5,633 |
 | JavaScript frontend | 21 | ~5,079 |
 | CSS styles | 5 | ~2,375 |
-| HTML templates | 3 | ~563 |
-| Tests | 14 | ~3,200 |
-| **Grand total** | **88** | **~16,773** |
+| HTML templates | 3 | ~590 |
+| Tests | 14 | ~3,201 |
+| **Grand total** | **88** | **~16,878** |
 
 ---
 
