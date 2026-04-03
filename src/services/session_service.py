@@ -193,6 +193,7 @@ class SessionService:
             for entry in sorted(plugins_dir.iterdir()):
                 manifest = entry / ".claude-plugin" / "plugin.json"
                 if entry.is_dir() and manifest.exists():
+                    logger.info(f"Auto-discovered plugin: {entry.name} ({entry.resolve()})")
                     result.append({"type": "local", "path": str(entry.resolve())})
 
         # Parse user-configured plugins from agent config
@@ -213,4 +214,6 @@ class SessionService:
             except Exception as e:
                 logger.warning(f"Failed to parse plugins config: {e}")
 
+        if result:
+            logger.info(f"Loaded {len(result)} plugin(s): {', '.join(p['path'].rsplit('/', 1)[-1] for p in result)}")
         return result if result else None
