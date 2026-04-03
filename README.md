@@ -79,7 +79,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Live work log** — streaming agent output via WebSocket (messages, thinking, tool use)
 - **Review & merge** — tabbed dialog with description, diff viewer, and work log; approve or request changes
 - **Clarification flow** — agents can ask the user questions mid-task via custom MCP tool
-- **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items
+- **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items; supports `requires` parameter to declare dependencies between items
 - **Custom commit messages** — agents set meaningful commit messages via MCP tool, used when merging
 - **Board introspection** — agents can view the current board state (all items by column) via the `view_board` MCP tool to understand project context
 - **Tool access requests** — agents can request permission to use optional built-in tools (WebSearch, WebFetch) at runtime via the `request_tool_access` MCP tool with user approval prompt
@@ -175,8 +175,8 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~5,706 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~5,178 lines JS + ~2,400 lines CSS
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~5,766 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~5,436 lines JS + ~2,609 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 6 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -218,7 +218,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–010) adding columns and tables incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–011) adding columns and tables incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -229,6 +229,7 @@ erDiagram
     items ||--o{ clarifications : "has"
     items ||--o{ attachments : "has"
     items ||--o{ token_usage : "tracks"
+    items ||--o{ item_dependencies : "depends on"
     items }o--o| epics : "grouped by"
 
     items {
@@ -250,6 +251,11 @@ erDiagram
         text merge_commit
         text created_at
         text updated_at
+    }
+
+    item_dependencies {
+        text item_id FK
+        text requires_item_id FK
     }
 
     epics {
