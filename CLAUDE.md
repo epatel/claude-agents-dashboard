@@ -17,12 +17,12 @@ path/to/claude-agents-dashboard/run.sh
 ## Running tests
 
 ```bash
-./run-tests.sh              # Run all 161 tests
+./run-tests.sh              # Run all 156 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ```
 
-Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (12 tests — imports, DB basics), unit (135 tests — path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing, mini-MCP server, epics, annotation summary, annotation prompt), integration (14 tests — orchestrator lifecycle). E2E tests run separately via `./run-e2e-tests.sh`. See `tests/README.md` for details.
+Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (12 tests — imports, DB basics), unit (130 tests — path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing, mini-MCP server, epics, annotation summary, annotation prompt), integration (14 tests — orchestrator lifecycle). E2E tests run separately via `./run-e2e-tests.sh`. See `tests/README.md` for details.
 
 ## Architecture
 
@@ -35,7 +35,7 @@ graph TB
     subgraph Frontend["Frontend (Vanilla JS)"]
         UI["board.html + base.html + Jinja2"]
         WS["WebSocket Client"]
-        Modules["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js"]
+        Modules["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js | sound.js"]
         DlgModules["dialogs.js (coordinator)<br/>dialog-core | dialog-utils<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog | search-dialog<br/>request-changes-dialog | attachments | annotation-canvas"]
     end
 
@@ -165,12 +165,12 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,653 lines):
+- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,670 lines):
   - `WorkflowService` (866 lines): Coordinates agent workflows, state transitions, callback creation, merge conflict auto-resolution, and dirty repo overlap detection
   - `DatabaseService` (371 lines): All database operations (items, logs, config, attachments, token usage)
   - `NotificationService` (107 lines): WebSocket broadcasting and tool use formatting
   - `GitService` (94 lines): Worktree management, merge operations, and cleanup
-  - `SessionService` (215 lines): Agent session lifecycle, commit messages, plugin parsing
+  - `SessionService` (218 lines): Agent session lifecycle, commit messages, plugin parsing
 
 - **Agent start is non-blocking**: `WorkflowService.start_agent()` creates a session via `SessionService.create_session()` and launches it via `SessionService.start_session_task()` which uses `asyncio.create_task()` so the HTTP response returns immediately. The agent streams progress via WebSocket.
 
@@ -260,7 +260,7 @@ sequenceDiagram
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base template + board template + card partial); JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
 
-**Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering + epic panel + epic filtering + todo grouping by epic), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates), `file-browser.js` (project file browser with tree, tabs, syntax highlighting, markdown/mermaid rendering).
+**Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering + epic panel + epic filtering + todo grouping by epic), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates), `file-browser.js` (project file browser with tree, tabs, syntax highlighting, markdown/mermaid rendering), `sound.js` (notification sounds).
 
 **Dialog modules** (modular architecture): `dialogs.js` is a thin coordinator that delegates to 12 specialized modules:
 - `dialog-core.js` — open/close/confirm utilities
@@ -459,6 +459,7 @@ src/
 |   |   +-- diff.js                  # Diff viewer
 |   |   +-- stats.js                 # Stats bar
 |   |   +-- theme.js                 # Theme toggle
+|   |   +-- sound.js                 # Notification sounds
 |   +-- css/
 |       +-- style.css                # Main styles (CSS variables)
 |       +-- board.css                # Board layout + cards
@@ -494,7 +495,7 @@ src/
 
 ### Testing changes
 
-Run the automated test suite (161 tests):
+Run the automated test suite (156 tests):
 ```bash
 ./run-tests.sh              # All tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
