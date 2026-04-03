@@ -289,6 +289,156 @@
     font-size: 13px;
 }
 
+/* Dependency picker */
+.dep-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.dep-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px 3px 10px;
+    border-radius: 999px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border-light);
+    font-size: 12px;
+    line-height: 1.4;
+    max-width: 280px;
+}
+
+.dep-chip-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
+.dep-chip-remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 15px;
+    line-height: 1;
+    padding: 0 2px;
+    flex-shrink: 0;
+}
+
+.dep-chip-remove:hover {
+    color: var(--danger, #e53e3e);
+}
+
+.dep-picker-wrap {
+    position: relative;
+}
+
+.dep-picker-input {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.dep-picker-input::placeholder {
+    color: var(--text-muted);
+}
+
+.dep-picker-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    max-height: 180px;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    margin-top: 2px;
+}
+
+.dep-picker-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 10px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.dep-picker-option:hover {
+    background: var(--bg-hover);
+}
+
+.dep-picker-option-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.dep-picker-empty {
+    padding: 12px 10px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+/* Status badge used in dep picker and chips */
+.dep-status-badge {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 1px 7px;
+    border-radius: 999px;
+    white-space: nowrap;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-light);
+}
+
+.dep-status-badge.dep-status-todo {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+}
+
+.dep-status-badge.dep-status-doing,
+.dep-status-badge.dep-status-running {
+    background: rgba(0, 113, 227, 0.1);
+    color: var(--accent);
+    border-color: rgba(0, 113, 227, 0.2);
+}
+
+.dep-status-badge.dep-status-review {
+    background: rgba(255, 159, 10, 0.1);
+    color: #d97706;
+    border-color: rgba(255, 159, 10, 0.2);
+}
+
+.dep-status-badge.dep-status-done {
+    background: rgba(52, 199, 89, 0.1);
+    color: #16a34a;
+    border-color: rgba(52, 199, 89, 0.2);
+}
+
+.dep-status-badge.dep-status-paused {
+    background: rgba(142, 142, 147, 0.1);
+    color: var(--text-muted);
+    border-color: rgba(142, 142, 147, 0.2);
+}
+
 /* Detail column badge */
 .detail-column-badge {
     font-size: 12px;
