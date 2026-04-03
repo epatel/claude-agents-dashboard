@@ -320,6 +320,14 @@ class WorkflowService:
                 worktree_path=None,
                 merge_commit=merge_sha,
             )
+
+            # Notify dependents so the frontend can re-evaluate blocked states
+            dependent_ids = await self.db.get_dependent_items(item_id)
+            if dependent_ids:
+                await self.notifications.ws_manager.broadcast("dependencies_resolved", {
+                    "resolved_item_id": item_id,
+                    "dependent_item_ids": dependent_ids,
+                })
         else:
             await self._log_and_notify(item_id, "system",
                 f"Merge failed — {message[:200]}. "

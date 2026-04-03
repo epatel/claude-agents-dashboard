@@ -271,6 +271,7 @@ class DatabaseService:
             asset_paths = [row[0] for row in await cursor2.fetchall()]
 
             # Delete all related records
+            await conn.execute("DELETE FROM item_dependencies WHERE item_id = ? OR requires_item_id = ?", (item_id, item_id))
             await conn.execute("DELETE FROM attachments WHERE item_id = ?", (item_id,))
             await conn.execute("DELETE FROM work_log WHERE item_id = ?", (item_id,))
             await conn.execute("DELETE FROM review_comments WHERE item_id = ?", (item_id,))
@@ -348,6 +349,78 @@ class DatabaseService:
             await conn.commit()
 
         return epic
+
+    # --- Dependency operations ---
+
+    async def get_item_dependencies(self, item_id: str) -> List[Dict[str, Any]]:
+        """Get items that this item depends on (requires)."""
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT i.id, i.title, i.column_name, i.status "
+                "FROM item_dependencies d "
+                "JOIN items i ON d.requires_item_id = i.id "
+                "WHERE d.item_id = ?",
+                (item_id,),
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def set_item_dependencies(self, item_id: str, required_ids: List[str]) -> List[Dict[str, Any]]:
+        """Replace all dependencies for an item with the given list of required item IDs."""
+        async with self.db.connect() as conn:
+            # Validate that all required items exist and none is self-referential
+            for rid in required_ids:
+                if rid == item_id:
+                    raise ValueError("An item cannot depend on itself")
+                cursor = await conn.execute("SELECT id FROM items WHERE id = ?", (rid,))
+                if not await cursor.fetchone():
+                    raise ValueError(f"Required item {rid} not found")
+
+            # Replace: delete existing, insert new
+            await conn.execute("DELETE FROM item_dependencies WHERE item_id = ?", (item_id,))
+            for rid in required_ids:
+                await conn.execute(
+                    "INSERT OR IGNORE INTO item_dependencies (item_id, requires_item_id) VALUES (?, ?)",
+                    (item_id, rid),
+                )
+            await conn.commit()
+
+        return await self.get_item_dependencies(item_id)
+
+    async def is_item_blocked(self, item_id: str) -> bool:
+        """Check if any required item is not in done or archive."""
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT COUNT(*) FROM item_dependencies d "
+                "JOIN items i ON d.requires_item_id = i.id "
+                "WHERE d.item_id = ? AND i.column_name NOT IN ('done', 'archive')",
+                (item_id,),
+            )
+            row = await cursor.fetchone()
+            return row[0] > 0
+
+    async def get_blocking_items(self, item_id: str) -> List[Dict[str, Any]]:
+        """Get items that are blocking this one (required but not yet done/archived)."""
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT i.id, i.title, i.column_name, i.status "
+                "FROM item_dependencies d "
+                "JOIN items i ON d.requires_item_id = i.id "
+                "WHERE d.item_id = ? AND i.column_name NOT IN ('done', 'archive')",
+                (item_id,),
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def get_dependent_items(self, item_id: str) -> List[str]:
+        """Get IDs of items that depend on the given item."""
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT item_id FROM item_dependencies WHERE requires_item_id = ?",
+                (item_id,),
+            )
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]
 
     async def get_epic_progress(self) -> Dict[str, Dict[str, int]]:
         """Get item counts per column per epic."""
