@@ -87,6 +87,14 @@
                 </div>
             </div>
             <div class="form-group">
+                <label>Requires <span class="tooltip" data-tip="Select other board items that must be completed before this task can start. The item will be marked as blocked until all dependencies are done.">?</span></label>
+                <div id="item-form-deps-chips" class="dep-chips"></div>
+                <div class="dep-picker-wrap">
+                    <input type="text" id="item-form-deps-search" class="dep-picker-input" placeholder="Search items to add…" autocomplete="off">
+                    <div id="item-form-deps-list" class="dep-picker-list" hidden></div>
+                </div>
+            </div>
+            <div class="form-group">
                 <label>Attachments <span class="tooltip" data-tip="Add annotated screenshots or reference images. The agent can see these when working on the task.">?</span></label>
                 <div id="item-form-attachments" class="attachments-grid"></div>
                 <button type="button" class="btn btn-sm" style="margin-top: 8px;" onclick="Dialogs.openAnnotateForNewItem()">+ Add Annotated Image</button>
