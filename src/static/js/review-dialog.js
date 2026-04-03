@@ -378,11 +378,11 @@ const ReviewFileBrowser = {
         diffBtn.textContent = 'Diff';
         diffBtn.className = 'active';
 
-        const codeBtn = document.createElement('button');
-        codeBtn.textContent = 'Full File';
+        const inlineBtn = document.createElement('button');
+        inlineBtn.textContent = 'Full File';
 
         toggleDiv.appendChild(diffBtn);
-        toggleDiv.appendChild(codeBtn);
+        toggleDiv.appendChild(inlineBtn);
         container.appendChild(toggleDiv);
 
         const viewArea = document.createElement('div');
@@ -394,14 +394,14 @@ const ReviewFileBrowser = {
 
         diffBtn.addEventListener('click', () => {
             diffBtn.classList.add('active');
-            codeBtn.classList.remove('active');
+            inlineBtn.classList.remove('active');
             this._renderDiff(viewArea, tab.diff_lines);
         });
 
-        codeBtn.addEventListener('click', () => {
-            codeBtn.classList.add('active');
+        inlineBtn.addEventListener('click', () => {
+            inlineBtn.classList.add('active');
             diffBtn.classList.remove('active');
-            this._renderCode(viewArea, tab);
+            this._renderInlineDiff(viewArea, tab);
         });
     },
 
@@ -423,6 +423,273 @@ const ReviewFileBrowser = {
         }
         container.innerHTML = '';
         container.appendChild(wrapper);
+    },
+
+    /**
+     * Parse unified diff lines into structured hunks with line numbers.
+     * Returns array of { oldStart, oldCount, newStart, newCount, lines: [{type, oldLine, newLine, text}] }
+     */
+    _parseDiffHunks(diffLines) {
+        const hunks = [];
+        let currentHunk = null;
+        let oldLine = 0;
+        let newLine = 0;
+
+        for (const line of diffLines) {
+            const hunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+            if (hunkMatch) {
+                currentHunk = {
+                    oldStart: parseInt(hunkMatch[1], 10),
+                    oldCount: hunkMatch[2] !== undefined ? parseInt(hunkMatch[2], 10) : 1,
+                    newStart: parseInt(hunkMatch[3], 10),
+                    newCount: hunkMatch[4] !== undefined ? parseInt(hunkMatch[4], 10) : 1,
+                    header: line,
+                    lines: [],
+                };
+                oldLine = currentHunk.oldStart;
+                newLine = currentHunk.newStart;
+                hunks.push(currentHunk);
+                continue;
+            }
+
+            if (!currentHunk) continue;
+            // Skip diff meta lines
+            if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('\\')) continue;
+
+            if (line.startsWith('+')) {
+                currentHunk.lines.push({ type: 'add', oldLine: null, newLine: newLine, text: line.slice(1) });
+                newLine++;
+            } else if (line.startsWith('-')) {
+                currentHunk.lines.push({ type: 'del', oldLine: oldLine, newLine: null, text: line.slice(1) });
+                oldLine++;
+            } else {
+                // Context line (starts with space or is empty)
+                const text = line.length > 0 ? line.slice(1) : '';
+                currentHunk.lines.push({ type: 'context', oldLine: oldLine, newLine: newLine, text });
+                oldLine++;
+                newLine++;
+            }
+        }
+        return hunks;
+    },
+
+    /**
+     * Render GitHub-style inline diff: full file content with changes highlighted,
+     * dual line number gutters (old/new), and expandable context.
+     */
+    _renderInlineDiff(container, tab) {
+        const hunks = this._parseDiffHunks(tab.diff_lines || []);
+        const fileContent = tab.content || '';
+        const fileLines = fileContent.split('\n');
+        // Remove trailing empty line from split if file ends with newline
+        if (fileLines.length > 0 && fileLines[fileLines.length - 1] === '') {
+            fileLines.pop();
+        }
+
+        // Build a map of new-line-number -> hunk line info for changed lines
+        // and old-line-number -> hunk line info for deleted lines
+        const addedLines = new Map();    // newLineNum -> {text}
+        const deletedLines = [];         // [{oldLine, newLine (insert before), text}]
+        const contextRanges = [];        // [{newStart, newEnd}] — ranges covered by hunks
+
+        for (const hunk of hunks) {
+            let hunkNewStart = Infinity;
+            let hunkNewEnd = 0;
+            for (const hl of hunk.lines) {
+                if (hl.type === 'add') {
+                    addedLines.set(hl.newLine, hl);
+                    hunkNewStart = Math.min(hunkNewStart, hl.newLine);
+                    hunkNewEnd = Math.max(hunkNewEnd, hl.newLine);
+                } else if (hl.type === 'del') {
+                    deletedLines.push({ ...hl, insertBeforeNew: this._findInsertPoint(hunk, hl) });
+                    if (hl.oldLine !== null) {
+                        hunkNewStart = Math.min(hunkNewStart, this._findInsertPoint(hunk, hl));
+                    }
+                } else if (hl.type === 'context') {
+                    hunkNewStart = Math.min(hunkNewStart, hl.newLine);
+                    hunkNewEnd = Math.max(hunkNewEnd, hl.newLine);
+                }
+            }
+            if (hunkNewStart !== Infinity) {
+                contextRanges.push({ newStart: hunkNewStart, newEnd: hunkNewEnd });
+            }
+        }
+
+        // Group deleted lines by their insertion point (before which new line they appear)
+        const deletedByInsertPoint = new Map();
+        for (const dl of deletedLines) {
+            const key = dl.insertBeforeNew;
+            if (!deletedByInsertPoint.has(key)) deletedByInsertPoint.set(key, []);
+            deletedByInsertPoint.get(key).push(dl);
+        }
+
+        // Build the full rendered output
+        const wrapper = document.createElement('div');
+        wrapper.className = 'rfb-inline-diff-full';
+
+        // Create table for alignment
+        const table = document.createElement('table');
+        table.className = 'inline-diff-table';
+
+        // Determine which lines are near changes (within 3 lines of a hunk)
+        const CONTEXT_LINES = 3;
+        const visibleNewLines = new Set();
+        for (const hunk of hunks) {
+            const firstNew = hunk.newStart;
+            const lastNew = hunk.newStart + hunk.newCount - 1;
+            for (let i = Math.max(1, firstNew - CONTEXT_LINES); i <= Math.min(fileLines.length, lastNew + CONTEXT_LINES); i++) {
+                visibleNewLines.add(i);
+            }
+        }
+
+        // For computing old line numbers for unchanged lines, track the offset
+        // oldLine = newLine - offset, where offset changes with adds/dels
+        const oldLineForNew = this._buildOldLineMap(hunks, fileLines.length);
+
+        let lastRenderedLine = 0;
+
+        for (let newLineNum = 1; newLineNum <= fileLines.length; newLineNum++) {
+            // Insert deleted lines that go before this new line
+            if (deletedByInsertPoint.has(newLineNum)) {
+                for (const dl of deletedByInsertPoint.get(newLineNum)) {
+                    const row = this._createDiffRow(dl.oldLine, null, 'del', dl.text);
+                    table.appendChild(row);
+                }
+            }
+
+            if (!visibleNewLines.has(newLineNum)) {
+                // If we just rendered lines and now hit a gap, show a separator
+                if (lastRenderedLine > 0 && visibleNewLines.has(lastRenderedLine)) {
+                    const sepRow = this._createSeparatorRow(newLineNum);
+                    table.appendChild(sepRow);
+                }
+                continue;
+            }
+
+            // Show separator at the start if we're skipping initial lines
+            if (lastRenderedLine === 0 && newLineNum > 1) {
+                const sepRow = this._createSeparatorRow(1);
+                table.appendChild(sepRow);
+            }
+            // Show separator if there's a gap from the last rendered line
+            if (lastRenderedLine > 0 && newLineNum > lastRenderedLine + 1 && !visibleNewLines.has(lastRenderedLine + 1)) {
+                // Already handled above
+            }
+
+            const lineText = fileLines[newLineNum - 1];
+            const isAdded = addedLines.has(newLineNum);
+            const oldNum = oldLineForNew.get(newLineNum);
+            const type = isAdded ? 'add' : 'context';
+
+            const row = this._createDiffRow(isAdded ? null : oldNum, newLineNum, type, lineText);
+            table.appendChild(row);
+            lastRenderedLine = newLineNum;
+        }
+
+        // Handle deleted lines at the very end of the file
+        const afterLast = fileLines.length + 1;
+        if (deletedByInsertPoint.has(afterLast)) {
+            for (const dl of deletedByInsertPoint.get(afterLast)) {
+                const row = this._createDiffRow(dl.oldLine, null, 'del', dl.text);
+                table.appendChild(row);
+            }
+        }
+
+        // If file ends before the last visible, show trailing separator
+        if (lastRenderedLine < fileLines.length && lastRenderedLine > 0) {
+            const sepRow = this._createSeparatorRow(lastRenderedLine + 1);
+            table.appendChild(sepRow);
+        }
+
+        wrapper.appendChild(table);
+        container.innerHTML = '';
+        container.appendChild(wrapper);
+    },
+
+    /** Find the new line number before which a deleted line should appear */
+    _findInsertPoint(hunk, deletedLine) {
+        let insertPoint = hunk.newStart;
+        for (const hl of hunk.lines) {
+            if (hl === deletedLine) break;
+            if (hl.type === 'add' || hl.type === 'context') {
+                insertPoint = (hl.newLine || insertPoint) + 1;
+            }
+        }
+        return insertPoint;
+    },
+
+    /** Build a map of newLineNum -> oldLineNum for context lines */
+    _buildOldLineMap(hunks, totalNewLines) {
+        const map = new Map();
+        let oldLine = 1;
+        let newLine = 1;
+        let hunkIdx = 0;
+
+        while (newLine <= totalNewLines) {
+            if (hunkIdx < hunks.length && newLine === hunks[hunkIdx].newStart) {
+                const hunk = hunks[hunkIdx];
+                for (const hl of hunk.lines) {
+                    if (hl.type === 'context') {
+                        map.set(hl.newLine, hl.oldLine);
+                    } else if (hl.type === 'add') {
+                        // Added lines have no old line number
+                    }
+                    // del lines don't have new line numbers
+                }
+                // Advance past the hunk
+                oldLine = hunk.oldStart + hunk.oldCount;
+                newLine = hunk.newStart + hunk.newCount;
+                hunkIdx++;
+            } else {
+                map.set(newLine, oldLine);
+                oldLine++;
+                newLine++;
+            }
+        }
+        return map;
+    },
+
+    _createDiffRow(oldNum, newNum, type, text) {
+        const row = document.createElement('tr');
+        row.className = `inline-diff-row inline-diff-${type}`;
+
+        const oldGutter = document.createElement('td');
+        oldGutter.className = 'inline-diff-gutter inline-diff-gutter-old';
+        oldGutter.textContent = oldNum != null ? oldNum : '';
+
+        const newGutter = document.createElement('td');
+        newGutter.className = 'inline-diff-gutter inline-diff-gutter-new';
+        newGutter.textContent = newNum != null ? newNum : '';
+
+        const marker = document.createElement('td');
+        marker.className = 'inline-diff-marker';
+        marker.textContent = type === 'add' ? '+' : type === 'del' ? '-' : ' ';
+
+        const content = document.createElement('td');
+        content.className = 'inline-diff-content';
+
+        const code = document.createElement('code');
+        code.textContent = text;
+        content.appendChild(code);
+
+        row.appendChild(oldGutter);
+        row.appendChild(newGutter);
+        row.appendChild(marker);
+        row.appendChild(content);
+        return row;
+    },
+
+    _createSeparatorRow(lineNum) {
+        const row = document.createElement('tr');
+        row.className = 'inline-diff-row inline-diff-separator';
+
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.className = 'inline-diff-expand';
+        td.innerHTML = `<span class="inline-diff-expand-icon">⋯</span>`;
+
+        row.appendChild(td);
+        return row;
     },
 
     _renderCode(container, tab) {
