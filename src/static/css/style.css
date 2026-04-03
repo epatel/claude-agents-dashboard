@@ -1219,6 +1219,118 @@ body {
     background: var(--bg-hover);
 }
 
+/* GitHub-style inline diff (full file view) */
+.rfb-inline-diff-full {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+    overflow: auto;
+}
+
+.inline-diff-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    table-layout: fixed;
+}
+
+.inline-diff-table td {
+    padding: 0;
+    vertical-align: top;
+    line-height: 20px;
+}
+
+.inline-diff-gutter {
+    width: 50px;
+    min-width: 50px;
+    max-width: 50px;
+    padding: 0 8px 0 0 !important;
+    text-align: right;
+    color: var(--text-muted);
+    opacity: 0.6;
+    font-size: 11px;
+    user-select: none;
+    background: var(--bg-primary);
+    border-right: 1px solid var(--border-light);
+    box-sizing: border-box;
+}
+
+.inline-diff-marker {
+    width: 20px;
+    min-width: 20px;
+    max-width: 20px;
+    text-align: center;
+    color: var(--text-muted);
+    user-select: none;
+    font-weight: 600;
+}
+
+.inline-diff-content {
+    padding: 0 12px 0 4px !important;
+    white-space: pre;
+    overflow-x: auto;
+}
+
+.inline-diff-content code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+    font-family: inherit;
+    color: inherit;
+}
+
+/* Row type styles */
+.inline-diff-row.inline-diff-add {
+    background: rgba(52, 199, 89, 0.12);
+}
+
+.inline-diff-row.inline-diff-add .inline-diff-gutter {
+    background: rgba(52, 199, 89, 0.2);
+    color: var(--success);
+    opacity: 1;
+}
+
+.inline-diff-row.inline-diff-add .inline-diff-marker {
+    color: var(--success);
+}
+
+.inline-diff-row.inline-diff-del {
+    background: rgba(255, 59, 48, 0.12);
+}
+
+.inline-diff-row.inline-diff-del .inline-diff-gutter {
+    background: rgba(255, 59, 48, 0.2);
+    color: var(--danger);
+    opacity: 1;
+}
+
+.inline-diff-row.inline-diff-del .inline-diff-marker {
+    color: var(--danger);
+}
+
+.inline-diff-row.inline-diff-context {
+    background: transparent;
+}
+
+/* Separator / expand row */
+.inline-diff-row.inline-diff-separator td {
+    background: var(--bg-hover);
+    border-top: 1px solid var(--border-light);
+    border-bottom: 1px solid var(--border-light);
+}
+
+.inline-diff-expand {
+    padding: 4px 0 !important;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 11px;
+    user-select: none;
+}
+
+.inline-diff-expand-icon {
+    opacity: 0.6;
+    letter-spacing: 2px;
+}
+
 /* Deleted file placeholder */
 .rfb-deleted-placeholder {
     display: flex;
