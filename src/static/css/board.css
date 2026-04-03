@@ -447,8 +447,33 @@
 
 .todo-epic-count {
     font-size: 11px;
+    background: var(--bg-hover);
     color: var(--text-muted);
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+.todo-epic-delete {
     margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.todo-epic-header:hover .todo-epic-delete { opacity: 1; }
+.todo-epic-delete:hover {
+    background: var(--bg-hover);
+    color: var(--danger);
 }
 
 /* --- Epic dropdown in item dialog --- */
