@@ -47,7 +47,7 @@
     --accent-hover: #409cff;
     --danger: #ff453a;
     --success: #30d158;
-    --warning: #ffd60a;
+    --warning: #ff9f0a;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
 
@@ -79,7 +79,7 @@
         --accent-hover: #409cff;
         --danger: #ff453a;
         --success: #30d158;
-        --warning: #ffd60a;
+        --warning: #ff9f0a;
         --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
         --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
     }
