@@ -87,6 +87,14 @@ def build_attachment_prompt(attachments: list[dict]) -> str:
         for att in ungrouped:
             lines.append(f"- {att['dest']}")
 
+    if lines:
+        lines.append("")
+        lines.append(
+            "IMPORTANT: Before making any changes, study the attached images carefully. "
+            "Describe what you see and what the annotations are highlighting. "
+            "If anything is unclear, use ask_user to confirm your understanding."
+        )
+
     return "\n".join(lines)
 
 
