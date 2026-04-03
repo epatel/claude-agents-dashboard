@@ -196,6 +196,7 @@
 .card-actions {
     display: flex;
     gap: 4px;
+    flex: 1;
     flex-wrap: wrap;
     align-items: center;
 }
