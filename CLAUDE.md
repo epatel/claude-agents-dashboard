@@ -165,9 +165,9 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,670 lines):
-  - `WorkflowService` (866 lines): Coordinates agent workflows, state transitions, callback creation, merge conflict auto-resolution, and dirty repo overlap detection
-  - `DatabaseService` (371 lines): All database operations (items, logs, config, attachments, token usage)
+- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,772 lines):
+  - `WorkflowService` (885 lines): Coordinates agent workflows, state transitions, callback creation, merge conflict auto-resolution, and dirty repo overlap detection
+  - `DatabaseService` (468 lines): All database operations (items, logs, config, attachments, token usage, item dependencies)
   - `NotificationService` (107 lines): WebSocket broadcasting and tool use formatting
   - `GitService` (94 lines): Worktree management, merge operations, and cleanup
   - `SessionService` (218 lines): Agent session lifecycle, commit messages, plugin parsing
@@ -178,7 +178,7 @@ sequenceDiagram
 
 - **Clarification uses asyncio.Event**: When an agent calls the `ask_user` MCP tool, the `WorkflowService._create_on_clarify_callback()` moves the item to "Clarify", broadcasts to the frontend, and `await`s an `asyncio.Event`. The HTTP endpoint `submit_clarification` sets the event, unblocking the agent.
 
-- **Todo creation via MCP**: Agents can create new todo items via the `create_todo` MCP tool. This flows through `WorkflowService._create_on_create_todo_callback()`, creates items via `DatabaseService.create_todo_item()` with proper positioning, and broadcasts real-time updates via `NotificationService`. Supports an optional `requires` parameter (list of item IDs) to declare dependencies via `DatabaseService.set_item_dependencies()`.
+- **Todo creation via MCP**: Agents can create new todo items via the `create_todo` MCP tool. This flows through `WorkflowService._create_on_create_todo_callback()`, creates items via `DatabaseService.create_todo_item()` with proper positioning, and broadcasts real-time updates via `NotificationService`. Supports an optional `requires` parameter (list of item IDs) to declare dependencies via `DatabaseService.set_item_dependencies()`, stored in the `item_dependencies` join table (migration 011).
 
 - **Per-item model selection**: Items can have an individual `model` field. `WorkflowService.start_agent()` uses `item.get("model") or config.get("model")`, falling back to the global agent config default (`claude-sonnet-4-20250514`). Available models are centralized in `constants.py` as `AVAILABLE_MODELS`: Claude Sonnet 4 (`claude-sonnet-4-20250514`), Claude Opus 3 (`claude-3-opus-20240229`), and Claude Haiku 3 (`claude-3-haiku-20240307`).
 
@@ -287,6 +287,7 @@ erDiagram
     items ||--o{ clarifications : "questions"
     items ||--o{ attachments : "files"
     items ||--o{ token_usage : "cost"
+    items ||--o{ item_dependencies : "depends on"
     items }o--o| epics : "grouped by"
 
     items {
@@ -302,6 +303,11 @@ erDiagram
         text done_at
         text epic_id FK
         text merge_commit
+    }
+
+    item_dependencies {
+        text item_id FK
+        text requires_item_id FK
     }
 
     agent_config {
@@ -339,7 +345,7 @@ erDiagram
     }
 ```
 
-SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 10 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items, `006_add_allowed_builtin_tools.py` adds configurable built-in tools to agent config, `007_add_done_at.py` adds done_at timestamp to items, `008_add_merge_commit.py` adds merge commit SHA to items, `009_add_annotation_summary.py` adds annotation summary to attachments, `010_add_epics.py` adds epics table and epic_id on items). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit + done_at + merge_commit + epic_id), `epics` (grouping entity with title, color, position), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
+SQLite via aiosqlite with a versioned migration system. Migration files are in `src/migrations/versions/` (currently 11 migrations: `001_initial_schema.py` creates the complete schema, `002_add_base_branch.py` adds base branch tracking, `003_add_allowed_commands.py` adds allowed commands to agent config, `004_add_bash_yolo.py` adds bash YOLO mode flag, `005_add_base_commit.py` adds base commit SHA to items, `006_add_allowed_builtin_tools.py` adds configurable built-in tools to agent config, `007_add_done_at.py` adds done_at timestamp to items, `008_add_merge_commit.py` adds merge commit SHA to items, `009_add_annotation_summary.py` adds annotation summary to attachments, `010_add_epics.py` adds epics table and epic_id on items, `011_add_item_dependencies.py` adds item_dependencies join table for tracking dependencies between items). Tables: `items` (board cards + git metadata + model + commit_message + base_branch + base_commit + done_at + merge_commit + epic_id), `epics` (grouping entity with title, color, position), `item_dependencies` (join table tracking which items require other items), `work_log` (agent activity stream with JSON metadata), `review_comments`, `clarifications`, `attachments` (annotated images), `agent_config` (single-row settings with MCP config + plugins + allowed_commands + bash_yolo), `token_usage` (per-session token consumption and cost), `schema_migrations` (migration tracking). Agents can create new todo items directly via MCP tools, automatically positioned in the todo column.
 
 Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested under items) since attachments have their own integer IDs.
 
@@ -357,6 +363,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
   - `008_add_merge_commit.py` — merge commit SHA tracking
   - `009_add_annotation_summary.py` — annotation summary for attachments
   - `010_add_epics.py` — epics table and epic_id on items
+  - `011_add_item_dependencies.py` — item_dependencies join table for dependency tracking
 - **Schema tracking**: `schema_migrations` table tracks which migrations have been applied
 - **CLI management**: `python -m src.manage` for migration commands
 - **Auto-migration**: Database automatically runs pending migrations on startup
@@ -436,6 +443,7 @@ src/
 |       +-- 008_add_merge_commit.py  # Merge commit SHA tracking
 |       +-- 009_add_annotation_summary.py # Annotation summary for attachments
 |       +-- 010_add_epics.py         # Epics table and epic_id on items
+|       +-- 011_add_item_dependencies.py # Item dependency tracking
 +-- static/
 |   +-- js/
 |   |   +-- app.js                   # WebSocket + init
