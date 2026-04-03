@@ -219,7 +219,16 @@ class AgentSession:
             "Todos (mcp__todo__create_todo) on the board — do NOT implement the tasks yourself\n"
             "5. Set a commit message summarizing the plan"
         )
-        full_system_prompt = (self.system_prompt or "") + cwd_note + clarify_note + commit_note + todo_note + brainstorm_note + command_note + tool_note
+        debug_note = (
+            "\n\nIMPORTANT: If the task is about fixing a bug, debugging, or troubleshooting — "
+            "do NOT guess at fixes. Investigate first:\n"
+            "1. Read the full error message/stack trace\n"
+            "2. Reproduce the issue and trace the data flow to find root cause\n"
+            "3. Find similar working code and compare\n"
+            "4. Form a specific hypothesis, test with the smallest possible change\n"
+            "5. If stuck after 3 attempts, use mcp__clarification__ask_user to explain what you tried"
+        )
+        full_system_prompt = (self.system_prompt or "") + cwd_note + clarify_note + commit_note + todo_note + brainstorm_note + debug_note + command_note + tool_note
 
         # Configure allowed MCP tools
         allowed_tools = []
