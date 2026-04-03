@@ -4,6 +4,8 @@
 const ItemDialog = {
     // Pending attachments for new items (before they have an ID)
     _pendingAttachments: [],
+    // HTML for existing (already-saved) attachments shown during edit
+    _existingAttachmentsHtml: '',
 
     async openNewItem() {
         document.getElementById('item-dialog-title').textContent = 'New Item';
@@ -15,6 +17,7 @@ const ItemDialog = {
         this.hideInlineEpicCreate();
         await this._populateEpicDropdown(null);
         this._pendingAttachments = [];
+        this._existingAttachmentsHtml = '';
         this._renderFormAttachments();
         await this._updateDefaultModelDisplay();
         // Show play button for new items
@@ -34,6 +37,7 @@ const ItemDialog = {
         this.hideInlineEpicCreate();
         await this._populateEpicDropdown(item.epic_id);
         this._pendingAttachments = [];
+        this._existingAttachmentsHtml = '';
         this._renderFormAttachments();
         // Load existing attachments for edit
         if (item.id) {
@@ -50,27 +54,23 @@ const ItemDialog = {
     async _loadFormAttachments(itemId) {
         try {
             const attachments = await Api.request('GET', `/api/items/${itemId}/attachments`);
-            const container = document.getElementById('item-form-attachments');
             if (attachments.length > 0) {
-                container.innerHTML = attachments.map(a => `
+                this._existingAttachmentsHtml = attachments.map(a => `
                     <div class="attachment-card">
                         <img src="/api/assets/${a.asset_path.split('/').pop()}" alt="${a.filename}" class="attachment-img">
                         <div class="attachment-info">
                             <span class="attachment-name">${a.filename}</span>
                         </div>
                     </div>
-                `).join('') + (container.innerHTML || '');
+                `).join('');
+                this._renderFormAttachments();
             }
         } catch {}
     },
 
     _renderFormAttachments() {
         const container = document.getElementById('item-form-attachments');
-        if (this._pendingAttachments.length === 0) {
-            container.innerHTML = '';
-            return;
-        }
-        container.innerHTML = this._pendingAttachments.map((a, i) => `
+        const pendingHtml = this._pendingAttachments.map((a, i) => `
             <div class="attachment-card">
                 <img src="${a.dataUrl}" alt="${a.filename}" class="attachment-img">
                 <div class="attachment-info">
@@ -79,6 +79,7 @@ const ItemDialog = {
                 </div>
             </div>
         `).join('');
+        container.innerHTML = this._existingAttachmentsHtml + pendingHtml;
     },
 
     removePendingAttachment(index) {
