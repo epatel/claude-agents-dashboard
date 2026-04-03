@@ -3,7 +3,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 156 tests
+./run-tests.sh              # Run all 165 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -28,7 +28,7 @@ tests/
 │   ├── test_allowed_commands.py       # Command filter + access MCP (14 tests)
 │   ├── test_diff_mixing.py           # Diff isolation between items (6 tests)
 │   ├── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
-│   ├── test_epics.py               # Epic CRUD, progress, assignment (10 tests)
+│   ├── test_epics.py               # Epic CRUD, progress, assignment (19 tests)
 │   ├── test_annotation_summary.py  # Annotation summary generation (2 tests)
 │   └── test_annotation_prompt.py   # Annotation prompt formatting (5 tests)
 ├── integration/
@@ -100,13 +100,15 @@ Tests the mini-MCP example server via stdio JSON-RPC protocol:
 - Protocol compliance (NDJSON over stdio)
 - Error handling for malformed requests
 
-### Unit Tests — Epics (10 tests)
+### Unit Tests — Epics (19 tests)
 Tests epic CRUD and item integration:
 - Epic creation with title and color
 - Epic listing with progress stats (item counts per column)
 - Epic update (title, color, position)
 - Epic deletion (nullifies epic_id on related items)
 - Item-epic assignment and unassignment
+- Epic filtering and board integration
+- Item dependency tracking via epics
 
 ### Unit Tests — Annotation Summary (2 tests)
 Tests annotation summary generation:

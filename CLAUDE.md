@@ -17,12 +17,12 @@ path/to/claude-agents-dashboard/run.sh
 ## Running tests
 
 ```bash
-./run-tests.sh              # Run all 156 tests
+./run-tests.sh              # Run all 165 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ```
 
-Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (12 tests — imports, DB basics), unit (130 tests — path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing, mini-MCP server, epics, annotation summary, annotation prompt), integration (14 tests — orchestrator lifecycle). E2E tests run separately via `./run-e2e-tests.sh`. See `tests/README.md` for details.
+Tests use `pytest` with `pytest-asyncio` (auto mode). Three tiers: smoke (12 tests — imports, DB basics), unit (139 tests — path validation, git timeouts, migration runner, migration edge cases, file browser routes, allowed commands, diff mixing, mini-MCP server, epics, annotation summary, annotation prompt), integration (14 tests — orchestrator lifecycle). E2E tests run separately via `./run-e2e-tests.sh`. See `tests/README.md` for details.
 
 ## Architecture
 
@@ -165,8 +165,8 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,772 lines):
-  - `WorkflowService` (885 lines): Coordinates agent workflows, state transitions, callback creation, merge conflict auto-resolution, and dirty repo overlap detection
+- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,777 lines):
+  - `WorkflowService` (890 lines): Coordinates agent workflows, state transitions, callback creation, merge conflict auto-resolution, and dirty repo overlap detection
   - `DatabaseService` (468 lines): All database operations (items, logs, config, attachments, token usage, item dependencies)
   - `NotificationService` (107 lines): WebSocket broadcasting and tool use formatting
   - `GitService` (94 lines): Worktree management, merge operations, and cleanup
@@ -503,7 +503,7 @@ src/
 
 ### Testing changes
 
-Run the automated test suite (156 tests):
+Run the automated test suite (165 tests):
 ```bash
 ./run-tests.sh              # All tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
