@@ -736,6 +736,44 @@ body {
     border-left: 3px solid var(--accent);
     line-height: 1.6;
     margin-top: 4px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.clarify-prompt p {
+    margin: 0 0 8px 0;
+}
+
+.clarify-prompt p:last-child {
+    margin-bottom: 0;
+}
+
+.clarify-prompt strong {
+    color: var(--text-primary);
+}
+
+.clarify-prompt code {
+    background: var(--bg-secondary);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+.clarify-prompt pre {
+    background: var(--bg-secondary);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    margin: 8px 0;
+}
+
+.clarify-prompt ul, .clarify-prompt ol {
+    margin: 4px 0 8px 0;
+    padding-left: 20px;
+}
+
+.clarify-prompt li {
+    margin-bottom: 4px;
 }
 
 .clarify-choices {

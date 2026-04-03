@@ -58,7 +58,7 @@ const ClarificationDialog = {
     showClarification(itemId, prompt, choices) {
         this._restoreFormHTML();
         document.getElementById('clarify-item-id').value = itemId;
-        document.getElementById('clarify-prompt').textContent = prompt;
+        document.getElementById('clarify-prompt').innerHTML = DialogUtils.renderMarkdown(prompt);
         document.getElementById('clarify-response').value = '';
 
         const choicesEl = document.getElementById('clarify-choices');
