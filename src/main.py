@@ -89,6 +89,9 @@ def main():
     import uvicorn
     from .web.app import create_app
 
+    # Configure app logging to match uvicorn's INFO level
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(message)s")
+
     # Suppress noisy polling endpoint from access logs
     class _QuietStatsFilter(logging.Filter):
         def filter(self, record):
