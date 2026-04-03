@@ -17,7 +17,7 @@ select:
 
 .SILENT:
 
-.PHONY: info menu select start start_at test test_smoke test_unit test_integration test_e2e test_filter setup update_phony
+.PHONY: info menu select start start_at test test_smoke test_unit test_integration test_e2e test_filter setup update_phony 
 
 start:
 	./run.sh
