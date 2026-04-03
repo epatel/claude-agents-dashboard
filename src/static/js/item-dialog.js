@@ -56,10 +56,11 @@ const ItemDialog = {
             const attachments = await Api.request('GET', `/api/items/${itemId}/attachments`);
             if (attachments.length > 0) {
                 this._existingAttachmentsHtml = attachments.map(a => `
-                    <div class="attachment-card">
+                    <div class="attachment-card" data-attachment-id="${a.id}">
                         <img src="/api/assets/${a.asset_path.split('/').pop()}" alt="${a.filename}" class="attachment-img">
                         <div class="attachment-info">
                             <span class="attachment-name">${a.filename}</span>
+                            <button type="button" class="btn btn-xs" onclick="ItemDialog.deleteExistingAttachment(${a.id}, '${itemId}')" title="Delete" style="opacity:0.5">&#128465;</button>
                         </div>
                     </div>
                 `).join('');
@@ -85,6 +86,17 @@ const ItemDialog = {
     removePendingAttachment(index) {
         this._pendingAttachments.splice(index, 1);
         this._renderFormAttachments();
+    },
+
+    async deleteExistingAttachment(attachmentId, itemId) {
+        if (!await DialogCore.confirm('Delete this attachment?')) return;
+        try {
+            await Api.request('DELETE', `/api/attachments/${attachmentId}`);
+            const card = document.querySelector(`#item-form-attachments .attachment-card[data-attachment-id="${attachmentId}"]`);
+            if (card) card.remove();
+        } catch (err) {
+            console.error('Failed to delete attachment:', err);
+        }
     },
 
     openAnnotateForNewItem() {
