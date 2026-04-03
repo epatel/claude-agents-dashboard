@@ -178,7 +178,7 @@ sequenceDiagram
 
 - **Clarification uses asyncio.Event**: When an agent calls the `ask_user` MCP tool, the `WorkflowService._create_on_clarify_callback()` moves the item to "Clarify", broadcasts to the frontend, and `await`s an `asyncio.Event`. The HTTP endpoint `submit_clarification` sets the event, unblocking the agent.
 
-- **Todo creation via MCP**: Agents can create new todo items via the `create_todo` MCP tool. This flows through `WorkflowService._create_on_create_todo_callback()`, creates items via `DatabaseService.create_todo_item()` with proper positioning, and broadcasts real-time updates via `NotificationService`.
+- **Todo creation via MCP**: Agents can create new todo items via the `create_todo` MCP tool. This flows through `WorkflowService._create_on_create_todo_callback()`, creates items via `DatabaseService.create_todo_item()` with proper positioning, and broadcasts real-time updates via `NotificationService`. Supports an optional `requires` parameter (list of item IDs) to declare dependencies via `DatabaseService.set_item_dependencies()`.
 
 - **Per-item model selection**: Items can have an individual `model` field. `WorkflowService.start_agent()` uses `item.get("model") or config.get("model")`, falling back to the global agent config default (`claude-sonnet-4-20250514`). Available models are centralized in `constants.py` as `AVAILABLE_MODELS`: Claude Sonnet 4 (`claude-sonnet-4-20250514`), Claude Opus 3 (`claude-3-opus-20240229`), and Claude Haiku 3 (`claude-3-haiku-20240307`).
 
@@ -550,8 +550,8 @@ python -m src.manage rollback 001  # Rollback to version 001
 The system includes several built-in MCP tools for agents:
 
 - **`ask_user`** (clarification): Allows agents to ask users questions and wait for responses. Moves items to "Clarify" column and resumes when answered.
-- **`create_todo`** (todo creation): Enables agents to create new todo items with title and optional description. Items are automatically positioned in the todo column and broadcast to all connected clients.
+- **`create_todo`** (todo creation): Enables agents to create new todo items with title and optional description. Accepts an optional `requires` parameter (list of item IDs) to declare dependencies — the created item will be blocked until all required items are done/archived. Items are automatically positioned in the todo column and broadcast to all connected clients.
 - **`set_commit_message`** (commit message): Allows agents to set a custom commit message for their work. Stored in the database and used during merge instead of the generic "Agent work on agent/xxx" message.
 - **`request_command_access`** (command access): Allows agents to request permission to run blocked shell commands. Shows an approve/deny prompt in the UI. Approved commands are saved to agent config for future sessions.
-- **`view_board`** (board introspection): Allows agents to see all items on the board grouped by column (Todo, Doing, Review, Done). Helps agents understand project context and coordinate with other tasks.
+- **`view_board`** (board introspection): Allows agents to see all items on the board grouped by column (Todo, Doing, Review, Done), including dependency info (which items each task requires). Helps agents understand project context, coordinate work, and reference item IDs when setting `requires` on new todos.
 - **`request_tool_access`** (tool access): Allows agents to request permission to use disabled optional built-in tools (e.g., WebSearch, WebFetch). Shows an approve/deny prompt in the UI. Approved tools are saved to agent config.

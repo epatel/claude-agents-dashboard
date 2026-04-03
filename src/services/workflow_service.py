@@ -734,8 +734,10 @@ class WorkflowService:
         return on_request_tool
 
     def _create_on_create_todo_callback(self, item_id: str):
-        async def on_create_todo(title: str, description: str, epic_id: str = None) -> Dict[str, Any]:
+        async def on_create_todo(title: str, description: str, epic_id: str = None, requires: list[str] = None) -> Dict[str, Any]:
             item = await self.db.create_todo_item(title, description, epic_id)
+            if requires:
+                await self.db.set_item_dependencies(item["id"], requires)
             await self._log_and_notify(item_id, "system", f"Created todo item: {title}")
             await self.notifications.broadcast_item_created(item)
             return item
@@ -779,6 +781,13 @@ class WorkflowService:
             epics = await self.db.get_epics()
             epic_map = {e["id"]: e["title"] for e in epics}
 
+            # Build dependency map: item_id -> list of required item IDs
+            dep_map = {}
+            for item in items:
+                deps = await self.db.get_item_dependencies(item["id"])
+                if deps:
+                    dep_map[item["id"]] = deps
+
             # Group by column
             by_column = {}
             for item in items:
@@ -802,7 +811,9 @@ class WorkflowService:
                     for item in col_items:
                         status = f" [{item['status']}]" if item.get("status") else ""
                         epic_text = f" [Epic: {epic_map.get(item.get('epic_id', ''), '')}]" if item.get('epic_id') else ""
-                        lines.append(f"- [{item['id']}] {item['title']}{status}{epic_text}")
+                        deps = dep_map.get(item["id"], [])
+                        dep_text = f" [requires: {', '.join(d['id'] for d in deps)}]" if deps else ""
+                        lines.append(f"- [{item['id']}] {item['title']}{status}{epic_text}{dep_text}")
                 else:
                     lines.append("  (empty)")
                 lines.append("")
