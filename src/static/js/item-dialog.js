@@ -59,8 +59,25 @@ const ItemDialog = {
         // Hide play button for existing items
         const playBtn = document.getElementById('item-play-btn');
         if (playBtn) playBtn.style.display = 'none';
+        // Disable "Save & Start" if item is blocked by dependencies
+        this._updateSaveStartButton(item.id);
         DialogCore.open('item-dialog');
         document.getElementById('item-form-title').focus();
+    },
+
+    _updateSaveStartButton(itemId) {
+        const saveStartBtn = document.getElementById('item-save-start-btn');
+        if (!saveStartBtn) return;
+        if (itemId && Board.isItemBlocked(itemId)) {
+            const blockers = Board.getBlockingItems(itemId).map(b => b.title).join(', ');
+            saveStartBtn.disabled = true;
+            saveStartBtn.title = `Blocked by: ${blockers}`;
+            saveStartBtn.classList.add('btn-disabled');
+        } else {
+            saveStartBtn.disabled = false;
+            saveStartBtn.title = 'Save & Start';
+            saveStartBtn.classList.remove('btn-disabled');
+        }
     },
 
     async _loadFormAttachments(itemId) {
@@ -176,6 +193,13 @@ const ItemDialog = {
         const epic_id = document.getElementById('item-form-epic').value || null;
 
         if (!title) return;
+
+        // Block starting if item has unresolved dependencies
+        if (id && Board.isItemBlocked(id)) {
+            const blockers = Board.getBlockingItems(id).map(b => b.title).join(', ');
+            console.warn(`Cannot start blocked item ${id}. Blocked by: ${blockers}`);
+            return;
+        }
 
         try {
             let itemId = id;

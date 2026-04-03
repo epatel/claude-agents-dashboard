@@ -12,15 +12,42 @@ const Board = {
     _epicPanelExpanded: localStorage.getItem('epicPanelExpanded') === 'true',
     _collapsedTodoEpicGroups: {},
 
+    // Blocked status: item_id -> [{id, title}, ...] of blocking items
+    _blockedItems: {},
+
     async init(initialItems) {
         for (const item of initialItems) {
             this.items[item.id] = item;
         }
         await this.loadEpics();
+        await this.loadBlockedStatus();
         this.renderTodoColumn();
         this.renderDoneColumn();
         this.renderArchiveColumn();
         this.updateCounts();
+    },
+
+    async loadBlockedStatus() {
+        try {
+            this._blockedItems = await Api.request('GET', '/api/items/blocked-status');
+        } catch (e) {
+            console.error('Failed to load blocked status:', e);
+            this._blockedItems = {};
+        }
+    },
+
+    isItemBlocked(itemId) {
+        const blockers = this._blockedItems[itemId];
+        return blockers && blockers.length > 0;
+    },
+
+    getBlockingItems(itemId) {
+        return this._blockedItems[itemId] || [];
+    },
+
+    updateBlockedStatus(blockedStatus) {
+        this._blockedItems = blockedStatus;
+        this.renderTodoColumn();
     },
 
     // --- Drag and drop ---
@@ -170,6 +197,11 @@ const Board = {
     },
 
     async startAgent(itemId) {
+        if (this.isItemBlocked(itemId)) {
+            const blockers = this.getBlockingItems(itemId).map(b => b.title).join(', ');
+            console.warn(`Cannot start blocked item ${itemId}. Blocked by: ${blockers}`);
+            return;
+        }
         try {
             await Api.startAgent(itemId);
         } catch (err) {
@@ -178,6 +210,11 @@ const Board = {
     },
 
     async startCopyAgent(itemId) {
+        if (this.isItemBlocked(itemId)) {
+            const blockers = this.getBlockingItems(itemId).map(b => b.title).join(', ');
+            console.warn(`Cannot start blocked item ${itemId}. Blocked by: ${blockers}`);
+            return;
+        }
         try {
             await Api.startCopyAgent(itemId);
         } catch (err) {
@@ -301,7 +338,10 @@ const Board = {
     // --- Re-rendering ---
 
     async loadAndRender() {
-        const items = await Api.getItems();
+        const [items] = await Promise.all([
+            Api.getItems(),
+            this.loadBlockedStatus(),
+        ]);
         this.items = {};
         // Clear all column cards
         document.querySelectorAll('.column-cards').forEach(col => {
@@ -358,11 +398,25 @@ const Board = {
             statusHtml = `<div class="card-status card-status-${item.status}">${labels[item.status] || item.status}</div>`;
         }
 
+        // Blocked badge for todo items
+        let blockedHtml = '';
+        const isBlocked = item.column_name === 'todo' && this.isItemBlocked(item.id);
+        if (isBlocked) {
+            const blockers = this.getBlockingItems(item.id);
+            const names = blockers.map(b => this.escapeHtml(b.title)).join(', ');
+            blockedHtml = `<div class="card-blocked-badge" title="Requires: ${names}">🔒 ${names}</div>`;
+        }
+
         let actionsHtml = '';
         const col = item.column_name;
         const deleteBtn = `<button class="btn btn-xs btn-delete" onclick="event.stopPropagation(); Board.deleteItem('${item.id}')" title="Delete">✕</button>`;
         if (col === 'todo') {
-            actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startAgent('${item.id}')" title="Start agent">▶</button><button class="btn btn-xs" onclick="event.stopPropagation(); Board.startCopyAgent('${item.id}')" title="Start Copy (keep original in Todo)">▶⧉</button>${deleteBtn}`;
+            const blockedTooltip = isBlocked
+                ? `Blocked by: ${this.getBlockingItems(item.id).map(b => b.title).join(', ')}`
+                : 'Start agent';
+            const disabledAttr = isBlocked ? ' disabled' : '';
+            const disabledClass = isBlocked ? ' btn-disabled' : '';
+            actionsHtml = `<button class="btn btn-xs btn-primary${disabledClass}" onclick="event.stopPropagation(); Board.startAgent('${item.id}')" title="${this.escapeHtml(blockedTooltip)}"${disabledAttr}>▶</button><button class="btn btn-xs${disabledClass}" onclick="event.stopPropagation(); Board.startCopyAgent('${item.id}')" title="${isBlocked ? this.escapeHtml(blockedTooltip) : 'Start Copy (keep original in Todo)'}"${disabledAttr}>▶⧉</button>${deleteBtn}`;
         } else if (col === 'doing' && item.status === 'failed') {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.retryAgent('${item.id}')" title="Retry">↻ Retry</button>
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>`;
@@ -400,6 +454,7 @@ const Board = {
         div.innerHTML = `
             ${epicBadgeHtml}
             <div class="card-title">${this.escapeHtml(item.title)}</div>
+            ${blockedHtml}
             ${statusHtml}
             <div class="card-bottom">
                 <div class="card-actions">${actionsHtml}</div>

@@ -144,6 +144,26 @@
     word-break: break-word;
 }
 
+.card-blocked-badge {
+    font-size: 11px;
+    color: var(--warning);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.btn-disabled,
+.btn-disabled:hover {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 .card-status {
     font-size: 11px;
     margin-bottom: 6px;
