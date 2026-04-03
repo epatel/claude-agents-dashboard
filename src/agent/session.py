@@ -208,7 +208,18 @@ class AgentSession:
             "mcp__tool_access__request_tool_access tool to ask the user for permission. "
             "Do NOT use ToolSearch to find it — call it directly."
         )
-        full_system_prompt = (self.system_prompt or "") + cwd_note + clarify_note + commit_note + todo_note + command_note + tool_note
+        brainstorm_note = (
+            "\n\nIMPORTANT: If the task description contains words like 'brainstorm', 'explore', "
+            "'design', 'plan', 'ideas', or 'suggest' — this is a BRAINSTORMING task, not an implementation task. "
+            "Do NOT write code or make changes. Instead:\n"
+            "1. Use mcp__board_view__view_board to see existing work\n"
+            "2. Use mcp__clarification__ask_user to ask clarifying questions ONE AT A TIME\n"
+            "3. Propose 2-3 approaches and ask the user to pick one\n"
+            "4. Once the user approves a design, create an Epic (mcp__todo__create_epic) and "
+            "Todos (mcp__todo__create_todo) on the board — do NOT implement the tasks yourself\n"
+            "5. Set a commit message summarizing the plan"
+        )
+        full_system_prompt = (self.system_prompt or "") + cwd_note + clarify_note + commit_note + todo_note + brainstorm_note + command_note + tool_note
 
         # Configure allowed MCP tools
         allowed_tools = []
