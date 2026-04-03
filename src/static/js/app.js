@@ -17,6 +17,7 @@ const App = {
 
     init() {
         Theme.init();
+        Sound.init();
 
         // Initialize board with server-rendered items (include data attrs so
         // renderDoneColumn() can group done cards by date instead of clearing them)
@@ -331,6 +332,11 @@ const App = {
                 Board.updateCard(data);
                 // Refresh epic progress — column changes affect done/total counts
                 this._refreshEpicsDebounced();
+
+                // Play notification sound when agent finishes (moves to review/done/questions)
+                if (data.column_name && data.column_name !== 'doing' && data.column_name !== 'todo') {
+                    Sound.playChime();
+                }
 
                 // Auto-transition: if the detail dialog is open for this item
                 // and the task ended (moved column or status changed), transition
