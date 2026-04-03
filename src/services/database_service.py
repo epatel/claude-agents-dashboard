@@ -422,6 +422,30 @@ class DatabaseService:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
 
+    async def get_all_blocked_status(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Get blocking items for all todo items that have unresolved dependencies.
+
+        Returns a dict mapping item_id -> list of blocking item dicts (id, title).
+        Only includes items that ARE blocked (have at least one unfinished dependency).
+        """
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT d.item_id, i.id as blocking_id, i.title as blocking_title "
+                "FROM item_dependencies d "
+                "JOIN items i ON d.requires_item_id = i.id "
+                "JOIN items target ON d.item_id = target.id "
+                "WHERE target.column_name = 'todo' "
+                "AND i.column_name NOT IN ('done', 'archive')"
+            )
+            rows = await cursor.fetchall()
+            result: Dict[str, List[Dict[str, Any]]] = {}
+            for row in rows:
+                item_id = row[0]
+                if item_id not in result:
+                    result[item_id] = []
+                result[item_id].append({"id": row[1], "title": row[2]})
+            return result
+
     async def get_epic_progress(self) -> Dict[str, Dict[str, int]]:
         """Get item counts per column per epic."""
         async with self.db.connect() as conn:

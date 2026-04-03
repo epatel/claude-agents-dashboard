@@ -383,6 +383,13 @@ const App = {
                     data.item_id, data.tool_name, data.reason
                 );
                 break;
+            case 'dependencies_changed':
+                // Refresh blocked status when dependencies change
+                Board.loadBlockedStatus().then(() => Board.renderTodoColumn());
+                break;
+            case 'blocked_status_changed':
+                Board.updateBlockedStatus(data.blocked || {});
+                break;
             case 'notification_added':
                 NotificationDialog.addFromEvent(data);
                 break;

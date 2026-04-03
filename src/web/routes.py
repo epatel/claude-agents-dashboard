@@ -176,6 +176,7 @@ def _invalidate_stats_cache():
 @router.get("/", response_class=HTMLResponse)
 async def board_page(request: Request):
     db = request.app.state.db
+    db_service = request.app.state.orchestrator.db_service
     async with db.connect() as conn:
         cursor = await conn.execute(
             "SELECT items.*, epics.title as epic_title, epics.color as epic_color "
@@ -184,6 +185,15 @@ async def board_page(request: Request):
         )
         rows = await cursor.fetchall()
         items = [dict(row) for row in rows]
+
+    # Get blocked status for todo items
+    blocked_status = await db_service.get_all_blocked_status()
+
+    # Annotate items with blocked info for template rendering
+    for item in items:
+        blockers = blocked_status.get(item["id"], [])
+        item["is_blocked"] = len(blockers) > 0
+        item["blocking_items"] = blockers
 
     # Get current git branch name
     current_branch = await get_current_branch(request.app.state.target_project)
@@ -452,6 +462,17 @@ async def move_item(request: Request, item_id: str, body: ItemMove):
 
     await request.app.state.ws_manager.broadcast("item_moved", item)
     _invalidate_stats_cache()  # Item status change affects stats
+
+    # When an item moves to done/archive, its dependents may become unblocked
+    if body.column_name in ("done", "archive"):
+        db_service = request.app.state.orchestrator.db_service
+        dependent_ids = await db_service.get_dependent_items(item_id)
+        if dependent_ids:
+            blocked_status = await db_service.get_all_blocked_status()
+            await request.app.state.ws_manager.broadcast("blocked_status_changed", {
+                "blocked": blocked_status,
+            })
+
     return item
 
 
@@ -483,6 +504,11 @@ async def set_item_dependencies(request: Request, item_id: str, body: SetDepende
             "item_id": item_id,
             "dependencies": deps,
         })
+        # Also broadcast full blocked status so all cards update
+        blocked_status = await db_service.get_all_blocked_status()
+        await request.app.state.ws_manager.broadcast("blocked_status_changed", {
+            "blocked": blocked_status,
+        })
     return deps
 
 
@@ -493,6 +519,17 @@ async def is_item_blocked(request: Request, item_id: str):
     blocked = await db_service.is_item_blocked(item_id)
     blocking_items = await db_service.get_blocking_items(item_id) if blocked else []
     return {"blocked": blocked, "blocking_items": blocking_items}
+
+
+@router.get("/api/items/blocked-status")
+async def get_all_blocked_status(request: Request):
+    """Get blocked status for all todo items with unresolved dependencies.
+
+    Returns a dict mapping item_id -> list of blocking items.
+    Only includes items that ARE blocked.
+    """
+    db_service = request.app.state.orchestrator.db_service
+    return await db_service.get_all_blocked_status()
 
 
 # --- Work log ---
