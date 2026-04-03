@@ -33,11 +33,12 @@ const AnnotationCanvas = {
             if (originalDataUrl) {
                 ItemDialog._pendingAttachments.push({
                     dataUrl: originalDataUrl,
-                    filename: `annotation_${ts}_original.jpg`,
+                    filename: summary ? `annotation_${ts}_original.jpg` : `annotation_${ts}.jpg`,
                     annotation_summary: summary || null,
                 });
             }
-            if (annotatedDataUrl) {
+            // Only attach annotated version if annotations were actually made
+            if (annotatedDataUrl && summary) {
                 ItemDialog._pendingAttachments.push({
                     dataUrl: annotatedDataUrl,
                     filename: `annotation_${ts}_annotated.jpg`,
@@ -65,13 +66,13 @@ const AnnotationCanvas = {
             if (originalDataUrl) {
                 await Api.request('POST', `/api/items/${DialogCore._currentItemId}/attachments`, {
                     item_id: DialogCore._currentItemId,
-                    filename: `annotation_${ts}_original.jpg`,
+                    filename: summary ? `annotation_${ts}_original.jpg` : `annotation_${ts}.jpg`,
                     data: originalDataUrl,
                     annotation_summary: summary || null,
                 });
             }
-            // Upload annotated version (screenshot + annotations baked in)
-            if (annotatedDataUrl) {
+            // Upload annotated version only if annotations were actually made
+            if (annotatedDataUrl && summary) {
                 await Api.request('POST', `/api/items/${DialogCore._currentItemId}/attachments`, {
                     item_id: DialogCore._currentItemId,
                     filename: `annotation_${ts}_annotated.jpg`,
