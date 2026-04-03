@@ -930,6 +930,310 @@ body {
     justify-content: flex-end;
 }
 
+/* Review file browser */
+.review-file-browser {
+    display: grid;
+    grid-template-columns: minmax(220px, 280px) 1fr;
+    height: 62vh;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.rfb-tree-panel {
+    border-right: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-primary);
+}
+
+.rfb-tree-header {
+    padding: 8px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.rfb-filter-input {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 12px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.rfb-filter-input:focus {
+    border-color: var(--accent);
+}
+
+.rfb-tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.rfb-tree-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    user-select: none;
+}
+
+.rfb-tree-item:hover {
+    background: var(--bg-hover);
+}
+
+.rfb-tree-item.active {
+    background: rgba(0, 113, 227, 0.1);
+    color: var(--accent);
+}
+
+.rfb-tree-item.focused {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+}
+
+.rfb-tree-item .tree-arrow {
+    font-size: 8px;
+    transition: transform 0.15s;
+    color: var(--text-muted);
+    width: 12px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.rfb-tree-item .tree-arrow.expanded {
+    transform: rotate(90deg);
+}
+
+.rfb-tree-item .tree-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.rfb-tree-item .tree-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rfb-tree-children {
+    display: none;
+}
+
+.rfb-tree-children.expanded {
+    display: block;
+}
+
+/* Changed file indicators in the tree */
+.rfb-tree-item .rfb-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.rfb-status-dot.status-M { background: var(--accent); }
+.rfb-status-dot.status-A { background: var(--success); }
+.rfb-status-dot.status-D { background: var(--danger); }
+
+.rfb-tree-item.rfb-changed-file .tree-name {
+    font-weight: 600;
+}
+
+/* Viewer panel */
+.rfb-viewer-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-secondary);
+}
+
+.rfb-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-light);
+    overflow-x: auto;
+    min-height: 0;
+    flex-shrink: 0;
+}
+
+.rfb-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.rfb-tab:hover { background: var(--bg-hover); }
+
+.rfb-tab.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--accent);
+    background: var(--bg-primary);
+}
+
+.rfb-tab .rfb-tab-close {
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.5;
+    cursor: pointer;
+}
+
+.rfb-tab .rfb-tab-close:hover { opacity: 1; }
+
+.rfb-tab .rfb-tab-status {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.rfb-breadcrumb {
+    padding: 4px 12px;
+    font-size: 11px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-light);
+    display: none;
+    flex-shrink: 0;
+}
+
+.rfb-breadcrumb.visible { display: block; }
+
+.rfb-breadcrumb .separator {
+    margin: 0 3px;
+    opacity: 0.5;
+}
+
+.rfb-breadcrumb .crumb {
+    cursor: pointer;
+}
+
+.rfb-breadcrumb .crumb:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+.rfb-content {
+    flex: 1;
+    overflow: auto;
+    padding: 0;
+}
+
+.rfb-content .file-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    gap: 8px;
+}
+
+.rfb-content .file-empty-icon {
+    font-size: 40px;
+}
+
+.rfb-content .file-code-viewer {
+    margin: 0;
+    border-radius: 0;
+}
+
+/* Diff view within file browser */
+.rfb-content .rfb-inline-diff {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+    padding: 0;
+}
+
+.rfb-content .rfb-inline-diff .diff-line {
+    padding: 0 12px;
+    white-space: pre;
+    line-height: 1.5;
+}
+
+.rfb-content .rfb-inline-diff .diff-add {
+    background: rgba(52, 199, 89, 0.12);
+    color: var(--text-primary);
+}
+
+.rfb-content .rfb-inline-diff .diff-del {
+    background: rgba(255, 59, 48, 0.12);
+    color: var(--text-primary);
+}
+
+.rfb-content .rfb-inline-diff .diff-hunk {
+    background: rgba(0, 113, 227, 0.08);
+    color: var(--accent);
+    padding: 4px 12px;
+    margin: 4px 0;
+    font-style: italic;
+}
+
+/* View mode toggle in file browser */
+.rfb-view-toggle {
+    display: inline-flex;
+    gap: 0;
+    margin: 8px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.rfb-view-toggle button {
+    padding: 4px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.rfb-view-toggle button:not(:last-child) {
+    border-right: 1px solid var(--border-light);
+}
+
+.rfb-view-toggle button.active {
+    background: var(--accent);
+    color: white;
+}
+
+.rfb-view-toggle button:hover:not(.active) {
+    background: var(--bg-hover);
+}
+
+/* Deleted file placeholder */
+.rfb-deleted-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--danger);
+    gap: 8px;
+}
+
+.rfb-deleted-placeholder .rfb-deleted-icon {
+    font-size: 40px;
+}
+
 /* Link styles for better readability in both light and dark themes */
 a {
     color: var(--accent);
