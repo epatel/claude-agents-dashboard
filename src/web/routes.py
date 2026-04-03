@@ -364,6 +364,45 @@ async def delete_items_by_date(request: Request, body: DeleteByDateRequest):
     return {"deleted": len(item_ids)}
 
 
+class DeleteByEpicRequest(BaseModel):
+    epic_id: str
+
+
+@router.post("/api/items/delete-by-epic")
+async def delete_items_by_epic(request: Request, body: DeleteByEpicRequest):
+    """Delete all todo items in an epic. If no items remain, delete the epic too."""
+    db = request.app.state.db
+    orchestrator = request.app.state.orchestrator
+    async with db.connect() as conn:
+        cursor = await conn.execute(
+            "SELECT id FROM items WHERE epic_id = ? AND column_name = 'todo'",
+            (body.epic_id,),
+        )
+        todo_ids = [row[0] for row in await cursor.fetchall()]
+
+        # Check if there are any non-todo items remaining
+        cursor2 = await conn.execute(
+            "SELECT COUNT(*) FROM items WHERE epic_id = ? AND column_name != 'todo'",
+            (body.epic_id,),
+        )
+        remaining = (await cursor2.fetchone())[0]
+
+    for item_id in todo_ids:
+        await orchestrator.delete_item(item_id)
+
+    # If no items remain in other columns, delete the epic
+    deleted_epic = False
+    if remaining == 0:
+        db_service = request.app.state.orchestrator.db_service
+        ns = request.app.state.orchestrator.notification_service
+        await db_service.delete_epic(body.epic_id)
+        await ns.broadcast_epic_deleted(body.epic_id)
+        deleted_epic = True
+
+    _invalidate_stats_cache()
+    return {"deleted": len(todo_ids), "epic_deleted": deleted_epic}
+
+
 @router.post("/api/items/{item_id}/move")
 async def move_item(request: Request, item_id: str, body: ItemMove):
     db = request.app.state.db

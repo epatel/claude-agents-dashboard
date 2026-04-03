@@ -148,6 +148,17 @@ const Board = {
         }
     },
 
+    async deleteEpicTodos(epicId, epicTitle) {
+        if (!await Dialogs.confirm(`Delete all todo items in "${epicTitle}"?`, 'Confirm', 'Delete')) return;
+        try {
+            await Api.request('POST', '/api/items/delete-by-epic', { epic_id: epicId });
+            await this.loadEpics();
+            await this.loadAndRender();
+        } catch (err) {
+            console.error('Failed to delete epic todos:', err);
+        }
+    },
+
     async deleteByDate(dateStr, columnName) {
         if (!await Dialogs.confirm(`Delete all ${columnName} items from ${dateStr}?`)) return;
         try {
@@ -579,6 +590,7 @@ const Board = {
                 <span class="epic-dot" style="background: var(--epic-${epic.color})"></span>
                 ${Board.escapeHtml(epic.title)}
                 <span class="todo-epic-count">${items.length}</span>
+                <button class="btn btn-xs btn-delete done-day-archive" onclick="event.stopPropagation(); Board.deleteEpicTodos('${epic.id}', '${Board.escapeHtml(epic.title).replace(/'/g, "\\'")}')" title="Delete all todos in this epic">✕</button>
             `;
             header.addEventListener('click', () => {
                 this._collapsedTodoEpicGroups[epic.id] = !isCollapsed;
