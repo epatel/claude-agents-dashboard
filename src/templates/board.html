@@ -197,6 +197,7 @@
         <div class="review-tabs">
             <button class="review-tab active" data-tab="description" onclick="Dialogs.switchReviewTab('description')">Description</button>
             <button class="review-tab" data-tab="diff" onclick="Dialogs.switchReviewTab('diff')">Diff</button>
+            <button class="review-tab" data-tab="files" onclick="Dialogs.switchReviewTab('files')">Files</button>
             <button class="review-tab" data-tab="log" onclick="Dialogs.switchReviewTab('log')">Work Log</button>
         </div>
         <div id="review-tab-description" class="review-content review-tab-content active">
@@ -205,6 +206,26 @@
         <div id="review-tab-diff" class="review-content review-tab-content" style="display:none">
             <div id="review-files"></div>
             <div id="review-diff"></div>
+        </div>
+        <div id="review-tab-files" class="review-tab-content" style="display:none">
+            <div class="review-file-browser">
+                <div class="rfb-tree-panel">
+                    <div class="rfb-tree-header">
+                        <input type="text" id="rfb-filter" class="rfb-filter-input" placeholder="Filter files…">
+                    </div>
+                    <div id="rfb-tree" class="rfb-tree" tabindex="0"></div>
+                </div>
+                <div class="rfb-viewer-panel">
+                    <div id="rfb-tabs" class="rfb-tabs"></div>
+                    <div id="rfb-breadcrumb" class="rfb-breadcrumb"></div>
+                    <div id="rfb-content" class="rfb-content">
+                        <div class="file-empty-state">
+                            <div class="file-empty-icon">📂</div>
+                            <p>Select a file from the tree to view it</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
         <div id="review-tab-log" class="review-content review-tab-content" style="display:none">
             <div id="review-log" class="detail-log"></div>

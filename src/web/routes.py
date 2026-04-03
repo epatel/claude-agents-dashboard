@@ -5,7 +5,7 @@ import time
 from typing import Optional
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from ..config import COLUMNS
@@ -623,11 +623,77 @@ async def get_item_file(request: Request, item_id: str, file_path: str):
         content = await get_file_content(request.app.state.target_project, item["branch_name"], file_path)
         return {"content": content}
     except ValueError as e:
-        # Path validation error - return 400 Bad Request
         raise HTTPException(status_code=400, detail=f"Invalid file path: {str(e)}")
     except Exception as e:
-        # Other errors (e.g., file not found, git errors) - return 404
         raise HTTPException(status_code=404, detail="File not found or inaccessible")
+
+
+@router.get("/api/items/{item_id}/worktree/tree")
+async def get_worktree_tree(request: Request, item_id: str, path: str = ""):
+    """Return directory tree from an item's worktree for the review file browser."""
+    import asyncio as _asyncio
+    from ..web.file_routes import scan_directory, validate_file_browser_path
+    from ..config import FILE_BROWSER_TREE_DEPTH
+
+    db = request.app.state.db
+    async with db.connect() as conn:
+        cursor = await conn.execute("SELECT worktree_path FROM items WHERE id = ?", (item_id,))
+        row = await cursor.fetchone()
+
+    if not row or not row["worktree_path"]:
+        return JSONResponse({"error": "No worktree for this item"}, status_code=404)
+
+    worktree_root = Path(row["worktree_path"])
+    if not worktree_root.is_dir():
+        return JSONResponse({"error": "Worktree directory not found"}, status_code=404)
+
+    if path:
+        try:
+            scan_path = validate_file_browser_path(path, worktree_root)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        if not scan_path.is_dir():
+            return JSONResponse({"error": "Not a directory"}, status_code=400)
+    else:
+        scan_path = worktree_root
+
+    tree = await _asyncio.to_thread(scan_directory, scan_path, worktree_root, FILE_BROWSER_TREE_DEPTH)
+    return {"root": str(worktree_root), "tree": tree}
+
+
+@router.get("/api/items/{item_id}/worktree/content")
+async def get_worktree_content(request: Request, item_id: str, path: str = ""):
+    """Return file content from an item's worktree for the review file browser."""
+    import asyncio as _asyncio
+    from ..web.file_routes import validate_file_browser_path, read_file_content
+
+    db = request.app.state.db
+    async with db.connect() as conn:
+        cursor = await conn.execute("SELECT worktree_path FROM items WHERE id = ?", (item_id,))
+        row = await cursor.fetchone()
+
+    if not row or not row["worktree_path"]:
+        return JSONResponse({"error": "No worktree for this item"}, status_code=404)
+
+    worktree_root = Path(row["worktree_path"])
+    if not worktree_root.is_dir():
+        return JSONResponse({"error": "Worktree directory not found"}, status_code=404)
+
+    if not path:
+        return JSONResponse({"error": "Path parameter required"}, status_code=400)
+
+    try:
+        file_path = validate_file_browser_path(path, worktree_root)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    if not file_path.exists():
+        return JSONResponse({"error": f"File not found: {path}"}, status_code=404)
+    if not file_path.is_file():
+        return JSONResponse({"error": f"Not a file: {path}"}, status_code=400)
+
+    result = await _asyncio.to_thread(read_file_content, file_path, path)
+    return result
 
 
 @router.get("/api/items/{item_id}/clarification")
