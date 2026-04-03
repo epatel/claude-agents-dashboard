@@ -159,6 +159,7 @@ const Board = {
         }
     },
 
+
     async deleteByDate(dateStr, columnName) {
         if (!await Dialogs.confirm(`Delete all ${columnName} items from ${dateStr}?`)) return;
         try {
@@ -623,7 +624,7 @@ const Board = {
             header.innerHTML = `
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
                 No Epic
-                <span class="todo-epic-count">${noEpic.length}</span>
+                <span class="todo-epic-count" style="margin-left: auto">${noEpic.length}</span>
             `;
             header.addEventListener('click', () => {
                 this._collapsedTodoEpicGroups['__none__'] = !isCollapsed;
