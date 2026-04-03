@@ -2,13 +2,13 @@
 
 **Date**: 2026-04-03
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 17 — Maintenance reassessment with updated line counts across all modules. Added migration 011 (item dependencies). Updated workflow_service.py (885 lines), database_service.py (468 lines), routes.py (974 lines), todo.py (147 lines), board.js (948 lines), item-dialog.js (468 lines), app.js (470 lines), style.css (989 lines), board.css (526 lines), dialog.css (451 lines). Updated totals: Python ~5,766 lines, JS ~5,436 lines, CSS ~2,609 lines.
+**Revision**: 18 — Maintenance reassessment with updated line counts across all modules. Updated workflow_service.py (890 lines), routes.py (1,040 lines), review-dialog.js (639 lines), style.css (1,293 lines). Epic tests expanded (19 tests). Updated totals: Python ~6,008 lines, JS ~5,952 lines, CSS ~2,913 lines. Test suite now 165 tests.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, and **item dependencies** (migration 011 — join table for tracking dependencies between items) have been added. The test suite includes **156 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, and **item dependencies** (migration 011 — join table for tracking dependencies between items) have been added. The test suite includes **165 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -112,7 +112,7 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 885 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, and dirty repo overlap detection |
+| `services/workflow_service.py` | 890 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, and dirty repo overlap detection |
 | `services/database_service.py` | 468 | A | All DB operations extracted; parameterized queries throughout; item dependency management |
 | `services/notification_service.py` | 107 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 94 | A | Git worktree and merge operations with proper error handling |
@@ -128,7 +128,7 @@ graph TB
 | `models.py` | 114 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
-| `web/routes.py` | 974 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; delete delegates to orchestrator |
+| `web/routes.py` | 1,040 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; delete delegates to orchestrator |
 | `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 122 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
@@ -168,7 +168,7 @@ graph TB
 | `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
 | `item-dialog.js` | 468 | A- | New/edit item forms with attachment handling, epic assignment, dependency selection |
 | `detail-dialog.js` | 241 | A- | Item detail view with tabbed interface |
-| `review-dialog.js` | 123 | A | Review dialog with diff viewer and work log |
+| `review-dialog.js` | 639 | A | Review dialog with diff viewer, work log, and tabbed interface |
 | `config-dialog.js` | 189 | A | Agent configuration (system prompt, MCP, plugins) |
 | `clarification-dialog.js` | 208 | A | Clean clarification prompt/response UI |
 | `notification-dialog.js` | 103 | A | System notification display, bell icon, badge counter |
@@ -188,13 +188,13 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `style.css` | 989 | A- | Main styles with CSS variables |
+| `style.css` | 1,293 | A- | Main styles with CSS variables |
 | `board.css` | 526 | A | Board layout, card styles, Done day grouping with collapsible sections |
 | `dialog.css` | 451 | A | Dialog component styles |
 | `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 86 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~2,609 lines across 5 modules (526+451+557+989+86).
+**Note**: CSS total is ~2,913 lines across 5 modules (526+451+557+1293+86).
 
 ---
 
@@ -312,7 +312,7 @@ stateDiagram-v2
 | 10 | No WebSocket rate limiting | ✅ Per-IP rate limiting with concurrent connection limits and windowed attempt tracking |
 | 11 | No request timeout for blocking operations | ✅ `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT` on approve route |
 | 12 | Migration class discovery uses string comparison | ✅ Justified — `issubclass` fails with dynamic module loading |
-| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (885), DatabaseService (468), NotificationService (107), GitService (94), SessionService (218). Orchestrator now 122-line facade |
+| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (890), DatabaseService (468), NotificationService (107), GitService (94), SessionService (218). Orchestrator now 122-line facade |
 | 14 | `dialogs.js` too large (801 lines) | ✅ Split into 12 specialized modules with coordinator pattern. Largest module is `search-dialog.js` at 246 lines |
 
 ### Remaining Issues
@@ -333,7 +333,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 156 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 11 migrations.
+**Current state**: 165 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 11 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -346,7 +346,7 @@ stateDiagram-v2
 | `tests/unit/test_mini_mcp.py` | Unit | 11 | Mini-MCP server stdio protocol, JSON-RPC messages, tool invocation |
 | `tests/unit/migrations/test_migration_runner.py` | Unit | 14 | Migration engine |
 | `tests/unit/migrations/test_migration_edge_cases.py` | Unit | 14 | Migration edge cases |
-| `tests/unit/test_epics.py` | Unit | 10 | Epic CRUD, progress stats, item assignment |
+| `tests/unit/test_epics.py` | Unit | 19 | Epic CRUD, progress stats, item assignment, filtering, dependencies |
 | `tests/unit/test_annotation_summary.py` | Unit | 2 | Annotation summary generation |
 | `tests/unit/test_annotation_prompt.py` | Unit | 5 | Annotation prompt formatting for agents |
 | `tests/integration/test_orchestrator_lifecycle.py` | Integration | 14 | Orchestrator lifecycle |
@@ -424,12 +424,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 46 | ~5,766 |
-| JavaScript frontend | 22 | ~5,436 |
-| CSS styles | 5 | ~2,609 |
-| HTML templates | 3 | ~611 |
+| Python backend (src/) | 46 | ~6,008 |
+| JavaScript frontend | 22 | ~5,952 |
+| CSS styles | 5 | ~2,913 |
+| HTML templates | 3 | ~632 |
 | Tests | 14 | ~3,326 |
-| **Grand total** | **90** | **~17,748** |
+| **Grand total** | **90** | **~18,831** |
 
 ---
 

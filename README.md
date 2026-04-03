@@ -34,7 +34,7 @@ Your project must be a git repository. Requires Python 3.12+.
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 156 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 165 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -175,8 +175,8 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~5,766 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~5,436 lines JS + ~2,609 lines CSS
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,008 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~5,952 lines JS + ~2,913 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 6 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -470,7 +470,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 
 - `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `TESTING.md` — Detailed testing guide with test inventory (156 unit/integration tests + E2E tests) and writing guidelines
+- `TESTING.md` — Detailed testing guide with test inventory (165 unit/integration tests + E2E tests) and writing guidelines
 
 ## License
 
