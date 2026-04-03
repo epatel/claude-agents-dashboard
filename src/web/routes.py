@@ -455,6 +455,46 @@ async def move_item(request: Request, item_id: str, body: ItemMove):
     return item
 
 
+# --- Dependencies ---
+
+class SetDependenciesBody(BaseModel):
+    required_item_ids: list[str]
+
+
+@router.get("/api/items/{item_id}/dependencies")
+async def get_item_dependencies(request: Request, item_id: str):
+    """Get list of items this item depends on."""
+    db_service = request.app.state.orchestrator.db_service
+    return await db_service.get_item_dependencies(item_id)
+
+
+@router.put("/api/items/{item_id}/dependencies")
+async def set_item_dependencies(request: Request, item_id: str, body: SetDependenciesBody):
+    """Replace the full list of dependencies for an item."""
+    db_service = request.app.state.orchestrator.db_service
+    try:
+        deps = await db_service.set_item_dependencies(item_id, body.required_item_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # Broadcast so the frontend can re-evaluate blocked states
+    item = await db_service.get_item(item_id)
+    if item:
+        await request.app.state.ws_manager.broadcast("dependencies_changed", {
+            "item_id": item_id,
+            "dependencies": deps,
+        })
+    return deps
+
+
+@router.get("/api/items/{item_id}/is-blocked")
+async def is_item_blocked(request: Request, item_id: str):
+    """Check if this item is blocked by any unfinished dependency."""
+    db_service = request.app.state.orchestrator.db_service
+    blocked = await db_service.is_item_blocked(item_id)
+    blocking_items = await db_service.get_blocking_items(item_id) if blocked else []
+    return {"blocked": blocked, "blocking_items": blocking_items}
+
+
 # --- Work log ---
 
 @router.get("/api/items/{item_id}/log")
