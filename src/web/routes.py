@@ -380,9 +380,9 @@ async def delete_items_by_epic(request: Request, body: DeleteByEpicRequest):
         )
         todo_ids = [row[0] for row in await cursor.fetchall()]
 
-        # Check if there are any non-todo items remaining
+        # Check if there are active (non-todo, non-archive) items remaining
         cursor2 = await conn.execute(
-            "SELECT COUNT(*) FROM items WHERE epic_id = ? AND column_name != 'todo'",
+            "SELECT COUNT(*) FROM items WHERE epic_id = ? AND column_name NOT IN ('todo', 'archive')",
             (body.epic_id,),
         )
         remaining = (await cursor2.fetchone())[0]
