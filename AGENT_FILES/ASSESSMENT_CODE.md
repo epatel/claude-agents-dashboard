@@ -316,6 +316,10 @@ stateDiagram-v2
 
 ### Remaining Issues
 
+#### Medium Priority
+
+3. **~10 minute delay between agent's last message and SDK completion callback**: Observed a consistent ~10 minute gap between the agent finishing its work (setting commit message, sending final text) and the `claude-agent-sdk` reporting the session as complete. The agent is idle during this time but the item stays in "Doing" instead of moving to "Review". This appears to be SDK/API-side overhead (possibly extended thinking finalization or session teardown). Consider detecting "agent is done talking" heuristically (e.g., after `set_commit_message` + no tool use for N seconds) to move items to Review earlier, before the SDK formally completes.
+
 #### Low Priority
 
 1. **No connection pooling**: Each DB operation opens/closes a connection via `aiosqlite.connect()`
