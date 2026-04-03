@@ -740,6 +740,11 @@ class WorkflowService:
                 await self.db.set_item_dependencies(item["id"], requires)
             await self._log_and_notify(item_id, "system", f"Created todo item: {title}")
             await self.notifications.broadcast_item_created(item)
+            if requires:
+                blocked_status = await self.db.get_all_blocked_status()
+                await self.notifications.ws_manager.broadcast("blocked_status_changed", {
+                    "blocked": blocked_status,
+                })
             return item
         return on_create_todo
 
