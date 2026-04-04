@@ -179,9 +179,13 @@ async def board_page(request: Request):
     db_service = request.app.state.orchestrator.db_service
     async with db.connect() as conn:
         cursor = await conn.execute(
-            "SELECT items.*, epics.title as epic_title, epics.color as epic_color "
-            "FROM items LEFT JOIN epics ON items.epic_id = epics.id "
-            "ORDER BY items.column_name, items.position"
+            "SELECT items.*, epics.title as epic_title, epics.color as epic_color,"
+            " COALESCE(wl.cnt, 0) AS log_count"
+            " FROM items"
+            " LEFT JOIN epics ON items.epic_id = epics.id"
+            " LEFT JOIN (SELECT item_id, COUNT(*) AS cnt FROM work_log GROUP BY item_id) wl"
+            " ON items.id = wl.item_id"
+            " ORDER BY items.column_name, items.position"
         )
         rows = await cursor.fetchall()
         items = [dict(row) for row in rows]
