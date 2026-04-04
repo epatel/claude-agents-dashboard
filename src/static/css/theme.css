@@ -20,6 +20,11 @@
     --radius: 8px;
     --radius-sm: 4px;
 
+    /* Scrollbar / minimap thumb */
+    --minimap-thumb: rgba(0, 0, 0, 0.35);
+    --minimap-thumb-hover: rgba(0, 0, 0, 0.5);
+    --minimap-thumb-active: rgba(0, 0, 0, 0.6);
+
     /* Epic colors */
     --epic-red: #dc2626;
     --epic-orange: #ea580c;
@@ -50,6 +55,11 @@
     --warning: #ff9f0a;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
+
+    /* Scrollbar / minimap thumb */
+    --minimap-thumb: rgba(255, 255, 255, 0.3);
+    --minimap-thumb-hover: rgba(255, 255, 255, 0.45);
+    --minimap-thumb-active: rgba(255, 255, 255, 0.55);
 
     /* Epic colors */
     --epic-red: #f87171;
@@ -82,5 +92,10 @@
         --warning: #ff9f0a;
         --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
         --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
+
+        /* Scrollbar / minimap thumb */
+        --minimap-thumb: rgba(255, 255, 255, 0.3);
+        --minimap-thumb-hover: rgba(255, 255, 255, 0.45);
+        --minimap-thumb-active: rgba(255, 255, 255, 0.55);
     }
 }
