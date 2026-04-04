@@ -597,8 +597,82 @@ const ReviewFileBrowser = {
         }
 
         wrapper.appendChild(table);
+
+        // Wrap in outer container for minimap overlay
+        const outer = document.createElement('div');
+        outer.className = 'inline-diff-outer';
+        outer.appendChild(wrapper);
+
+        // Build scrollbar minimap showing change locations
+        const totalRows = table.rows.length;
+        if (totalRows > 0) {
+            const minimap = document.createElement('div');
+            minimap.className = 'inline-diff-minimap';
+
+            // Merge adjacent same-type markers into bands for cleaner look
+            let runStart = -1;
+            let runType = null;
+            const addMarker = (type, startIdx, endIdx) => {
+                const marker = document.createElement('div');
+                marker.className = `inline-diff-minimap-marker inline-diff-minimap-${type}`;
+                const topPct = (startIdx / totalRows) * 100;
+                const span = ((endIdx - startIdx + 1) / totalRows) * 100;
+                marker.style.top = `${topPct}%`;
+                marker.style.height = `${Math.max(span, 0.3)}%`;
+                minimap.appendChild(marker);
+            };
+
+            for (let i = 0; i < totalRows; i++) {
+                const row = table.rows[i];
+                let color = null;
+                if (row.classList.contains('inline-diff-add')) color = 'add';
+                else if (row.classList.contains('inline-diff-del')) color = 'del';
+
+                if (color === runType && runStart >= 0) {
+                    // Continue the run
+                } else {
+                    // Flush previous run
+                    if (runType) addMarker(runType, runStart, i - 1);
+                    runStart = color ? i : -1;
+                    runType = color;
+                }
+            }
+            if (runType) addMarker(runType, runStart, totalRows - 1);
+
+            // Click on minimap scrolls to that position in the wrapper
+            minimap.addEventListener('click', (e) => {
+                const rect = minimap.getBoundingClientRect();
+                const fraction = (e.clientY - rect.top) / rect.height;
+                wrapper.scrollTop = fraction * wrapper.scrollHeight;
+            });
+
+            // Show viewport indicator
+            const viewport = document.createElement('div');
+            viewport.className = 'inline-diff-minimap-viewport';
+            minimap.appendChild(viewport);
+
+            const updateViewport = () => {
+                const sh = wrapper.scrollHeight;
+                const ch = wrapper.clientHeight;
+                if (sh <= ch) {
+                    viewport.style.display = 'none';
+                    return;
+                }
+                viewport.style.display = '';
+                const topPct = (wrapper.scrollTop / sh) * 100;
+                const heightPct = (ch / sh) * 100;
+                viewport.style.top = `${topPct}%`;
+                viewport.style.height = `${heightPct}%`;
+            };
+            wrapper.addEventListener('scroll', updateViewport, { passive: true });
+            // Initial update after render
+            requestAnimationFrame(updateViewport);
+
+            outer.appendChild(minimap);
+        }
+
         container.innerHTML = '';
-        container.appendChild(wrapper);
+        container.appendChild(outer);
     },
 
     /** Find the new line number before which a deleted line should appear */
