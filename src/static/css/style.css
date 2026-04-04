@@ -1271,18 +1271,17 @@ body {
     position: absolute;
     right: 0;
     width: 100%;
-    background: var(--text-muted);
-    opacity: 0.25;
+    background: var(--minimap-thumb, rgba(0, 0, 0, 0.4));
     border-radius: 2px;
     pointer-events: auto;
     cursor: grab;
     transition: top 0.05s linear, height 0.05s linear;
 }
 .inline-diff-minimap-viewport:hover {
-    opacity: 0.35;
+    background: var(--minimap-thumb-hover, rgba(0, 0, 0, 0.55));
 }
 .inline-diff-minimap-viewport.dragging {
-    opacity: 0.4;
+    background: var(--minimap-thumb-active, rgba(0, 0, 0, 0.65));
     cursor: grabbing;
     transition: none;
 }
