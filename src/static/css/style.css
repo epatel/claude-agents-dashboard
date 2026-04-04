@@ -1231,6 +1231,11 @@ body {
     font-size: 12px;
     overflow: auto;
     height: 100%;
+    /* Hide native scrollbar — minimap replaces it */
+    scrollbar-width: none; /* Firefox */
+}
+.rfb-inline-diff-full::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Edge */
 }
 
 /* Scrollbar minimap — change location overlay on right edge */
@@ -1267,10 +1272,19 @@ body {
     right: 0;
     width: 100%;
     background: var(--text-muted);
-    opacity: 0.18;
+    opacity: 0.25;
     border-radius: 2px;
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: grab;
     transition: top 0.05s linear, height 0.05s linear;
+}
+.inline-diff-minimap-viewport:hover {
+    opacity: 0.35;
+}
+.inline-diff-minimap-viewport.dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+    transition: none;
 }
 
 .inline-diff-table {
