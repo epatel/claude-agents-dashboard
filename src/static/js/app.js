@@ -384,7 +384,8 @@ const App = {
                 );
                 break;
             case 'dependencies_changed':
-                // Refresh blocked status when dependencies change
+            case 'dependencies_resolved':
+                // Refresh blocked status when dependencies change or are resolved
                 Board.loadBlockedStatus().then(() => Board.renderTodoColumn());
                 break;
             case 'blocked_status_changed':
