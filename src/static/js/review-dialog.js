@@ -376,10 +376,10 @@ const ReviewFileBrowser = {
 
         const diffBtn = document.createElement('button');
         diffBtn.textContent = 'Diff';
-        diffBtn.className = 'active';
 
         const inlineBtn = document.createElement('button');
         inlineBtn.textContent = 'Full File';
+        inlineBtn.className = 'active';
 
         toggleDiv.appendChild(diffBtn);
         toggleDiv.appendChild(inlineBtn);
@@ -390,7 +390,7 @@ const ReviewFileBrowser = {
         viewArea.style.overflow = 'auto';
         container.appendChild(viewArea);
 
-        this._renderDiff(viewArea, tab.diff_lines);
+        this._renderInlineDiff(viewArea, tab);
 
         diffBtn.addEventListener('click', () => {
             diffBtn.classList.add('active');
@@ -531,15 +531,10 @@ const ReviewFileBrowser = {
         const table = document.createElement('table');
         table.className = 'inline-diff-table';
 
-        // Determine which lines are near changes (within 3 lines of a hunk)
-        const CONTEXT_LINES = 3;
+        // Show all lines — full file view
         const visibleNewLines = new Set();
-        for (const hunk of hunks) {
-            const firstNew = hunk.newStart;
-            const lastNew = hunk.newStart + hunk.newCount - 1;
-            for (let i = Math.max(1, firstNew - CONTEXT_LINES); i <= Math.min(fileLines.length, lastNew + CONTEXT_LINES); i++) {
-                visibleNewLines.add(i);
-            }
+        for (let i = 1; i <= fileLines.length; i++) {
+            visibleNewLines.add(i);
         }
 
         // For computing old line numbers for unchanged lines, track the offset
