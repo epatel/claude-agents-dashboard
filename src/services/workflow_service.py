@@ -29,6 +29,9 @@ class WorkflowService:
         self._clarify_events: Dict[str, asyncio.Event] = {}
         self._clarify_responses: Dict[str, str] = {}
 
+        # Merge conflict retry counters (in-memory, per item_id)
+        self._merge_retries: Dict[str, int] = {}
+
     async def start_agent(self, item_id: str) -> Dict[str, Any]:
         """Start an agent for an item. Creates worktree, launches agent."""
         # Clean up any existing session for this item
@@ -303,6 +306,7 @@ class WorkflowService:
         )
 
         if success:
+            self._merge_retries.pop(item_id, None)
             merge_sha = message  # on success, message contains the merge commit SHA
             target = base_branch or "current branch"
             short_sha = merge_sha[:8] if merge_sha else ""
@@ -330,8 +334,71 @@ class WorkflowService:
                 })
         else:
             await self._log_and_notify(item_id, "system",
-                f"Merge failed — {message[:200]}. "
-                f"Capturing diff and retrying with updated base")
+                f"Merge failed — {message[:200]}. Attempting auto-rebase...")
+
+            # Phase 1: Try automatic rebase before resorting to agent restart
+            if worktree_path:
+                from ..git.operations import run_git, get_current_branch
+
+                # Commit any uncommitted work first
+                from ..git.operations import commit_worktree_changes
+                try:
+                    await commit_worktree_changes(worktree_path, commit_msg or f"Agent work on {branch}")
+                except Exception:
+                    pass
+
+                base = base_branch or await get_current_branch(self.git.target_project)
+                rebase_ok, rebase_msg = await self.git.rebase_onto_base(worktree_path, base)
+
+                if rebase_ok:
+                    await self._log_and_notify(item_id, "system",
+                        f"Auto-rebase onto {base} succeeded, retrying merge")
+
+                    # Retry the merge after successful rebase
+                    success2, message2 = await self.git.merge_agent_work(
+                        branch, base_branch, worktree_path, commit_msg
+                    )
+                    if success2:
+                        self._merge_retries.pop(item_id, None)
+                        merge_sha = message2
+                        target = base_branch or "current branch"
+                        short_sha = merge_sha[:8] if merge_sha else ""
+                        await self._log_and_notify(item_id, "system",
+                            f"Merged {branch} into {target} ({short_sha}) after rebase")
+
+                        if worktree_path:
+                            await self.git.cleanup_worktree_and_branch(worktree_path, branch)
+
+                        item = await self.db.update_item(
+                            item_id, column_name="done", status=None,
+                            worktree_path=None, merge_commit=merge_sha,
+                        )
+
+                        dependent_ids = await self.db.get_dependent_items(item_id)
+                        if dependent_ids:
+                            await self.notifications.ws_manager.broadcast("dependencies_resolved", {
+                                "resolved_item_id": item_id,
+                                "dependent_item_ids": dependent_ids,
+                            })
+                        await self.notifications.broadcast_item_updated(item)
+                        return item
+                    else:
+                        await self._log_and_notify(item_id, "system",
+                            f"Merge still failed after rebase: {message2[:200]}")
+                else:
+                    await self._log_and_notify(item_id, "system",
+                        f"Auto-rebase failed ({rebase_msg[:100]}), falling back to agent restart")
+
+            # Phase 2: Rebase didn't work — fall back to agent restart with diff
+            # Check retry counter to prevent infinite loops
+            merge_retries = self._merge_retries.get(item_id, 0)
+            MAX_MERGE_RETRIES = 2
+            if merge_retries >= MAX_MERGE_RETRIES:
+                await self._log_and_notify(item_id, "system",
+                    f"Conflict resolution failed after {merge_retries} retries. Manual intervention needed.")
+                item = await self.db.update_item(item_id, status="conflict")
+                await self.notifications.broadcast_item_updated(item)
+                return item
 
             # Capture the agent's work as a diff before resetting
             try:
@@ -351,12 +418,15 @@ class WorkflowService:
                     await run_git(worktree_path, "fetch", "origin", base)
                     await run_git(worktree_path, "reset", "--hard", base)
                     await self._log_and_notify(item_id, "system",
-                        f"Reset worktree to latest {base}, restarting agent with previous diff")
+                        f"Reset worktree to latest {base}, restarting agent with previous diff "
+                        f"(retry {merge_retries + 1}/{MAX_MERGE_RETRIES})")
                 except Exception as e:
                     logger.warning(f"Failed to reset worktree: {e}")
 
-                # Restart agent with the diff as context
-                item = await self.db.update_item(item_id, column_name="doing", status="resolving_conflicts")
+                # Increment retry counter and restart agent with the diff as context
+                self._merge_retries[item_id] = merge_retries + 1
+                item = await self.db.update_item(
+                    item_id, column_name="doing", status="resolving_conflicts")
                 await self.notifications.broadcast_item_updated(item)
 
                 config = await self.db.get_agent_config()

@@ -250,6 +250,30 @@ async def get_file_content(repo: Path, branch: str, file_path: str) -> str:
     return await run_git(repo, "show", f"{branch}:{validated_path}")
 
 
+async def rebase_branch(worktree_path: Path, base: str) -> tuple[bool, str]:
+    """Attempt to rebase the current branch onto base in the worktree.
+
+    Returns (success, message). On conflict, aborts the rebase and returns False.
+    """
+    try:
+        await run_git(worktree_path, "rebase", base, timeout=GIT_MERGE_TIMEOUT)
+        return True, "Rebase succeeded"
+    except subprocess.CalledProcessError as e:
+        # Rebase failed (conflict) — abort it
+        try:
+            await run_git(worktree_path, "rebase", "--abort")
+        except (subprocess.CalledProcessError, asyncio.TimeoutError):
+            pass
+        stderr = e.stderr.decode() if e.stderr else str(e)
+        return False, f"Rebase conflict: {stderr[:200]}"
+    except asyncio.TimeoutError:
+        try:
+            await run_git(worktree_path, "rebase", "--abort")
+        except (subprocess.CalledProcessError, asyncio.TimeoutError):
+            pass
+        return False, "Rebase timed out"
+
+
 async def commit_worktree_changes(worktree_path: Path, message: str) -> bool:
     """Commit any uncommitted changes in a worktree. Returns True if changes were committed."""
     # Add all changes including new files

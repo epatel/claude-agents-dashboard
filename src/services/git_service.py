@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from ..git.worktree import create_worktree, cleanup_worktree
-from ..git.operations import merge_branch, run_git
+from ..git.operations import merge_branch, rebase_branch, run_git
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,17 @@ class GitService:
             return False, f"Merge operation timed out: {str(e)}"
         except Exception as e:
             return False, f"Unexpected error during merge: {str(e)}"
+
+    async def rebase_onto_base(self, worktree_path: Path, base_branch: str) -> Tuple[bool, str]:
+        """Attempt to rebase the worktree branch onto the base branch.
+
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            return await rebase_branch(worktree_path, base_branch)
+        except Exception as e:
+            return False, f"Rebase failed: {str(e)}"
 
     async def cleanup_worktree_and_branch(self, worktree_path: Path, branch_name: str):
         """Clean up worktree and associated branch."""
