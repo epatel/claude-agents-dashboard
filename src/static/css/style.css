@@ -1220,10 +1220,64 @@ body {
 }
 
 /* GitHub-style inline diff (full file view) */
+.inline-diff-outer {
+    position: relative;
+    height: 100%;
+}
+
 .rfb-inline-diff-full {
     font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
     font-size: 12px;
     overflow: auto;
+    height: 100%;
+    padding-right: 12px; /* space for minimap */
+}
+
+/* Scrollbar minimap — change location overlay on right edge */
+.inline-diff-minimap {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: pointer;
+    background: var(--bg-primary);
+    opacity: 0.65;
+    border-left: 1px solid var(--border-light);
+    z-index: 2;
+    transition: opacity 0.15s, width 0.15s;
+}
+
+.inline-diff-minimap:hover {
+    opacity: 1;
+    width: 14px;
+}
+
+.inline-diff-minimap-marker {
+    position: absolute;
+    right: 0;
+    width: 100%;
+    min-height: 2px;
+    border-radius: 1px;
+}
+
+.inline-diff-minimap-add {
+    background: rgba(52, 199, 89, 0.85);
+}
+
+.inline-diff-minimap-del {
+    background: rgba(255, 59, 48, 0.85);
+}
+
+.inline-diff-minimap-viewport {
+    position: absolute;
+    right: 0;
+    width: 100%;
+    background: var(--text-muted);
+    opacity: 0.18;
+    border-radius: 2px;
+    pointer-events: none;
+    transition: top 0.05s linear, height 0.05s linear;
 }
 
 .inline-diff-table {
