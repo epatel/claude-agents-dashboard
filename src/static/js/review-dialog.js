@@ -371,6 +371,11 @@ const ReviewFileBrowser = {
     _renderChangedFile(container, tab) {
         container.innerHTML = '';
 
+        // Make container a flex column so viewArea gets a definite height
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.overflow = 'hidden';
+
         const toggleDiv = document.createElement('div');
         toggleDiv.className = 'rfb-view-toggle';
 
@@ -387,7 +392,8 @@ const ReviewFileBrowser = {
 
         const viewArea = document.createElement('div');
         viewArea.style.flex = '1';
-        viewArea.style.overflow = 'auto';
+        viewArea.style.minHeight = '0';  // allow flex shrinking below content size
+        viewArea.style.overflow = 'hidden';
         container.appendChild(viewArea);
 
         this._renderInlineDiff(viewArea, tab);
@@ -406,6 +412,9 @@ const ReviewFileBrowser = {
     },
 
     _renderDiff(container, lines) {
+        // Diff view scrolls naturally — no minimap
+        container.style.overflow = 'auto';
+
         const wrapper = document.createElement('div');
         wrapper.className = 'rfb-inline-diff';
         for (const line of lines) {
@@ -478,6 +487,9 @@ const ReviewFileBrowser = {
      * dual line number gutters (old/new), and expandable context.
      */
     _renderInlineDiff(container, tab) {
+        // Full file view — wrapper inside outer handles scrolling, minimap overlays
+        container.style.overflow = 'hidden';
+
         const hunks = this._parseDiffHunks(tab.diff_lines || []);
         const fileContent = tab.content || '';
         const fileLines = fileContent.split('\n');
