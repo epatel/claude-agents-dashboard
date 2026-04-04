@@ -325,13 +325,7 @@ class WorkflowService:
                 merge_commit=merge_sha,
             )
 
-            # Notify dependents so the frontend can re-evaluate blocked states
-            dependent_ids = await self.db.get_dependent_items(item_id)
-            if dependent_ids:
-                await self.notifications.ws_manager.broadcast("dependencies_resolved", {
-                    "resolved_item_id": item_id,
-                    "dependent_item_ids": dependent_ids,
-                })
+            await self._notify_and_auto_start_dependents(item_id)
         else:
             await self._log_and_notify(item_id, "system",
                 f"Merge failed — {message[:200]}. Attempting auto-rebase...")
@@ -374,12 +368,7 @@ class WorkflowService:
                             worktree_path=None, merge_commit=merge_sha,
                         )
 
-                        dependent_ids = await self.db.get_dependent_items(item_id)
-                        if dependent_ids:
-                            await self.notifications.ws_manager.broadcast("dependencies_resolved", {
-                                "resolved_item_id": item_id,
-                                "dependent_item_ids": dependent_ids,
-                            })
+                        await self._notify_and_auto_start_dependents(item_id)
                         await self.notifications.broadcast_item_updated(item)
                         return item
                     else:
@@ -462,6 +451,36 @@ class WorkflowService:
 
         await self.notifications.broadcast_item_updated(item)
         return item
+
+    async def _notify_and_auto_start_dependents(self, resolved_item_id: str):
+        """Notify dependents that a dependency was resolved, and auto-start if configured."""
+        dependent_ids = await self.db.get_dependent_items(resolved_item_id)
+        if not dependent_ids:
+            return
+
+        await self.notifications.ws_manager.broadcast("dependencies_resolved", {
+            "resolved_item_id": resolved_item_id,
+            "dependent_item_ids": dependent_ids,
+        })
+
+        # Auto-start any newly unblocked items that have auto_start enabled
+        for dep_id in dependent_ids:
+            dep_item = await self.db.get_item(dep_id)
+            if not dep_item:
+                continue
+            if not dep_item.get("auto_start"):
+                continue
+            if dep_item.get("column_name") != "todo":
+                continue
+            # Check if ALL dependencies are now resolved (not just this one)
+            if await self.db.is_item_blocked(dep_id):
+                continue
+            await self._log_and_notify(dep_id, "system",
+                "All dependencies resolved — auto-starting agent")
+            try:
+                await self.start_agent(dep_id)
+            except Exception as e:
+                logger.warning(f"Auto-start failed for {dep_id}: {e}")
 
     async def request_changes(self, item_id: str, comments: List[str]) -> Dict[str, Any]:
         """Send review comments back to the agent."""

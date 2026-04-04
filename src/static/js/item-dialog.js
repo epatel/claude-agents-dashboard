@@ -24,6 +24,7 @@ const ItemDialog = {
         this._selectedDeps = [];
         this._renderDepChips();
         this._initDepPicker(null);
+        this._setAutoStart(false);
         await this._updateDefaultModelDisplay();
         // Show play button for new items
         const playBtn = document.getElementById('item-play-btn');
@@ -48,6 +49,7 @@ const ItemDialog = {
         this._selectedDeps = [];
         this._renderDepChips();
         this._initDepPicker(item.id);
+        this._setAutoStart(!!item.auto_start);
         if (item.id) {
             await this._loadDependencies(item.id);
         }
@@ -151,14 +153,16 @@ const ItemDialog = {
 
         if (!title) return;
 
+        const auto_start = this._getAutoStart();
+
         try {
             let itemId = id;
             if (id) {
-                const updateData = { title, description, epic_id };
+                const updateData = { title, description, epic_id, auto_start };
                 if (model !== null) updateData.model = model;
                 await Api.updateItem(id, updateData);
             } else {
-                const item = await Api.createItem(title, description, model, epic_id);
+                const item = await Api.createItem(title, description, model, epic_id, auto_start);
                 itemId = item.id;
             }
 
@@ -322,6 +326,7 @@ const ItemDialog = {
             this._selectedDeps = deps.map(d => d.id);
             this._renderDepChips();
             this._renderDepList(); // refresh list to hide already-selected
+            this._updateAutoStartVisibility();
         } catch (e) {
             console.error('Failed to load dependencies:', e);
         }
@@ -432,6 +437,7 @@ const ItemDialog = {
             this._selectedDeps.push(itemId);
             this._renderDepChips();
             this._renderDepList();
+            this._updateAutoStartVisibility();
         }
         const input = document.getElementById('item-form-deps-search');
         if (input) { input.value = ''; input.focus(); }
@@ -441,6 +447,23 @@ const ItemDialog = {
         this._selectedDeps = this._selectedDeps.filter(id => id !== itemId);
         this._renderDepChips();
         this._renderDepList();
+        this._updateAutoStartVisibility();
+    },
+
+    _setAutoStart(value) {
+        const cb = document.getElementById('item-form-auto-start');
+        if (cb) cb.checked = value;
+        this._updateAutoStartVisibility();
+    },
+
+    _getAutoStart() {
+        const cb = document.getElementById('item-form-auto-start');
+        return cb ? cb.checked : false;
+    },
+
+    _updateAutoStartVisibility() {
+        const wrap = document.getElementById('auto-start-wrap');
+        if (wrap) wrap.style.display = this._selectedDeps.length > 0 ? '' : 'none';
     },
 
     _escHtml(str) {

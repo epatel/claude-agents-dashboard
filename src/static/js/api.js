@@ -17,8 +17,8 @@ const Api = {
         return this.request('GET', '/api/items');
     },
 
-    createItem(title, description = '', model = null, epic_id = null) {
-        const payload = { title, description };
+    createItem(title, description = '', model = null, epic_id = null, auto_start = false) {
+        const payload = { title, description, auto_start };
         if (model) payload.model = model;
         if (epic_id) payload.epic_id = epic_id;
         return this.request('POST', '/api/items', payload);

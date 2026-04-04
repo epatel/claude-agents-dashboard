@@ -14,6 +14,7 @@ class ItemCreate(BaseModel):
     description: str = ""
     model: Optional[str] = None
     epic_id: Optional[str] = None
+    auto_start: bool = False
 
 
 class ItemUpdate(BaseModel):
@@ -24,6 +25,7 @@ class ItemUpdate(BaseModel):
     status: Optional[str] = None
     model: Optional[str] = None
     epic_id: Optional[str] = None
+    auto_start: Optional[bool] = None
 
 
 class EpicCreate(BaseModel):
