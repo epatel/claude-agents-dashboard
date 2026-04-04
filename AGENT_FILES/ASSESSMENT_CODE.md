@@ -1,14 +1,14 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-04-03
+**Date**: 2026-04-04
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 18 — Maintenance reassessment with updated line counts across all modules. Updated workflow_service.py (890 lines), routes.py (1,040 lines), review-dialog.js (639 lines), style.css (1,293 lines). Epic tests expanded (19 tests). Updated totals: Python ~6,008 lines, JS ~5,952 lines, CSS ~2,913 lines. Test suite now 165 tests.
+**Revision**: 19 — Maintenance reassessment with updated line counts. Updated review-dialog.js (906 lines), style.css (1,405 lines). Updated totals: Python ~6,008 lines, JS ~6,219 lines, CSS ~3,025 lines. Test suite remains 165 tests.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 11 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, and **item dependencies** (migration 011 — join table for tracking dependencies between items) have been added. The test suite includes **165 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, and **item dependencies** (migration 011 — join table for tracking dependencies between items) have been added. The test suite includes **165 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -168,7 +168,7 @@ graph TB
 | `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
 | `item-dialog.js` | 468 | A- | New/edit item forms with attachment handling, epic assignment, dependency selection |
 | `detail-dialog.js` | 241 | A- | Item detail view with tabbed interface |
-| `review-dialog.js` | 639 | A | Review dialog with diff viewer, work log, and tabbed interface |
+| `review-dialog.js` | 906 | A | Review dialog with diff viewer, work log, and tabbed interface |
 | `config-dialog.js` | 189 | A | Agent configuration (system prompt, MCP, plugins) |
 | `clarification-dialog.js` | 208 | A | Clean clarification prompt/response UI |
 | `notification-dialog.js` | 103 | A | System notification display, bell icon, badge counter |
@@ -188,13 +188,13 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `style.css` | 1,293 | A- | Main styles with CSS variables |
+| `style.css` | 1,405 | A- | Main styles with CSS variables |
 | `board.css` | 526 | A | Board layout, card styles, Done day grouping with collapsible sections |
 | `dialog.css` | 451 | A | Dialog component styles |
 | `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 86 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~2,913 lines across 5 modules (526+451+557+1293+86).
+**Note**: CSS total is ~3,025 lines across 5 modules (526+451+557+1405+86).
 
 ---
 
@@ -425,11 +425,11 @@ graph LR
 | Category | Files | Lines |
 |----------|-------|-------|
 | Python backend (src/) | 46 | ~6,008 |
-| JavaScript frontend | 22 | ~5,952 |
-| CSS styles | 5 | ~2,913 |
+| JavaScript frontend | 22 | ~6,219 |
+| CSS styles | 5 | ~3,025 |
 | HTML templates | 3 | ~632 |
 | Tests | 14 | ~3,326 |
-| **Grand total** | **90** | **~18,831** |
+| **Grand total** | **90** | **~19,210** |
 
 ---
 
