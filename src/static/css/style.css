@@ -1227,10 +1227,9 @@ body {
 }
 
 .inline-diff-table {
-    width: 100%;
+    min-width: 100%;
     border-collapse: collapse;
     border-spacing: 0;
-    table-layout: fixed;
 }
 
 .inline-diff-table td {
@@ -1267,7 +1266,6 @@ body {
 .inline-diff-content {
     padding: 0 12px 0 4px !important;
     white-space: pre;
-    overflow-x: auto;
 }
 
 .inline-diff-content code {
