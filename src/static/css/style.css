@@ -1223,6 +1223,7 @@ body {
 .inline-diff-outer {
     position: relative;
     height: 100%;
+    overflow: hidden;
 }
 
 .rfb-inline-diff-full {
