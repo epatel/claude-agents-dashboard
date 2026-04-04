@@ -15,9 +15,16 @@ class NotificationService:
     def __init__(self, ws_manager: ConnectionManager):
         self.ws_manager = ws_manager
 
-    async def broadcast_item_updated(self, item: Dict[str, Any]):
-        """Broadcast item update event."""
-        await self.ws_manager.broadcast("item_updated", item)
+    async def broadcast_item_updated(self, item: Dict[str, Any], source: str = None):
+        """Broadcast item update event.
+
+        Args:
+            item: The item data to broadcast.
+            source: Optional source identifier (e.g. "agent") so the frontend
+                    can distinguish agent-driven updates from user-driven ones.
+        """
+        data = {**item, "_source": source} if source else item
+        await self.ws_manager.broadcast("item_updated", data)
 
     async def broadcast_item_created(self, item: Dict[str, Any]):
         """Broadcast item creation event."""

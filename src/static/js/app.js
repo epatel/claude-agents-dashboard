@@ -333,8 +333,8 @@ const App = {
                 // Refresh epic progress — column changes affect done/total counts
                 this._refreshEpicsDebounced();
 
-                // Play notification sound when agent finishes (moves to review/done/questions)
-                if (data.column_name && data.column_name !== 'doing' && data.column_name !== 'todo') {
+                // Play notification sound only when an agent moves an item (not user actions)
+                if (data._source === 'agent' && data.column_name && data.column_name !== 'doing' && data.column_name !== 'todo') {
                     Sound.playChime();
                 }
 
