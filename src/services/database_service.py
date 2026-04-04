@@ -36,7 +36,14 @@ class DatabaseService:
     async def get_item(self, item_id: str) -> Optional[Dict[str, Any]]:
         """Get an item by ID."""
         async with self.db.connect() as conn:
-            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            cursor = await conn.execute(
+                "SELECT i.*, COALESCE(wl.cnt, 0) AS log_count"
+                " FROM items i"
+                " LEFT JOIN (SELECT item_id, COUNT(*) AS cnt FROM work_log GROUP BY item_id) wl"
+                " ON i.id = wl.item_id"
+                " WHERE i.id = ?",
+                (item_id,),
+            )
             row = await cursor.fetchone()
             return dict(row) if row else None
 
@@ -67,7 +74,14 @@ class DatabaseService:
                 vals,
             )
             await conn.commit()
-            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            cursor = await conn.execute(
+                "SELECT i.*, COALESCE(wl.cnt, 0) AS log_count"
+                " FROM items i"
+                " LEFT JOIN (SELECT item_id, COUNT(*) AS cnt FROM work_log GROUP BY item_id) wl"
+                " ON i.id = wl.item_id"
+                " WHERE i.id = ?",
+                (item_id,),
+            )
             item = dict(await cursor.fetchone())
         return item
 
