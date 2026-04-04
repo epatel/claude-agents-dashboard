@@ -2,13 +2,13 @@
 
 **Date**: 2026-04-04
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 19 — Maintenance reassessment with updated line counts. Updated review-dialog.js (906 lines), style.css (1,405 lines). Updated totals: Python ~6,008 lines, JS ~6,219 lines, CSS ~3,025 lines. Test suite remains 165 tests.
+**Revision**: 20 — Maintenance reassessment with updated line counts. Added migration 012 (auto_start). Updated workflow_service.py (979 lines), database_service.py (482 lines), notification_service.py (114 lines), git_service.py (105 lines), item-dialog.js (491 lines), review-dialog.js (1,013 lines), style.css (1,476 lines), theme.css (101 lines). Updated totals: Python ~6,022 lines, JS ~6,350 lines, CSS ~3,111 lines. Database has 12 migrations. Test suite remains 165 tests.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, and **item dependencies** (migration 011 — join table for tracking dependencies between items) have been added. The test suite includes **165 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), and **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve) have been added. The test suite includes **165 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -112,10 +112,10 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 890 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, and dirty repo overlap detection |
-| `services/database_service.py` | 468 | A | All DB operations extracted; parameterized queries throughout; item dependency management |
-| `services/notification_service.py` | 107 | A | WebSocket broadcasting + tool formatting; clean separation |
-| `services/git_service.py` | 94 | A | Git worktree and merge operations with proper error handling |
+| `services/workflow_service.py` | 979 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, and auto-start of dependent items |
+| `services/database_service.py` | 482 | A | All DB operations extracted; parameterized queries throughout; item dependency management |
+| `services/notification_service.py` | 114 | A | WebSocket broadcasting + tool formatting; clean separation |
+| `services/git_service.py` | 105 | A | Git worktree and merge operations with proper error handling |
 | `services/session_service.py` | 218 | A | Session lifecycle, commit messages, plugin parsing |
 
 ### Backend Python — Core
@@ -125,7 +125,7 @@ graph TB
 | `main.py` | 107 | A | Clean entry point, proper git validation, port discovery |
 | `config.py` | 110 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
 | `constants.py` | 32 | A | Centralized `AVAILABLE_MODELS` dict, `DEFAULT_MODEL`, `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
-| `models.py` | 114 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
+| `models.py` | 116 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
 | `web/routes.py` | 1,040 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; delete delegates to orchestrator |
@@ -141,7 +141,7 @@ graph TB
 | `agent/board_view.py` | 42 | A | Board introspection MCP tool |
 | `agent/tool_access.py` | 42 | A | Runtime tool access request MCP tool |
 | `agent/tool_filter.py` | 38 | A | PreToolUse hook for optional built-in tool filtering |
-| `git/operations.py` | 315 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
+| `git/operations.py` | 339 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
 | `git/worktree.py` | 73 | A | Simple and correct; returns base branch for tracking |
 | `migrations/runner.py` | 198 | A- | Solid migration system; class discovery uses string comparison (justified) |
 | `migrations/migration.py` | 28 | A | Clean base class |
@@ -156,19 +156,20 @@ graph TB
 | `migrations/versions/009_add_annotation_summary.py` | 32 | A | Adds `annotation_summary` to attachments table |
 | `migrations/versions/010_add_epics.py` | 39 | A | Creates `epics` table and adds `epic_id` FK to items |
 | `migrations/versions/011_add_item_dependencies.py` | 32 | A | Creates `item_dependencies` join table for dependency tracking |
+| `migrations/versions/012_add_auto_start.py` | 38 | A | Adds `auto_start` column to items for automatic agent start on dependency resolution |
 
 ### Frontend JavaScript
 
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
-| `app.js` | 470 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
+| `app.js` | 471 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
 | `board.js` | 948 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
 | `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 11 specialized modules |
 | `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
 | `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
-| `item-dialog.js` | 468 | A- | New/edit item forms with attachment handling, epic assignment, dependency selection |
+| `item-dialog.js` | 491 | A- | New/edit item forms with attachment handling, epic assignment, dependency selection, auto-start toggle |
 | `detail-dialog.js` | 241 | A- | Item detail view with tabbed interface |
-| `review-dialog.js` | 906 | A | Review dialog with diff viewer, work log, and tabbed interface |
+| `review-dialog.js` | 1013 | A | Review dialog with diff viewer, work log, and tabbed interface |
 | `config-dialog.js` | 189 | A | Agent configuration (system prompt, MCP, plugins) |
 | `clarification-dialog.js` | 208 | A | Clean clarification prompt/response UI |
 | `notification-dialog.js` | 103 | A | System notification display, bell icon, badge counter |
@@ -188,13 +189,13 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `style.css` | 1,405 | A- | Main styles with CSS variables |
+| `style.css` | 1,476 | A- | Main styles with CSS variables |
 | `board.css` | 526 | A | Board layout, card styles, Done day grouping with collapsible sections |
 | `dialog.css` | 451 | A | Dialog component styles |
 | `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
-| `theme.css` | 86 | A | Light/dark theme definitions |
+| `theme.css` | 101 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~3,025 lines across 5 modules (526+451+557+1405+86).
+**Note**: CSS total is ~3,111 lines across 5 modules (526+451+557+1476+101).
 
 ---
 
@@ -333,7 +334,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 165 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 11 migrations.
+**Current state**: 165 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 12 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -417,6 +418,7 @@ graph LR
 28. **Epic grouping**: Separate entity model (not items), collapsible progress panel, Todo column grouping, card badges, board filtering, inline creation, and agent MCP integration — clean implementation reusing existing patterns (day grouping for collapsible sections)
 29. **Annotation summary**: Text description of annotation shapes stored in DB and included in agent prompts — gives agents context about visual annotations without needing to parse images
 30. **Item dependencies**: Join table (`item_dependencies`) with cascading deletes tracks which items require other items — agents can declare dependencies via `create_todo` MCP tool's `requires` parameter, and `view_board` includes dependency info for coordination
+31. **Auto-start pipelines**: Items with `auto_start` enabled (migration 012) automatically start an agent when all dependency items are resolved — `WorkflowService._notify_and_auto_start_dependents()` checks after each item completion/archive, enabling pipeline-style workflows without manual intervention
 
 ---
 
@@ -424,12 +426,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 46 | ~6,008 |
-| JavaScript frontend | 22 | ~6,219 |
-| CSS styles | 5 | ~3,025 |
-| HTML templates | 3 | ~632 |
+| Python backend (src/) | 47 | ~6,022 |
+| JavaScript frontend | 22 | ~6,350 |
+| CSS styles | 5 | ~3,111 |
+| HTML templates | 3 | ~635 |
 | Tests | 14 | ~3,326 |
-| **Grand total** | **90** | **~19,210** |
+| **Grand total** | **91** | **~19,444** |
 
 ---
 
