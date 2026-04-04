@@ -79,7 +79,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Live work log** — streaming agent output via WebSocket (messages, thinking, tool use)
 - **Review & merge** — tabbed dialog with description, diff viewer, and work log; approve or request changes
 - **Clarification flow** — agents can ask the user questions mid-task via custom MCP tool
-- **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items; supports `requires` parameter to declare dependencies between items
+- **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items; supports `requires` parameter to declare dependencies between items and `auto_start` to automatically launch agents when dependencies are resolved
 - **Custom commit messages** — agents set meaningful commit messages via MCP tool, used when merging
 - **Board introspection** — agents can view the current board state (all items by column) via the `view_board` MCP tool to understand project context
 - **Tool access requests** — agents can request permission to use optional built-in tools (WebSearch, WebFetch) at runtime via the `request_tool_access` MCP tool with user approval prompt
@@ -110,6 +110,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Merge commit tracking** — stores the merge commit SHA when items are approved, enabling traceability from board items to git history
 - **Dirty repo detection** — blocks merge if your working tree has uncommitted changes overlapping with the agent's files; moves the item to the Questions column with guidance to commit or stash first
 - **Epic grouping** — organize items into epics with a collapsible progress panel above the board, colored badges on cards, Todo column grouping by epic, board filtering by epic, inline epic creation in the item dialog, and agent integration via MCP tools; 8 preset colors with light/dark theme variants
+- **Auto-start pipelines** — items with `auto_start` enabled automatically launch an agent when all their dependency items are completed, enabling pipeline-style workflows
 - **Search** — spotlight-style search dialog (Cmd/Ctrl+K) to find items across all columns and search work log entries
 - **Archive cleanup** — archiving items automatically cleans up their worktree and session resources
 - **Light/dark mode** — respects system preference with manual toggle
@@ -175,8 +176,8 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,008 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~6,219 lines JS + ~3,025 lines CSS
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,022 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~6,350 lines JS + ~3,111 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 6 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -218,7 +219,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–011) adding columns and tables incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–012) adding columns and tables incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -249,6 +250,7 @@ erDiagram
         text done_at
         text epic_id FK
         text merge_commit
+        int auto_start
         text created_at
         text updated_at
     }
@@ -470,7 +472,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 
 - `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `TESTING.md` — Detailed testing guide with test inventory (165 unit/integration tests + E2E tests) and writing guidelines
+- `TESTING.md` — Detailed testing guide with test inventory (165 unit/integration tests + E2E tests), writing guidelines, and 12 database migrations
 
 ## License
 
