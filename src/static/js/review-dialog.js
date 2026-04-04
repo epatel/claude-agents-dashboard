@@ -680,6 +680,32 @@ const ReviewFileBrowser = {
             // Initial update after render
             requestAnimationFrame(updateViewport);
 
+            // Drag viewport handle to scroll (replaces native scrollbar)
+            let dragStartY = 0;
+            let dragStartScrollTop = 0;
+            const onDragMove = (e) => {
+                e.preventDefault();
+                const minimapRect = minimap.getBoundingClientRect();
+                const deltaY = e.clientY - dragStartY;
+                const scrollRange = wrapper.scrollHeight - wrapper.clientHeight;
+                const minimapRange = minimapRect.height;
+                wrapper.scrollTop = dragStartScrollTop + (deltaY / minimapRange) * wrapper.scrollHeight;
+            };
+            const onDragEnd = () => {
+                viewport.classList.remove('dragging');
+                document.removeEventListener('mousemove', onDragMove);
+                document.removeEventListener('mouseup', onDragEnd);
+            };
+            viewport.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                viewport.classList.add('dragging');
+                dragStartY = e.clientY;
+                dragStartScrollTop = wrapper.scrollTop;
+                document.addEventListener('mousemove', onDragMove);
+                document.addEventListener('mouseup', onDragEnd);
+            });
+
             outer.appendChild(minimap);
         }
 
