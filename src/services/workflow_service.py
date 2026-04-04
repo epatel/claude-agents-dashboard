@@ -535,11 +535,11 @@ class WorkflowService:
                     update_kwargs["commit_message"] = commit_message
 
                 item = await self.db.update_item(item_id, **update_kwargs)
-                await self.notifications.broadcast_item_updated(item)
+                await self.notifications.broadcast_item_updated(item, source="agent")
             else:
                 await self._log_and_notify(item_id, "error", f"Agent failed: {result.error}")
                 item = await self.db.update_item(item_id, status="failed", session_id=result.session_id)
-                await self.notifications.broadcast_item_updated(item)
+                await self.notifications.broadcast_item_updated(item, source="agent")
                 self._add_failure_notification(item_id, result.error)
 
             # Remove finished session from tracking so it no longer counts as active
@@ -551,7 +551,7 @@ class WorkflowService:
         async def on_error(error: str):
             await self._log_and_notify(item_id, "error", f"Agent error: {error}")
             item = await self.db.update_item(item_id, status="failed")
-            await self.notifications.broadcast_item_updated(item)
+            await self.notifications.broadcast_item_updated(item, source="agent")
             self._add_failure_notification(item_id, error)
             # Remove finished session from tracking so it no longer counts as active
             self.sessions.remove_session(item_id)
@@ -570,7 +570,7 @@ class WorkflowService:
         async def on_clarify(prompt: str, choices: Optional[List[str]]) -> str:
             # Move item to questions
             item = await self.db.update_item(item_id, column_name="questions", status=None)
-            await self.notifications.broadcast_item_updated(item)
+            await self.notifications.broadcast_item_updated(item, source="agent")
             await self._log_and_notify(item_id, "system", f"Agent has a question: {prompt}")
 
             # Store clarification
@@ -601,7 +601,7 @@ class WorkflowService:
             item = await self.db.update_item(
                 item_id, column_name="questions", status=None
             )
-            await self.notifications.broadcast_item_updated(item)
+            await self.notifications.broadcast_item_updated(item, source="agent")
             await self._log_and_notify(
                 item_id, "system",
                 f"Agent requests permission to run '{command}': {reason}"
@@ -672,7 +672,7 @@ class WorkflowService:
             item = await self.db.update_item(
                 item_id, column_name="questions", status=None
             )
-            await self.notifications.broadcast_item_updated(item)
+            await self.notifications.broadcast_item_updated(item, source="agent")
             await self._log_and_notify(
                 item_id, "system",
                 f"Agent requests permission to use '{tool_name}': {reason}"
