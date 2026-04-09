@@ -10,7 +10,7 @@
     {% for col in columns %}
     <div class="column" data-column="{{ col.id }}">
         <div class="column-header">
-            <h2>{{ col.label }}</h2>
+            <h2 class="tooltip" data-tip="{{ col.tooltip }}">{{ col.label }}</h2>
             <div class="column-header-actions">
                 {% if col.id == 'todo' %}
                 <button class="btn btn-plus" onclick="Dialogs.openNewItem()" title="Add new item">+</button>
