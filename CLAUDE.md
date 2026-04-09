@@ -165,7 +165,7 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,898 lines):
+- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,912 lines):
   - `WorkflowService` (979 lines): Coordinates agent workflows, state transitions, callback creation, merge conflict auto-resolution, dirty repo overlap detection, and auto-start of dependent items
   - `DatabaseService` (482 lines): All database operations (items, logs, config, attachments, token usage, item dependencies)
   - `NotificationService` (114 lines): WebSocket broadcasting and tool use formatting

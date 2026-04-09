@@ -1,8 +1,8 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-04-04
+**Date**: 2026-04-09
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 20 — Maintenance reassessment with updated line counts. Added migration 012 (auto_start). Updated workflow_service.py (979 lines), database_service.py (482 lines), notification_service.py (114 lines), git_service.py (105 lines), item-dialog.js (491 lines), review-dialog.js (1,013 lines), style.css (1,476 lines), theme.css (101 lines). Updated totals: Python ~6,022 lines, JS ~6,350 lines, CSS ~3,111 lines. Database has 12 migrations. Test suite remains 165 tests.
+**Revision**: 21 — Maintenance reassessment with updated line counts. Updated routes.py (1,044 lines). Updated totals: Python ~6,197 lines, JS ~6,350 lines, CSS ~3,111 lines. Database has 12 migrations. Test suite remains 165 tests.
 
 ---
 
@@ -128,7 +128,7 @@ graph TB
 | `models.py` | 116 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
-| `web/routes.py` | 1,040 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; delete delegates to orchestrator |
+| `web/routes.py` | 1,044 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; delete delegates to orchestrator |
 | `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 122 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
@@ -426,12 +426,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 47 | ~6,022 |
+| Python backend (src/) | 47 | ~6,197 |
 | JavaScript frontend | 22 | ~6,350 |
 | CSS styles | 5 | ~3,111 |
 | HTML templates | 3 | ~635 |
 | Tests | 14 | ~3,326 |
-| **Grand total** | **91** | **~19,444** |
+| **Grand total** | **91** | **~19,619** |
 
 ---
 
