@@ -7,6 +7,7 @@ const Annotate = {
     annotations: [],  // {type, ...props, selected}
     tool: 'select',   // select, arrow, circle, rect, text, freehand
     color: '#ff3b30',
+    fillColor: null,  // null = no fill; set to a color string to fill shapes
     lineWidth: 3,
     fontSize: 16,
     textBackground: false,
@@ -435,8 +436,8 @@ const Annotate = {
             // Start freehand path
             this._drawing = { type: 'freehand', points: [{ x: p.x, y: p.y }] };
         } else {
-            // Start drawing
-            this._drawing = { type: this.tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+            // Start drawing (include fillColor for live preview)
+            this._drawing = { type: this.tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y, fillColor: this.fillColor };
         }
     },
 
@@ -559,14 +560,16 @@ const Annotate = {
                     const rx = dx / 2, ry = dy / 2;
                     this.annotations.push({
                         type: 'circle', x: cx, y: cy, rx, ry,
-                        color: this.color, lineWidth: this.lineWidth, selected: false,
+                        color: this.color, fillColor: this.fillColor,
+                        lineWidth: this.lineWidth, selected: false,
                         layer: this.drawOnImage ? 'image' : 'annotation',
                     });
                 } else if (d.type === 'rect') {
                     this.annotations.push({
                         type: 'rect', x: Math.min(d.x1, d.x2), y: Math.min(d.y1, d.y2),
                         w: dx, h: dy,
-                        color: this.color, lineWidth: this.lineWidth, selected: false,
+                        color: this.color, fillColor: this.fillColor,
+                        lineWidth: this.lineWidth, selected: false,
                         layer: this.drawOnImage ? 'image' : 'annotation',
                     });
                 }
@@ -612,7 +615,7 @@ const Annotate = {
 
         const canvasRect = this.canvas.getBoundingClientRect();
         const fontSize = existingAnnotation?.fontSize || this.fontSize;
-        const withBg = existingAnnotation ? !!existingAnnotation.background : this.textBackground;
+        const withBg = existingAnnotation ? (existingAnnotation.fillColor || existingAnnotation.background) : this.fillColor;
 
         const textarea = document.createElement('textarea');
         textarea.className = 'annotate-text-editor';
@@ -627,7 +630,7 @@ const Annotate = {
             font-size: ${fontSize}px;
             font-family: sans-serif;
             color: ${existingAnnotation?.color || this.color};
-            background: ${withBg ? 'rgba(255,255,255,0.95)' : 'transparent'};
+            background: ${withBg ? (typeof withBg === 'string' ? withBg : 'rgba(255,255,255,0.95)') : 'transparent'};
             border: 1px dashed #0071e3;
             outline: none;
             padding: 2px 4px;
@@ -703,7 +706,7 @@ const Annotate = {
                 this.annotations.push({
                     type: 'text', x: canvasX, y: canvasY, text,
                     color: this.color, fontSize,
-                    background: withBg, selected: false,
+                    fillColor: withBg || null, selected: false,
                     layer: this.drawOnImage ? 'image' : 'annotation',
                 });
             }
@@ -764,12 +767,17 @@ const Annotate = {
             } else if (a.type === 'circle') {
                 const dx = (x - a.x) / a.rx, dy = (y - a.y) / a.ry;
                 const d = Math.sqrt(dx * dx + dy * dy);
-                if (Math.abs(d - 1) < 0.2) return a;
+                if (a.fillColor ? d <= 1.1 : Math.abs(d - 1) < 0.2) return a;
             } else if (a.type === 'rect') {
-                // Hit on border
-                const near = (x >= a.x - 5 && x <= a.x + a.w + 5 && y >= a.y - 5 && y <= a.y + a.h + 5) &&
-                    !(x >= a.x + 5 && x <= a.x + a.w - 5 && y >= a.y + 5 && y <= a.y + a.h - 5);
-                if (near) return a;
+                if (a.fillColor) {
+                    // Filled rect: hit anywhere inside
+                    if (x >= a.x - 5 && x <= a.x + a.w + 5 && y >= a.y - 5 && y <= a.y + a.h + 5) return a;
+                } else {
+                    // Stroke-only rect: hit on border
+                    const near = (x >= a.x - 5 && x <= a.x + a.w + 5 && y >= a.y - 5 && y <= a.y + a.h + 5) &&
+                        !(x >= a.x + 5 && x <= a.x + a.w - 5 && y >= a.y + 5 && y <= a.y + a.h - 5);
+                    if (near) return a;
+                }
             } else if (a.type === 'freehand') {
                 // Hit test: check distance to each line segment
                 for (let j = 0; j < a.points.length - 1; j++) {
@@ -944,12 +952,20 @@ const Annotate = {
             const ry = s.ry ?? Math.abs(s.y2 - s.y1) / 2;
             ctx.beginPath();
             ctx.ellipse(cx, cy, Math.max(rx, 1), Math.max(ry, 1), 0, 0, Math.PI * 2);
+            if (s.fillColor) {
+                ctx.fillStyle = s.fillColor;
+                ctx.fill();
+            }
             ctx.stroke();
         } else if (s.type === 'rect') {
             const x = s.x ?? Math.min(s.x1, s.x2);
             const y = s.y ?? Math.min(s.y1, s.y2);
             const w = s.w ?? Math.abs(s.x2 - s.x1);
             const h = s.h ?? Math.abs(s.y2 - s.y1);
+            if (s.fillColor) {
+                ctx.fillStyle = s.fillColor;
+                ctx.fillRect(x, y, w, h);
+            }
             ctx.strokeRect(x, y, w, h);
         } else if (s.type === 'freehand') {
             if (s.points && s.points.length > 1) {
@@ -977,9 +993,9 @@ const Annotate = {
             const totalHeight = lines.length * lineHeight;
             const padding = 4;
 
-            if (s.background) {
-                // Draw solid background with border
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            if (s.fillColor || s.background) {
+                // Draw filled background with border
+                ctx.fillStyle = s.fillColor || 'rgba(255, 255, 255, 0.95)';
                 ctx.fillRect(s.x - padding, s.y - padding, maxWidth + padding * 2, totalHeight + padding * 2);
                 ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
                 ctx.lineWidth = 1;

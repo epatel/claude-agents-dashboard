@@ -676,7 +676,7 @@ body {
     font-size: 12px;
 }
 
-.annotate-bg-toggle {
+.annotate-fill-toggle {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -686,8 +686,18 @@ body {
     white-space: nowrap;
 }
 
-.annotate-bg-toggle input[type="checkbox"] {
+.annotate-fill-toggle input[type="checkbox"] {
     margin: 0;
+}
+
+.annotate-fill-toggle input[type="color"] {
+    width: 22px;
+    height: 22px;
+    padding: 1px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    background: transparent;
 }
 
 .annotate-separator {

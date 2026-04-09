@@ -173,8 +173,9 @@
                     <option value="28">28px</option>
                     <option value="36">36px</option>
                 </select>
-                <label class="annotate-bg-toggle" title="Text background">
-                    <input type="checkbox" id="annotate-text-bg" onchange="Annotate.textBackground = this.checked"> Bg
+                <label class="annotate-fill-toggle" title="Fill color for shapes and text background (click swatch to change, checkbox to toggle)">
+                    <input type="checkbox" id="annotate-fill-enabled" onchange="Annotate.fillColor = this.checked ? document.getElementById('annotate-fill-color').value : null"> Fill
+                    <input type="color" id="annotate-fill-color" value="#ffffff" onchange="if(document.getElementById('annotate-fill-enabled').checked) Annotate.fillColor = this.value" title="Fill color">
                 </label>
                 <span class="annotate-separator"></span>
                 <label class="annotate-layer-toggle" title="Draw on main image instead of as annotation overlay">
