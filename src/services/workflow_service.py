@@ -19,11 +19,13 @@ class WorkflowService:
     """Coordinates workflows and state transitions between services."""
 
     def __init__(self, db_service: DatabaseService, git_service: GitService,
-                 notification_service: NotificationService, session_service: SessionService):
+                 notification_service: NotificationService, session_service: SessionService,
+                 data_dir: Path | None = None):
         self.db = db_service
         self.git = git_service
         self.notifications = notification_service
         self.sessions = session_service
+        self.data_dir = data_dir
 
         # State for question/response handling
         self._clarify_events: Dict[str, asyncio.Event] = {}
@@ -81,6 +83,7 @@ class WorkflowService:
             on_request_tool=self._create_on_request_tool_callback(item_id),
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
+            on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
         )
 
         # Build prompt and fetch attachments
@@ -166,6 +169,7 @@ class WorkflowService:
             on_request_tool=self._create_on_request_tool_callback(item_id),
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
+            on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
         )
 
         prompt = f"Continue working on your task:\nTask: {item['title']}\n\n{item['description']}"
@@ -225,6 +229,7 @@ class WorkflowService:
             on_request_tool=self._create_on_request_tool_callback(item_id),
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
+            on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
         )
 
         prompt = f"Task: {item['title']}\n\n{item['description']}"
@@ -519,6 +524,7 @@ class WorkflowService:
             on_request_tool=self._create_on_request_tool_callback(item_id),
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
+            on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
         )
 
         # Fetch attachments for context
@@ -867,6 +873,31 @@ class WorkflowService:
             await self._log_and_notify(item_id, "system", f"Commit message set: {message}")
             return result
         return on_set_commit_message
+
+    def _create_on_create_shortcut_callback(self, item_id: str):
+        async def on_create_shortcut(name: str, command: str) -> Dict[str, Any]:
+            import uuid as _uuid
+            shortcuts_path = self.data_dir / "shortcuts.json" if self.data_dir else None
+            if not shortcuts_path:
+                return {"error": "Shortcuts not available"}
+
+            # Load existing shortcuts
+            shortcuts = []
+            if shortcuts_path.exists():
+                try:
+                    shortcuts = json.loads(shortcuts_path.read_text())
+                except Exception:
+                    pass
+
+            # Create new shortcut
+            sc = {"id": _uuid.uuid4().hex[:10], "name": name, "command": command}
+            shortcuts.append(sc)
+            shortcuts_path.write_text(json.dumps(shortcuts, indent=2))
+
+            await self._log_and_notify(item_id, "system", f"Created shortcut: {name} → `{command}`")
+            await self.notifications.ws_manager.broadcast("shortcut_created", sc)
+            return sc
+        return on_create_shortcut
 
     def _create_on_view_board_callback(self):
         async def on_view_board() -> str:

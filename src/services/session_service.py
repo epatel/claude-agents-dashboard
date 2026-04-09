@@ -34,7 +34,8 @@ class SessionService:
                            on_request_tool: Optional[Callable] = None,
                            on_view_board: Optional[Callable] = None,
                            on_delete_todo: Optional[Callable] = None,
-                           on_create_epic: Optional[Callable] = None) -> AgentSession:
+                           on_create_epic: Optional[Callable] = None,
+                           on_create_shortcut: Optional[Callable] = None) -> AgentSession:
         """Create a new agent session with all callbacks."""
         # Use provided model or fall back to config model
         session_model = model or config.get("model")
@@ -86,6 +87,7 @@ class SessionService:
             on_view_board=on_view_board,
             on_delete_todo=on_delete_todo,
             on_create_epic=on_create_epic,
+            on_create_shortcut=on_create_shortcut,
             mcp_servers=config.get("mcp_servers"),
             mcp_enabled=config.get("mcp_enabled", False),
             plugins=plugins,
