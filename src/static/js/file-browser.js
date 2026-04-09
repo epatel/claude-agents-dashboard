@@ -70,6 +70,47 @@ const FileBrowser = {
         if (dialog) dialog.close();
     },
 
+    async refresh() {
+        // Refresh the file tree (keep expanded dirs for UX continuity)
+        this._treeData = null;
+        await this._loadTree('');
+
+        // Re-expand previously expanded directories
+        for (const dirPath of this._expandedDirs) {
+            const node = this._findTreeNode(this._treeData, dirPath);
+            if (node && node.children === null) {
+                try {
+                    const data = await Api.request('GET', `/api/files/tree?path=${encodeURIComponent(dirPath)}`);
+                    node.children = data.tree;
+                } catch (err) { /* skip dirs that no longer exist */ }
+            }
+        }
+        // Re-render tree with expanded state restored
+        if (this._treeData) {
+            const treeEl = document.getElementById('file-tree');
+            this._renderTree(treeEl, this._treeData, 0);
+        }
+
+        // Refresh the active tab's content
+        if (this._activeTab >= 0) {
+            const tab = this._openTabs[this._activeTab];
+            try {
+                const data = await Api.request('GET', `/api/files/content?path=${encodeURIComponent(tab.path)}`);
+                tab.content = data.content;
+                tab.language = data.language;
+                tab.binary = data.binary;
+                tab.mimeType = data.mime_type || null;
+                tab.hidden = data.hidden || false;
+                tab.truncated = data.truncated || false;
+                tab.size = data.size;
+                tab.lines = data.lines;
+                this._renderContent();
+            } catch (err) { /* file may have been deleted */ }
+        }
+
+        this._updateTreeHighlight();
+    },
+
     changeFontSize(delta) {
         this._fontSize = Math.max(9, Math.min(24, this._fontSize + delta));
         localStorage.setItem('fileBrowserFontSize', this._fontSize);

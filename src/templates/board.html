@@ -410,7 +410,12 @@
     <div class="modal-content file-browser-modal">
         <div class="modal-header">
             <h3>Files</h3>
-            <button class="btn-close" onclick="FileBrowser.close()">&times;</button>
+            <div class="modal-header-actions">
+                <button class="btn-icon" onclick="FileBrowser.refresh()" title="Refresh files" data-tip="Refresh tree &amp; active file">
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1v5h5"/><path d="M3.5 10a5.5 5.5 0 1 0 1.1-3.5L1 6"/></svg>
+                </button>
+                <button class="btn-close" onclick="FileBrowser.close()">&times;</button>
+            </div>
         </div>
         <div class="file-browser-container">
             <div class="file-tree-panel">
