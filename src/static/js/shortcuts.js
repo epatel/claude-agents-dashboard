@@ -131,11 +131,13 @@ const Shortcuts = {
         document.getElementById('shortcut-progress-command').textContent = `$ ${sc.command}`;
         dialog.dataset.shortcutId = sc.id;
 
-        this._updateProgressContent(sc.id);
-
         if (!dialog.open) {
             dialog.showModal();
         }
+
+        // Update content AFTER dialog is open (guard in _updateProgressContent
+        // checks dialog.open and bails out if closed)
+        this._updateProgressContent(sc.id);
 
         // If it was a finished state (failed/done), and user clicks button again,
         // restart polling in case the process was re-run
@@ -191,7 +193,11 @@ const Shortcuts = {
 
     closeProgress() {
         const dialog = document.getElementById('shortcut-progress-dialog');
-        if (dialog) dialog.close();
+        if (!dialog) return;
+        // Reset auto-reset checkbox so it doesn't persist across open/close cycles
+        const autoResetCheckbox = document.getElementById('shortcut-auto-reset');
+        if (autoResetCheckbox) autoResetCheckbox.checked = false;
+        dialog.close();
     },
 
     async resetShortcut() {
