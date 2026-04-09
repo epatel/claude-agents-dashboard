@@ -84,7 +84,7 @@ class StatsManager {
         // Cost tooltip
         const costEl = document.getElementById('total-cost');
         if (costEl) {
-            costEl.setAttribute('data-tip', `Estimated cost across all agents\nUsing Claude Agent SDK — actual billing\ngoes to your Anthropic subscription`);
+            costEl.title = `Estimated cost across all agents\nUsing Claude Agent SDK — actual billing\ngoes to your Anthropic subscription`;
         }
 
         // Tokens tooltip
@@ -92,7 +92,7 @@ class StatsManager {
         if (tokensEl) {
             const input = usage.input_tokens || 0;
             const output = usage.output_tokens || 0;
-            tokensEl.setAttribute('data-tip', `Total tokens used\nInput: ${input.toLocaleString()}\nOutput: ${output.toLocaleString()}`);
+            tokensEl.title = `Total tokens used\nInput: ${input.toLocaleString()}\nOutput: ${output.toLocaleString()}`;
         }
 
         // Messages tooltip
@@ -101,13 +101,13 @@ class StatsManager {
             const details = Object.entries(breakdown)
                 .map(([type, count]) => `${type}: ${count}`)
                 .join('\n');
-            messagesEl.setAttribute('data-tip', `Message breakdown:\n${details}`);
+            messagesEl.title = `Message breakdown:\n${details}`;
         }
 
         // Tool calls tooltip
         const toolsEl = document.getElementById('tool-calls');
         if (toolsEl) {
-            toolsEl.setAttribute('data-tip', `Total tool/function calls made by agents`);
+            toolsEl.title = `Total tool/function calls made by agents`;
         }
 
         // Active agents tooltip
@@ -116,13 +116,13 @@ class StatsManager {
             const itemCounts = Object.entries(activity.items_by_status || {})
                 .map(([status, count]) => `${status}: ${count}`)
                 .join(', ');
-            activeEl.setAttribute('data-tip', `Currently running agents\nItems: ${itemCounts}`);
+            activeEl.title = `Currently running agents\nItems: ${itemCounts}`;
         }
 
         // Completed today tooltip
         const todayEl = document.getElementById('completed-today');
         if (todayEl) {
-            todayEl.setAttribute('data-tip', `Items completed today`);
+            todayEl.title = `Items completed today`;
         }
     }
 
