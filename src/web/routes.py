@@ -1159,6 +1159,18 @@ async def get_shortcut_output(shortcut_id: str):
     }
 
 
+@router.post("/api/shortcuts/{shortcut_id}/reset")
+async def reset_shortcut(shortcut_id: str):
+    """Reset a shortcut: kill any running process and clear its output log."""
+    proc_info = _shortcut_processes.pop(shortcut_id, None)
+    if proc_info and proc_info.get("process"):
+        try:
+            proc_info["process"].kill()
+        except ProcessLookupError:
+            pass
+    return {"ok": True}
+
+
 # --- WebSocket ---
 
 @router.websocket("/ws")
