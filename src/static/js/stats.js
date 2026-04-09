@@ -84,7 +84,7 @@ class StatsManager {
         // Cost tooltip
         const costEl = document.getElementById('total-cost');
         if (costEl) {
-            costEl.title = `Total API cost across all agents`;
+            costEl.title = `Estimated cost across all agents\nUsing Claude Agent SDK — actual billing\ngoes to your Anthropic subscription`;
         }
 
         // Tokens tooltip
