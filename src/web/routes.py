@@ -1159,6 +1159,28 @@ async def get_shortcut_output(shortcut_id: str):
     }
 
 
+@router.post("/api/shortcuts/{shortcut_id}/stop")
+async def stop_shortcut(shortcut_id: str):
+    """Stop a running shortcut, keeping its output log."""
+    proc_info = _shortcut_processes.get(shortcut_id)
+    if not proc_info:
+        return {"ok": False, "detail": "No process found"}
+    if proc_info.get("process") and proc_info["process"].returncode is None:
+        try:
+            proc_info["process"].kill()
+        except ProcessLookupError:
+            pass
+        # Wait briefly for process to finish so _read_output captures remaining output
+        try:
+            await asyncio.wait_for(proc_info["process"].wait(), timeout=2.0)
+        except asyncio.TimeoutError:
+            pass
+    proc_info["output"] += "\n\n======= STOPPED BY USER =======\n"
+    proc_info["status"] = "stopped"
+    proc_info["exit_code"] = proc_info.get("exit_code") or -15
+    return {"ok": True}
+
+
 @router.post("/api/shortcuts/{shortcut_id}/reset")
 async def reset_shortcut(shortcut_id: str):
     """Reset a shortcut: kill any running process and clear its output log."""
