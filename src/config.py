@@ -10,12 +10,12 @@ STATIC_DIR = DASHBOARD_DIR / "src" / "static"
 
 # Column definitions in display order
 COLUMNS = [
-    {"id": "todo", "label": "📝 Todo"},
-    {"id": "doing", "label": "🚧 Doing"},
-    {"id": "questions", "label": "❓ Questions"},
-    {"id": "review", "label": "👀 Review"},
-    {"id": "done", "label": "✅ Done"},
-    {"id": "archive", "label": "📦 Archive"},
+    {"id": "todo", "label": "📝 Todo", "tooltip": "Tasks waiting to be started. Click + to add a new item."},
+    {"id": "doing", "label": "🚧 Doing", "tooltip": "Tasks currently being worked on by agents."},
+    {"id": "questions", "label": "❓ Questions", "tooltip": "Tasks paused because the agent needs clarification or a merge conflict was detected."},
+    {"id": "review", "label": "👀 Review", "tooltip": "Completed agent work ready for your review. Approve to merge, or request changes."},
+    {"id": "done", "label": "✅ Done", "tooltip": "Approved and merged tasks. Grouped by completion date."},
+    {"id": "archive", "label": "📦 Archive", "tooltip": "Archived tasks. Worktrees and sessions are cleaned up on archive."},
 ]
 
 COLUMN_IDS = [c["id"] for c in COLUMNS]
