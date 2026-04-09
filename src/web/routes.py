@@ -1130,17 +1130,23 @@ async def run_shortcut(request: Request, shortcut_id: str):
                 line = await proc.stdout.readline()
                 if not line:
                     break
+                # Stop appending once the process has been stopped by the user
+                if proc_info.get("_stopped"):
+                    continue
                 proc_info["output"] += line.decode("utf-8", errors="replace")
                 # Cap output at 500KB
                 if len(proc_info["output"]) > 500_000:
                     proc_info["output"] = proc_info["output"][-400_000:]
             await proc.wait()
-            proc_info["exit_code"] = proc.returncode
-            proc_info["status"] = "done" if proc.returncode == 0 else "failed"
+            # Don't overwrite status if already stopped by user
+            if not proc_info.get("_stopped"):
+                proc_info["exit_code"] = proc.returncode
+                proc_info["status"] = "done" if proc.returncode == 0 else "failed"
         except Exception as e:
-            proc_info["output"] += f"\n[Error reading output: {e}]"
-            proc_info["status"] = "failed"
-            proc_info["exit_code"] = -1
+            if not proc_info.get("_stopped"):
+                proc_info["output"] += f"\n[Error reading output: {e}]"
+                proc_info["status"] = "failed"
+                proc_info["exit_code"] = -1
 
     asyncio.create_task(_read_output())
     return {"status": "started"}
@@ -1165,16 +1171,20 @@ async def stop_shortcut(shortcut_id: str):
     proc_info = _shortcut_processes.get(shortcut_id)
     if not proc_info:
         return {"ok": False, "detail": "No process found"}
+    # Set _stopped flag first so _read_output() stops appending late output
+    proc_info["_stopped"] = True
     if proc_info.get("process") and proc_info["process"].returncode is None:
         try:
             proc_info["process"].kill()
         except ProcessLookupError:
             pass
-        # Wait briefly for process to finish so _read_output captures remaining output
+        # Wait briefly for process to finish
         try:
             await asyncio.wait_for(proc_info["process"].wait(), timeout=2.0)
         except asyncio.TimeoutError:
             pass
+    # Yield once so _read_output() can see the _stopped flag and drain
+    await asyncio.sleep(0)
     proc_info["output"] += "\n\n======= STOPPED BY USER =======\n"
     proc_info["status"] = "stopped"
     proc_info["exit_code"] = proc_info.get("exit_code") or -15
