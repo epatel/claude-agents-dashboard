@@ -119,6 +119,7 @@ class AgentSession:
         on_view_board=None,
         on_delete_todo=None,
         on_create_epic=None,
+        on_create_shortcut=None,
         mcp_servers: str | None = None,
         mcp_enabled: bool = False,
         plugins: list[dict] | None = None,
@@ -145,6 +146,7 @@ class AgentSession:
         self.on_view_board = on_view_board          # async callback() -> str
         self.on_delete_todo = on_delete_todo        # async callback(item_id: str) -> str
         self.on_create_epic = on_create_epic        # async callback(title: str, color: str) -> dict
+        self.on_create_shortcut = on_create_shortcut  # async callback(name: str, command: str) -> dict
         self.mcp_servers = mcp_servers      # JSON string of MCP server configurations from agent config
         self.mcp_enabled = mcp_enabled      # Whether MCP is enabled from agent config
         self.plugins = plugins              # List of plugin configs: [{"type": "local", "path": "..."}]
@@ -175,6 +177,9 @@ class AgentSession:
         if self.on_view_board:
             from .board_view import create_board_view_server
             mcp_servers["board_view"] = create_board_view_server(self.on_view_board)
+        if self.on_create_shortcut:
+            from .shortcut import create_shortcut_server
+            mcp_servers["shortcut"] = create_shortcut_server(self.on_create_shortcut)
 
         # Load MCP servers from agent configuration (database)
         if self.mcp_enabled and self.mcp_servers:
@@ -254,10 +259,12 @@ class AgentSession:
             allowed_tools.append("mcp__tool_access__request_tool_access")
         if "board_view" in mcp_servers:
             allowed_tools.append("mcp__board_view__view_board")
+        if "shortcut" in mcp_servers:
+            allowed_tools.append("mcp__shortcut__create_shortcut")
 
         # Allow all tools from external MCP servers (using wildcard for each server)
         for server_name, server_config in mcp_servers.items():
-            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view"]:  # Skip our built-in servers
+            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view", "shortcut"]:  # Skip our built-in servers
                 allowed_tools.append(f"mcp__{server_name}__*")
                 logger.info(f"Allowing all tools from external MCP server: {server_name}")
 
@@ -313,7 +320,7 @@ class AgentSession:
         # Collect external MCP server prefixes (SDK wildcards don't work)
         external_mcp_prefixes = []
         for server_name, server_config in mcp_servers.items():
-            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view"]:
+            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view", "shortcut"]:
                 external_mcp_prefixes.append(f"mcp__{server_name}__")
 
         # Build can_use_tool callback to allow plugin and external MCP tools

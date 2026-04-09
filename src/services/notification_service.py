@@ -88,6 +88,10 @@ class NotificationService:
         elif name == "set_commit_message":
             msg = inp.get("message", "")
             return f"**Commit Message** {msg}"
+        elif name == "create_shortcut":
+            sc_name = inp.get("name", "")
+            sc_cmd = inp.get("command", "")
+            return f"**Create Shortcut** {sc_name} → `{sc_cmd}`"
         elif name == "ask_user":
             question = inp.get("question", "")
             if len(question) > 100:

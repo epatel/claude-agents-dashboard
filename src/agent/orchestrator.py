@@ -42,6 +42,7 @@ class AgentOrchestrator:
             self.git_service,
             self.notification_service,
             self.session_service,
+            data_dir=data_dir,
         )
 
         # Keep references for backward compatibility
