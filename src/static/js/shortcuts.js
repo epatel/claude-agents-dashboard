@@ -138,7 +138,9 @@ const Shortcuts = {
         if (!dialog) return;
 
         document.getElementById('shortcut-progress-title').textContent = sc.name;
-        document.getElementById('shortcut-progress-command').textContent = `$ ${sc.command}`;
+        const cmdEl = document.getElementById('shortcut-progress-command');
+        cmdEl.textContent = `$ ${sc.command}`;
+        cmdEl.style.whiteSpace = 'pre-wrap';
         dialog.dataset.shortcutId = sc.id;
 
         if (!dialog.open) {
@@ -281,6 +283,8 @@ const Shortcuts = {
         document.getElementById('shortcut-add-name').value = '';
         document.getElementById('shortcut-add-command').value = '';
         dialog.showModal();
+        // Ctrl+Enter to submit from textarea
+        this._setupCtrlEnter('shortcut-add-command', dialog);
     },
 
     closeAddDialog() {
@@ -333,7 +337,7 @@ const Shortcuts = {
             row.innerHTML = `
                 <div class="shortcut-manage-info">
                     <span class="shortcut-manage-name">${this._esc(sc.name)}</span>
-                    <code class="shortcut-manage-cmd">${this._esc(sc.command)}</code>
+                    <code class="shortcut-manage-cmd" style="white-space:pre-wrap;">${this._esc(sc.command)}</code>
                 </div>
                 <div class="shortcut-manage-actions">
                     <button class="btn btn-sm" onclick="Shortcuts.showEditDialog('${this._esc(sc.id)}')">Edit</button>
@@ -371,6 +375,8 @@ const Shortcuts = {
         document.getElementById('shortcut-edit-name').value = sc.name;
         document.getElementById('shortcut-edit-command').value = sc.command;
         dialog.showModal();
+        // Ctrl+Enter to submit from textarea
+        this._setupCtrlEnter('shortcut-edit-command', dialog);
     },
 
     closeEditDialog() {
@@ -398,6 +404,21 @@ const Shortcuts = {
         } catch (e) {
             alert('Failed to update shortcut: ' + e.message);
         }
+    },
+
+    _setupCtrlEnter(textareaId, dialog) {
+        const ta = document.getElementById(textareaId);
+        if (!ta) return;
+        // Remove previous listener if any
+        ta._ctrlEnterHandler && ta.removeEventListener('keydown', ta._ctrlEnterHandler);
+        ta._ctrlEnterHandler = (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                const form = ta.closest('form');
+                if (form) form.requestSubmit();
+            }
+        };
+        ta.addEventListener('keydown', ta._ctrlEnterHandler);
     },
 
     _esc(str) {
