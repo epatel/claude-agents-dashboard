@@ -66,6 +66,12 @@ const Shortcuts = {
             return;
         }
 
+        // If there's a finished log, show it instead of re-running
+        if (state && (state.status === 'done' || state.status === 'failed') && state.output) {
+            this.showProgress(sc);
+            return;
+        }
+
         // Clear previous state
         this._runState[sc.id] = { status: 'running', output: '', exit_code: null };
         this.render();
@@ -146,12 +152,19 @@ const Shortcuts = {
         const state = this._runState[shortcutId] || { status: 'idle', output: '', exit_code: null };
         const outputEl = document.getElementById('shortcut-progress-output');
         const statusEl = document.getElementById('shortcut-progress-status');
+        const autoResetLabel = document.getElementById('shortcut-auto-reset-label');
+        const autoResetCheckbox = document.getElementById('shortcut-auto-reset');
 
         // Update output — auto-scroll if at bottom
         const isAtBottom = outputEl.scrollHeight - outputEl.scrollTop - outputEl.clientHeight < 30;
         outputEl.textContent = state.output || '(waiting for output...)';
         if (isAtBottom) {
             outputEl.scrollTop = outputEl.scrollHeight;
+        }
+
+        // Show auto-reset checkbox only while running
+        if (autoResetLabel) {
+            autoResetLabel.style.display = state.status === 'running' ? '' : 'none';
         }
 
         // Update status indicator
@@ -164,6 +177,12 @@ const Shortcuts = {
         } else if (state.status === 'done') {
             statusEl.textContent = '✓ Completed';
             statusEl.className = 'shortcut-status shortcut-status-done';
+            // Auto-reset if checkbox was checked and exit was OK
+            if (autoResetCheckbox && autoResetCheckbox.checked) {
+                autoResetCheckbox.checked = false;
+                this.resetShortcut();
+                return;
+            }
         } else {
             statusEl.textContent = '';
             statusEl.className = 'shortcut-status';
@@ -200,6 +219,10 @@ const Shortcuts = {
         const statusEl = document.getElementById('shortcut-progress-status');
         statusEl.textContent = '';
         statusEl.className = 'shortcut-status';
+
+        // Reset auto-reset checkbox
+        const autoResetCheckbox = document.getElementById('shortcut-auto-reset');
+        if (autoResetCheckbox) autoResetCheckbox.checked = false;
 
         // Re-render buttons to remove running/done/failed styling
         this.render();
