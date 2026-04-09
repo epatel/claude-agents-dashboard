@@ -10,7 +10,7 @@
     {% for col in columns %}
     <div class="column" data-column="{{ col.id }}">
         <div class="column-header">
-            <h2 data-tip="{{ col.tooltip }}">{{ col.label }}</h2>
+            <h2 title="{{ col.tooltip }}">{{ col.label }}</h2>
             <div class="column-header-actions">
                 {% if col.id == 'todo' %}
                 <button class="btn btn-plus" onclick="Dialogs.openNewItem()" title="Add new item">+</button>
@@ -55,15 +55,15 @@
         <form id="item-form" onsubmit="Dialogs.submitItem(event)">
             <input type="hidden" id="item-form-id" value="">
             <div class="form-group">
-                <label for="item-form-title">Title <span class="tooltip" data-tip="A short summary of the task. This becomes the card title on the board.">?</span></label>
+                <label for="item-form-title">Title <span class="tooltip" title="A short summary of the task. This becomes the card title on the board.">?</span></label>
                 <input type="text" id="item-form-title" required autofocus>
             </div>
             <div class="form-group">
-                <label for="item-form-desc">Description <span class="tooltip" data-tip="Detailed task instructions for the agent. Supports Markdown. Be specific about what files to create/modify and expected outcomes.">?</span></label>
+                <label for="item-form-desc">Description <span class="tooltip" title="Detailed task instructions for the agent. Supports Markdown. Be specific about what files to create/modify and expected outcomes.">?</span></label>
                 <textarea id="item-form-desc" rows="10" placeholder="Describe what the agent should do..."></textarea>
             </div>
             <div class="form-group">
-                <label for="item-form-model">Model <span class="tooltip" data-tip="The Claude model to use for this specific task. Leave empty to use the global default model. Sonnet is fast and capable, Opus is most powerful, Haiku is cheapest.">?</span></label>
+                <label for="item-form-model">Model <span class="tooltip" title="The Claude model to use for this specific task. Leave empty to use the global default model. Sonnet is fast and capable, Opus is most powerful, Haiku is cheapest.">?</span></label>
                 <select id="item-form-model">
                     <option value="">Use Global Default</option>
                     <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
@@ -72,7 +72,7 @@
                 </select>
             </div>
             <div class="form-group">
-                <label for="item-form-epic">Epic <span class="tooltip" data-tip="Assign this item to an epic to group related tasks together.">?</span></label>
+                <label for="item-form-epic">Epic <span class="tooltip" title="Assign this item to an epic to group related tasks together.">?</span></label>
                 <select id="item-form-epic">
                     <option value="">No Epic</option>
                 </select>
@@ -87,7 +87,7 @@
                 </div>
             </div>
             <div class="form-group">
-                <label>Requires <span class="tooltip" data-tip="Select other board items that must be completed before this task can start. The item will be marked as blocked until all dependencies are done.">?</span></label>
+                <label>Requires <span class="tooltip" title="Select other board items that must be completed before this task can start. The item will be marked as blocked until all dependencies are done.">?</span></label>
                 <div id="item-form-deps-chips" class="dep-chips"></div>
                 <div class="dep-picker-wrap">
                     <input type="text" id="item-form-deps-search" class="dep-picker-input" placeholder="Search items to add…" autocomplete="off">
@@ -98,7 +98,7 @@
                 </label>
             </div>
             <div class="form-group">
-                <label>Attachments <span class="tooltip" data-tip="Add annotated screenshots or reference images. The agent can see these when working on the task.">?</span></label>
+                <label>Attachments <span class="tooltip" title="Add annotated screenshots or reference images. The agent can see these when working on the task.">?</span></label>
                 <div id="item-form-attachments" class="attachments-grid"></div>
                 <button type="button" class="btn btn-sm" style="margin-top: 8px;" onclick="Dialogs.openAnnotateForNewItem()">+ Add Annotated Image</button>
             </div>
@@ -307,7 +307,7 @@
         <form id="changes-form" onsubmit="Dialogs.submitChanges(event)">
             <input type="hidden" id="changes-item-id" value="">
             <div class="form-group">
-                <label for="changes-text">Describe what changes you'd like the agent to make: <span class="tooltip" data-tip="The agent resumes its previous session with full context. Reference specific files, lines, or behaviors you want changed.">?</span></label>
+                <label for="changes-text">Describe what changes you'd like the agent to make: <span class="tooltip" title="The agent resumes its previous session with full context. Reference specific files, lines, or behaviors you want changed.">?</span></label>
                 <textarea id="changes-text" rows="10" placeholder="Please change..."></textarea>
             </div>
             <div class="modal-footer">
@@ -335,7 +335,7 @@
             <!-- General tab -->
             <div class="config-tab-content" data-config-tab="general" style="padding:20px;">
                 <div class="form-group">
-                    <label for="config-model">Model <span class="tooltip" data-tip="The Claude model used for all agent tasks. Sonnet is fast and capable, Opus is most powerful, Haiku is cheapest.">?</span></label>
+                    <label for="config-model">Model <span class="tooltip" title="The Claude model used for all agent tasks. Sonnet is fast and capable, Opus is most powerful, Haiku is cheapest.">?</span></label>
                     <select id="config-model">
                         <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
                         <option value="claude-opus-4-6">Claude Opus 4.6</option>
@@ -359,18 +359,18 @@
                     </div>
                 </div>
                 <div class="form-group" style="margin-top: 16px;">
-                    <label>Built-in Tools <span class="tooltip" data-tip="Enable built-in Claude Code tools for agents. These tools require explicit opt-in beyond the defaults (Read, Write, Edit, Glob, Grep).">?</span></label>
+                    <label>Built-in Tools <span class="tooltip" title="Enable built-in Claude Code tools for agents. These tools require explicit opt-in beyond the defaults (Read, Write, Edit, Glob, Grep).">?</span></label>
                     <div id="config-builtin-tools-list"></div>
                 </div>
             </div>
             <!-- Prompts tab -->
             <div class="config-tab-content" data-config-tab="prompts" style="padding:20px;display:none;">
                 <div class="form-group">
-                    <label for="config-system-prompt">System Prompt <span class="tooltip" data-tip="Instructions prepended to every agent task. Use this to define coding style, conventions, or constraints that apply to all work in this project.">?</span></label>
+                    <label for="config-system-prompt">System Prompt <span class="tooltip" title="Instructions prepended to every agent task. Use this to define coding style, conventions, or constraints that apply to all work in this project.">?</span></label>
                     <textarea id="config-system-prompt" rows="6" placeholder="e.g. Use TypeScript with strict mode. Follow existing patterns in the codebase. Write tests for new features."></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="config-project-context">Project Context <span class="tooltip" data-tip="Background information about the project that helps the agent understand the codebase. Architecture, tech stack, key decisions, etc.">?</span></label>
+                    <label for="config-project-context">Project Context <span class="tooltip" title="Background information about the project that helps the agent understand the codebase. Architecture, tech stack, key decisions, etc.">?</span></label>
                     <textarea id="config-project-context" rows="6" placeholder="e.g. This is a React + FastAPI app. The frontend is in /web, the API is in /api. We use PostgreSQL for persistence."></textarea>
                 </div>
             </div>
@@ -378,7 +378,7 @@
             <div class="config-tab-content" data-config-tab="mcp" style="padding:20px;display:none;">
                 <div class="form-group">
                     <label for="config-mcp-enabled">
-                        Enable MCP (Model Context Protocol) <span class="tooltip" data-tip="Enable Model Context Protocol to connect external tools and data sources for enhanced agent capabilities.">?</span>
+                        Enable MCP (Model Context Protocol) <span class="tooltip" title="Enable Model Context Protocol to connect external tools and data sources for enhanced agent capabilities.">?</span>
                         <input type="checkbox" id="config-mcp-enabled">
                     </label>
                 </div>

@@ -96,18 +96,13 @@ const App = {
         let tipEl = null;
         document.addEventListener('mouseenter', (e) => {
             if (!e.target || !e.target.closest) return;
-            const t = e.target.closest('[data-tip], [data-tip-html]');
+            const t = e.target.closest('[data-tip-html]');
             if (!t) return;
             const html = t.getAttribute('data-tip-html');
-            const text = t.getAttribute('data-tip');
-            if (!html && !text) return;
+            if (!html) return;
             tipEl = document.createElement('div');
             tipEl.className = 'tooltip-popup';
-            if (html) {
-                tipEl.innerHTML = html;
-            } else {
-                tipEl.textContent = text;
-            }
+            tipEl.innerHTML = html;
             // Append inside the open dialog so it's in the top layer
             const dialog = t.closest('dialog[open]');
             const container = dialog || document.body;
@@ -125,7 +120,7 @@ const App = {
         document.addEventListener('mouseleave', (e) => {
             // Ensure we have an Element (not a text node or other node type)
             const target = e.target.nodeType === Node.ELEMENT_NODE ? e.target : e.target.parentElement;
-            if (target && target.closest('[data-tip], [data-tip-html]') && tipEl) {
+            if (target && target.closest('[data-tip-html]') && tipEl) {
                 tipEl.remove();
                 tipEl = null;
             }

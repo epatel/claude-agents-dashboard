@@ -645,7 +645,7 @@ const Board = {
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
                 <span class="epic-dot" style="background: var(--epic-${epic.color})"></span>
                 ${Board.escapeHtml(epic.title)}
-                <button class="todo-epic-delete" data-tip="Delete all todos in this epic">&times;</button>
+                <button class="todo-epic-delete" title="Delete all todos in this epic">&times;</button>
                 <span class="todo-epic-count">${items.length}</span>
             `;
             header.addEventListener('click', (e) => {
