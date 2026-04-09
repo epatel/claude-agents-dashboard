@@ -3,6 +3,7 @@ const Shortcuts = {
     shortcuts: [],
     _pollTimers: {},    // shortcut_id → interval timer
     _runState: {},      // shortcut_id → { status, output, exit_code }
+    _autoReset: {},     // shortcut_id → true if auto-reset enabled
 
     async init() {
         await this.load();
@@ -111,6 +112,13 @@ const Shortcuts = {
                 if (data.status !== 'running') {
                     clearInterval(this._pollTimers[sc.id]);
                     delete this._pollTimers[sc.id];
+
+                    // Auto-reset: clear state so next click re-runs
+                    if (this._autoReset[sc.id]) {
+                        delete this._runState[sc.id];
+                        delete this._autoReset[sc.id];
+                    }
+
                     this.render();
                 }
             } catch {
@@ -195,6 +203,16 @@ const Shortcuts = {
     closeProgress() {
         const dialog = document.getElementById('shortcut-progress-dialog');
         if (!dialog) return;
+        dialog.close();
+    },
+
+    autoResetAndClose() {
+        const dialog = document.getElementById('shortcut-progress-dialog');
+        if (!dialog) return;
+        const id = dialog.dataset.shortcutId;
+        if (id) {
+            this._autoReset[id] = true;
+        }
         dialog.close();
     },
 
