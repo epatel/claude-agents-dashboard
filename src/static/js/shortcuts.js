@@ -37,7 +37,7 @@ const Shortcuts = {
             if (state) {
                 if (state.status === 'running') {
                     btn.classList.add('shortcut-running');
-                } else if (state.status === 'failed') {
+                } else if (state.status === 'failed' || state.status === 'stopped') {
                     btn.classList.add('shortcut-failed');
                 } else if (state.status === 'done') {
                     btn.classList.add('shortcut-done');
@@ -68,7 +68,7 @@ const Shortcuts = {
         }
 
         // If there's a finished log, show it instead of re-running
-        if (state && (state.status === 'done' || state.status === 'failed') && state.output) {
+        if (state && (state.status === 'done' || state.status === 'failed' || state.status === 'stopped') && state.output) {
             this.showProgress(sc);
             return;
         }
@@ -179,7 +179,7 @@ const Shortcuts = {
             if (state.status === 'running') {
                 resetBtn.textContent = 'Stop';
                 resetBtn.style.display = '';
-            } else if (state.status === 'done' || state.status === 'failed') {
+            } else if (state.status === 'done' || state.status === 'failed' || state.status === 'stopped') {
                 resetBtn.textContent = 'Reset';
                 resetBtn.style.display = '';
             } else {
@@ -198,6 +198,9 @@ const Shortcuts = {
             statusEl.className = 'shortcut-status shortcut-status-running';
         } else if (state.status === 'failed') {
             statusEl.textContent = `✕ Failed (exit code: ${state.exit_code})`;
+            statusEl.className = 'shortcut-status shortcut-status-failed';
+        } else if (state.status === 'stopped') {
+            statusEl.textContent = '⏹ Stopped';
             statusEl.className = 'shortcut-status shortcut-status-failed';
         } else if (state.status === 'done') {
             statusEl.textContent = '✓ Completed';
@@ -230,13 +233,27 @@ const Shortcuts = {
         const id = dialog.dataset.shortcutId;
         if (!id) return;
 
+        const state = this._runState[id];
+        const isRunning = state && state.status === 'running';
+
+        if (isRunning) {
+            // Stop the process but keep the log visible
+            try {
+                await Api.request('POST', `/api/shortcuts/${id}/stop`);
+            } catch { /* ignore */ }
+            // Let polling pick up the stopped state and update UI
+            return;
+        }
+
+        // Reset: clear everything (for stopped/done/failed states)
+
         // Stop polling
         if (this._pollTimers[id]) {
             clearInterval(this._pollTimers[id]);
             delete this._pollTimers[id];
         }
 
-        // Reset server-side state (kills process if running)
+        // Reset server-side state
         try {
             await Api.request('POST', `/api/shortcuts/${id}/reset`);
         } catch { /* ignore */ }
