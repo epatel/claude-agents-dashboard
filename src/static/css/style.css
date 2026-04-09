@@ -1711,6 +1711,12 @@ a:focus {
     white-space: nowrap;
 }
 
+.shortcut-manage-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
 /* Adjust board layout when shortcuts bar is visible */
 body.has-shortcuts .board {
     min-height: calc(100vh - 56px - 40px);

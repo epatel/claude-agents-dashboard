@@ -394,6 +394,11 @@ const App = {
             case 'notification_added':
                 NotificationDialog.addFromEvent(data);
                 break;
+            case 'shortcut_created':
+                if (typeof Shortcuts !== 'undefined') {
+                    Shortcuts.load().then(() => Shortcuts.render());
+                }
+                break;
             case 'epic_created':
             case 'epic_updated':
             case 'epic_deleted':
