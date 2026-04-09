@@ -10,6 +10,7 @@ const Annotate = {
     lineWidth: 3,
     fontSize: 16,
     textBackground: false,
+    drawOnImage: false, // When true, drawings are baked into the image layer (not annotations)
 
     // Interaction state
     _dragging: null,
@@ -26,6 +27,9 @@ const Annotate = {
         this.images = [];
         this.annotations = [];
         this.tool = 'select';
+        this.drawOnImage = false;
+        const drawOnImageCb = document.getElementById('annotate-draw-on-image');
+        if (drawOnImageCb) drawOnImageCb.checked = false;
         this._setupEvents();
         this.render();
 
@@ -533,6 +537,7 @@ const Annotate = {
                         type: 'freehand', points: simplified,
                         x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h,
                         color: this.color, lineWidth: this.lineWidth, selected: false,
+                        layer: this.drawOnImage ? 'image' : 'annotation',
                     });
                 }
                 this._drawing = null;
@@ -547,6 +552,7 @@ const Annotate = {
                     this.annotations.push({
                         type: 'arrow', x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2,
                         color: this.color, lineWidth: this.lineWidth, selected: false,
+                        layer: this.drawOnImage ? 'image' : 'annotation',
                     });
                 } else if (d.type === 'circle') {
                     const cx = (d.x1 + d.x2) / 2, cy = (d.y1 + d.y2) / 2;
@@ -554,12 +560,14 @@ const Annotate = {
                     this.annotations.push({
                         type: 'circle', x: cx, y: cy, rx, ry,
                         color: this.color, lineWidth: this.lineWidth, selected: false,
+                        layer: this.drawOnImage ? 'image' : 'annotation',
                     });
                 } else if (d.type === 'rect') {
                     this.annotations.push({
                         type: 'rect', x: Math.min(d.x1, d.x2), y: Math.min(d.y1, d.y2),
                         w: dx, h: dy,
                         color: this.color, lineWidth: this.lineWidth, selected: false,
+                        layer: this.drawOnImage ? 'image' : 'annotation',
                     });
                 }
             }
@@ -696,6 +704,7 @@ const Annotate = {
                     type: 'text', x: canvasX, y: canvasY, text,
                     color: this.color, fontSize,
                     background: withBg, selected: false,
+                    layer: this.drawOnImage ? 'image' : 'annotation',
                 });
             }
             this.render();
@@ -824,25 +833,31 @@ const Annotate = {
             }
         }
 
-        // Draw annotations in layers to prevent overlap issues
+        // Draw image-layer annotations (drawn "on" the image, below regular annotations)
+        for (const a of this.annotations) {
+            if (a.layer === 'image') {
+                this._drawShape(a);
+                if (a.selected) {
+                    ctx.strokeStyle = '#0071e3';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 3]);
+                    this._drawSelectionBounds(a);
+                    ctx.setLineDash([]);
+                }
+            }
+        }
+
+        // Draw annotation-layer items on top
         // First draw shapes (arrows, circles, rectangles)
         for (const a of this.annotations) {
+            if (a.layer === 'image') continue;
             if (a.type !== 'text') {
                 this._drawShape(a);
                 if (a.selected) {
                     ctx.strokeStyle = '#0071e3';
                     ctx.lineWidth = 1;
                     ctx.setLineDash([4, 3]);
-                    if (a.type === 'arrow') {
-                        ctx.strokeRect(Math.min(a.x1, a.x2) - 5, Math.min(a.y1, a.y2) - 5,
-                            Math.abs(a.x2 - a.x1) + 10, Math.abs(a.y2 - a.y1) + 10);
-                    } else if (a.type === 'circle') {
-                        ctx.strokeRect(a.x - a.rx - 3, a.y - a.ry - 3, a.rx * 2 + 6, a.ry * 2 + 6);
-                    } else if (a.type === 'rect') {
-                        ctx.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
-                    } else if (a.type === 'freehand') {
-                        ctx.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
-                    }
+                    this._drawSelectionBounds(a);
                     ctx.setLineDash([]);
                 }
             }
@@ -850,23 +865,14 @@ const Annotate = {
 
         // Then draw text annotations on top to prevent overlap
         for (const a of this.annotations) {
+            if (a.layer === 'image') continue;
             if (a.type === 'text') {
                 this._drawShape(a);
                 if (a.selected) {
-                    const fontSize = a.fontSize || this.fontSize;
-                    const lineHeight = fontSize * 1.3;
-                    const lines = (a.text || '').split('\n');
-                    ctx.font = `${fontSize}px sans-serif`;
-                    let maxWidth = 0;
-                    for (const line of lines) {
-                        maxWidth = Math.max(maxWidth, ctx.measureText(line).width);
-                    }
-                    const totalHeight = lines.length * lineHeight;
                     ctx.strokeStyle = '#0071e3';
                     ctx.lineWidth = 1;
                     ctx.setLineDash([4, 3]);
-                    const padding = 2;
-                    ctx.strokeRect(a.x - padding, a.y - padding, maxWidth + padding * 2, totalHeight + padding * 2);
+                    this._drawSelectionBounds(a);
                     ctx.setLineDash([]);
                 }
             }
@@ -875,6 +881,32 @@ const Annotate = {
         // Draw in-progress shape
         if (this._drawing) {
             this._drawShape(this._drawing);
+        }
+    },
+
+    _drawSelectionBounds(a) {
+        const ctx = this.ctx;
+        if (a.type === 'arrow') {
+            ctx.strokeRect(Math.min(a.x1, a.x2) - 5, Math.min(a.y1, a.y2) - 5,
+                Math.abs(a.x2 - a.x1) + 10, Math.abs(a.y2 - a.y1) + 10);
+        } else if (a.type === 'circle') {
+            ctx.strokeRect(a.x - a.rx - 3, a.y - a.ry - 3, a.rx * 2 + 6, a.ry * 2 + 6);
+        } else if (a.type === 'rect') {
+            ctx.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
+        } else if (a.type === 'freehand') {
+            ctx.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
+        } else if (a.type === 'text') {
+            const fontSize = a.fontSize || this.fontSize;
+            const lineHeight = fontSize * 1.3;
+            const lines = (a.text || '').split('\n');
+            ctx.font = `${fontSize}px sans-serif`;
+            let maxWidth = 0;
+            for (const line of lines) {
+                maxWidth = Math.max(maxWidth, ctx.measureText(line).width);
+            }
+            const totalHeight = lines.length * lineHeight;
+            const padding = 2;
+            ctx.strokeRect(a.x - padding, a.y - padding, maxWidth + padding * 2, totalHeight + padding * 2);
         }
     },
 
@@ -1022,8 +1054,9 @@ const Annotate = {
     },
 
     toBackgroundDataURL() {
-        // Render only background images (no annotations) as JPG
-        if (this.images.length === 0) return null;
+        // Render background images + image-layer drawings (no annotation-layer) as JPG
+        const hasImageLayerDrawings = this.annotations.some(a => a.layer === 'image');
+        if (this.images.length === 0 && !hasImageLayerDrawings) return null;
 
         const tmpCanvas = document.createElement('canvas');
         tmpCanvas.width = this.canvas.width;
@@ -1037,6 +1070,15 @@ const Annotate = {
         for (const img of this.images) {
             tmpCtx.drawImage(img.img, img.x, img.y, img.w, img.h);
         }
+
+        // Draw image-layer annotations (baked into the base image)
+        const origCtx = this.ctx;
+        this.ctx = tmpCtx;
+        for (const ann of this.annotations) {
+            if (ann.layer === 'image') this._drawShape(ann);
+        }
+        this.ctx = origCtx;
+
         return tmpCanvas.toDataURL('image/jpeg', 0.85);
     },
 
@@ -1070,11 +1112,13 @@ const Annotate = {
     },
 
     getAnnotationSummary() {
-        // Return a human-readable count of annotations by type
-        if (this.annotations.length === 0) return '';
+        // Return a human-readable count of annotation-layer items only
+        // (image-layer drawings are part of the base image, not annotations)
+        const annotationLayer = this.annotations.filter(a => a.layer !== 'image');
+        if (annotationLayer.length === 0) return '';
 
         const counts = {};
-        for (const ann of this.annotations) {
+        for (const ann of annotationLayer) {
             const type = ann.type;
             counts[type] = (counts[type] || 0) + 1;
         }
