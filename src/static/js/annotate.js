@@ -5,7 +5,7 @@ const Annotate = {
     // Layers: background images and annotations
     images: [],       // {img, x, y, w, h, selected}
     annotations: [],  // {type, ...props, selected}
-    tool: 'select',   // select, arrow, circle, rect, text
+    tool: 'select',   // select, arrow, circle, rect, text, freehand
     color: '#ff3b30',
     lineWidth: 3,
     fontSize: 16,
@@ -427,6 +427,9 @@ const Annotate = {
                 return;
             }
             this._openTextEditor(p.x, p.y, null);
+        } else if (this.tool === 'freehand') {
+            // Start freehand path
+            this._drawing = { type: 'freehand', points: [{ x: p.x, y: p.y }] };
         } else {
             // Start drawing
             this._drawing = { type: this.tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y };
@@ -481,6 +484,13 @@ const Annotate = {
                 d.x2 += dx; d.y2 += dy;
                 this._startX = p.x;
                 this._startY = p.y;
+            } else if (d.type === 'freehand') {
+                const dx = p.x - this._startX;
+                const dy = p.y - this._startY;
+                for (const pt of d.points) { pt.x += dx; pt.y += dy; }
+                d.x += dx; d.y += dy;
+                this._startX = p.x;
+                this._startY = p.y;
             } else if (d.type === 'circle' || d.type === 'rect') {
                 const dx = p.x - this._startX;
                 const dy = p.y - this._startY;
@@ -493,10 +503,16 @@ const Annotate = {
         }
 
         if (this._drawing) {
-            this._drawing.x2 = p.x;
-            this._drawing.y2 = p.y;
-            this.render();
-            this._drawShape(this._drawing);
+            if (this._drawing.type === 'freehand') {
+                this._drawing.points.push({ x: p.x, y: p.y });
+                this.render();
+                this._drawShape(this._drawing);
+            } else {
+                this._drawing.x2 = p.x;
+                this._drawing.y2 = p.y;
+                this.render();
+                this._drawShape(this._drawing);
+            }
         }
     },
 
@@ -508,6 +524,22 @@ const Annotate = {
         }
         if (this._drawing) {
             const d = this._drawing;
+            if (d.type === 'freehand') {
+                // Simplify and save freehand path if it has enough points
+                if (d.points.length > 2) {
+                    const simplified = this._simplifyPoints(d.points, 2);
+                    const bounds = this._getPointsBounds(simplified);
+                    this.annotations.push({
+                        type: 'freehand', points: simplified,
+                        x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h,
+                        color: this.color, lineWidth: this.lineWidth, selected: false,
+                    });
+                }
+                this._drawing = null;
+                this.render();
+                this._dragging = null;
+                return;
+            }
             const dx = Math.abs(d.x2 - d.x1);
             const dy = Math.abs(d.y2 - d.y1);
             if (dx > 5 || dy > 5) {
@@ -729,6 +761,12 @@ const Annotate = {
                 const near = (x >= a.x - 5 && x <= a.x + a.w + 5 && y >= a.y - 5 && y <= a.y + a.h + 5) &&
                     !(x >= a.x + 5 && x <= a.x + a.w - 5 && y >= a.y + 5 && y <= a.y + a.h - 5);
                 if (near) return a;
+            } else if (a.type === 'freehand') {
+                // Hit test: check distance to each line segment
+                for (let j = 0; j < a.points.length - 1; j++) {
+                    const dist = this._distToLine(x, y, a.points[j].x, a.points[j].y, a.points[j + 1].x, a.points[j + 1].y);
+                    if (dist < 10) return a;
+                }
             }
         }
         return null;
@@ -801,6 +839,8 @@ const Annotate = {
                     } else if (a.type === 'circle') {
                         ctx.strokeRect(a.x - a.rx - 3, a.y - a.ry - 3, a.rx * 2 + 6, a.ry * 2 + 6);
                     } else if (a.type === 'rect') {
+                        ctx.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
+                    } else if (a.type === 'freehand') {
                         ctx.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
                     }
                     ctx.setLineDash([]);
@@ -879,6 +919,17 @@ const Annotate = {
             const w = s.w ?? Math.abs(s.x2 - s.x1);
             const h = s.h ?? Math.abs(s.y2 - s.y1);
             ctx.strokeRect(x, y, w, h);
+        } else if (s.type === 'freehand') {
+            if (s.points && s.points.length > 1) {
+                ctx.beginPath();
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.moveTo(s.points[0].x, s.points[0].y);
+                for (let i = 1; i < s.points.length; i++) {
+                    ctx.lineTo(s.points[i].x, s.points[i].y);
+                }
+                ctx.stroke();
+            }
         } else if (s.type === 'text') {
             const fontSize = s.fontSize || this.fontSize;
             const lineHeight = fontSize * 1.3;
@@ -917,6 +968,42 @@ const Annotate = {
                 ctx.fillText(lines[i], s.x, s.y + i * lineHeight);
             }
         }
+    },
+
+    // --- Freehand helpers ---
+
+    _simplifyPoints(points, tolerance) {
+        // Ramer-Douglas-Peucker simplification to reduce point count
+        if (points.length <= 2) return points.slice();
+
+        let maxDist = 0, maxIdx = 0;
+        const first = points[0], last = points[points.length - 1];
+
+        for (let i = 1; i < points.length - 1; i++) {
+            const dist = this._distToLine(points[i].x, points[i].y, first.x, first.y, last.x, last.y);
+            if (dist > maxDist) {
+                maxDist = dist;
+                maxIdx = i;
+            }
+        }
+
+        if (maxDist > tolerance) {
+            const left = this._simplifyPoints(points.slice(0, maxIdx + 1), tolerance);
+            const right = this._simplifyPoints(points.slice(maxIdx), tolerance);
+            return left.slice(0, -1).concat(right);
+        }
+        return [first, last];
+    },
+
+    _getPointsBounds(points) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of points) {
+            if (p.x < minX) minX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y > maxY) maxY = p.y;
+        }
+        return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
     },
 
     // --- Export ---
@@ -992,7 +1079,7 @@ const Annotate = {
             counts[type] = (counts[type] || 0) + 1;
         }
 
-        const labels = { arrow: 'arrow', circle: 'circle', rect: 'rectangle', text: 'text label' };
+        const labels = { arrow: 'arrow', circle: 'circle', rect: 'rectangle', text: 'text label', freehand: 'freehand' };
         const parts = [];
         for (const [type, count] of Object.entries(counts)) {
             const label = labels[type] || type;
