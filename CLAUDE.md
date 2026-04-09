@@ -35,7 +35,7 @@ graph TB
     subgraph Frontend["Frontend (Vanilla JS)"]
         UI["board.html + base.html + Jinja2"]
         WS["WebSocket Client"]
-        Modules["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js | sound.js"]
+        Modules["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js | sound.js | shortcuts.js"]
         DlgModules["dialogs.js (coordinator)<br/>dialog-core | dialog-utils<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog | search-dialog<br/>request-changes-dialog | attachments | annotation-canvas"]
     end
 
@@ -256,13 +256,19 @@ sequenceDiagram
 
 - **Auto-start for dependent items**: Items can have `auto_start` enabled (migration 012). When all items in an item's `requires` list are completed (done/archived), `WorkflowService._notify_and_auto_start_dependents()` automatically starts an agent on the newly unblocked item. This enables pipeline-style workflows where completing one task triggers the next.
 
+- **Shortcuts bar**: `shortcuts.js` provides a quick-launch bar at the bottom of the board for running bash commands. Shortcuts are persisted via `/api/shortcuts` CRUD endpoints (stored in-memory on the server). Each shortcut can be run, producing a subprocess whose output is streamed via polling (`/api/shortcuts/{id}/output`). Supports reset (`/api/shortcuts/{id}/reset`) to clear output and re-run. Process cleanup happens on delete.
+
+- **Worktree file browsing**: Items in review can browse their worktree's file tree via `/api/items/{id}/worktree/tree` and `/api/items/{id}/worktree/content` endpoints, reusing the same path validation and security as the project file browser.
+
+- **Retry merge**: When a merge fails, the item can be retried via `POST /api/items/{id}/retry-merge` which re-attempts the merge operation without restarting the agent.
+
 - **Keep in sync**: JavaScript-rendered cards and the server-rendered Jinja2 template needs to be in sync.
 
 ### Frontend
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base template + board template + card partial); JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
 
-**Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering + epic panel + epic filtering + todo grouping by epic), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates), `file-browser.js` (project file browser with tree, tabs, syntax highlighting, markdown/mermaid rendering), `sound.js` (notification sounds).
+**Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering + epic panel + epic filtering + todo grouping by epic), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates), `file-browser.js` (project file browser with tree, tabs, syntax highlighting, markdown/mermaid rendering), `sound.js` (notification sounds), `shortcuts.js` (quick-launch bash command bar with process management).
 
 **Dialog modules** (modular architecture): `dialogs.js` is a thin coordinator that delegates to 12 specialized modules:
 - `dialog-core.js` — open/close/confirm utilities
@@ -383,7 +389,7 @@ Note: Attachment deletion uses `/api/attachments/{attachment_id}` (not nested un
 - Tooltips use JS positioning (`position: fixed`, appended to the nearest open `<dialog>` or `document.body`) so they appear above modal dialogs. Use `data-tip` for plain text, `data-tip-html` for rich formatted tooltips.
 - Avoid duplicate `from pathlib import Path` inside functions — it's imported at file top and local imports cause `UnboundLocalError`.
 - Attachments are stored as PNG files in `agents-lab/assets/` and referenced in the `attachments` table. Cleaned up on item delete. Annotations are exported as two separate PNGs: `annotation_{ts}_original.png` (clean screenshot) and `annotation_{ts}_annotations.png` (transparent overlay with annotation shapes). The `annotation_summary` column stores a text count of annotations (e.g., '2 arrows, 1 circle'). The agent prompt groups paired files and labels them for the agent.
-- The annotation canvas (`annotate.js`) is a self-contained component: `Annotate.init(canvasEl)` to start, `Annotate.toDataURL()` to export. Supports image drop, scale (wheel + corner handles), and annotation tools.
+- The annotation canvas (`annotate.js`) is a self-contained component: `Annotate.init(canvasEl)` to start, `Annotate.toDataURL()` to export. Supports image drop, scale (wheel + corner handles), annotation tools (arrows, circles, rectangles, text, freehand drawing), fill colors for shapes, and "on image" toggle for drawing on the main layer.
 - Card action buttons use `event.stopPropagation()` on individual buttons, not on the wrapper div, to avoid click blind spots.
 - MCP tool callbacks follow async patterns: clarification uses `asyncio.Event` in `WorkflowService` for user response, todo creation immediately returns success and broadcasts via `NotificationService`, commit message stores in-memory (`SessionService._commit_messages` dict) and persists to DB on agent completion.
 - Agent-created items are indistinguishable from manually created ones in the database and UI — they follow the same lifecycle and support all features.
@@ -473,6 +479,7 @@ src/
 |   |   +-- stats.js                 # Stats bar
 |   |   +-- theme.js                 # Theme toggle
 |   |   +-- sound.js                 # Notification sounds
+|   |   +-- shortcuts.js             # Quick-launch bash command bar
 |   +-- css/
 |       +-- style.css                # Main styles (CSS variables)
 |       +-- board.css                # Board layout + cards

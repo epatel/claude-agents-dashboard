@@ -2,13 +2,13 @@
 
 **Date**: 2026-04-09
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 21 — Maintenance reassessment with updated line counts. Updated routes.py (1,044 lines). Updated totals: Python ~6,197 lines, JS ~6,350 lines, CSS ~3,111 lines. Database has 12 migrations. Test suite remains 165 tests.
+**Revision**: 22 — Maintenance reassessment with updated line counts. Updated routes.py (1,188 lines). Added shortcuts bar feature (shortcuts.js 300 lines, 6 new API endpoints). Updated totals: Python ~6,341 lines, JS ~6,837 lines (23 files), CSS ~3,356 lines. Database has 12 migrations. Test suite remains 165 tests.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), and **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve) have been added. The test suite includes **165 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), and **dependency management endpoints** have been added. The test suite includes **165 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -128,7 +128,7 @@ graph TB
 | `models.py` | 116 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
-| `web/routes.py` | 1,044 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; delete delegates to orchestrator |
+| `web/routes.py` | 1,188 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD; dependency management; worktree browsing; bulk operations |
 | `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 122 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
@@ -164,7 +164,7 @@ graph TB
 |--------|---------|---------|-------|
 | `app.js` | 471 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
 | `board.js` | 948 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
-| `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 11 specialized modules |
+| `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 12 specialized modules |
 | `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
 | `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
 | `item-dialog.js` | 491 | A- | New/edit item forms with attachment handling, epic assignment, dependency selection, auto-start toggle |
@@ -177,8 +177,9 @@ graph TB
 | `request-changes-dialog.js` | 24 | A | Focused request-changes form |
 | `attachments.js` | 43 | A | Attachment viewing and deletion |
 | `annotation-canvas.js` | 97 | A | Canvas annotation integration bridge |
-| `annotate.js` | 1003 | A- | Self-contained canvas component |
-| `file-browser.js` | 630 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering |
+| `annotate.js` | 1,150 | A- | Self-contained canvas component with freehand drawing, fill colors, on-image toggle |
+| `file-browser.js` | 671 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering, refresh |
+| `shortcuts.js` | 300 | A | Quick-launch bash command bar with process management, streaming output, reset |
 | `api.js` | 102 | A | Clean HTTP helpers |
 | `diff.js` | 62 | A- | Functional diff viewer |
 | `theme.js` | 24 | A | Simple, correct theme toggle |
@@ -189,13 +190,13 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `style.css` | 1,476 | A- | Main styles with CSS variables |
+| `style.css` | 1,721 | A- | Main styles with CSS variables |
 | `board.css` | 526 | A | Board layout, card styles, Done day grouping with collapsible sections |
 | `dialog.css` | 451 | A | Dialog component styles |
 | `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 101 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~3,111 lines across 5 modules (526+451+557+1476+101).
+**Note**: CSS total is ~3,356 lines across 5 modules (526+451+557+1721+101).
 
 ---
 
@@ -419,6 +420,10 @@ graph LR
 29. **Annotation summary**: Text description of annotation shapes stored in DB and included in agent prompts — gives agents context about visual annotations without needing to parse images
 30. **Item dependencies**: Join table (`item_dependencies`) with cascading deletes tracks which items require other items — agents can declare dependencies via `create_todo` MCP tool's `requires` parameter, and `view_board` includes dependency info for coordination
 31. **Auto-start pipelines**: Items with `auto_start` enabled (migration 012) automatically start an agent when all dependency items are resolved — `WorkflowService._notify_and_auto_start_dependents()` checks after each item completion/archive, enabling pipeline-style workflows without manual intervention
+32. **Shortcuts bar**: Quick-launch bash commands from a persistent bar at the bottom of the board — CRUD endpoints with in-memory storage, subprocess management with streaming output, reset capability, and automatic cleanup on delete
+33. **Worktree file browsing**: Review dialog can browse the agent's worktree directory tree and file contents, reusing the same security infrastructure as the project file browser
+34. **Bulk operations**: Archive or delete items by date or by epic via dedicated endpoints, reducing manual cleanup effort for large boards
+35. **Retry merge**: Re-attempt a failed merge without restarting the agent — preserves the agent's work and avoids unnecessary re-runs
 
 ---
 
@@ -426,12 +431,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 47 | ~6,197 |
-| JavaScript frontend | 22 | ~6,350 |
-| CSS styles | 5 | ~3,111 |
-| HTML templates | 3 | ~635 |
+| Python backend (src/) | 47 | ~6,341 |
+| JavaScript frontend | 23 | ~6,837 |
+| CSS styles | 5 | ~3,356 |
+| HTML templates | 3 | ~717 |
 | Tests | 14 | ~3,326 |
-| **Grand total** | **91** | **~19,619** |
+| **Grand total** | **92** | **~20,577** |
 
 ---
 
