@@ -175,6 +175,39 @@ const Shortcuts = {
         if (dialog) dialog.close();
     },
 
+    async resetShortcut() {
+        const dialog = document.getElementById('shortcut-progress-dialog');
+        if (!dialog) return;
+        const id = dialog.dataset.shortcutId;
+        if (!id) return;
+
+        // Stop polling
+        if (this._pollTimers[id]) {
+            clearInterval(this._pollTimers[id]);
+            delete this._pollTimers[id];
+        }
+
+        // Reset server-side state (kills process if running)
+        try {
+            await Api.request('POST', `/api/shortcuts/${id}/reset`);
+        } catch { /* ignore */ }
+
+        // Clear client-side state
+        delete this._runState[id];
+
+        // Reset dialog UI
+        document.getElementById('shortcut-progress-output').textContent = '(waiting for output...)';
+        const statusEl = document.getElementById('shortcut-progress-status');
+        statusEl.textContent = '';
+        statusEl.className = 'shortcut-status';
+
+        // Re-render buttons to remove running/done/failed styling
+        this.render();
+
+        // Close the dialog
+        dialog.close();
+    },
+
     // --- Add shortcut ---
     showAddDialog() {
         const dialog = document.getElementById('shortcut-add-dialog');
