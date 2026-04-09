@@ -1073,6 +1073,26 @@ async def create_shortcut(request: Request, body: ShortcutCreate):
     return sc
 
 
+class ShortcutUpdate(BaseModel):
+    name: str | None = None
+    command: str | None = None
+
+
+@router.put("/api/shortcuts/{shortcut_id}")
+async def update_shortcut(request: Request, shortcut_id: str, body: ShortcutUpdate):
+    path = _shortcuts_file(request)
+    shortcuts = _load_shortcuts(path)
+    sc = next((s for s in shortcuts if s["id"] == shortcut_id), None)
+    if not sc:
+        raise HTTPException(status_code=404, detail="Shortcut not found")
+    if body.name is not None:
+        sc["name"] = body.name
+    if body.command is not None:
+        sc["command"] = body.command
+    _save_shortcuts(path, shortcuts)
+    return sc
+
+
 @router.delete("/api/shortcuts/{shortcut_id}")
 async def delete_shortcut(request: Request, shortcut_id: str):
     path = _shortcuts_file(request)

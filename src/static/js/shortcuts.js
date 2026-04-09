@@ -335,7 +335,10 @@ const Shortcuts = {
                     <span class="shortcut-manage-name">${this._esc(sc.name)}</span>
                     <code class="shortcut-manage-cmd">${this._esc(sc.command)}</code>
                 </div>
-                <button class="btn btn-sm btn-danger" onclick="Shortcuts.deleteShortcut('${this._esc(sc.id)}')">Remove</button>
+                <div class="shortcut-manage-actions">
+                    <button class="btn btn-sm" onclick="Shortcuts.showEditDialog('${this._esc(sc.id)}')">Edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="Shortcuts.deleteShortcut('${this._esc(sc.id)}')">Remove</button>
+                </div>
             `;
             list.appendChild(row);
         }
@@ -355,6 +358,45 @@ const Shortcuts = {
             this._renderManageList();
         } catch (e) {
             alert('Failed to delete shortcut: ' + e.message);
+        }
+    },
+
+    // --- Edit shortcut ---
+    showEditDialog(id) {
+        const sc = this.shortcuts.find(s => s.id === id);
+        if (!sc) return;
+        const dialog = document.getElementById('shortcut-edit-dialog');
+        if (!dialog) return;
+        dialog.dataset.shortcutId = id;
+        document.getElementById('shortcut-edit-name').value = sc.name;
+        document.getElementById('shortcut-edit-command').value = sc.command;
+        dialog.showModal();
+    },
+
+    closeEditDialog() {
+        const dialog = document.getElementById('shortcut-edit-dialog');
+        if (dialog) dialog.close();
+    },
+
+    async submitEdit(event) {
+        event.preventDefault();
+        const dialog = document.getElementById('shortcut-edit-dialog');
+        if (!dialog) return;
+        const id = dialog.dataset.shortcutId;
+        if (!id) return;
+
+        const name = document.getElementById('shortcut-edit-name').value.trim();
+        const command = document.getElementById('shortcut-edit-command').value.trim();
+        if (!name || !command) return;
+
+        try {
+            await Api.request('PUT', `/api/shortcuts/${id}`, { name, command });
+            this.closeEditDialog();
+            await this.load();
+            this.render();
+            this._renderManageList();
+        } catch (e) {
+            alert('Failed to update shortcut: ' + e.message);
         }
     },
 
