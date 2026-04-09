@@ -113,9 +113,11 @@ const Shortcuts = {
                     clearInterval(this._pollTimers[sc.id]);
                     delete this._pollTimers[sc.id];
 
-                    // Auto-reset: clear state so next click re-runs
+                    // Auto-reset: clear state so next click re-runs (only on success)
                     if (this._autoReset[sc.id]) {
-                        delete this._runState[sc.id];
+                        if (data.status === 'done') {
+                            delete this._runState[sc.id];
+                        }
                         delete this._autoReset[sc.id];
                     }
 
@@ -163,6 +165,7 @@ const Shortcuts = {
         const outputEl = document.getElementById('shortcut-progress-output');
         const statusEl = document.getElementById('shortcut-progress-status');
         const resetBtn = document.getElementById('shortcut-reset-btn');
+        const autoResetBtn = document.getElementById('shortcut-auto-reset-btn');
 
         // Update output — auto-scroll if at bottom
         const isAtBottom = outputEl.scrollHeight - outputEl.scrollTop - outputEl.clientHeight < 30;
@@ -182,6 +185,11 @@ const Shortcuts = {
             } else {
                 resetBtn.style.display = 'none';
             }
+        }
+
+        // Auto-reset button only available while running
+        if (autoResetBtn) {
+            autoResetBtn.style.display = state.status === 'running' ? '' : 'none';
         }
 
         // Update status indicator
