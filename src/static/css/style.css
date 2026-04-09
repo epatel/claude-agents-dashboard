@@ -331,7 +331,7 @@ body {
     font-size: 12px;
     font-weight: 400;
     line-height: 1.5;
-    white-space: normal;
+    white-space: pre-line;
     width: max-content;
     max-width: 340px;
     z-index: 10000;

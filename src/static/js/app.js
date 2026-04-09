@@ -96,7 +96,7 @@ const App = {
         let tipEl = null;
         document.addEventListener('mouseenter', (e) => {
             if (!e.target || !e.target.closest) return;
-            const t = e.target.closest('.tooltip');
+            const t = e.target.closest('[data-tip], [data-tip-html]');
             if (!t) return;
             const html = t.getAttribute('data-tip-html');
             const text = t.getAttribute('data-tip');
@@ -125,7 +125,7 @@ const App = {
         document.addEventListener('mouseleave', (e) => {
             // Ensure we have an Element (not a text node or other node type)
             const target = e.target.nodeType === Node.ELEMENT_NODE ? e.target : e.target.parentElement;
-            if (target && target.closest('.tooltip') && tipEl) {
+            if (target && target.closest('[data-tip], [data-tip-html]') && tipEl) {
                 tipEl.remove();
                 tipEl = null;
             }
