@@ -256,7 +256,7 @@ sequenceDiagram
 
 - **Auto-start for dependent items**: Items can have `auto_start` enabled (migration 012). When all items in an item's `requires` list are completed (done/archived), `WorkflowService._notify_and_auto_start_dependents()` automatically starts an agent on the newly unblocked item. This enables pipeline-style workflows where completing one task triggers the next.
 
-- **Shortcuts bar**: `shortcuts.js` provides a quick-launch bar at the bottom of the board for running bash commands. Shortcuts are persisted via `/api/shortcuts` CRUD endpoints (stored in-memory on the server). Each shortcut can be run, producing a subprocess whose output is streamed via polling (`/api/shortcuts/{id}/output`). Supports reset (`/api/shortcuts/{id}/reset`) to clear output and re-run. Process cleanup happens on delete.
+- **Shortcuts bar**: `shortcuts.js` provides a quick-launch bar at the bottom of the board for running bash commands. Shortcuts are persisted via `/api/shortcuts` CRUD endpoints (stored in-memory on the server). Each shortcut can be run, producing a subprocess whose output is streamed via polling (`/api/shortcuts/{id}/output`). Supports stop (`/api/shortcuts/{id}/stop`) to terminate a running process while preserving its output log with a "STOPPED BY USER" marker, reset (`/api/shortcuts/{id}/reset`) to clear output and re-run, and auto-reset mode. Progress dialog shows dynamic Stop/Reset button based on running state. Process cleanup happens on delete.
 
 - **Worktree file browsing**: Items in review can browse their worktree's file tree via `/api/items/{id}/worktree/tree` and `/api/items/{id}/worktree/content` endpoints, reusing the same path validation and security as the project file browser.
 
@@ -268,7 +268,7 @@ sequenceDiagram
 
 Vanilla JS with no build step. Server-renders the initial board via Jinja2 (base template + board template + card partial); JavaScript handles all subsequent updates via WebSocket events and fetch API. `marked.js` (CDN) renders markdown in descriptions and work logs.
 
-**Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering + epic panel + epic filtering + todo grouping by epic), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates), `file-browser.js` (project file browser with tree, tabs, syntax highlighting, markdown/mermaid rendering), `sound.js` (notification sounds), `shortcuts.js` (quick-launch bash command bar with process management).
+**Core modules**: `app.js` (WebSocket with auto-reconnection + exponential backoff + visibility awareness + init), `board.js` (drag-drop + card rendering + epic panel + epic filtering + todo grouping by epic), `api.js` (HTTP helpers), `diff.js` (diff viewer), `annotate.js` (annotation canvas), `theme.js` (light/dark mode toggle), `stats.js` (real-time stats bar with auto-refresh and WebSocket updates), `file-browser.js` (project file browser with tree, tabs, syntax highlighting, markdown/mermaid rendering), `sound.js` (notification sounds), `shortcuts.js` (quick-launch bash command bar with process management, stop/reset, auto-reset mode).
 
 **Dialog modules** (modular architecture): `dialogs.js` is a thin coordinator that delegates to 12 specialized modules:
 - `dialog-core.js` — open/close/confirm utilities
@@ -479,7 +479,7 @@ src/
 |   |   +-- stats.js                 # Stats bar
 |   |   +-- theme.js                 # Theme toggle
 |   |   +-- sound.js                 # Notification sounds
-|   |   +-- shortcuts.js             # Quick-launch bash command bar
+|   |   +-- shortcuts.js             # Quick-launch bash command bar with stop/reset
 |   +-- css/
 |       +-- style.css                # Main styles (CSS variables)
 |       +-- board.css                # Board layout + cards

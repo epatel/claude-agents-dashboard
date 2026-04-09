@@ -113,7 +113,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Auto-start pipelines** — items with `auto_start` enabled automatically launch an agent when all their dependency items are completed, enabling pipeline-style workflows
 - **Search** — spotlight-style search dialog (Cmd/Ctrl+K) to find items across all columns and search work log entries
 - **Archive cleanup** — archiving items automatically cleans up their worktree and session resources
-- **Shortcuts bar** — quick-launch bash commands from a bar at the bottom of the board; commands run as subprocesses with streaming output, reset, and cleanup
+- **Shortcuts bar** — quick-launch bash commands from a bar at the bottom of the board; commands run as subprocesses with streaming output, stop (preserves output log), reset, auto-reset mode, and cleanup
 - **Worktree file browser** — browse an agent's worktree files during review via a tree view within the review dialog
 - **Retry merge** — re-attempt a failed merge without restarting the agent
 - **Light/dark mode** — respects system preference with manual toggle
@@ -179,8 +179,8 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,341 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~6,837 lines JS + ~3,356 lines CSS
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,373 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~6,904 lines JS + ~3,356 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 6 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -433,6 +433,7 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `POST` | `/api/shortcuts` | Create shortcut |
 | `DELETE` | `/api/shortcuts/{id}` | Delete shortcut |
 | `POST` | `/api/shortcuts/{id}/run` | Run shortcut command |
+| `POST` | `/api/shortcuts/{id}/stop` | Stop running shortcut (preserves output) |
 | `GET` | `/api/shortcuts/{id}/output` | Get shortcut output |
 | `POST` | `/api/shortcuts/{id}/reset` | Reset shortcut |
 | `GET` | `/api/websocket/stats` | WebSocket connection stats |
