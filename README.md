@@ -113,6 +113,9 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Auto-start pipelines** — items with `auto_start` enabled automatically launch an agent when all their dependency items are completed, enabling pipeline-style workflows
 - **Search** — spotlight-style search dialog (Cmd/Ctrl+K) to find items across all columns and search work log entries
 - **Archive cleanup** — archiving items automatically cleans up their worktree and session resources
+- **Shortcuts bar** — quick-launch bash commands from a bar at the bottom of the board; commands run as subprocesses with streaming output, reset, and cleanup
+- **Worktree file browser** — browse an agent's worktree files during review via a tree view within the review dialog
+- **Retry merge** — re-attempt a failed merge without restarting the agent
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture
@@ -121,7 +124,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 graph TB
     subgraph Frontend["Frontend (Vanilla JS, No Build Step)"]
         Browser["Browser"]
-        JS["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js | sound.js"]
+        JS["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js | sound.js | shortcuts.js"]
         Dlg["dialogs.js (coordinator)<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog | notification-dialog<br/>search-dialog | request-changes-dialog | attachments<br/>dialog-core | dialog-utils | annotation-canvas"]
     end
 
@@ -176,8 +179,8 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,197 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~6,350 lines JS + ~3,111 lines CSS
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,341 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~6,837 lines JS + ~3,356 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 6 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -394,6 +397,18 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `POST` | `/api/items/{id}/pause` | Pause running agent |
 | `POST` | `/api/items/{id}/resume` | Resume paused agent |
 | `POST` | `/api/items/{id}/cancel-review` | Discard review changes |
+| `POST` | `/api/items/{id}/retry-merge` | Retry a failed merge |
+| `POST` | `/api/items/{id}/start-copy` | Start a copy of a todo item |
+| `POST` | `/api/items/{id}/approve-command` | Approve/deny agent command request |
+| `GET` | `/api/items/{id}/dependencies` | Get item dependencies |
+| `PUT` | `/api/items/{id}/dependencies` | Set item dependencies |
+| `GET` | `/api/items/{id}/is-blocked` | Check if item is blocked |
+| `GET` | `/api/items/blocked-status` | Blocked status for all items |
+| `POST` | `/api/items/archive-by-date` | Bulk archive items by date |
+| `POST` | `/api/items/delete-by-date` | Bulk delete items by date |
+| `POST` | `/api/items/delete-by-epic` | Bulk delete items by epic |
+| `GET` | `/api/items/{id}/worktree/tree` | Browse worktree directory tree |
+| `GET` | `/api/items/{id}/worktree/content` | Read file from worktree |
 | `GET` | `/api/items/{id}/log` | Work log entries |
 | `GET` | `/api/items/{id}/diff` | Diff + changed files |
 | `GET` | `/api/items/{id}/files/{path}` | File content at branch |
@@ -411,7 +426,16 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `POST` | `/api/epics` | Create epic |
 | `PUT` | `/api/epics/{id}` | Update epic |
 | `DELETE` | `/api/epics/{id}` | Delete epic (nullifies items' epic_id) |
+| `GET` | `/api/config/available-tools` | List available optional tools |
 | `GET` | `/api/search/worklog` | Search work log entries |
+| `GET` | `/api/epics/colors` | Available epic colors |
+| `GET` | `/api/shortcuts` | List shortcuts |
+| `POST` | `/api/shortcuts` | Create shortcut |
+| `DELETE` | `/api/shortcuts/{id}` | Delete shortcut |
+| `POST` | `/api/shortcuts/{id}/run` | Run shortcut command |
+| `GET` | `/api/shortcuts/{id}/output` | Get shortcut output |
+| `POST` | `/api/shortcuts/{id}/reset` | Reset shortcut |
+| `GET` | `/api/websocket/stats` | WebSocket connection stats |
 | `GET` | `/api/files/tree` | Directory tree (lazy, depth-limited) |
 | `GET` | `/api/files/content` | File content (text, image, binary) |
 | `WebSocket` | `/ws` | Real-time event stream |
