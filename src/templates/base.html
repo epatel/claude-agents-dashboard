@@ -66,6 +66,18 @@
 
     {% block content %}{% endblock %}
 
+    <!-- Shortcuts Bar -->
+    <div class="shortcuts-bar" id="shortcuts-bar" style="display:none">
+        <div class="shortcuts-buttons"></div>
+        <div class="shortcuts-actions">
+            <button class="shortcut-action-btn" onclick="Shortcuts.showAddDialog()" title="Add shortcut">+</button>
+            <button class="shortcut-action-btn" onclick="Shortcuts.showManageDialog()" title="Manage shortcuts">⚙</button>
+        </div>
+    </div>
+
+    <!-- Shortcuts — always-visible add button when bar is hidden -->
+    <button class="shortcuts-add-floating" id="shortcuts-add-floating" onclick="Shortcuts.showAddDialog()" title="Add a shortcut">+ Shortcut</button>
+
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -97,6 +109,7 @@
     <script src="/static/js/dialogs.js"></script>
     <script src="/static/js/file-browser.js"></script>
     <script src="/static/js/search-dialog.js"></script>
+    <script src="/static/js/shortcuts.js"></script>
     <script src="/static/js/stats.js"></script>
     <script src="/static/js/board.js"></script>
     <script src="/static/js/app.js"></script>

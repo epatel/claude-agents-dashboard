@@ -1,4 +1,6 @@
+import asyncio
 import base64
+import json
 import uuid
 from pathlib import Path
 import time
@@ -1025,6 +1027,136 @@ async def delete_epic(request: Request, epic_id: str):
     await ns.broadcast_epic_deleted(epic_id)
     _invalidate_stats_cache()
     return {"success": True}
+
+
+# --- Shortcuts ---
+
+# In-memory process tracker: shortcut_id → { process, output, status, exit_code }
+_shortcut_processes: dict[str, dict] = {}
+
+
+def _shortcuts_file(request: Request) -> Path:
+    """Return path to shortcuts JSON file in data dir."""
+    return request.app.state.data_dir / "shortcuts.json"
+
+
+def _load_shortcuts(path: Path) -> list[dict]:
+    if path.exists():
+        try:
+            return json.loads(path.read_text())
+        except Exception:
+            pass
+    return []
+
+
+def _save_shortcuts(path: Path, shortcuts: list[dict]):
+    path.write_text(json.dumps(shortcuts, indent=2))
+
+
+@router.get("/api/shortcuts")
+async def list_shortcuts(request: Request):
+    return _load_shortcuts(_shortcuts_file(request))
+
+
+class ShortcutCreate(BaseModel):
+    name: str
+    command: str
+
+
+@router.post("/api/shortcuts")
+async def create_shortcut(request: Request, body: ShortcutCreate):
+    path = _shortcuts_file(request)
+    shortcuts = _load_shortcuts(path)
+    sc = {"id": uuid.uuid4().hex[:10], "name": body.name, "command": body.command}
+    shortcuts.append(sc)
+    _save_shortcuts(path, shortcuts)
+    return sc
+
+
+@router.delete("/api/shortcuts/{shortcut_id}")
+async def delete_shortcut(request: Request, shortcut_id: str):
+    path = _shortcuts_file(request)
+    shortcuts = _load_shortcuts(path)
+    shortcuts = [s for s in shortcuts if s["id"] != shortcut_id]
+    _save_shortcuts(path, shortcuts)
+    # Kill running process if any
+    proc_info = _shortcut_processes.pop(shortcut_id, None)
+    if proc_info and proc_info.get("process"):
+        try:
+            proc_info["process"].kill()
+        except ProcessLookupError:
+            pass
+    return {"ok": True}
+
+
+@router.post("/api/shortcuts/{shortcut_id}/run")
+async def run_shortcut(request: Request, shortcut_id: str):
+    """Run a shortcut command as a subprocess."""
+    path = _shortcuts_file(request)
+    shortcuts = _load_shortcuts(path)
+    sc = next((s for s in shortcuts if s["id"] == shortcut_id), None)
+    if not sc:
+        raise HTTPException(status_code=404, detail="Shortcut not found")
+
+    # Kill previous process for this shortcut if still running
+    existing = _shortcut_processes.get(shortcut_id)
+    if existing and existing.get("process") and existing["process"].returncode is None:
+        try:
+            existing["process"].kill()
+        except ProcessLookupError:
+            pass
+
+    # Start the subprocess
+    cwd = str(request.app.state.target_project)
+    proc = await asyncio.create_subprocess_shell(
+        sc["command"],
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        cwd=cwd,
+    )
+
+    proc_info = {
+        "process": proc,
+        "output": "",
+        "status": "running",
+        "exit_code": None,
+    }
+    _shortcut_processes[shortcut_id] = proc_info
+
+    # Background task to read output
+    async def _read_output():
+        try:
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                proc_info["output"] += line.decode("utf-8", errors="replace")
+                # Cap output at 500KB
+                if len(proc_info["output"]) > 500_000:
+                    proc_info["output"] = proc_info["output"][-400_000:]
+            await proc.wait()
+            proc_info["exit_code"] = proc.returncode
+            proc_info["status"] = "done" if proc.returncode == 0 else "failed"
+        except Exception as e:
+            proc_info["output"] += f"\n[Error reading output: {e}]"
+            proc_info["status"] = "failed"
+            proc_info["exit_code"] = -1
+
+    asyncio.create_task(_read_output())
+    return {"status": "started"}
+
+
+@router.get("/api/shortcuts/{shortcut_id}/output")
+async def get_shortcut_output(shortcut_id: str):
+    """Get current output and status of a running shortcut."""
+    proc_info = _shortcut_processes.get(shortcut_id)
+    if not proc_info:
+        return {"status": "idle", "output": "", "exit_code": None}
+    return {
+        "status": proc_info["status"],
+        "output": proc_info["output"],
+        "exit_code": proc_info["exit_code"],
+    }
 
 
 # --- WebSocket ---

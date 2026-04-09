@@ -1510,3 +1510,212 @@ a:focus {
         text-decoration-color: rgba(64, 156, 255, 0.3);
     }
 }
+
+/* ===== Shortcuts Bar ===== */
+.shortcuts-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-light);
+    gap: 8px;
+    min-height: 40px;
+}
+
+.shortcuts-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+}
+
+.shortcut-btn {
+    padding: 4px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.shortcut-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+}
+
+.shortcut-btn.shortcut-running {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+    animation: shortcut-pulse 1.5s ease-in-out infinite;
+}
+
+.shortcut-btn.shortcut-failed {
+    border-color: var(--danger);
+    color: var(--danger);
+    box-shadow: 0 0 0 1px var(--danger);
+}
+
+.shortcut-btn.shortcut-done {
+    border-color: var(--success, #4caf50);
+    color: var(--success, #4caf50);
+}
+
+@keyframes shortcut-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.shortcuts-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.shortcut-action-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.shortcut-action-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* Floating add button when bar is hidden */
+.shortcuts-add-floating {
+    position: fixed;
+    bottom: 12px;
+    right: 16px;
+    z-index: 89;
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: all 0.15s ease;
+}
+
+.shortcuts-add-floating:hover {
+    opacity: 1;
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+/* Progress dialog content */
+.shortcut-cmd-display {
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 6px 10px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-light);
+    margin-bottom: 8px;
+}
+
+.shortcut-status {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 4px 0;
+    margin-bottom: 8px;
+}
+
+.shortcut-status-running {
+    color: var(--accent);
+}
+
+.shortcut-status-failed {
+    color: var(--danger);
+}
+
+.shortcut-status-done {
+    color: var(--success, #4caf50);
+}
+
+.shortcut-output {
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 0;
+}
+
+/* Manage dialog */
+.shortcut-manage-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-light);
+    gap: 12px;
+}
+
+.shortcut-manage-row:last-child {
+    border-bottom: none;
+}
+
+.shortcut-manage-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.shortcut-manage-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.shortcut-manage-cmd {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: "SF Mono", "Fira Code", monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Adjust board layout when shortcuts bar is visible */
+body.has-shortcuts .board {
+    min-height: calc(100vh - 56px - 40px);
+}
+
+body.has-shortcuts .column {
+    max-height: calc(100vh - 80px - 40px);
+}

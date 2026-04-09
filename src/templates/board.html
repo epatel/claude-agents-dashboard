@@ -463,4 +463,61 @@
         <div class="search-results" id="search-results"></div>
     </div>
 </dialog>
+<!-- Shortcut Progress Dialog -->
+<dialog id="shortcut-progress-dialog" class="modal" style="width: min(700px, 90vw);">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="shortcut-progress-title">Shortcut</h3>
+            <button class="btn-close" onclick="Shortcuts.closeProgress()">&times;</button>
+        </div>
+        <div style="padding: 16px;">
+            <div id="shortcut-progress-command" class="shortcut-cmd-display"></div>
+            <div id="shortcut-progress-status" class="shortcut-status"></div>
+            <pre id="shortcut-progress-output" class="shortcut-output">(waiting for output...)</pre>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn" onclick="Shortcuts.closeProgress()">Close</button>
+        </div>
+    </div>
+</dialog>
+
+<!-- Shortcut Add Dialog -->
+<dialog id="shortcut-add-dialog" class="modal" style="width: min(450px, 85vw);">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Add Shortcut</h3>
+            <button class="btn-close" onclick="Shortcuts.closeAddDialog()">&times;</button>
+        </div>
+        <form onsubmit="Shortcuts.submitAdd(event)">
+            <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+                <div class="form-group">
+                    <label for="shortcut-add-name">Button Name</label>
+                    <input type="text" id="shortcut-add-name" required placeholder="e.g. Build" autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="shortcut-add-command">Command</label>
+                    <input type="text" id="shortcut-add-command" required placeholder="e.g. npm run build">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn" onclick="Shortcuts.closeAddDialog()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Add</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<!-- Shortcut Manage Dialog -->
+<dialog id="shortcut-manage-dialog" class="modal" style="width: min(500px, 85vw);">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Manage Shortcuts</h3>
+            <button class="btn-close" onclick="Shortcuts.closeManageDialog()">&times;</button>
+        </div>
+        <div id="shortcut-manage-list" style="padding: 16px; max-height: 400px; overflow-y: auto;"></div>
+        <div class="modal-footer">
+            <button type="button" class="btn" onclick="Shortcuts.closeManageDialog()">Close</button>
+        </div>
+    </div>
+</dialog>
 {% endblock %}

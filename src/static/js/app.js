@@ -140,6 +140,11 @@ const App = {
             this.cleanup();
         });
 
+        // Initialize shortcuts bar
+        if (typeof Shortcuts !== 'undefined') {
+            Shortcuts.init();
+        }
+
         // Connect WebSocket
         this.connectWS();
     },
