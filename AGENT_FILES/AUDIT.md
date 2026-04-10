@@ -1,7 +1,7 @@
 # Security Audit Report
 
 **Date**: 2026-04-10
-**Last updated**: 2026-04-10
+**Last updated**: 2026-04-10 (rev 2)
 **Scope**: Full codebase review of Claude Agents Dashboard
 **Threat model**: Localhost single-user developer tool. The server binds to `127.0.0.1` only, is operated by the local developer, and is not designed for network exposure or multi-user access.
 
@@ -9,9 +9,9 @@
 
 ## Executive Summary
 
-This audit identified **14 security findings** relevant to a localhost developer tool: 2 High, 5 Medium, and 7 Low/Info. Since the initial audit, **6 of 7 actionable findings have been remediated**, bringing the application's security posture from reasonable to **strong for its intended use case**.
+This audit identified **14 security findings** relevant to a localhost developer tool: 2 High, 5 Medium, and 7 Low/Info. Since the initial audit, **all 9 actionable findings have been remediated**, bringing the application's security posture to **strong for its intended use case**.
 
-The two original high-severity findings (command filter bypass and YOLO mode) have both been addressed with robust fixes. Four of five medium-severity findings have also been resolved. The remaining open items are low-severity or informational.
+The two original high-severity findings (command filter bypass and YOLO mode) have both been addressed with robust fixes. All five medium-severity findings have been resolved, including `.browserhidden` support for project-specific secret patterns. Two low-severity findings (epic color validation and security headers) have also been fixed. The remaining open items are informational or accepted-risk.
 
 Traditional web security concerns (authentication, CORS, rate limiting) are largely irrelevant since the server only listens on `127.0.0.1` for a single local user. This audit focuses on the risks that actually matter: **agent containment**, **file system boundary enforcement**, and **defensive coding practices**.
 
@@ -79,10 +79,15 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 ### 7. Secret File Detection Is Pattern-Based
 
 - **Severity**: Medium
-- **Status**: ⚠️ **OPEN** (accepted risk)
+- **Status**: ✅ **REMEDIATED**
 - **File**: `src/web/file_routes.py` (`is_secret_file()`)
-- **Description**: The file browser hides files matching known secret patterns (`.env`, `*.key`, `*.pem`, etc.). Files with non-standard names containing secrets (e.g., `credentials.yaml`, `my-tokens.txt`) are not detected and will be visible in the browser — and potentially included in agent context if attached to items.
-- **Recommendation**: This is a best-effort feature and the limitation is acceptable. Consider adding a `.browserhidden` config file for project-specific patterns, similar to `.gitignore`.
+- **Original issue**: The file browser hid files matching known secret patterns (`.env`, `*.key`, `*.pem`, etc.) but files with non-standard names containing secrets were not detected.
+- **Fix implemented**: A `.browserhidden` configuration file (similar to `.gitignore`) is now supported. Projects can define custom glob patterns in a `.browserhidden` file at the project root. The implementation includes:
+  - `parse_browserhidden()` parses the config file (comments with `#`, one pattern per line).
+  - `load_browserhidden_patterns()` caches parsed patterns with mtime-based invalidation.
+  - `matches_browserhidden()` matches filenames and relative paths against patterns.
+  - `is_secret_file()` checks both built-in patterns and `.browserhidden` patterns.
+  - Patterns are loaded and applied throughout the tree scanner, file content reader, and worktree file browser.
 
 ---
 
@@ -109,10 +114,10 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 ### 10. Epic Color Input Not Validated
 
 - **Severity**: Low
-- **Status**: ⚠️ **OPEN**
-- **Files**: `src/models.py`, `src/web/routes.py`
-- **Description**: `EpicCreate` accepts any `color: str` without validating against the `EPIC_COLORS` whitelist in `constants.py`. Since the local user is the only one creating epics, this is not exploitable — just a missing validation. Arbitrary color strings could cause UI rendering issues if they don't match the predefined theme variants.
-- **Recommendation**: Add a Pydantic validator against `EPIC_COLORS` keys (red, orange, amber, green, teal, blue, purple, pink) for completeness.
+- **Status**: ✅ **REMEDIATED**
+- **File**: `src/models.py`
+- **Original issue**: `EpicCreate` accepted any `color: str` without validating against the `EPIC_COLORS` whitelist.
+- **Fix implemented**: Both `EpicCreate` and `EpicUpdate` now have a `@field_validator("color")` that validates against `VALID_EPIC_COLOR_KEYS` (derived from `EPIC_COLORS` in `constants.py`). Invalid color values raise a `ValueError` listing the valid options (red, orange, amber, green, teal, blue, purple, pink).
 
 ### 11. WebSocket X-Forwarded-For Trusted Unconditionally
 
@@ -141,10 +146,12 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 ### 14. Missing Security Response Headers
 
 - **Severity**: Info
-- **Status**: ⚠️ **OPEN** (low priority)
+- **Status**: ✅ **REMEDIATED**
 - **File**: `src/web/app.py`
-- **Description**: No `X-Frame-Options`, `X-Content-Type-Options`, or `Content-Security-Policy` headers. For a localhost tool, the attack surface for clickjacking or MIME sniffing is minimal.
-- **Recommendation**: Low priority. Adding `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY` is trivial and good practice.
+- **Original issue**: No security response headers were set on HTTP responses.
+- **Fix implemented**: A `SecurityHeadersMiddleware` (Starlette `BaseHTTPMiddleware`) is registered on the app and sets two headers on every response:
+  - `X-Content-Type-Options: nosniff` — prevents MIME type sniffing.
+  - `X-Frame-Options: DENY` — prevents clickjacking via iframe embedding.
 
 ---
 
@@ -158,20 +165,20 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 | 4 | Unvalidated paths in diff generation | Medium | ✅ Fixed | Reading files outside worktree |
 | 5 | Dynamic SQL column names | Medium | ✅ Fixed | Fragile code pattern |
 | 6 | No CORS middleware | Medium | ✅ Fixed | Cross-origin attacks from websites |
-| 7 | Pattern-based secret detection | Medium | ⚠️ Open | Non-standard secrets visible |
+| 7 | Pattern-based secret detection | Medium | ✅ Fixed | Non-standard secrets visible |
 | 8 | Sensitive data in work log | Low | ⚠️ Open | Secrets persisted in database |
 | 9 | Unsanitized git output | Low | ⚠️ Open | Garbled display |
-| 10 | Epic color not validated | Low | ⚠️ Open | Missing input validation |
+| 10 | Epic color not validated | Low | ✅ Fixed | Missing input validation |
 | 11 | X-Forwarded-For trusted | Info | ⚠️ Open | N/A for localhost |
 | 12 | No authentication | Info | ⚠️ Open | By design for localhost |
 | 13 | HTTP only | Info | ⚠️ Open | By design for localhost |
-| 14 | Missing security headers | Info | ⚠️ Open | Minimal risk on localhost |
+| 14 | Missing security headers | Info | ✅ Fixed | Minimal risk on localhost |
 
 ---
 
 ## Remediation Progress
 
-**6 of 7 actionable findings fixed** (86% remediation rate):
+**9 of 9 actionable findings fixed** (100% remediation rate):
 
 | Priority | Finding | Status |
 |----------|---------|--------|
@@ -181,14 +188,9 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 | Consider | #3 Symlink skipping — symlinks displayed but not followed | ✅ Done |
 | Consider | #4 Diff path validation — validate_file_path() applied | ✅ Done |
 | Consider | #2 YOLO mode logging — command tagging + WebSocket events | ✅ Done |
-
-### Remaining Recommendations
-
-1. **Validate epic colors** (Finding #10): Add a Pydantic validator on `EpicCreate.color` against `EPIC_COLORS` keys. ~15 minutes.
-
-2. **Add security response headers** (Finding #14): Add `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY` middleware. ~15 minutes.
-
-3. **Consider `.browserhidden` config** (Finding #7): Allow project-specific secret file patterns beyond the built-in list. ~2 hours.
+| Consider | #7 `.browserhidden` config — project-specific secret patterns | ✅ Done |
+| Low | #10 Epic color validation — Pydantic field_validator on EpicCreate/EpicUpdate | ✅ Done |
+| Low | #14 Security headers — SecurityHeadersMiddleware (nosniff + DENY) | ✅ Done |
 
 ### Not Needed for Localhost
 
@@ -208,10 +210,13 @@ The codebase has several good security practices worth noting:
 - **Parameterized SQL values**: All user-supplied values in SQL queries use `?` placeholders — no string interpolation of values. Column names are now also validated against whitelists.
 - **Git operation timeouts**: Configurable timeouts prevent hung processes (300s default, 600s for merges).
 - **Worktree isolation**: Each agent gets its own git worktree, preventing agents from interfering with each other's work.
-- **Secret file hiding**: The file browser proactively hides common secret files (`.env`, keys, certificates).
+- **Secret file hiding**: The file browser proactively hides common secret files (`.env`, keys, certificates) and supports project-specific `.browserhidden` config files for custom patterns, with mtime-based caching for performance.
 - **Command access workflow**: The `request_command_access` MCP tool provides a controlled way for agents to ask permission for new commands, with user approval required.
 - **Tool filtering**: The `PreToolUse` hook architecture for both command filtering and built-in tool filtering is well-designed and extensible.
 - **Shell operator rejection**: The command filter comprehensively blocks shell metacharacters before checking allowed prefixes, using `shlex.split()` for robust parsing.
 - **CORS protection**: Localhost-only origin restriction prevents cross-origin attacks from malicious websites.
 - **YOLO mode visibility**: Even in unrestricted mode, all commands are logged and tagged for audit trail visibility.
 - **Symlink safety**: File browser displays symlinks as indicators without following them, preventing directory escape.
+- **Security response headers**: `SecurityHeadersMiddleware` adds `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY` to all responses.
+- **Input validation**: Epic colors are validated against a whitelist via Pydantic `field_validator`, preventing arbitrary input.
+- **Stale worktree detection**: Background periodic task detects and notifies about orphaned worktrees, with UI-driven cleanup actions.
