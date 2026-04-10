@@ -34,7 +34,7 @@ Your project must be a git repository. Requires Python 3.12+.
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 165 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 208 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -182,8 +182,8 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,492 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~6,972 lines JS + ~3,362 lines CSS
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,961 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~7,057 lines JS + ~3,436 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 7 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -500,7 +500,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 
 - `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `TESTING.md` — Detailed testing guide with test inventory (165 unit/integration tests + E2E tests), writing guidelines, and 12 database migrations
+- `TESTING.md` — Detailed testing guide with test inventory (208 unit/integration tests + E2E tests), writing guidelines, and 12 database migrations
 
 ## License
 

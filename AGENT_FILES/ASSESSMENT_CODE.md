@@ -2,13 +2,13 @@
 
 **Date**: 2026-04-10
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 24 — Maintenance reassessment with updated line counts. Updated workflow_service.py (1,010 lines), notification_service.py (118 lines), session_service.py (220 lines), routes.py (1,240 lines), session.py (545 lines), app.js (476 lines), shortcuts.js (429 lines). Updated totals: Python ~6,492 lines (48 files), JS ~6,972 lines (23 files), CSS ~3,362 lines. Database has 12 migrations. Test suite remains 165 tests.
+**Revision**: 25 — Maintenance reassessment with updated line counts. Updated workflow_service.py (1,140 lines), database_service.py (503 lines), routes.py (1,273 lines), file_routes.py (322 lines), web/app.py (128 lines), models.py (136 lines), command_filter.py (90 lines), operations.py (354 lines), board.js (985 lines), config-dialog.js (202 lines), notification-dialog.js (116 lines), file-browser.js (690 lines), style.css (1,763 lines), board.css (547 lines), file-browser.css (574 lines). Updated totals: Python ~6,961 lines (48 files), JS ~7,057 lines (23 files), CSS ~3,436 lines. Database has 12 migrations. Test suite grown to 208 tests (file_routes: 35→66, allowed_commands: 14→26).
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), and **dependency management endpoints** have been added. The test suite includes **165 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), and **dependency management endpoints** have been added. The test suite includes **208 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -113,8 +113,8 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 1,010 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, and auto-start of dependent items |
-| `services/database_service.py` | 482 | A | All DB operations extracted; parameterized queries throughout; item dependency management |
+| `services/workflow_service.py` | 1,140 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, and auto-start of dependent items |
+| `services/database_service.py` | 503 | A | All DB operations extracted; parameterized queries throughout; item dependency management |
 | `services/notification_service.py` | 118 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 105 | A | Git worktree and merge operations with proper error handling |
 | `services/session_service.py` | 220 | A | Session lifecycle, commit messages, plugin parsing |
@@ -126,11 +126,11 @@ graph TB
 | `main.py` | 107 | A | Clean entry point, proper git validation, port discovery |
 | `config.py` | 110 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
 | `constants.py` | 32 | A | Centralized `AVAILABLE_MODELS` dict, `DEFAULT_MODEL`, `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
-| `models.py` | 116 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
+| `models.py` | 136 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
-| `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
-| `web/routes.py` | 1,240 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations |
-| `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
+| `web/app.py` | 128 | A | Proper lifespan management, clean factory pattern, CORS middleware, security headers |
+| `web/routes.py` | 1,273 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations |
+| `web/file_routes.py` | 322 | A | File browser endpoints with path validation, secret hiding, .browserhidden support, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 123 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
 | `agent/session.py` | 545 | A- | Clean SDK wrapper; good token extraction with fallbacks |
@@ -138,12 +138,12 @@ graph TB
 | `agent/todo.py` | 147 | A | Clean MCP tool definition with epic and dependency support |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
 | `agent/command_access.py` | 42 | A | Clean MCP tool for runtime command approval |
-| `agent/command_filter.py` | 42 | A | PreToolUse hook for bash command filtering |
+| `agent/command_filter.py` | 90 | A | PreToolUse hook for bash command filtering with shell operator rejection and shlex parsing |
 | `agent/board_view.py` | 42 | A | Board introspection MCP tool |
 | `agent/tool_access.py` | 42 | A | Runtime tool access request MCP tool |
 | `agent/tool_filter.py` | 38 | A | PreToolUse hook for optional built-in tool filtering |
 | `agent/shortcut.py` | 54 | A | Create shortcut MCP tool for agents to add bash command shortcuts to the board |
-| `git/operations.py` | 339 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
+| `git/operations.py` | 354 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
 | `git/worktree.py` | 73 | A | Simple and correct; returns base branch for tracking |
 | `migrations/runner.py` | 198 | A- | Solid migration system; class discovery uses string comparison (justified) |
 | `migrations/migration.py` | 28 | A | Clean base class |
@@ -164,23 +164,23 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
-| `app.js` | 476 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
-| `board.js` | 948 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
+| `app.js` | 479 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
+| `board.js` | 985 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
 | `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 12 specialized modules |
 | `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
 | `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
 | `item-dialog.js` | 491 | A- | New/edit item forms with attachment handling, epic assignment, dependency selection, auto-start toggle |
 | `detail-dialog.js` | 241 | A- | Item detail view with tabbed interface |
 | `review-dialog.js` | 1013 | A | Review dialog with diff viewer, work log, and tabbed interface |
-| `config-dialog.js` | 189 | A | Agent configuration (system prompt, MCP, plugins) |
+| `config-dialog.js` | 202 | A | Agent configuration (system prompt, MCP, plugins) |
 | `clarification-dialog.js` | 208 | A | Clean clarification prompt/response UI |
-| `notification-dialog.js` | 103 | A | System notification display, bell icon, badge counter |
+| `notification-dialog.js` | 116 | A | System notification display, bell icon, badge counter |
 | `search-dialog.js` | 246 | A | Spotlight-style search across items and work logs |
 | `request-changes-dialog.js` | 24 | A | Focused request-changes form |
 | `attachments.js` | 43 | A | Attachment viewing and deletion |
 | `annotation-canvas.js` | 97 | A | Canvas annotation integration bridge |
 | `annotate.js` | 1,150 | A- | Self-contained canvas component with freehand drawing, fill colors, on-image toggle |
-| `file-browser.js` | 671 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering, refresh |
+| `file-browser.js` | 690 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering, refresh |
 | `shortcuts.js` | 429 | A | Quick-launch bash command bar with process management, streaming output, stop (preserves log), reset, auto-reset mode, progress dialog |
 | `api.js` | 102 | A | Clean HTTP helpers |
 | `diff.js` | 62 | A- | Functional diff viewer |
@@ -192,13 +192,13 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `style.css` | 1,721 | A- | Main styles with CSS variables |
-| `board.css` | 526 | A | Board layout, card styles, Done day grouping with collapsible sections |
+| `style.css` | 1,763 | A- | Main styles with CSS variables |
+| `board.css` | 547 | A | Board layout, card styles, Done day grouping with collapsible sections |
 | `dialog.css` | 451 | A | Dialog component styles |
-| `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
+| `file-browser.css` | 574 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 101 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~3,362 lines across 5 modules.
+**Note**: CSS total is ~3,436 lines across 5 modules.
 
 ---
 
@@ -316,7 +316,7 @@ stateDiagram-v2
 | 10 | No WebSocket rate limiting | ✅ Per-IP rate limiting with concurrent connection limits and windowed attempt tracking |
 | 11 | No request timeout for blocking operations | ✅ `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT` on approve route |
 | 12 | Migration class discovery uses string comparison | ✅ Justified — `issubclass` fails with dynamic module loading |
-| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (890), DatabaseService (468), NotificationService (107), GitService (94), SessionService (218). Orchestrator now 122-line facade |
+| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (1,140), DatabaseService (503), NotificationService (118), GitService (105), SessionService (220). Orchestrator now 123-line facade |
 | 14 | `dialogs.js` too large (801 lines) | ✅ Split into 12 specialized modules with coordinator pattern. Largest module is `search-dialog.js` at 246 lines |
 
 ### Remaining Issues
@@ -337,15 +337,15 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 165 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 12 migrations.
+**Current state**: 208 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 12 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
 | `tests/smoke/test_basic_functionality.py` | Smoke | 12 | Imports, DB basics, config |
 | `tests/unit/test_path_validation.py` | Unit | 14 | Path traversal prevention |
 | `tests/unit/test_git_timeout.py` | Unit | 5 | Git operation timeout behavior |
-| `tests/unit/test_file_routes.py` | Unit | 35 | File browser path validation, secret detection, language mapping, directory scanning, file content reading |
-| `tests/unit/test_allowed_commands.py` | Unit | 14 | Command filter hook, command access MCP tool, permission persistence, YOLO mode |
+| `tests/unit/test_file_routes.py` | Unit | 66 | File browser path validation, secret detection, .browserhidden, language mapping, directory scanning, file content reading |
+| `tests/unit/test_allowed_commands.py` | Unit | 26 | Command filter hook, shell operator rejection, command access MCP tool, permission persistence, YOLO mode |
 | `tests/unit/test_diff_mixing.py` | Unit | 6 | Diff isolation between items, concurrent diffs, base commit pinning |
 | `tests/unit/test_mini_mcp.py` | Unit | 11 | Mini-MCP server stdio protocol, JSON-RPC messages, tool invocation |
 | `tests/unit/migrations/test_migration_runner.py` | Unit | 14 | Migration engine |
@@ -434,12 +434,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 48 | ~6,492 |
-| JavaScript frontend | 23 | ~6,972 |
-| CSS styles | 5 | ~3,362 |
+| Python backend (src/) | 48 | ~6,961 |
+| JavaScript frontend | 23 | ~7,057 |
+| CSS styles | 5 | ~3,436 |
 | HTML templates | 3 | ~746 |
-| Tests | 14 | ~3,326 |
-| **Grand total** | **93** | **~20,898** |
+| Tests | 14 | ~3,491 |
+| **Grand total** | **93** | **~21,691** |
 
 ---
 
