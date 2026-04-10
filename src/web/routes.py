@@ -819,6 +819,13 @@ async def get_available_tools():
     return OPTIONAL_BUILTIN_TOOLS
 
 
+@router.get("/api/yolo-items")
+async def get_yolo_items(request: Request):
+    """Return item IDs currently running in YOLO mode."""
+    orchestrator = request.app.state.orchestrator
+    return list(orchestrator.workflow._yolo_items)
+
+
 # --- Attachments ---
 
 @router.get("/api/items/{item_id}/attachments")

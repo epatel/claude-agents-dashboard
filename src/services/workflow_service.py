@@ -34,6 +34,9 @@ class WorkflowService:
         # Merge conflict retry counters (in-memory, per item_id)
         self._merge_retries: Dict[str, int] = {}
 
+        # Track which items are running with YOLO mode (bash_yolo=True)
+        self._yolo_items: set = set()
+
     async def start_agent(self, item_id: str) -> Dict[str, Any]:
         """Start an agent for an item. Creates worktree, launches agent."""
         # Clean up any existing session for this item
@@ -65,6 +68,18 @@ class WorkflowService:
         await self.notifications.broadcast_item_updated(item)
 
         await self._log_and_notify(item_id, "system", "Agent started")
+
+        # Track YOLO mode for this item
+        is_yolo = config.get("bash_yolo", False)
+        if is_yolo:
+            self._yolo_items.add(item_id)
+            await self._log_and_notify(item_id, "yolo_command",
+                "⚠️ **YOLO mode active** — all bash commands bypass permission checks")
+            await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
+                "item_id": item_id, "active": True,
+            })
+        else:
+            self._yolo_items.discard(item_id)
 
         # Create session
         model = item.get("model") or config.get("model")
@@ -117,6 +132,13 @@ class WorkflowService:
         """Cancel a running agent."""
         await self.sessions.cleanup_session(item_id)
 
+        # Clean up YOLO tracking
+        if item_id in self._yolo_items:
+            self._yolo_items.discard(item_id)
+            await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
+                "item_id": item_id, "active": False,
+            })
+
         await self._log_and_notify(item_id, "system", "Agent cancelled by user")
         item = await self.db.update_item(item_id, column_name="todo", status="cancelled")
         await self.notifications.broadcast_item_updated(item)
@@ -149,6 +171,16 @@ class WorkflowService:
 
         config = await self.db.get_agent_config()
         worktree_path = Path(item["worktree_path"])
+
+        # Track YOLO mode for resumed agent
+        is_yolo = config.get("bash_yolo", False)
+        if is_yolo:
+            self._yolo_items.add(item_id)
+            await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
+                "item_id": item_id, "active": True,
+            })
+        else:
+            self._yolo_items.discard(item_id)
 
         item = await self.db.update_item(item_id, status="running")
         await self.notifications.broadcast_item_updated(item)
@@ -207,6 +239,16 @@ class WorkflowService:
         item = await self.db.get_item(item_id)
         config = await self.db.get_agent_config()
         worktree_path = Path(item["worktree_path"])
+
+        # Track YOLO mode for retried agent
+        is_yolo = config.get("bash_yolo", False)
+        if is_yolo:
+            self._yolo_items.add(item_id)
+            await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
+                "item_id": item_id, "active": True,
+            })
+        else:
+            self._yolo_items.discard(item_id)
 
         # Update item state
         item = await self.db.update_item(item_id, column_name="doing", status="running")
@@ -509,6 +551,16 @@ class WorkflowService:
         config = await self.db.get_agent_config()
         worktree_path = Path(item["worktree_path"])
 
+        # Track YOLO mode
+        is_yolo = config.get("bash_yolo", False)
+        if is_yolo:
+            self._yolo_items.add(item_id)
+            await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
+                "item_id": item_id, "active": True,
+            })
+        else:
+            self._yolo_items.discard(item_id)
+
         session = await self.sessions.create_session(
             item_id, worktree_path, config,
             on_message=self._create_on_message_callback(item_id),
@@ -598,7 +650,13 @@ class WorkflowService:
     def _create_on_tool_use_callback(self, item_id: str):
         async def on_tool_use(name: str, inp: Dict[str, Any]):
             formatted = self.notifications.format_tool_use(name, inp)
-            await self._log_and_notify(item_id, "tool_use", formatted, json.dumps(inp))
+            # Tag Bash commands with yolo_command entry type when YOLO mode is active
+            if name == "Bash" and item_id in self._yolo_items:
+                entry_type = "yolo_command"
+                formatted = f"⚡ {formatted}"
+            else:
+                entry_type = "tool_use"
+            await self._log_and_notify(item_id, entry_type, formatted, json.dumps(inp))
         return on_tool_use
 
     def _create_on_thinking_callback(self, item_id: str):
@@ -639,6 +697,12 @@ class WorkflowService:
 
             # Remove finished session from tracking so it no longer counts as active
             self.sessions.remove_session(item_id)
+            # Clean up YOLO tracking
+            if item_id in self._yolo_items:
+                self._yolo_items.discard(item_id)
+                await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
+                    "item_id": item_id, "active": False,
+                })
 
         return on_complete
 
@@ -650,6 +714,12 @@ class WorkflowService:
             self._add_failure_notification(item_id, error)
             # Remove finished session from tracking so it no longer counts as active
             self.sessions.remove_session(item_id)
+            # Clean up YOLO tracking
+            if item_id in self._yolo_items:
+                self._yolo_items.discard(item_id)
+                await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
+                    "item_id": item_id, "active": False,
+                })
         return on_error
 
     def _add_failure_notification(self, item_id: str, error: str):
