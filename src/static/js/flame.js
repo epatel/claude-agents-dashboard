@@ -138,15 +138,27 @@ const Flame = {
     _newParticle(randomY) {
         const w = this.canvas ? this.canvas.width : 800;
         const h = this.canvas ? this.canvas.height : 600;
+        // Plasma palette: electric blue, cyan, purple, magenta
+        const palettes = [
+            { hue: 200 + Math.random() * 20, sat: 90 + Math.random() * 10 },   // electric blue
+            { hue: 175 + Math.random() * 15, sat: 85 + Math.random() * 15 },   // cyan
+            { hue: 260 + Math.random() * 30, sat: 80 + Math.random() * 20 },   // purple
+            { hue: 290 + Math.random() * 20, sat: 85 + Math.random() * 15 },   // magenta
+            { hue: 220 + Math.random() * 10, sat: 95 + Math.random() * 5 },    // bright blue core
+        ];
+        const pal = palettes[Math.floor(Math.random() * palettes.length)];
         return {
             x: Math.random() * w,
             y: randomY ? Math.random() * h : h + Math.random() * 40,
-            vx: (Math.random() - 0.5) * 0.8,
-            vy: -(0.5 + Math.random() * 1.5),
-            size: 20 + Math.random() * 50,
+            vx: (Math.random() - 0.5) * 1.2,
+            vy: -(0.4 + Math.random() * 1.8),
+            size: 15 + Math.random() * 55,
             life: 0,
-            maxLife: 80 + Math.random() * 120,
-            hue: Math.random() < 0.6 ? 20 + Math.random() * 20 : 5 + Math.random() * 10,  // orange or red
+            maxLife: 60 + Math.random() * 140,
+            hue: pal.hue,
+            sat: pal.sat,
+            phase: Math.random() * Math.PI * 2,  // unique wobble phase
+            pulseRate: 0.8 + Math.random() * 1.5, // pulsing speed
         };
     },
 
@@ -179,25 +191,34 @@ const Flame = {
             return;
         }
 
-        // Draw glow at the bottom
-        const glowGrad = ctx.createLinearGradient(0, h, 0, h * 0.3);
-        glowGrad.addColorStop(0, `hsla(20, 100%, 50%, ${intensity * 0.15})`);
-        glowGrad.addColorStop(0.4, `hsla(30, 100%, 50%, ${intensity * 0.06})`);
-        glowGrad.addColorStop(1, `hsla(0, 100%, 50%, 0)`);
+        // Draw plasma glow at the bottom
+        const glowGrad = ctx.createLinearGradient(0, h, 0, h * 0.25);
+        glowGrad.addColorStop(0, `hsla(210, 100%, 60%, ${intensity * 0.18})`);
+        glowGrad.addColorStop(0.3, `hsla(260, 90%, 50%, ${intensity * 0.08})`);
+        glowGrad.addColorStop(0.6, `hsla(200, 100%, 50%, ${intensity * 0.03})`);
+        glowGrad.addColorStop(1, `hsla(270, 100%, 50%, 0)`);
         ctx.fillStyle = glowGrad;
         ctx.fillRect(0, 0, w, h);
 
-        // Update and draw particles
+        // Update and draw plasma particles
         const speed = 0.3 + intensity * 0.7;
-        const particleAlpha = intensity * 0.7;
+        const particleAlpha = intensity * 0.75;
+
+        // Use additive blending for plasma glow effect
+        ctx.globalCompositeOperation = 'lighter';
 
         for (let i = this._particles.length - 1; i >= 0; i--) {
             const p = this._particles[i];
             p.life++;
             p.x += p.vx * speed;
             p.y += p.vy * speed;
-            // Slight wobble
-            p.x += Math.sin(time * 0.002 + i) * 0.3;
+
+            // Electric wobble — more erratic than fire
+            const wobbleX = Math.sin(time * 0.003 + p.phase) * 0.5
+                          + Math.sin(time * 0.007 + p.phase * 2.3) * 0.3;
+            const wobbleY = Math.cos(time * 0.004 + p.phase * 1.7) * 0.2;
+            p.x += wobbleX;
+            p.y += wobbleY;
 
             if (p.life > p.maxLife || p.y < -p.size) {
                 this._particles[i] = this._newParticle(false);
@@ -205,19 +226,29 @@ const Flame = {
             }
 
             const lifeRatio = p.life / p.maxLife;
-            const alpha = particleAlpha * Math.sin(lifeRatio * Math.PI) * 0.6;
+            // Pulsing alpha for electric flicker
+            const pulse = 0.7 + 0.3 * Math.sin(time * 0.005 * p.pulseRate + p.phase);
+            const alpha = particleAlpha * Math.sin(lifeRatio * Math.PI) * 0.55 * pulse;
             if (alpha < 0.005) continue;
 
-            const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * (0.5 + intensity * 0.5));
-            grad.addColorStop(0, `hsla(${p.hue + lifeRatio * 20}, 100%, ${55 + lifeRatio * 15}%, ${alpha})`);
-            grad.addColorStop(0.4, `hsla(${p.hue + 10}, 100%, 50%, ${alpha * 0.4})`);
-            grad.addColorStop(1, `hsla(${p.hue}, 100%, 30%, 0)`);
+            const sat = p.sat || 100;
+            const radius = p.size * (0.4 + intensity * 0.6);
+
+            // Plasma particle: bright white-blue core fading to colored edge
+            const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+            grad.addColorStop(0, `hsla(${p.hue + 20}, ${sat}%, ${75 + lifeRatio * 10}%, ${alpha})`);
+            grad.addColorStop(0.25, `hsla(${p.hue + 10}, ${sat}%, 60%, ${alpha * 0.6})`);
+            grad.addColorStop(0.6, `hsla(${p.hue - 10}, ${sat - 10}%, 45%, ${alpha * 0.25})`);
+            grad.addColorStop(1, `hsla(${p.hue - 20}, ${sat - 20}%, 30%, 0)`);
 
             ctx.fillStyle = grad;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size * (0.5 + intensity * 0.5), 0, Math.PI * 2);
+            ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
             ctx.fill();
         }
+
+        // Reset composite operation
+        ctx.globalCompositeOperation = 'source-over';
 
         this._raf = requestAnimationFrame((t) => this._loop(t));
     },
