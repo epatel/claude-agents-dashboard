@@ -113,6 +113,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Auto-start pipelines** — items with `auto_start` enabled automatically launch an agent when all their dependency items are completed, enabling pipeline-style workflows
 - **Search** — spotlight-style search dialog (Cmd/Ctrl+K) to find items across all columns and search work log entries
 - **Archive cleanup** — archiving items automatically cleans up their worktree and session resources
+- **Shortcut creation** — agents can add quick-launch bash command shortcuts to the board via the `create_shortcut` MCP tool (e.g., test runners, build commands)
 - **Shortcuts bar** — quick-launch bash commands from a bar at the bottom of the board; commands run as subprocesses with streaming output, stop (preserves output log), reset, auto-reset mode, and cleanup
 - **Worktree file browser** — browse an agent's worktree files during review via a tree view within the review dialog
 - **Retry merge** — re-attempt a failed merge without restarting the agent
@@ -151,6 +152,7 @@ graph TB
         CmdAccess["request_command_access"]
         BoardView["view_board"]
         ToolAccess["request_tool_access"]
+        ShortcutTool["create_shortcut"]
     end
 
     subgraph GitLayer["Git Layer"]
@@ -172,6 +174,7 @@ graph TB
     Sess -->|"Claude Agent SDK"| Ask
     Sess --> TodoTool
     Sess --> CommitTool
+    Sess --> ShortcutTool
     DB -->|SQLite| DB
     GS --> GitOps
     GS --> WT
@@ -179,9 +182,9 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,373 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~6,904 lines JS + ~3,356 lines CSS
-- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 6 built-in MCP tools
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,492 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~6,972 lines JS + ~3,362 lines CSS
+- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 7 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
 

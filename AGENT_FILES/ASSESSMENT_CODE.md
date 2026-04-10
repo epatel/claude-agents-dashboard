@@ -1,14 +1,14 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-04-09
+**Date**: 2026-04-10
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 23 — Maintenance reassessment with updated line counts. Updated routes.py (1,220 lines) with new shortcut stop endpoint. Updated shortcuts.js (366 lines) with stop/auto-reset/progress dialog improvements. Updated totals: Python ~6,373 lines, JS ~6,904 lines (23 files), CSS ~3,356 lines. Database has 12 migrations. Test suite remains 165 tests.
+**Revision**: 24 — Maintenance reassessment with updated line counts. Updated workflow_service.py (1,010 lines), notification_service.py (118 lines), session_service.py (220 lines), routes.py (1,240 lines), session.py (545 lines), app.js (476 lines), shortcuts.js (429 lines). Updated totals: Python ~6,492 lines (48 files), JS ~6,972 lines (23 files), CSS ~3,362 lines. Database has 12 migrations. Test suite remains 165 tests.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), and **dependency management endpoints** have been added. The test suite includes **165 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), and **dependency management endpoints** have been added. The test suite includes **165 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -51,6 +51,7 @@ graph TB
         CmdAccess[request_command_access<br/>command_access.py]
         BoardView[view_board<br/>board_view.py]
         ToolAccess[request_tool_access<br/>tool_access.py]
+        Shortcut[create_shortcut<br/>shortcut.py]
     end
 
     subgraph Git["Git Layer"]
@@ -112,11 +113,11 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 979 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, and auto-start of dependent items |
+| `services/workflow_service.py` | 1,010 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, and auto-start of dependent items |
 | `services/database_service.py` | 482 | A | All DB operations extracted; parameterized queries throughout; item dependency management |
-| `services/notification_service.py` | 114 | A | WebSocket broadcasting + tool formatting; clean separation |
+| `services/notification_service.py` | 118 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 105 | A | Git worktree and merge operations with proper error handling |
-| `services/session_service.py` | 218 | A | Session lifecycle, commit messages, plugin parsing |
+| `services/session_service.py` | 220 | A | Session lifecycle, commit messages, plugin parsing |
 
 ### Backend Python — Core
 
@@ -128,11 +129,11 @@ graph TB
 | `models.py` | 116 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 49 | A | Proper lifespan management, clean factory pattern |
-| `web/routes.py` | 1,220 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations |
+| `web/routes.py` | 1,240 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations |
 | `web/file_routes.py` | 199 | A | File browser endpoints with path validation, secret hiding, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
-| `agent/orchestrator.py` | 122 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
-| `agent/session.py` | 538 | A- | Clean SDK wrapper; good token extraction with fallbacks |
+| `agent/orchestrator.py` | 123 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
+| `agent/session.py` | 545 | A- | Clean SDK wrapper; good token extraction with fallbacks |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
 | `agent/todo.py` | 147 | A | Clean MCP tool definition with epic and dependency support |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
@@ -141,6 +142,7 @@ graph TB
 | `agent/board_view.py` | 42 | A | Board introspection MCP tool |
 | `agent/tool_access.py` | 42 | A | Runtime tool access request MCP tool |
 | `agent/tool_filter.py` | 38 | A | PreToolUse hook for optional built-in tool filtering |
+| `agent/shortcut.py` | 54 | A | Create shortcut MCP tool for agents to add bash command shortcuts to the board |
 | `git/operations.py` | 339 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
 | `git/worktree.py` | 73 | A | Simple and correct; returns base branch for tracking |
 | `migrations/runner.py` | 198 | A- | Solid migration system; class discovery uses string comparison (justified) |
@@ -162,7 +164,7 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
-| `app.js` | 471 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
+| `app.js` | 476 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
 | `board.js` | 948 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
 | `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 12 specialized modules |
 | `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
@@ -179,7 +181,7 @@ graph TB
 | `annotation-canvas.js` | 97 | A | Canvas annotation integration bridge |
 | `annotate.js` | 1,150 | A- | Self-contained canvas component with freehand drawing, fill colors, on-image toggle |
 | `file-browser.js` | 671 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering, refresh |
-| `shortcuts.js` | 366 | A | Quick-launch bash command bar with process management, streaming output, stop (preserves log), reset, auto-reset mode, progress dialog |
+| `shortcuts.js` | 429 | A | Quick-launch bash command bar with process management, streaming output, stop (preserves log), reset, auto-reset mode, progress dialog |
 | `api.js` | 102 | A | Clean HTTP helpers |
 | `diff.js` | 62 | A- | Functional diff viewer |
 | `theme.js` | 24 | A | Simple, correct theme toggle |
@@ -196,7 +198,7 @@ graph TB
 | `file-browser.css` | 557 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 101 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~3,356 lines across 5 modules (526+451+557+1721+101).
+**Note**: CSS total is ~3,362 lines across 5 modules.
 
 ---
 
@@ -424,6 +426,7 @@ graph LR
 33. **Worktree file browsing**: Review dialog can browse the agent's worktree directory tree and file contents, reusing the same security infrastructure as the project file browser
 34. **Bulk operations**: Archive or delete items by date or by epic via dedicated endpoints, reducing manual cleanup effort for large boards
 35. **Retry merge**: Re-attempt a failed merge without restarting the agent — preserves the agent's work and avoids unnecessary re-runs
+36. **Create shortcut MCP tool**: Agents can add quick-launch bash command shortcuts to the board's shortcut bar via `create_shortcut` MCP tool — useful for setting up project-specific commands (test runners, build commands, linters) as part of task completion
 
 ---
 
@@ -431,12 +434,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 47 | ~6,373 |
-| JavaScript frontend | 23 | ~6,904 |
-| CSS styles | 5 | ~3,356 |
-| HTML templates | 3 | ~718 |
+| Python backend (src/) | 48 | ~6,492 |
+| JavaScript frontend | 23 | ~6,972 |
+| CSS styles | 5 | ~3,362 |
+| HTML templates | 3 | ~746 |
 | Tests | 14 | ~3,326 |
-| **Grand total** | **92** | **~20,677** |
+| **Grand total** | **93** | **~20,898** |
 
 ---
 
