@@ -1,10 +1,11 @@
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..config import TEMPLATES_DIR, STATIC_DIR, DEFAULT_HOST, DEFAULT_PORT, MAX_PORT_TRIES
 from ..database import Database
@@ -36,8 +37,21 @@ def _build_cors_origins() -> list[str]:
     return origins
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security response headers to all HTTP responses."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        return response
+
+
 def create_app(target_project: Path, data_dir: Path) -> FastAPI:
     app = FastAPI(title="Agents Dashboard", lifespan=lifespan)
+
+    # Security headers (X-Content-Type-Options, X-Frame-Options)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # Restrict cross-origin requests to localhost only.
     # Even though this runs locally, a malicious website in another tab
