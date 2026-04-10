@@ -118,12 +118,18 @@ async def get_diff(repo: Path, branch: str, base: str | None = None,
                 if not f.strip():
                     continue
                 try:
-                    content = await asyncio.to_thread((worktree_path / f).read_text)
-                    new_files_diff += f"diff --git a/{f} b/{f}\nnew file mode 100644\n--- /dev/null\n+++ b/{f}\n"
+                    # Validate filename to prevent path traversal
+                    validated = validate_file_path(f.strip())
+                    full_path = (worktree_path / validated).resolve()
+                    # Ensure resolved path is within the worktree
+                    if not str(full_path).startswith(str(worktree_path.resolve()) + os.sep) and full_path != worktree_path.resolve():
+                        continue
+                    content = await asyncio.to_thread(full_path.read_text)
+                    new_files_diff += f"diff --git a/{validated} b/{validated}\nnew file mode 100644\n--- /dev/null\n+++ b/{validated}\n"
                     lines = content.split("\n")
                     new_files_diff += f"@@ -0,0 +1,{len(lines)} @@\n"
                     new_files_diff += "\n".join(f"+{line}" for line in lines) + "\n"
-                except Exception:
+                except (ValueError, Exception):
                     pass
         except subprocess.CalledProcessError:
             pass
@@ -181,8 +187,17 @@ async def get_changed_files(repo: Path, branch: str, base: str | None = None,
         try:
             untracked = await run_git(worktree_path, "ls-files", "--others", "--exclude-standard")
             for f in untracked.split("\n"):
-                if f.strip():
-                    files[f] = "A"
+                if not f.strip():
+                    continue
+                try:
+                    validated = validate_file_path(f.strip())
+                    full_path = (worktree_path / validated).resolve()
+                    # Ensure resolved path is within the worktree
+                    if not str(full_path).startswith(str(worktree_path.resolve()) + os.sep) and full_path != worktree_path.resolve():
+                        continue
+                    files[validated] = "A"
+                except ValueError:
+                    pass
         except subprocess.CalledProcessError:
             pass
 
