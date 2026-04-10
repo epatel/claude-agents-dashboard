@@ -12,6 +12,19 @@ from ..models import new_id
 
 logger = logging.getLogger(__name__)
 
+# Whitelist of columns that may be set via update_item()
+ALLOWED_ITEM_COLUMNS = {
+    "title", "description", "column_name", "status", "position",
+    "branch_name", "worktree_path", "session_id", "model",
+    "base_branch", "base_commit", "done_at", "epic_id",
+    "merge_commit", "auto_start", "commit_message",
+}
+
+# Whitelist of columns that may be set via update_epic()
+ALLOWED_EPIC_COLUMNS = {
+    "title", "color", "position",
+}
+
 
 class DatabaseService:
     """Handles all database operations for items, logs, and related data."""
@@ -49,6 +62,10 @@ class DatabaseService:
 
     async def update_item(self, item_id: str, **kwargs) -> Dict[str, Any]:
         """Update an item with the given fields."""
+        invalid_keys = set(kwargs) - ALLOWED_ITEM_COLUMNS
+        if invalid_keys:
+            raise ValueError(f"Invalid item column(s): {invalid_keys}")
+
         async with self.db.connect() as conn:
             # If column_name is being changed, assign next position in target column
             if "column_name" in kwargs and "position" not in kwargs:
@@ -329,6 +346,10 @@ class DatabaseService:
 
     async def update_epic(self, epic_id: str, **kwargs) -> Optional[Dict[str, Any]]:
         """Update an epic's fields."""
+        invalid_keys = set(kwargs) - ALLOWED_EPIC_COLUMNS
+        if invalid_keys:
+            raise ValueError(f"Invalid epic column(s): {invalid_keys}")
+
         async with self.db.connect() as conn:
             updates = []
             values = []
