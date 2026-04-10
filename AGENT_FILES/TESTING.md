@@ -3,7 +3,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 165 tests
+./run-tests.sh              # Run all 208 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -24,8 +24,8 @@ tests/
 │   │   └── test_migration_edge_cases.py # Edge cases, discovery (14 tests)
 │   ├── test_path_validation.py         # Path traversal prevention (14 tests)
 │   ├── test_git_timeout.py            # Git timeout handling (5 tests)
-│   ├── test_file_routes.py            # File browser routes (35 tests)
-│   ├── test_allowed_commands.py       # Command filter + access MCP (14 tests)
+│   ├── test_file_routes.py            # File browser routes (66 tests)
+│   ├── test_allowed_commands.py       # Command filter + access MCP (26 tests)
 │   ├── test_diff_mixing.py           # Diff isolation between items (6 tests)
 │   ├── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
 │   ├── test_epics.py               # Epic CRUD, progress, assignment (19 tests)
@@ -65,7 +65,7 @@ Tests timeout handling in git operations:
 - Merge-specific timeout
 - Timeout abort and recovery
 
-### Unit Tests — File Browser Routes (35 tests)
+### Unit Tests — File Browser Routes (66 tests)
 Tests `file_routes.py` endpoints:
 - Path validation and security (traversal, symlinks, null bytes)
 - Secret file detection and hiding
@@ -73,7 +73,7 @@ Tests `file_routes.py` endpoints:
 - Directory tree scanning with depth limits
 - File content reading (text, binary, images)
 
-### Unit Tests — Allowed Commands (14 tests)
+### Unit Tests — Allowed Commands (26 tests)
 Tests command filtering and runtime access:
 - Command filter hook: allow/deny bash commands by first-word prefix
 - Non-bash tools pass through without filtering
