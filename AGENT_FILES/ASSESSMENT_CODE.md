@@ -2,13 +2,13 @@
 
 **Date**: 2026-04-10
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 25 — Maintenance reassessment with updated line counts. Updated workflow_service.py (1,140 lines), database_service.py (503 lines), routes.py (1,273 lines), file_routes.py (322 lines), web/app.py (128 lines), models.py (136 lines), command_filter.py (90 lines), operations.py (354 lines), board.js (985 lines), config-dialog.js (202 lines), notification-dialog.js (116 lines), file-browser.js (690 lines), style.css (1,763 lines), board.css (547 lines), file-browser.css (574 lines). Updated totals: Python ~6,961 lines (48 files), JS ~7,057 lines (23 files), CSS ~3,436 lines. Database has 12 migrations. Test suite grown to 208 tests (file_routes: 35→66, allowed_commands: 14→26).
+**Revision**: 26 — Maintenance reassessment. Added flame background feature (migration 013_add_flame_settings, flame.js). Updated totals: Python ~7,005 lines, JS ~7,313 lines (24 files), CSS ~3,449 lines. Database has 13 migrations. Test suite grown to 213 tests.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), and **dependency management endpoints** have been added. The test suite includes **208 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), **dependency management endpoints**, and **animated flame background** (migration 013 — activity-driven flame effect behind board columns) have been added. The test suite includes **213 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -159,6 +159,7 @@ graph TB
 | `migrations/versions/010_add_epics.py` | 39 | A | Creates `epics` table and adds `epic_id` FK to items |
 | `migrations/versions/011_add_item_dependencies.py` | 32 | A | Creates `item_dependencies` join table for dependency tracking |
 | `migrations/versions/012_add_auto_start.py` | 38 | A | Adds `auto_start` column to items for automatic agent start on dependency resolution |
+| `migrations/versions/013_add_flame_settings.py` | ~30 | A | Adds `flame_enabled` setting to agent_config for animated flame background |
 
 ### Frontend JavaScript
 
@@ -187,6 +188,7 @@ graph TB
 | `theme.js` | 24 | A | Simple, correct theme toggle |
 | `stats.js` | 184 | A- | Good auto-refresh and WebSocket update pattern |
 | `sound.js` | 76 | A | Notification sound effects for agent events |
+| `flame.js` | ~256 | A | Animated flame background with activity-driven intensity behind board columns |
 
 ### Frontend CSS
 
@@ -198,7 +200,7 @@ graph TB
 | `file-browser.css` | 574 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 101 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~3,436 lines across 5 modules.
+**Note**: CSS total is ~3,449 lines across 5 modules.
 
 ---
 
@@ -337,7 +339,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 208 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 12 migrations.
+**Current state**: 213 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 13 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -427,6 +429,7 @@ graph LR
 34. **Bulk operations**: Archive or delete items by date or by epic via dedicated endpoints, reducing manual cleanup effort for large boards
 35. **Retry merge**: Re-attempt a failed merge without restarting the agent — preserves the agent's work and avoids unnecessary re-runs
 36. **Create shortcut MCP tool**: Agents can add quick-launch bash command shortcuts to the board's shortcut bar via `create_shortcut` MCP tool — useful for setting up project-specific commands (test runners, build commands, linters) as part of task completion
+37. **Animated flame background**: Optional animated flame effect behind board columns with activity-driven intensity — configurable via `flame_enabled` in agent_config (migration 013), adds visual feedback for active agent work
 
 ---
 
@@ -434,12 +437,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 48 | ~6,961 |
-| JavaScript frontend | 23 | ~7,057 |
-| CSS styles | 5 | ~3,436 |
+| Python backend (src/) | 48 | ~7,005 |
+| JavaScript frontend | 24 | ~7,313 |
+| CSS styles | 5 | ~3,449 |
 | HTML templates | 3 | ~746 |
 | Tests | 14 | ~3,491 |
-| **Grand total** | **93** | **~21,691** |
+| **Grand total** | **94** | **~22,004** |
 
 ---
 
