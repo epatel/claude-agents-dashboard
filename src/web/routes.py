@@ -823,7 +823,7 @@ async def get_available_tools():
 async def get_yolo_items(request: Request):
     """Return item IDs currently running in YOLO mode."""
     orchestrator = request.app.state.orchestrator
-    return list(orchestrator.workflow._yolo_items)
+    return list(orchestrator.workflow_service._yolo_items)
 
 
 # --- Attachments ---
