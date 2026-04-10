@@ -146,6 +146,8 @@ const FileBrowser = {
         for (const node of nodes) {
             if (node.type === 'dir') {
                 this._renderDirNode(container, node, indent);
+            } else if (node.type === 'symlink') {
+                this._renderSymlinkNode(container, node, indent);
             } else {
                 this._renderFileNode(container, node, indent);
             }
@@ -178,6 +180,23 @@ const FileBrowser = {
             this._renderTree(children, node.children, indent + 1);
         }
         container.appendChild(children);
+    },
+
+    _renderSymlinkNode(container, node, indent) {
+        const item = document.createElement('div');
+        item.className = 'file-tree-item file-tree-symlink';
+        item.style.paddingLeft = `${8 + indent * 16 + 18}px`;
+        item.dataset.path = node.path;
+        item.dataset.type = 'symlink';
+
+        const target = node.symlink_target || 'unknown';
+        item.innerHTML = `
+            <span class="tree-icon">🔗</span>
+            <span class="tree-name">${this._escapeHtml(node.name)}</span>
+            <span class="tree-symlink-target" title="→ ${this._escapeHtml(target)}">→ ${this._escapeHtml(target)}</span>
+        `;
+
+        container.appendChild(item);
     },
 
     _renderFileNode(container, node, indent) {

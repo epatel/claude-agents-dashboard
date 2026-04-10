@@ -76,6 +76,23 @@ def scan_directory(dir_path: Path, project_root: Path, depth: int) -> list[dict]
     try:
         with os.scandir(dir_path) as scanner:
             for entry in scanner:
+                # Skip symlinks — don't follow them to prevent
+                # navigation outside the project directory
+                if entry.is_symlink():
+                    # Include symlink as a visual indicator but don't follow it
+                    try:
+                        target = os.readlink(entry.path)
+                    except OSError:
+                        target = "unknown"
+                    rel_path = str(Path(entry.path).relative_to(project_root.resolve()))
+                    entries.append({
+                        "name": entry.name,
+                        "path": rel_path,
+                        "type": "symlink",
+                        "symlink_target": target,
+                    })
+                    continue
+
                 if is_excluded_entry(entry.name, entry.is_dir(follow_symlinks=False)):
                     continue
                 try:
@@ -89,10 +106,10 @@ def scan_directory(dir_path: Path, project_root: Path, depth: int) -> list[dict]
                 node = {
                     "name": entry.name,
                     "path": rel_path,
-                    "type": "dir" if entry.is_dir(follow_symlinks=True) else "file",
+                    "type": "dir" if entry.is_dir(follow_symlinks=False) else "file",
                 }
 
-                if entry.is_dir(follow_symlinks=True):
+                if entry.is_dir(follow_symlinks=False):
                     if depth > 1:
                         node["children"] = scan_directory(resolved, project_root, depth - 1)
                     else:
@@ -191,6 +208,12 @@ async def get_file_content(request: Request, path: str):
 
     if not file_path.exists():
         return JSONResponse({"error": f"File not found: {path}"}, status_code=404)
+
+    # Block reading symlinks to prevent following links outside the project
+    # Check the original (pre-resolved) path since validate_file_browser_path resolves symlinks
+    original_path = project_root / path
+    if original_path.is_symlink():
+        return JSONResponse({"error": "Symlinks cannot be read for security reasons"}, status_code=403)
 
     if not file_path.is_file():
         return JSONResponse({"error": f"Not a file: {path}"}, status_code=400)

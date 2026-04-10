@@ -114,6 +114,23 @@
     text-overflow: ellipsis;
 }
 
+.file-tree-symlink {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.file-tree-symlink:hover {
+    background: transparent;
+}
+
+.tree-symlink-target {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-left: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .file-tree-children {
     display: none;
 }
