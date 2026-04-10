@@ -130,7 +130,20 @@ const ConfigDialog = {
         this._renderAllowedCommandsList();
     },
 
-    toggleYolo(checked) {
+    async toggleYolo(checked) {
+        if (checked) {
+            const confirmed = await DialogCore.confirm(
+                'YOLO mode grants agents unrestricted bash access with no permission checks. '
+                + 'All commands will be logged but cannot be blocked. '
+                + 'Only enable this in trusted environments.',
+                '⚠️ Enable YOLO Mode?',
+                'Enable YOLO Mode'
+            );
+            if (!confirmed) {
+                document.getElementById('config-bash-yolo').checked = false;
+                return;
+            }
+        }
         this._updateYoloState(checked);
     },
 

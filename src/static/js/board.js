@@ -15,16 +15,51 @@ const Board = {
     // Blocked status: item_id -> [{id, title}, ...] of blocking items
     _blockedItems: {},
 
+    // Track items running in YOLO mode
+    _yoloItems: new Set(),
+
     async init(initialItems) {
         for (const item of initialItems) {
             this.items[item.id] = item;
         }
         await this.loadEpics();
         await this.loadBlockedStatus();
+        await this.loadYoloItems();
         this.renderTodoColumn();
         this.renderDoneColumn();
         this.renderArchiveColumn();
         this.updateCounts();
+    },
+
+    async loadYoloItems() {
+        try {
+            const ids = await Api.request('GET', '/api/yolo-items');
+            this._yoloItems = new Set(ids);
+        } catch { /* ignore */ }
+    },
+
+    setYoloMode(itemId, active) {
+        if (active) {
+            this._yoloItems.add(itemId);
+        } else {
+            this._yoloItems.delete(itemId);
+        }
+        // Update the card's YOLO badge
+        const card = document.querySelector(`.card[data-id="${itemId}"]`);
+        if (card) {
+            const existing = card.querySelector('.card-yolo-badge');
+            if (active && !existing) {
+                const statusEl = card.querySelector('.card-status');
+                if (statusEl) {
+                    const badge = document.createElement('span');
+                    badge.className = 'card-yolo-badge';
+                    badge.textContent = '⚡ YOLO';
+                    statusEl.appendChild(badge);
+                }
+            } else if (!active && existing) {
+                existing.remove();
+            }
+        }
     },
 
     async loadBlockedStatus() {
@@ -395,7 +430,9 @@ const Board = {
                 merge_blocked: '⚠ Merge blocked',
                 resolving_conflicts: '<span class="spinner"></span> Resolving conflicts',
             };
-            statusHtml = `<div class="card-status card-status-${item.status}">${labels[item.status] || item.status}</div>`;
+            const yoloBadge = (item.status === 'running' || item.status === 'resolving_conflicts') && this._yoloItems.has(item.id)
+                ? '<span class="card-yolo-badge">⚡ YOLO</span>' : '';
+            statusHtml = `<div class="card-status card-status-${item.status}">${labels[item.status] || item.status}${yoloBadge}</div>`;
         }
 
         // Blocked badge for todo items

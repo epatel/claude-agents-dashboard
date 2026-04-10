@@ -192,6 +192,27 @@
     color: var(--warning);
 }
 
+.card-yolo-badge {
+    font-size: 10px;
+    font-weight: 700;
+    color: #000;
+    background: var(--warning);
+    padding: 1px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 6px;
+    animation: yolo-pulse 2s ease-in-out infinite;
+}
+
+@keyframes yolo-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
 .card-status-resolving_conflicts {
     color: var(--warning);
 }

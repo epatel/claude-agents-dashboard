@@ -399,6 +399,9 @@ const App = {
                     Shortcuts.load().then(() => Shortcuts.render());
                 }
                 break;
+            case 'yolo_mode_changed':
+                Board.setYoloMode(data.item_id, data.active);
+                break;
             case 'epic_created':
             case 'epic_updated':
             case 'epic_deleted':
