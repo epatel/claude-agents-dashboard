@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import fnmatch
+import logging
 import mimetypes
 import os
 from pathlib import Path
@@ -22,7 +23,80 @@ from src.config import (
     FILE_BROWSER_IMAGE_MIME_TYPES,
 )
 
+logger = logging.getLogger(__name__)
+
 file_router = APIRouter(prefix="/api/files", tags=["files"])
+
+# Cache for parsed .browserhidden patterns per project root
+_browserhidden_cache: dict[str, tuple[float, list[str]]] = {}
+
+BROWSERHIDDEN_FILENAME = ".browserhidden"
+
+
+# --- .browserhidden support ---
+
+def parse_browserhidden(file_path: Path) -> list[str]:
+    """Parse a .browserhidden file and return a list of glob patterns.
+
+    Format is similar to .gitignore:
+    - One pattern per line
+    - Lines starting with # are comments
+    - Empty lines are ignored
+    - Leading/trailing whitespace is stripped
+    """
+    patterns: list[str] = []
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return patterns
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        patterns.append(line)
+    return patterns
+
+
+def load_browserhidden_patterns(project_root: Path) -> list[str]:
+    """Load .browserhidden patterns for a project, with mtime-based caching."""
+    config_path = project_root / BROWSERHIDDEN_FILENAME
+    cache_key = str(project_root)
+
+    try:
+        mtime = config_path.stat().st_mtime
+    except OSError:
+        # File doesn't exist — clear cache and return empty
+        _browserhidden_cache.pop(cache_key, None)
+        return []
+
+    cached = _browserhidden_cache.get(cache_key)
+    if cached and cached[0] == mtime:
+        return cached[1]
+
+    patterns = parse_browserhidden(config_path)
+    _browserhidden_cache[cache_key] = (mtime, patterns)
+    if patterns:
+        logger.debug("Loaded %d patterns from %s", len(patterns), config_path)
+    return patterns
+
+
+def matches_browserhidden(name: str, rel_path: str, patterns: list[str]) -> bool:
+    """Check if a filename or relative path matches any .browserhidden pattern.
+
+    Patterns can match:
+    - By filename only: e.g. "credentials.yaml" matches any file with that name
+    - By glob: e.g. "*.tokens" matches any file ending in .tokens
+    - By path prefix: e.g. "config/secrets/*" matches files under that path
+    """
+    for pattern in patterns:
+        # Match against filename
+        if fnmatch.fnmatch(name, pattern):
+            return True
+        # Match against full relative path (for path-based patterns like "config/secrets/*")
+        if "/" in pattern and fnmatch.fnmatch(rel_path, pattern):
+            return True
+    return False
 
 
 # --- Helper functions ---
@@ -47,11 +121,16 @@ def validate_file_browser_path(rel_path: str, project_root: Path) -> Path:
     return resolved
 
 
-def is_secret_file(filename: str) -> bool:
-    """Check if a filename matches secret file patterns."""
+def is_secret_file(filename: str, rel_path: str = "", extra_patterns: list[str] | None = None) -> bool:
+    """Check if a filename matches secret file patterns.
+
+    Checks built-in patterns first, then any extra patterns from .browserhidden.
+    """
     for pattern in FILE_BROWSER_SECRET_PATTERNS:
         if fnmatch.fnmatch(filename, pattern):
             return True
+    if extra_patterns and matches_browserhidden(filename, rel_path or filename, extra_patterns):
+        return True
     return False
 
 
@@ -70,9 +149,15 @@ def is_excluded_entry(name: str, is_dir: bool) -> bool:
 
 # --- Directory scanning ---
 
-def scan_directory(dir_path: Path, project_root: Path, depth: int) -> list[dict]:
+def scan_directory(
+    dir_path: Path,
+    project_root: Path,
+    depth: int,
+    browserhidden_patterns: list[str] | None = None,
+) -> list[dict]:
     """Scan a directory and return a tree structure."""
     entries = []
+    project_resolved = project_root.resolve()
     try:
         with os.scandir(dir_path) as scanner:
             for entry in scanner:
@@ -84,7 +169,7 @@ def scan_directory(dir_path: Path, project_root: Path, depth: int) -> list[dict]
                         target = os.readlink(entry.path)
                     except OSError:
                         target = "unknown"
-                    rel_path = str(Path(entry.path).relative_to(project_root.resolve()))
+                    rel_path = str(Path(entry.path).relative_to(project_resolved))
                     entries.append({
                         "name": entry.name,
                         "path": rel_path,
@@ -97,12 +182,19 @@ def scan_directory(dir_path: Path, project_root: Path, depth: int) -> list[dict]
                     continue
                 try:
                     resolved = Path(entry.path).resolve()
-                    if not resolved.is_relative_to(project_root.resolve()):
+                    if not resolved.is_relative_to(project_resolved):
                         continue
                 except (OSError, ValueError):
                     continue
 
-                rel_path = str(resolved.relative_to(project_root.resolve()))
+                rel_path = str(resolved.relative_to(project_resolved))
+
+                # Check .browserhidden patterns (applies to both files and dirs)
+                if browserhidden_patterns and matches_browserhidden(
+                    entry.name, rel_path, browserhidden_patterns
+                ):
+                    continue
+
                 node = {
                     "name": entry.name,
                     "path": rel_path,
@@ -111,7 +203,9 @@ def scan_directory(dir_path: Path, project_root: Path, depth: int) -> list[dict]
 
                 if entry.is_dir(follow_symlinks=False):
                     if depth > 1:
-                        node["children"] = scan_directory(resolved, project_root, depth - 1)
+                        node["children"] = scan_directory(
+                            resolved, project_root, depth - 1, browserhidden_patterns
+                        )
                     else:
                         node["children"] = None
                 entries.append(node)
@@ -124,12 +218,14 @@ def scan_directory(dir_path: Path, project_root: Path, depth: int) -> list[dict]
 
 # --- File content reading ---
 
-def read_file_content(file_path: Path, rel_path: str) -> dict:
+def read_file_content(
+    file_path: Path, rel_path: str, browserhidden_patterns: list[str] | None = None,
+) -> dict:
     """Read file content and return metadata."""
     filename = file_path.name
     size = file_path.stat().st_size
 
-    if is_secret_file(filename):
+    if is_secret_file(filename, rel_path, browserhidden_patterns):
         return {
             "path": rel_path, "content": None, "size": size,
             "language": None, "binary": False, "hidden": True,
@@ -192,7 +288,10 @@ async def get_file_tree(request: Request, path: str = ""):
     else:
         scan_path = project_root
 
-    tree = await asyncio.to_thread(scan_directory, scan_path, project_root, FILE_BROWSER_TREE_DEPTH)
+    patterns = load_browserhidden_patterns(project_root)
+    tree = await asyncio.to_thread(
+        scan_directory, scan_path, project_root, FILE_BROWSER_TREE_DEPTH, patterns or None,
+    )
     return {"root": str(project_root), "tree": tree}
 
 
@@ -218,5 +317,6 @@ async def get_file_content(request: Request, path: str):
     if not file_path.is_file():
         return JSONResponse({"error": f"Not a file: {path}"}, status_code=400)
 
-    result = await asyncio.to_thread(read_file_content, file_path, path)
+    patterns = load_browserhidden_patterns(project_root)
+    result = await asyncio.to_thread(read_file_content, file_path, path, patterns or None)
     return result

@@ -1,6 +1,13 @@
 import pytest
 from pathlib import Path
 
+from src.web.file_routes import (
+    parse_browserhidden,
+    load_browserhidden_patterns,
+    matches_browserhidden,
+    _browserhidden_cache,
+)
+
 
 class TestValidateFileBrowserPath:
     """Tests for file browser path validation."""
@@ -236,3 +243,224 @@ class TestReadFileContent:
         result = read_file_content(tmp_path / ".env", ".env")
         assert result["hidden"] is True
         assert result["content"] is None
+
+
+class TestParseBrowsehidden:
+    """Tests for .browserhidden file parsing."""
+
+    def test_parses_simple_patterns(self, tmp_path):
+        (tmp_path / ".browserhidden").write_text("credentials.yaml\nmy-tokens.txt\n")
+        patterns = parse_browserhidden(tmp_path / ".browserhidden")
+        assert patterns == ["credentials.yaml", "my-tokens.txt"]
+
+    def test_ignores_comments(self, tmp_path):
+        (tmp_path / ".browserhidden").write_text("# This is a comment\n*.secret\n# Another comment\n")
+        patterns = parse_browserhidden(tmp_path / ".browserhidden")
+        assert patterns == ["*.secret"]
+
+    def test_ignores_empty_lines(self, tmp_path):
+        (tmp_path / ".browserhidden").write_text("*.yaml\n\n\n*.json\n")
+        patterns = parse_browserhidden(tmp_path / ".browserhidden")
+        assert patterns == ["*.yaml", "*.json"]
+
+    def test_strips_whitespace(self, tmp_path):
+        (tmp_path / ".browserhidden").write_text("  credentials.yaml  \n  *.key  \n")
+        patterns = parse_browserhidden(tmp_path / ".browserhidden")
+        assert patterns == ["credentials.yaml", "*.key"]
+
+    def test_returns_empty_for_missing_file(self, tmp_path):
+        patterns = parse_browserhidden(tmp_path / ".browserhidden")
+        assert patterns == []
+
+    def test_returns_empty_for_empty_file(self, tmp_path):
+        (tmp_path / ".browserhidden").write_text("")
+        patterns = parse_browserhidden(tmp_path / ".browserhidden")
+        assert patterns == []
+
+    def test_handles_comments_only_file(self, tmp_path):
+        (tmp_path / ".browserhidden").write_text("# just comments\n# nothing else\n")
+        patterns = parse_browserhidden(tmp_path / ".browserhidden")
+        assert patterns == []
+
+
+class TestMatchesBrowsehidden:
+    """Tests for pattern matching against .browserhidden patterns."""
+
+    def test_matches_exact_filename(self):
+        assert matches_browserhidden("credentials.yaml", "credentials.yaml", ["credentials.yaml"])
+
+    def test_matches_glob_pattern(self):
+        assert matches_browserhidden("tokens.txt", "tokens.txt", ["*.txt"])
+
+    def test_no_match_returns_false(self):
+        assert not matches_browserhidden("main.py", "main.py", ["*.txt"])
+
+    def test_matches_path_pattern(self):
+        assert matches_browserhidden("secret.json", "config/secrets/secret.json", ["config/secrets/*"])
+
+    def test_path_pattern_no_match_different_dir(self):
+        assert not matches_browserhidden("secret.json", "other/secret.json", ["config/secrets/*"])
+
+    def test_matches_complex_glob(self):
+        assert matches_browserhidden("my-tokens.txt", "my-tokens.txt", ["my-*"])
+
+    def test_multiple_patterns(self):
+        patterns = ["*.yaml", "*.secret", "tokens.*"]
+        assert matches_browserhidden("creds.yaml", "creds.yaml", patterns)
+        assert matches_browserhidden("api.secret", "api.secret", patterns)
+        assert matches_browserhidden("tokens.json", "tokens.json", patterns)
+        assert not matches_browserhidden("main.py", "main.py", patterns)
+
+
+class TestLoadBrowsehiddenPatterns:
+    """Tests for loading and caching .browserhidden patterns."""
+
+    def setup_method(self):
+        _browserhidden_cache.clear()
+
+    def test_loads_patterns_from_project_root(self, tmp_path):
+        (tmp_path / ".browserhidden").write_text("*.secret\ncreds.yaml\n")
+        patterns = load_browserhidden_patterns(tmp_path)
+        assert patterns == ["*.secret", "creds.yaml"]
+
+    def test_returns_empty_when_no_file(self, tmp_path):
+        patterns = load_browserhidden_patterns(tmp_path)
+        assert patterns == []
+
+    def test_caches_by_mtime(self, tmp_path):
+        (tmp_path / ".browserhidden").write_text("*.secret\n")
+        p1 = load_browserhidden_patterns(tmp_path)
+        p2 = load_browserhidden_patterns(tmp_path)
+        assert p1 == p2
+        assert str(tmp_path) in _browserhidden_cache
+
+    def test_invalidates_cache_on_mtime_change(self, tmp_path):
+        (tmp_path / ".browserhidden").write_text("*.secret\n")
+        p1 = load_browserhidden_patterns(tmp_path)
+        assert p1 == ["*.secret"]
+
+        # Modify file
+        import time
+        time.sleep(0.05)  # Ensure mtime differs
+        (tmp_path / ".browserhidden").write_text("*.yaml\n")
+        # Force mtime change
+        import os
+        os.utime(tmp_path / ".browserhidden", (time.time() + 1, time.time() + 1))
+
+        p2 = load_browserhidden_patterns(tmp_path)
+        assert p2 == ["*.yaml"]
+
+    def test_clears_cache_when_file_deleted(self, tmp_path):
+        (tmp_path / ".browserhidden").write_text("*.secret\n")
+        load_browserhidden_patterns(tmp_path)
+        assert str(tmp_path) in _browserhidden_cache
+
+        (tmp_path / ".browserhidden").unlink()
+        patterns = load_browserhidden_patterns(tmp_path)
+        assert patterns == []
+        assert str(tmp_path) not in _browserhidden_cache
+
+
+class TestIsSecretFileWithBrowsehidden:
+    """Tests for is_secret_file with .browserhidden patterns."""
+
+    def test_builtin_patterns_still_work(self):
+        from src.web.file_routes import is_secret_file
+        assert is_secret_file(".env") is True
+        assert is_secret_file("server.pem") is True
+
+    def test_extra_patterns_match(self):
+        from src.web.file_routes import is_secret_file
+        assert is_secret_file("credentials.yaml", extra_patterns=["credentials.yaml"])
+
+    def test_extra_glob_patterns_match(self):
+        from src.web.file_routes import is_secret_file
+        assert is_secret_file("my-tokens.txt", extra_patterns=["my-*"])
+
+    def test_extra_path_pattern_match(self):
+        from src.web.file_routes import is_secret_file
+        assert is_secret_file("secret.json", "config/secrets/secret.json", ["config/secrets/*"])
+
+    def test_no_extra_patterns_normal_behavior(self):
+        from src.web.file_routes import is_secret_file
+        assert is_secret_file("main.py") is False
+        assert is_secret_file("main.py", extra_patterns=[]) is False
+
+
+class TestScanDirectoryWithBrowsehidden:
+    """Tests for scan_directory filtering with .browserhidden patterns."""
+
+    def test_hides_matching_files(self, tmp_path):
+        from src.web.file_routes import scan_directory
+        (tmp_path / "main.py").write_text("print('hi')")
+        (tmp_path / "credentials.yaml").write_text("secret: true")
+        tree = scan_directory(tmp_path, tmp_path, depth=1, browserhidden_patterns=["credentials.yaml"])
+        names = [n["name"] for n in tree]
+        assert "main.py" in names
+        assert "credentials.yaml" not in names
+
+    def test_hides_matching_dirs(self, tmp_path):
+        from src.web.file_routes import scan_directory
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("")
+        (tmp_path / "secret-config").mkdir()
+        (tmp_path / "secret-config" / "keys.yaml").write_text("")
+        tree = scan_directory(tmp_path, tmp_path, depth=2, browserhidden_patterns=["secret-config"])
+        names = [n["name"] for n in tree]
+        assert "src" in names
+        assert "secret-config" not in names
+
+    def test_hides_glob_matching_files(self, tmp_path):
+        from src.web.file_routes import scan_directory
+        (tmp_path / "app.py").write_text("")
+        (tmp_path / "passwords.txt").write_text("hunter2")
+        (tmp_path / "notes.txt").write_text("ok")
+        tree = scan_directory(tmp_path, tmp_path, depth=1, browserhidden_patterns=["passwords.*"])
+        names = [n["name"] for n in tree]
+        assert "app.py" in names
+        assert "notes.txt" in names
+        assert "passwords.txt" not in names
+
+    def test_no_patterns_shows_everything(self, tmp_path):
+        from src.web.file_routes import scan_directory
+        (tmp_path / "main.py").write_text("")
+        (tmp_path / "credentials.yaml").write_text("")
+        tree = scan_directory(tmp_path, tmp_path, depth=1, browserhidden_patterns=None)
+        names = [n["name"] for n in tree]
+        assert "main.py" in names
+        assert "credentials.yaml" in names
+
+    def test_hides_nested_files_via_path_pattern(self, tmp_path):
+        from src.web.file_routes import scan_directory
+        (tmp_path / "config").mkdir()
+        (tmp_path / "config" / "public.yaml").write_text("")
+        (tmp_path / "config" / "secrets.yaml").write_text("")
+        tree = scan_directory(tmp_path, tmp_path, depth=2, browserhidden_patterns=["config/secrets.yaml"])
+        config_node = next(n for n in tree if n["name"] == "config")
+        child_names = [c["name"] for c in config_node["children"]]
+        assert "public.yaml" in child_names
+        assert "secrets.yaml" not in child_names
+
+
+class TestReadFileContentWithBrowsehidden:
+    """Tests for read_file_content with .browserhidden patterns."""
+
+    def test_hides_file_matching_browserhidden(self, tmp_path):
+        from src.web.file_routes import read_file_content
+        (tmp_path / "credentials.yaml").write_text("secret: true")
+        result = read_file_content(
+            tmp_path / "credentials.yaml", "credentials.yaml",
+            browserhidden_patterns=["credentials.yaml"],
+        )
+        assert result["hidden"] is True
+        assert result["content"] is None
+
+    def test_normal_file_not_hidden(self, tmp_path):
+        from src.web.file_routes import read_file_content
+        (tmp_path / "app.py").write_text("print('hi')")
+        result = read_file_content(
+            tmp_path / "app.py", "app.py",
+            browserhidden_patterns=["credentials.yaml"],
+        )
+        assert result.get("hidden") is not True
+        assert result["content"] == "print('hi')"
