@@ -34,7 +34,7 @@ Your project must be a git repository. Requires Python 3.12+.
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 208 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 213 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -117,6 +117,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Shortcuts bar** — quick-launch bash commands from a bar at the bottom of the board; commands run as subprocesses with streaming output, stop (preserves output log), reset, auto-reset mode, and cleanup
 - **Worktree file browser** — browse an agent's worktree files during review via a tree view within the review dialog
 - **Retry merge** — re-attempt a failed merge without restarting the agent
+- **Animated flame background** — optional animated flame effect behind board columns with activity-driven intensity; configurable via agent config (flame_enabled setting)
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture
@@ -125,7 +126,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 graph TB
     subgraph Frontend["Frontend (Vanilla JS, No Build Step)"]
         Browser["Browser"]
-        JS["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js | sound.js | shortcuts.js"]
+        JS["app.js | board.js | stats.js<br/>api.js | diff.js | annotate.js | theme.js<br/>file-browser.js | sound.js | shortcuts.js | flame.js"]
         Dlg["dialogs.js (coordinator)<br/>item-dialog | detail-dialog | review-dialog<br/>config-dialog | clarification-dialog | notification-dialog<br/>search-dialog | request-changes-dialog | attachments<br/>dialog-core | dialog-utils | annotation-canvas"]
     end
 
@@ -182,8 +183,8 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,961 lines
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~7,057 lines JS + ~3,436 lines CSS
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~7,005 lines
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~7,313 lines JS + ~3,449 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 7 built-in MCP tools
 - **Database**: SQLite with versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
@@ -225,7 +226,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–012) adding columns and tables incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–013) adding columns and tables incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -305,6 +306,7 @@ erDiagram
         text allowed_commands
         bool bash_yolo
         text allowed_builtin_tools
+        bool flame_enabled
         text updated_at
     }
 
@@ -500,7 +502,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 
 - `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `TESTING.md` — Detailed testing guide with test inventory (208 unit/integration tests + E2E tests), writing guidelines, and 12 database migrations
+- `TESTING.md` — Detailed testing guide with test inventory (213 unit/integration tests + E2E tests), writing guidelines, and 13 database migrations
 
 ## License
 
