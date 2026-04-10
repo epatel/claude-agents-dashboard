@@ -26,6 +26,8 @@ const Flame = {
 
     // Flame particles
     _particles: [],
+    // Flame sources — fixed positions where flames originate
+    _flameSources: [],
 
     init() {
         // Create canvas behind board
@@ -40,12 +42,29 @@ const Flame = {
         this._resize();
         window.addEventListener('resize', () => this._resize());
 
-        // Seed particles
-        for (let i = 0; i < 80; i++) {
+        // Create flame sources along the bottom edge
+        this._initFlameSources();
+
+        // Seed particles from flame sources
+        for (let i = 0; i < 45; i++) {
             this._particles.push(this._newParticle(true));
         }
 
         this._raf = requestAnimationFrame((t) => this._loop(t));
+    },
+
+    _initFlameSources() {
+        const w = this.canvas ? this.canvas.width : 800;
+        // Create 8-12 flame sources spread along bottom
+        const count = 8 + Math.floor(Math.random() * 5);
+        this._flameSources = [];
+        for (let i = 0; i < count; i++) {
+            this._flameSources.push({
+                x: (w / (count + 1)) * (i + 1) + (Math.random() - 0.5) * 40,
+                spread: 15 + Math.random() * 25,   // horizontal spread of this flame
+                strength: 0.5 + Math.random() * 0.5, // relative intensity
+            });
+        }
     },
 
     destroy() {
@@ -133,32 +152,37 @@ const Flame = {
         this.canvas.height = rect.height;
         this.canvas.style.width = rect.width + 'px';
         this.canvas.style.height = rect.height + 'px';
+        // Reposition flame sources for new width
+        this._initFlameSources();
     },
 
     _newParticle(randomY) {
         const w = this.canvas ? this.canvas.width : 800;
         const h = this.canvas ? this.canvas.height : 600;
-        // Plasma palette: electric blue, cyan, purple, magenta
-        const palettes = [
-            { hue: 200 + Math.random() * 20, sat: 90 + Math.random() * 10 },   // electric blue
-            { hue: 175 + Math.random() * 15, sat: 85 + Math.random() * 15 },   // cyan
-            { hue: 260 + Math.random() * 30, sat: 80 + Math.random() * 20 },   // purple
-            { hue: 290 + Math.random() * 20, sat: 85 + Math.random() * 15 },   // magenta
-            { hue: 220 + Math.random() * 10, sat: 95 + Math.random() * 5 },    // bright blue core
-        ];
-        const pal = palettes[Math.floor(Math.random() * palettes.length)];
+
+        // Pick a flame source to emit from (clustered flames, not scattered)
+        const src = this._flameSources.length > 0
+            ? this._flameSources[Math.floor(Math.random() * this._flameSources.length)]
+            : { x: Math.random() * w, spread: 30, strength: 1 };
+
+        const startX = src.x + (Math.random() - 0.5) * src.spread * 2;
+        const startY = randomY ? h * (0.5 + Math.random() * 0.5) : h + Math.random() * 10;
+
         return {
-            x: Math.random() * w,
-            y: randomY ? Math.random() * h : h + Math.random() * 40,
-            vx: (Math.random() - 0.5) * 1.2,
-            vy: -(0.4 + Math.random() * 1.8),
-            size: 15 + Math.random() * 55,
+            x: startX,
+            y: startY,
+            // Mostly upward, very slight horizontal drift
+            vx: (Math.random() - 0.5) * 0.4,
+            vy: -(0.6 + Math.random() * 1.4),
+            // Smaller, tighter particles for cohesive flames
+            size: 10 + Math.random() * 30,
             life: 0,
-            maxLife: 60 + Math.random() * 140,
-            hue: pal.hue,
-            sat: pal.sat,
-            phase: Math.random() * Math.PI * 2,  // unique wobble phase
-            pulseRate: 0.8 + Math.random() * 1.5, // pulsing speed
+            maxLife: 50 + Math.random() * 100,
+            // Natural fire lifecycle: starts white/yellow, ages to orange, dies red
+            // Store base hue offset — actual color computed from life ratio
+            phase: Math.random() * Math.PI * 2,
+            flickerRate: 2 + Math.random() * 3,
+            sourceStrength: src.strength,
         };
     },
 
@@ -191,20 +215,31 @@ const Flame = {
             return;
         }
 
-        // Draw plasma glow at the bottom
-        const glowGrad = ctx.createLinearGradient(0, h, 0, h * 0.25);
-        glowGrad.addColorStop(0, `hsla(210, 100%, 60%, ${intensity * 0.18})`);
-        glowGrad.addColorStop(0.3, `hsla(260, 90%, 50%, ${intensity * 0.08})`);
-        glowGrad.addColorStop(0.6, `hsla(200, 100%, 50%, ${intensity * 0.03})`);
-        glowGrad.addColorStop(1, `hsla(270, 100%, 50%, 0)`);
+        // Draw warm ambient glow at the bottom
+        const glowGrad = ctx.createLinearGradient(0, h, 0, h * 0.4);
+        glowGrad.addColorStop(0, `hsla(20, 100%, 50%, ${intensity * 0.12})`);
+        glowGrad.addColorStop(0.3, `hsla(30, 100%, 45%, ${intensity * 0.06})`);
+        glowGrad.addColorStop(0.7, `hsla(15, 100%, 40%, ${intensity * 0.02})`);
+        glowGrad.addColorStop(1, `hsla(10, 100%, 30%, 0)`);
         ctx.fillStyle = glowGrad;
         ctx.fillRect(0, 0, w, h);
 
-        // Update and draw plasma particles
-        const speed = 0.3 + intensity * 0.7;
-        const particleAlpha = intensity * 0.75;
+        // Draw localized glow under each flame source
+        for (const src of this._flameSources) {
+            const glowRadius = (40 + src.spread) * (0.5 + intensity * 0.5);
+            const srcGlow = ctx.createRadialGradient(src.x, h, 0, src.x, h, glowRadius);
+            srcGlow.addColorStop(0, `hsla(30, 100%, 55%, ${intensity * 0.15 * src.strength})`);
+            srcGlow.addColorStop(0.5, `hsla(20, 100%, 45%, ${intensity * 0.06 * src.strength})`);
+            srcGlow.addColorStop(1, `hsla(10, 100%, 30%, 0)`);
+            ctx.fillStyle = srcGlow;
+            ctx.fillRect(src.x - glowRadius, h - glowRadius, glowRadius * 2, glowRadius);
+        }
 
-        // Use additive blending for plasma glow effect
+        // Update and draw flame particles
+        const speed = 0.4 + intensity * 0.6;
+        const particleAlpha = intensity * 0.8;
+
+        // Additive blending for natural fire glow
         ctx.globalCompositeOperation = 'lighter';
 
         for (let i = this._particles.length - 1; i >= 0; i--) {
@@ -213,12 +248,13 @@ const Flame = {
             p.x += p.vx * speed;
             p.y += p.vy * speed;
 
-            // Electric wobble — more erratic than fire
-            const wobbleX = Math.sin(time * 0.003 + p.phase) * 0.5
-                          + Math.sin(time * 0.007 + p.phase * 2.3) * 0.3;
-            const wobbleY = Math.cos(time * 0.004 + p.phase * 1.7) * 0.2;
-            p.x += wobbleX;
-            p.y += wobbleY;
+            // Gentle flame flicker — subtle side-to-side, not erratic
+            const flicker = Math.sin(time * 0.004 + p.phase) * 0.3
+                          + Math.sin(time * 0.009 + p.phase * 1.7) * 0.15;
+            p.x += flicker;
+
+            // Slight upward acceleration (heat rises faster)
+            p.vy -= 0.003;
 
             if (p.life > p.maxLife || p.y < -p.size) {
                 this._particles[i] = this._newParticle(false);
@@ -226,20 +262,43 @@ const Flame = {
             }
 
             const lifeRatio = p.life / p.maxLife;
-            // Pulsing alpha for electric flicker
-            const pulse = 0.7 + 0.3 * Math.sin(time * 0.005 * p.pulseRate + p.phase);
-            const alpha = particleAlpha * Math.sin(lifeRatio * Math.PI) * 0.55 * pulse;
+            // Flickering alpha — natural fire shimmer
+            const shimmer = 0.8 + 0.2 * Math.sin(time * 0.006 * p.flickerRate + p.phase);
+            const alpha = particleAlpha * Math.sin(lifeRatio * Math.PI) * 0.5 * shimmer * p.sourceStrength;
             if (alpha < 0.005) continue;
 
-            const sat = p.sat || 100;
-            const radius = p.size * (0.4 + intensity * 0.6);
+            const radius = p.size * (0.3 + intensity * 0.7) * (1 - lifeRatio * 0.3);
 
-            // Plasma particle: bright white-blue core fading to colored edge
+            // Natural fire color lifecycle:
+            //   young (lifeRatio ~0): bright white/yellow core
+            //   mid (lifeRatio ~0.4): orange
+            //   old (lifeRatio ~0.8+): deep red, fading
+            let hue, sat, lightness;
+            if (lifeRatio < 0.25) {
+                // White-yellow core (young flame)
+                hue = 45 + lifeRatio * 40;       // 45 → 55
+                sat = 60 + lifeRatio * 140;       // 60% → 95%
+                lightness = 85 - lifeRatio * 80;  // 85% → 65%
+            } else if (lifeRatio < 0.6) {
+                // Orange body
+                const t = (lifeRatio - 0.25) / 0.35;
+                hue = 55 - t * 30;               // 55 → 25
+                sat = 95 + t * 5;                 // 95% → 100%
+                lightness = 65 - t * 15;          // 65% → 50%
+            } else {
+                // Red tips (dying flame)
+                const t = (lifeRatio - 0.6) / 0.4;
+                hue = 25 - t * 20;               // 25 → 5
+                sat = 100;
+                lightness = 50 - t * 15;          // 50% → 35%
+            }
+
+            // Radial gradient: bright center fading to edge
             const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
-            grad.addColorStop(0, `hsla(${p.hue + 20}, ${sat}%, ${75 + lifeRatio * 10}%, ${alpha})`);
-            grad.addColorStop(0.25, `hsla(${p.hue + 10}, ${sat}%, 60%, ${alpha * 0.6})`);
-            grad.addColorStop(0.6, `hsla(${p.hue - 10}, ${sat - 10}%, 45%, ${alpha * 0.25})`);
-            grad.addColorStop(1, `hsla(${p.hue - 20}, ${sat - 20}%, 30%, 0)`);
+            grad.addColorStop(0, `hsla(${hue + 10}, ${sat - 10}%, ${Math.min(lightness + 15, 95)}%, ${alpha})`);
+            grad.addColorStop(0.3, `hsla(${hue}, ${sat}%, ${lightness}%, ${alpha * 0.65})`);
+            grad.addColorStop(0.7, `hsla(${hue - 8}, ${sat}%, ${lightness - 10}%, ${alpha * 0.2})`);
+            grad.addColorStop(1, `hsla(${hue - 15}, ${sat}%, ${lightness - 20}%, 0)`);
 
             ctx.fillStyle = grad;
             ctx.beginPath();
