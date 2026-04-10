@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -12,6 +14,40 @@ from ..database import Database
 from ..agent.orchestrator import AgentOrchestrator
 from .websocket import ConnectionManager
 
+logger = logging.getLogger(__name__)
+
+STALE_WORKTREE_CHECK_INTERVAL = 300  # 5 minutes
+
+
+async def _check_stale_worktrees(orchestrator: AgentOrchestrator):
+    """Check for stale worktrees and emit notifications."""
+    from .routes import add_notification
+    try:
+        stale = await orchestrator.workflow_service.find_stale_worktrees()
+        for entry in stale:
+            item_id = entry["item_id"]
+            title = entry.get("title", item_id[:8])
+            reason = entry.get("reason", "stale")
+            add_notification(
+                "warning",
+                f"Stale worktree for \"{title}\" ({reason})",
+                source=f"stale-worktree:{item_id}",
+                action={
+                    "label": "Clean up",
+                    "url": f"/api/cleanup/worktree/{item_id}",
+                    "method": "POST",
+                },
+            )
+    except Exception as e:
+        logger.warning(f"Stale worktree check failed: {e}")
+
+
+async def _periodic_stale_check(orchestrator: AgentOrchestrator):
+    """Background task that periodically checks for stale worktrees."""
+    while True:
+        await asyncio.sleep(STALE_WORKTREE_CHECK_INTERVAL)
+        await _check_stale_worktrees(orchestrator)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,8 +59,17 @@ async def lifespan(app: FastAPI):
         db=app.state.db,
         ws_manager=app.state.ws_manager,
     )
+
+    # Check for stale worktrees on startup
+    await _check_stale_worktrees(app.state.orchestrator)
+
+    # Start periodic stale worktree checker
+    check_task = asyncio.create_task(_periodic_stale_check(app.state.orchestrator))
+
     yield
-    # Shutdown: stop all agents
+
+    # Shutdown: cancel periodic task and stop all agents
+    check_task.cancel()
     await app.state.orchestrator.shutdown()
 
 

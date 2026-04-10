@@ -53,17 +53,30 @@ const NotificationDialog = {
         container.innerHTML = this._notifications.map(n => {
             const iconMap = { error: '!', warning: '!', info: 'i' };
             const icon = iconMap[n.level] || 'i';
+            const actionBtn = n.action
+                ? `<button class="notification-action" onclick="NotificationDialog.runAction(${n.id}, '${this._escapeHtml(n.action.url)}', '${n.action.method || 'POST'}')">${this._escapeHtml(n.action.label)}</button>`
+                : '';
             return `
                 <div class="notification-item notification-${n.level}">
                     <span class="notification-icon">${icon}</span>
                     <div class="notification-body">
                         <span class="notification-message">${this._escapeHtml(n.message)}</span>
-                        <span class="notification-meta">${n.timestamp}${n.source ? ' \u00b7 ' + this._escapeHtml(n.source) : ''}</span>
+                        <span class="notification-meta">${n.timestamp}${n.source ? ' \u00b7 ' + this._escapeHtml(n.source) : ''}${actionBtn ? ' ' + actionBtn : ''}</span>
                     </div>
                     <button class="notification-dismiss" onclick="NotificationDialog.dismiss(${n.id})" title="Dismiss">&times;</button>
                 </div>
             `;
         }).join('');
+    },
+
+    async runAction(notificationId, url, method) {
+        try {
+            const resp = await fetch(url, { method: method || 'POST' });
+            if (resp.ok) {
+                // Auto-dismiss the notification after successful action
+                await this.dismiss(notificationId);
+            }
+        } catch { /* ignore */ }
     },
 
     async dismiss(id) {

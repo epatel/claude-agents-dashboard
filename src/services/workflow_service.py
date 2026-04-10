@@ -1075,6 +1075,66 @@ class WorkflowService:
                 item_id, "system", f"Failed to restart session: {e}"
             )
 
+    async def find_stale_worktrees(self) -> List[Dict[str, Any]]:
+        """Find worktrees whose items are in a terminal state or missing from DB."""
+        from ..git.worktree import list_worktrees
+
+        worktrees = await list_worktrees(self.git.target_project)
+        stale = []
+        for wt in worktrees:
+            path = wt.get("path", "")
+            branch = wt.get("branch", "")
+            # Only check agent worktrees (refs/heads/agent/...)
+            if not branch.startswith("refs/heads/agent/"):
+                continue
+            branch_name = branch.removeprefix("refs/heads/")
+            # Extract item_id from branch name "agent/{item_id}"
+            item_id = branch_name.removeprefix("agent/")
+            if not item_id:
+                continue
+
+            item = await self.db.get_item(item_id)
+            if not item:
+                # Item deleted from DB but worktree remains
+                stale.append({"item_id": item_id, "branch_name": branch_name, "worktree_path": path, "reason": "Item no longer exists in database"})
+                continue
+
+            # Check if item is in a terminal/inactive state with no running session
+            status = item.get("status", "")
+            column = item.get("column_name", "")
+            has_session = item_id in self.sessions.sessions
+
+            if status == "cancelled" or (column in ("done", "archive") and not has_session):
+                title = item.get("title", item_id[:8])
+                stale.append({"item_id": item_id, "title": title, "branch_name": branch_name, "worktree_path": path, "reason": f"Item is {status or column}"})
+            elif column == "todo" and not has_session and status not in ("running", "paused"):
+                title = item.get("title", item_id[:8])
+                stale.append({"item_id": item_id, "title": title, "branch_name": branch_name, "worktree_path": path, "reason": "Item is in todo with no active agent"})
+
+        return stale
+
+    async def cleanup_stale_worktree(self, item_id: str) -> Dict[str, Any]:
+        """Clean up a stale worktree and clear git metadata on the item."""
+        item = await self.db.get_item(item_id)
+        branch_name = f"agent/{item_id}"
+        worktree_path = self.git.worktree_dir / f"agent-{item_id}"
+
+        # Use item's stored values if available
+        if item:
+            branch_name = item.get("branch_name") or branch_name
+            worktree_path = Path(item.get("worktree_path") or str(worktree_path))
+
+        await self.git.cleanup_item_resources(str(worktree_path), branch_name)
+
+        # Clear git metadata on the item if it still exists
+        if item:
+            updated = await self.db.update_item(
+                item_id, worktree_path=None, branch_name=None, base_branch=None, base_commit=None
+            )
+            await self.notifications.broadcast_item_updated(updated)
+
+        return {"ok": True, "item_id": item_id}
+
     async def _log_and_notify(self, item_id: str, entry_type: str, content: str, metadata: Optional[str] = None):
         """Log entry to database and broadcast notification."""
         await self.db.log_entry(item_id, entry_type, content, metadata)

@@ -260,6 +260,23 @@ body {
     color: var(--text-primary);
 }
 
+.notification-action {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    border-radius: 4px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.notification-action:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
 .btn-sm {
     padding: 4px 10px;
     font-size: 12px;

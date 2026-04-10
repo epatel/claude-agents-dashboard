@@ -914,8 +914,12 @@ _next_notification_id = 0
 _ws_manager_ref = None  # Set during first request via dependency
 
 
-def add_notification(level: str, message: str, source: str = "") -> dict | None:
-    """Add a system notification (error/warning/info). Deduplicates by message. Returns the notification or None if duplicate."""
+def add_notification(level: str, message: str, source: str = "", action: dict | None = None) -> dict | None:
+    """Add a system notification (error/warning/info). Deduplicates by message.
+
+    action: optional dict with {"label": str, "url": str, "method": str} for an action button.
+    Returns the notification or None if duplicate.
+    """
     global _next_notification_id
     # Skip if an identical message already exists
     for existing in _notifications:
@@ -929,6 +933,8 @@ def add_notification(level: str, message: str, source: str = "") -> dict | None:
         "source": source,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
+    if action:
+        entry["action"] = action
     _notifications.append(entry)
     # Best-effort async broadcast
     if _ws_manager_ref:
@@ -961,6 +967,22 @@ async def clear_notifications():
     global _notifications
     _notifications.clear()
     return {"ok": True}
+
+
+# --- Stale Worktree Cleanup ---
+
+@router.post("/api/cleanup/worktree/{item_id}")
+async def cleanup_stale_worktree(item_id: str, request: Request):
+    """Clean up a stale worktree and branch for an item."""
+    orchestrator = request.app.state.orchestrator
+    try:
+        result = await orchestrator.workflow_service.cleanup_stale_worktree(item_id)
+        # Remove the corresponding notification
+        global _notifications
+        _notifications = [n for n in _notifications if not (n.get("source") == f"stale-worktree:{item_id}")]
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 # --- Stats ---
