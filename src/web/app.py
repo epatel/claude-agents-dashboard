@@ -2,10 +2,11 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from ..config import TEMPLATES_DIR, STATIC_DIR
+from ..config import TEMPLATES_DIR, STATIC_DIR, DEFAULT_HOST, DEFAULT_PORT, MAX_PORT_TRIES
 from ..database import Database
 from ..agent.orchestrator import AgentOrchestrator
 from .websocket import ConnectionManager
@@ -26,8 +27,27 @@ async def lifespan(app: FastAPI):
     await app.state.orchestrator.shutdown()
 
 
+def _build_cors_origins() -> list[str]:
+    """Build allowed CORS origins for localhost across the port range."""
+    origins = []
+    for port in range(DEFAULT_PORT, DEFAULT_PORT + MAX_PORT_TRIES):
+        origins.append(f"http://{DEFAULT_HOST}:{port}")
+        origins.append(f"http://localhost:{port}")
+    return origins
+
+
 def create_app(target_project: Path, data_dir: Path) -> FastAPI:
     app = FastAPI(title="Agents Dashboard", lifespan=lifespan)
+
+    # Restrict cross-origin requests to localhost only.
+    # Even though this runs locally, a malicious website in another tab
+    # could otherwise make authenticated requests to the API.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_build_cors_origins(),
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     # Store paths and shared objects on app state
     app.state.target_project = target_project
