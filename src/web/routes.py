@@ -695,6 +695,10 @@ async def get_worktree_content(request: Request, item_id: str, path: str = ""):
 
     if not file_path.exists():
         return JSONResponse({"error": f"File not found: {path}"}, status_code=404)
+    # Block reading symlinks to prevent following links outside the worktree
+    original_path = worktree_root / path
+    if original_path.is_symlink():
+        return JSONResponse({"error": "Symlinks cannot be read for security reasons"}, status_code=403)
     if not file_path.is_file():
         return JSONResponse({"error": f"Not a file: {path}"}, status_code=400)
 
