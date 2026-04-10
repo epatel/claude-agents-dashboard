@@ -134,3 +134,5 @@ class AgentConfig(BaseModel):
     allowed_commands: Optional[str] = "[]"
     bash_yolo: bool = False
     allowed_builtin_tools: Optional[str] = "[]"
+    flame_enabled: bool = True
+    flame_intensity_multiplier: float = 1.0

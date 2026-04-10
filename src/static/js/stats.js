@@ -40,6 +40,11 @@ class StatsManager {
     displayStats(data) {
         const { usage, activity } = data;
 
+        // Feed flame animation
+        if (typeof Flame !== 'undefined') {
+            Flame.updateFromStats(data);
+        }
+
         // Update usage stats
         this.updateElement('total-cost', `$${usage.total_cost_usd.toFixed(2)}`);
         this.updateElement('total-tokens', this.formatNumber(usage.total_tokens || 0));

@@ -323,11 +323,11 @@
     </div>
 </dialog>
 
-<!-- Agent Config Dialog -->
+<!-- Settings Dialog -->
 <dialog id="config-dialog" class="modal modal-large">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>Agent Configuration</h3>
+            <h3>Settings</h3>
             <button class="btn-close" onclick="Dialogs.close('config-dialog')">&times;</button>
         </div>
         <form id="config-form" onsubmit="Dialogs.submitConfig(event)">
@@ -336,6 +336,7 @@
                 <button type="button" class="review-tab" data-tab="prompts" onclick="Dialogs.switchConfigTab('prompts')">Prompts</button>
                 <button type="button" class="review-tab" data-tab="mcp" onclick="Dialogs.switchConfigTab('mcp')">MCP</button>
                 <button type="button" class="review-tab" data-tab="plugins" onclick="Dialogs.switchConfigTab('plugins')">Plugins</button>
+                <button type="button" class="review-tab" data-tab="appearance" onclick="Dialogs.switchConfigTab('appearance')">Appearance</button>
             </div>
             <!-- General tab -->
             <div class="config-tab-content" data-config-tab="general" style="padding:20px;">
@@ -401,6 +402,44 @@
                         <input type="text" id="config-plugin-path-input" placeholder="/path/to/plugin or ./relative/path" style="flex:1">
                         <button type="button" class="btn btn-sm" onclick="Dialogs.addPlugin()">+ Add Plugin</button>
                     </div>
+                </div>
+            </div>
+            <!-- Appearance tab -->
+            <div class="config-tab-content" data-config-tab="appearance" style="padding:20px;display:none;">
+                <div class="form-group">
+                    <label for="config-flame-enabled" style="display:flex;align-items:center;gap:8px;">
+                        Background Flame Animation
+                        <input type="checkbox" id="config-flame-enabled" style="cursor:pointer;" checked>
+                    </label>
+                    <p class="text-muted" style="font-size:12px;margin:4px 0 0;">
+                        Animated flame effect behind the board columns. Intensity reacts to agent activity — tokens/min, messages/min, and tools/min.
+                    </p>
+                </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label for="config-flame-intensity">Intensity Multiplier: <span id="config-flame-intensity-value" style="font-weight:600;">1.0</span>x</label>
+                    <input type="range" id="config-flame-intensity" min="0.2" max="3.0" step="0.1" value="1.0"
+                           style="width:100%;cursor:pointer;margin-top:4px;"
+                           oninput="document.getElementById('config-flame-intensity-value').textContent = parseFloat(this.value).toFixed(1)">
+                    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:2px;">
+                        <span>Subtle (0.2x)</span>
+                        <span>Normal (1.0x)</span>
+                        <span>Inferno (3.0x)</span>
+                    </div>
+                    <p class="text-muted" style="font-size:12px;margin:8px 0 0;">
+                        Controls how strongly the flame reacts to activity. At higher values, even small activity produces visible flames.
+                    </p>
+                </div>
+                <div class="form-group" style="margin-top:16px;padding:12px;background:var(--bg-hover);border-radius:var(--radius-sm);">
+                    <label style="font-size:12px;font-weight:600;margin-bottom:6px;display:block;">How intensity works</label>
+                    <p class="text-muted" style="font-size:12px;margin:0;line-height:1.5;">
+                        The flame reacts to live metrics:<br>
+                        <b>Active agents</b> — each running agent adds base intensity<br>
+                        <b>Tokens/min</b> — high throughput makes the flame taller<br>
+                        <b>Messages/min</b> — conversation pace adds flicker<br>
+                        <b>Tools/min</b> — frequent tool calls fuel the fire<br>
+                        <br>
+                        When no agents are running, the flame fades out completely.
+                    </p>
                 </div>
             </div>
             <div class="modal-footer">
