@@ -211,6 +211,13 @@ class AgentSession:
             "To delete a todo item, use mcp__todo__delete_todo. "
             "To create an epic for grouping related todos, use mcp__todo__create_epic. "
             "To see existing board items, use mcp__board_view__view_board."
+            "\n\nIMPORTANT: When creating todos that have logical dependencies, you MUST use the "
+            "'requires' parameter to specify which item IDs must be completed first. "
+            "For example, if task B depends on task A, create task A first, note its ID, "
+            "then create task B with requires=[\"<task-A-id>\"]. "
+            "Always think about task ordering \u2014 even in parallel workflows, some tasks "
+            "naturally depend on others (e.g., UI components depend on layout structure, "
+            "integration tasks depend on the pieces they integrate)."
         )
         command_note = (
             "\n\nIf a shell command is blocked, use the request_command_access tool "
