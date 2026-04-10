@@ -34,7 +34,7 @@ Your project must be a git repository. Requires Python 3.12+.
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 213 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 208 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -501,8 +501,10 @@ Each project gets its own server instance. Run `run.sh` from different repos —
 The `AGENT_FILES/` directory contains supplementary documentation for agents working on this project:
 
 - `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
+- `ASSESSMENT_CODE_CODEX.md` — Independent code assessment by Codex with architectural analysis, risk areas, and refactoring recommendations
+- `AUDIT.md` — Security audit report with 14 findings (9 of 9 actionable remediated), threat model, and remediation tracking
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `TESTING.md` — Detailed testing guide with test inventory (213 unit/integration tests + E2E tests), writing guidelines, and 13 database migrations
+- `TESTING.md` — Detailed testing guide with test inventory (208 unit/integration tests + E2E tests), writing guidelines, and 13 database migrations
 
 ## License
 
