@@ -1,8 +1,10 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
 import uuid
-from .constants import DEFAULT_MODEL
+from .constants import DEFAULT_MODEL, EPIC_COLORS
+
+VALID_EPIC_COLOR_KEYS = {c["key"] for c in EPIC_COLORS}
 
 
 def new_id() -> str:
@@ -32,11 +34,29 @@ class EpicCreate(BaseModel):
     title: str
     color: str = "blue"
 
+    @field_validator("color")
+    @classmethod
+    def validate_color(cls, v: str) -> str:
+        if v not in VALID_EPIC_COLOR_KEYS:
+            raise ValueError(
+                f"Invalid epic color '{v}'. Must be one of: {', '.join(sorted(VALID_EPIC_COLOR_KEYS))}"
+            )
+        return v
+
 
 class EpicUpdate(BaseModel):
     title: Optional[str] = None
     color: Optional[str] = None
     position: Optional[int] = None
+
+    @field_validator("color")
+    @classmethod
+    def validate_color(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_EPIC_COLOR_KEYS:
+            raise ValueError(
+                f"Invalid epic color '{v}'. Must be one of: {', '.join(sorted(VALID_EPIC_COLOR_KEYS))}"
+            )
+        return v
 
 
 class ItemMove(BaseModel):
