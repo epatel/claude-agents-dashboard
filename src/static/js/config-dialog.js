@@ -64,6 +64,13 @@ const ConfigDialog = {
             }
             this._renderBuiltinToolsList();
 
+            // Load flame settings
+            document.getElementById('config-flame-enabled').checked = config.flame_enabled !== false && config.flame_enabled !== 0;
+            const intensitySlider = document.getElementById('config-flame-intensity');
+            const intensityVal = parseFloat(config.flame_intensity_multiplier) || 1.0;
+            intensitySlider.value = intensityVal;
+            document.getElementById('config-flame-intensity-value').textContent = intensityVal.toFixed(1);
+
             this.switchConfigTab('general');
             DialogCore.open('config-dialog');
         } catch (err) {
@@ -192,9 +199,15 @@ const ConfigDialog = {
             allowed_commands: JSON.stringify(this._configAllowedCommands),
             bash_yolo: document.getElementById('config-bash-yolo').checked,
             allowed_builtin_tools: JSON.stringify(this._configBuiltinTools),
+            flame_enabled: document.getElementById('config-flame-enabled').checked,
+            flame_intensity_multiplier: parseFloat(document.getElementById('config-flame-intensity').value) || 1.0,
         };
         try {
             await Api.request('PUT', '/api/config', config);
+            // Apply flame settings immediately
+            if (typeof Flame !== 'undefined') {
+                Flame.applyConfig(config);
+            }
             DialogCore.close('config-dialog');
         } catch (err) {
             console.error('Failed to save config:', err);

@@ -805,8 +805,8 @@ async def update_config(request: Request, body: AgentConfig):
     db = request.app.state.db
     async with db.connect() as conn:
         await conn.execute(
-            "UPDATE agent_config SET system_prompt = ?, tools = ?, model = ?, project_context = ?, mcp_servers = ?, mcp_enabled = ?, plugins = ?, allowed_commands = ?, bash_yolo = ?, allowed_builtin_tools = ?, updated_at = datetime('now') WHERE id = 1",
-            (body.system_prompt, body.tools, body.model, body.project_context, body.mcp_servers, body.mcp_enabled, body.plugins, body.allowed_commands, body.bash_yolo, body.allowed_builtin_tools),
+            "UPDATE agent_config SET system_prompt = ?, tools = ?, model = ?, project_context = ?, mcp_servers = ?, mcp_enabled = ?, plugins = ?, allowed_commands = ?, bash_yolo = ?, allowed_builtin_tools = ?, flame_enabled = ?, flame_intensity_multiplier = ?, updated_at = datetime('now') WHERE id = 1",
+            (body.system_prompt, body.tools, body.model, body.project_context, body.mcp_servers, body.mcp_enabled, body.plugins, body.allowed_commands, body.bash_yolo, body.allowed_builtin_tools, body.flame_enabled, body.flame_intensity_multiplier),
         )
         await conn.commit()
         cursor = await conn.execute("SELECT * FROM agent_config WHERE id = 1")
