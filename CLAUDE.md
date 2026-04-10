@@ -63,6 +63,7 @@ graph TB
         CA["request_command_access"]
         BV["view_board"]
         TA["request_tool_access"]
+        SC["create_shortcut"]
     end
 
     subgraph Git["Git Layer"]
@@ -84,6 +85,7 @@ graph TB
     Sess --> CM
     Sess --> CA
     Sess --> BV
+    Sess --> SC
     Sess --> TA
     DBS --> D
     NS --> WSM
@@ -165,12 +167,12 @@ sequenceDiagram
 
 ### Key design decisions
 
-- **Service layer architecture**: The orchestrator is a thin facade (122 lines) that delegates to 5 focused services (total ~1,912 lines):
-  - `WorkflowService` (979 lines): Coordinates agent workflows, state transitions, callback creation, merge conflict auto-resolution, dirty repo overlap detection, and auto-start of dependent items
+- **Service layer architecture**: The orchestrator is a thin facade (123 lines) that delegates to 5 focused services (total ~1,935 lines):
+  - `WorkflowService` (1,010 lines): Coordinates agent workflows, state transitions, callback creation, merge conflict auto-resolution, dirty repo overlap detection, and auto-start of dependent items
   - `DatabaseService` (482 lines): All database operations (items, logs, config, attachments, token usage, item dependencies)
-  - `NotificationService` (114 lines): WebSocket broadcasting and tool use formatting
+  - `NotificationService` (118 lines): WebSocket broadcasting and tool use formatting
   - `GitService` (105 lines): Worktree management, merge operations, and cleanup
-  - `SessionService` (218 lines): Agent session lifecycle, commit messages, plugin parsing
+  - `SessionService` (220 lines): Agent session lifecycle, commit messages, plugin parsing
 
 - **Agent start is non-blocking**: `WorkflowService.start_agent()` creates a session via `SessionService.create_session()` and launches it via `SessionService.start_session_task()` which uses `asyncio.create_task()` so the HTTP response returns immediately. The agent streams progress via WebSocket.
 
@@ -224,7 +226,7 @@ sequenceDiagram
 
 - **Git operation timeouts**: All git operations use configurable timeouts from `config.py`: `GIT_OPERATION_TIMEOUT` (300s / 5min) for most operations, `GIT_MERGE_TIMEOUT` (600s / 10min) for merges, and `HTTP_REQUEST_TIMEOUT` (660s / 11min) for HTTP endpoints wrapping git operations. Prevents hung processes.
 
-- **External MCP tool allowance**: External MCP servers loaded from `mcp-config.json` get wildcard tool permissions (`mcp__{server_name}__*`). Built-in servers (`clarification`, `todo`, `commit_message`) get explicit individual tool permissions instead.
+- **External MCP tool allowance**: External MCP servers loaded from `mcp-config.json` get wildcard tool permissions (`mcp__{server_name}__*`). Built-in servers (`clarification`, `todo`, `commit_message`, `shortcut`) get explicit individual tool permissions instead.
 
 - **Plugin support**: Agents can load local Claude Code plugins via directory paths. Plugins are configured in the agent config UI (Plugins tab) and stored as a JSON array of paths in `agent_config.plugins`. The orchestrator's `_parse_plugins()` normalizes entries into `{"type": "local", "path": "..."}` dicts passed to the SDK.
 
@@ -257,6 +259,8 @@ sequenceDiagram
 - **Auto-start for dependent items**: Items can have `auto_start` enabled (migration 012). When all items in an item's `requires` list are completed (done/archived), `WorkflowService._notify_and_auto_start_dependents()` automatically starts an agent on the newly unblocked item. This enables pipeline-style workflows where completing one task triggers the next.
 
 - **Shortcuts bar**: `shortcuts.js` provides a quick-launch bar at the bottom of the board for running bash commands. Shortcuts are persisted via `/api/shortcuts` CRUD endpoints (stored in-memory on the server). Each shortcut can be run, producing a subprocess whose output is streamed via polling (`/api/shortcuts/{id}/output`). Supports stop (`/api/shortcuts/{id}/stop`) to terminate a running process while preserving its output log with a "STOPPED BY USER" marker, reset (`/api/shortcuts/{id}/reset`) to clear output and re-run, and auto-reset mode. Progress dialog shows dynamic Stop/Reset button based on running state. Process cleanup happens on delete.
+
+- **Shortcut creation via MCP**: Agents can create quick-launch bash command shortcuts on the board via the `create_shortcut` MCP tool (`shortcut.py`). This flows through `WorkflowService._create_on_create_shortcut_callback()`, persists the shortcut via the in-memory shortcuts store, and broadcasts real-time updates. Useful for agents to set up project-specific commands (test runners, build commands, linters) as part of task completion.
 
 - **Worktree file browsing**: Items in review can browse their worktree's file tree via `/api/items/{id}/worktree/tree` and `/api/items/{id}/worktree/content` endpoints, reusing the same path validation and security as the project file browser.
 
@@ -429,6 +433,7 @@ src/
 |   +-- board_view.py                  # view_board MCP tool
 |   +-- tool_access.py                 # request_tool_access MCP tool
 |   +-- tool_filter.py                 # PreToolUse hook for optional built-in tools
+|   +-- shortcut.py                    # create_shortcut MCP tool
 +-- services/
 |   +-- __init__.py                  # Re-exports all services
 |   +-- workflow_service.py          # Agent workflow coordination + state transitions
@@ -575,3 +580,4 @@ The system includes several built-in MCP tools for agents:
 - **`request_command_access`** (command access): Allows agents to request permission to run blocked shell commands. Shows an approve/deny prompt in the UI. Approved commands are saved to agent config for future sessions.
 - **`view_board`** (board introspection): Allows agents to see all items on the board grouped by column (Todo, Doing, Review, Done), including dependency info (which items each task requires). Helps agents understand project context, coordinate work, and reference item IDs when setting `requires` on new todos.
 - **`request_tool_access`** (tool access): Allows agents to request permission to use disabled optional built-in tools (e.g., WebSearch, WebFetch). Shows an approve/deny prompt in the UI. Approved tools are saved to agent config.
+- **`create_shortcut`** (shortcut creation): Allows agents to add quick-launch bash command shortcuts to the board's shortcut bar. Useful for setting up project-specific commands (test runners, build commands, linters) as part of task completion.
