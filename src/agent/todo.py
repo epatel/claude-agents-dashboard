@@ -78,7 +78,10 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
         "Create a new todo item when you identify tasks that need to be done. "
         "Use this to break down work into smaller actionable items, "
         "create follow-up tasks, or note issues that need attention. "
-        "Provide a clear title and optionally a detailed description.",
+        "Provide a clear title and optionally a detailed description. "
+        "IMPORTANT: If this todo depends on other todos being completed first, "
+        "pass their item IDs in the 'requires' array — this enforces the dependency "
+        "so agents cannot start this task until prerequisites are done.",
         CREATE_TODO_SCHEMA,
     )
     async def create_todo(input: dict) -> dict:

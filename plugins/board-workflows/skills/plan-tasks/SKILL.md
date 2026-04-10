@@ -59,8 +59,21 @@ Ask: "Does this breakdown look right, or should I adjust?"
 Once approved:
 
 1. **Create the Epic** via mcp__todo__create_epic
-2. **Create each Todo** via mcp__todo__create_todo with the epic_id
-3. **Set commit message** summarizing the plan
+2. **Create each Todo in dependency order** via mcp__todo__create_todo with:
+   - `epic_id` — the epic created in step 1
+   - `requires` — array of item IDs this task depends on (from previously created todos)
+3. **Track created IDs.** Each create_todo call returns an item ID. Save these IDs so later todos can reference them in their `requires` array.
+4. **Set commit message** summarizing the plan
+
+**Example dependency chain:**
+```
+Todo 1 (DB migration)      → ID: abc123, requires: []
+Todo 2 (Backend service)   → ID: def456, requires: ["abc123"]
+Todo 3 (API routes)        → ID: ghi789, requires: ["def456"]
+Todo 4 (Frontend)          → ID: jkl012, requires: ["ghi789"]
+```
+
+Dependencies are **enforced by the board** — an agent cannot start a todo until all items in its `requires` list are completed. Always use `requires` instead of only describing dependencies in text.
 
 ### Writing Task Descriptions
 
@@ -68,6 +81,6 @@ Each todo description should contain:
 
 - **What to do** — specific files to create/modify and the changes needed
 - **How to verify** — test command or expected behavior
-- **Dependencies** — mention if this task depends on another being done first
+- **Dependencies** — mention what this task depends on (for human context), but **always also set the `requires` parameter** with the actual item IDs to enforce the dependency technically
 
 Keep descriptions concise but complete. An agent reading only the title and description should know exactly what to build.
