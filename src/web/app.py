@@ -66,10 +66,14 @@ async def lifespan(app: FastAPI):
     # Start periodic stale worktree checker
     check_task = asyncio.create_task(_periodic_stale_check(app.state.orchestrator))
 
+    # Start WebSocket heartbeat to detect and clean up dead connections
+    app.state.ws_manager.start_heartbeat()
+
     yield
 
-    # Shutdown: cancel periodic task and stop all agents
+    # Shutdown: cancel periodic task, stop heartbeat, and stop all agents
     check_task.cancel()
+    app.state.ws_manager.stop_heartbeat()
     await app.state.orchestrator.shutdown()
 
 
