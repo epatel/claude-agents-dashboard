@@ -6,7 +6,7 @@ Standalone scrum board that orchestrates Claude agents working on a **separate t
 
 ```bash
 ./run.sh /path/to/target-project   # Creates venv, installs deps, starts server (Python 3.12+)
-./run-tests.sh                     # All tests (208)
+./run-tests.sh                     # All tests (837)
 ./run-tests.sh tests/smoke/        # Smoke tests only
 ./run-tests.sh -k "test_cancel"    # Filter by name
 ```

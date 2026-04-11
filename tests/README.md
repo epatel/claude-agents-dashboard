@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (208 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (13 migrations), security, git operations, and agent tools.
+This directory contains the automated test suite (837 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (13 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
 
 ## Test Structure
 
@@ -11,15 +11,30 @@ tests/
 │   ├── migrations/
 │   │   ├── test_migration_runner.py             # Core migration functionality (14 tests)
 │   │   └── test_migration_edge_cases.py         # Edge cases and error scenarios (14 tests)
-│   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
-│   ├── test_git_timeout.py                      # Git timeout handling (5 tests)
-│   ├── test_file_routes.py                      # File browser routes (66 tests)
+│   ├── test_advisor.py                          # Advisor logic (13 tests)
 │   ├── test_allowed_commands.py                 # Command filter + access MCP tool (26 tests)
-│   ├── test_diff_mixing.py                      # Diff isolation between items (6 tests)
-│   ├── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
-│   ├── test_epics.py                            # Epic CRUD, progress, item assignment (19 tests)
+│   ├── test_annotation_prompt.py                # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py               # Annotation summary generation (2 tests)
-│   └── test_annotation_prompt.py                # Annotation prompt formatting (5 tests)
+│   ├── test_app.py                              # FastAPI app creation and middleware (23 tests)
+│   ├── test_create_todo_autostart.py            # Todo creation with auto-start (13 tests)
+│   ├── test_database_service.py                 # DatabaseService CRUD operations (47 tests)
+│   ├── test_diff_mixing.py                      # Diff isolation between items (6 tests)
+│   ├── test_epics.py                            # Epic CRUD, progress, item assignment (19 tests)
+│   ├── test_file_routes.py                      # File browser routes (66 tests)
+│   ├── test_git_operations.py                   # Git diff, merge, commit operations (67 tests)
+│   ├── test_git_timeout.py                      # Git timeout handling (5 tests)
+│   ├── test_git_worktree.py                     # Git worktree create/cleanup (15 tests)
+│   ├── test_main.py                             # Server startup and port discovery (34 tests)
+│   ├── test_manage.py                           # Migration CLI commands (24 tests)
+│   ├── test_mcp_tool_servers.py                 # MCP tool server creation and invocation (50 tests)
+│   ├── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
+│   ├── test_notification_service.py             # WebSocket broadcasting (41 tests)
+│   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
+│   ├── test_routes.py                           # HTTP endpoint tests (69 tests)
+│   ├── test_session.py                          # AgentSession SDK wrapper (64 tests)
+│   ├── test_session_service.py                  # SessionService lifecycle (54 tests)
+│   ├── test_websocket.py                        # WebSocket connection and rate limiting (45 tests)
+│   └── test_workflow_service.py                 # WorkflowService state transitions (70 tests)
 ├── integration/                                  # Integration tests (slower, multi-component)
 │   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (14 tests)
 ├── smoke/                                        # Smoke tests (basic functionality)
@@ -27,45 +42,55 @@ tests/
 └── README.md                                     # This file
 ```
 
-## P0 Priority Test Coverage
+## Test Coverage by Area
 
-### 1. Orchestrator Lifecycle (Integration Tests)
-**File: `tests/integration/test_orchestrator_lifecycle.py`**
+### 1. Service Layer (212 tests)
+- **WorkflowService** (70 tests) — State transitions, agent lifecycle, merge conflict resolution, dependency auto-start, callback factories
+- **DatabaseService** (47 tests) — CRUD operations, item dependencies, column whitelist validation
+- **SessionService** (54 tests) — Session lifecycle, commit messages, plugin parsing, SDK wrapper
+- **NotificationService** (41 tests) — WebSocket broadcasting, tool formatting, event types
 
-Tests the complete agent workflow:
-- ✅ **Start**: Agent startup and worktree creation
-- ✅ **Complete**: Session execution and completion handling
-- ✅ **Merge**: Integration with git operations and cleanup
-- ✅ **Error Handling**: Failures, cancellation, conflicts
-- ✅ **Review Loop**: Feedback and restart workflows
-- ✅ **Concurrency**: Multiple concurrent agents
+### 2. Web Layer (137 tests)
+- **Routes** (69 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search
+- **File Routes** (66 tests) — File browser path validation, secret detection, .browserhidden, language mapping, directory scanning
+- **WebSocket** (45 tests) — Connection management, rate limiting, dead-connection cleanup
+- **App** (23 tests) — FastAPI factory, middleware, CORS, security headers, lifespan
 
-### 2. Allowed Commands & Diff Isolation (Unit Tests)
-**Files: `tests/unit/test_allowed_commands.py`, `tests/unit/test_diff_mixing.py`**
+### 3. Git Layer (87 tests)
+- **Git Operations** (67 tests) — Diff generation, merge, commit, path validation, timeout handling
+- **Git Worktree** (15 tests) — Worktree create/cleanup, base branch tracking
+- **Git Timeout** (5 tests) — Timeout configuration and recovery
 
-Tests agent security and diff correctness:
-- ✅ **Command filter hook**: Allow/deny bash commands by prefix
-- ✅ **Command access MCP tool**: Server creation and request flow
-- ✅ **Permission persistence**: Approved commands saved to agent config
-- ✅ **Diff isolation**: Each item's diff contains only its own changes
-- ✅ **Concurrent diffs**: Simultaneous diff requests return correct results
-- ✅ **Diff during merge**: Diffs remain stable while other items are merged
-- ✅ **Base commit pinning**: Diffs use fixed commit SHA, immune to branch moves
+### 4. Agent Tools (113 tests)
+- **MCP Tool Servers** (50 tests) — Tool server creation, invocation, request/response flow
+- **Allowed Commands** (26 tests) — Command filter hook, shell operator rejection, YOLO mode bypass
+- **Advisor** (13 tests) — Agent advisor logic
+- **Session** (64 tests) — AgentSession SDK wrapper, token extraction, event handling
 
-### 3. Database Migrations (Unit Tests)
-**Files: `tests/unit/migrations/test_migration_runner.py`, `tests/unit/migrations/test_migration_edge_cases.py`**
+### 5. Features (48 tests)
+- **Epics** (19 tests) — CRUD, progress stats, item assignment, filtering, dependencies
+- **Todo Auto-start** (13 tests) — Todo creation with dependency-based auto-start
+- **Diff Mixing** (6 tests) — Diff isolation between concurrent items
+- **Annotation Summary** (2 tests) — Summary text generation
+- **Annotation Prompt** (5 tests) — Prompt formatting for agents
+- **Mini-MCP** (11 tests) — Example MCP server protocol compliance
 
-Tests migration operations:
-- ✅ **Up/Down**: Migration application and rollback
-- ✅ **Discovery**: Migration file loading and validation
-- ✅ **Status**: Migration state tracking
-- ✅ **Error Handling**: Failure scenarios and recovery
-- ✅ **Edge Cases**: Malformed files, concurrent access, orphaned records
+### 6. Infrastructure (110 tests)
+- **Migrations** (28 tests) — Runner, up/down, discovery, edge cases
+- **Main** (34 tests) — Server startup, port discovery, git validation
+- **Manage** (24 tests) — Migration CLI commands
+- **Path Validation** (14 tests) — Traversal prevention, null bytes, symlinks
+- **Smoke** (12 tests) — Imports, DB basics, config validation
 
-### 4. E2E Tests
-**Directory: `tests/e2e/`**
+### 7. Orchestrator Lifecycle (Integration, 14 tests)
+Tests the complete agent workflow end-to-end:
+- ✅ Start → Complete → Approve → Done
+- ✅ Failure, cancellation, review loop, merge conflicts
+- ✅ Clarification flow, commit messages, token tracking
+- ✅ Concurrency (3 parallel agents), rapid cancel/restart, shutdown
 
-End-to-end tests that run real agent sessions against a test project:
+### 8. E2E Tests
+**Directory: `tests/e2e/`** — Real agent sessions against a test project:
 - ✅ **Append README**: Agent creates/modifies a file end-to-end
 - ✅ **Clarification**: Agent asks a question, receives user response, continues
 - ✅ **Merge conflict**: Agent handles merge conflict auto-resolution
@@ -78,7 +103,7 @@ Run with: `./run-e2e-tests.sh` (supports `--verbose` flag for colored output)
 
 ### Quick Start
 ```bash
-# Run all 208 tests
+# Run all 837 tests
 ./run-tests.sh
 
 # Run specific test categories

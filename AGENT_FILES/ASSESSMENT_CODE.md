@@ -1,14 +1,14 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-04-10
+**Date**: 2026-04-11
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 27 — Maintenance reassessment. Corrected test count to 208 (verified via pytest --collect-only). Previous count of 213 included conftest fixtures in grep count. No structural changes.
+**Revision**: 28 — Maintenance reassessment. Test suite expanded from 208 to 837 tests across 28 test files (15 new files). Updated line counts and file counts to reflect current codebase.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), **dependency management endpoints**, and **animated flame background** (migration 013 — activity-driven flame effect behind board columns) have been added. The test suite includes **208 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with coverage for diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), **dependency management endpoints**, and **animated flame background** (migration 013 — activity-driven flame effect behind board columns) have been added. The test suite includes **837 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -339,34 +339,46 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 208 automated tests across 14 test files (including conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 13 migrations.
+**Current state**: 837 automated tests across 28 test files (plus conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 13 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
 | `tests/smoke/test_basic_functionality.py` | Smoke | 12 | Imports, DB basics, config |
+| `tests/unit/test_workflow_service.py` | Unit | 70 | State transitions, lifecycle, conflict resolution, auto-start |
+| `tests/unit/test_routes.py` | Unit | 69 | HTTP endpoints for items, review, epics, config, stats |
+| `tests/unit/test_git_operations.py` | Unit | 67 | Diff generation, merge, commit, path validation |
+| `tests/unit/test_file_routes.py` | Unit | 66 | File browser path validation, secret detection, .browserhidden |
+| `tests/unit/test_session.py` | Unit | 64 | AgentSession SDK wrapper, token extraction, events |
+| `tests/unit/test_session_service.py` | Unit | 54 | SessionService lifecycle, commit messages, plugins |
+| `tests/unit/test_mcp_tool_servers.py` | Unit | 50 | MCP tool server creation, invocation, request flow |
+| `tests/unit/test_database_service.py` | Unit | 47 | DatabaseService CRUD, dependencies, column whitelist |
+| `tests/unit/test_websocket.py` | Unit | 45 | WebSocket connection, rate limiting, cleanup |
+| `tests/unit/test_notification_service.py` | Unit | 41 | WebSocket broadcasting, tool formatting |
+| `tests/unit/test_main.py` | Unit | 34 | Server startup, port discovery, git validation |
+| `tests/unit/test_allowed_commands.py` | Unit | 26 | Command filter, shell operators, YOLO mode |
+| `tests/unit/test_manage.py` | Unit | 24 | Migration CLI commands |
+| `tests/unit/test_app.py` | Unit | 23 | FastAPI factory, middleware, CORS, security headers |
+| `tests/unit/test_epics.py` | Unit | 19 | Epic CRUD, progress, assignment, filtering |
+| `tests/unit/test_git_worktree.py` | Unit | 15 | Worktree create/cleanup, base branch tracking |
 | `tests/unit/test_path_validation.py` | Unit | 14 | Path traversal prevention |
-| `tests/unit/test_git_timeout.py` | Unit | 5 | Git operation timeout behavior |
-| `tests/unit/test_file_routes.py` | Unit | 66 | File browser path validation, secret detection, .browserhidden, language mapping, directory scanning, file content reading |
-| `tests/unit/test_allowed_commands.py` | Unit | 26 | Command filter hook, shell operator rejection, command access MCP tool, permission persistence, YOLO mode |
-| `tests/unit/test_diff_mixing.py` | Unit | 6 | Diff isolation between items, concurrent diffs, base commit pinning |
-| `tests/unit/test_mini_mcp.py` | Unit | 11 | Mini-MCP server stdio protocol, JSON-RPC messages, tool invocation |
 | `tests/unit/migrations/test_migration_runner.py` | Unit | 14 | Migration engine |
 | `tests/unit/migrations/test_migration_edge_cases.py` | Unit | 14 | Migration edge cases |
-| `tests/unit/test_epics.py` | Unit | 19 | Epic CRUD, progress stats, item assignment, filtering, dependencies |
+| `tests/unit/test_create_todo_autostart.py` | Unit | 13 | Todo creation with auto-start |
+| `tests/unit/test_advisor.py` | Unit | 13 | Advisor logic |
+| `tests/unit/test_mini_mcp.py` | Unit | 11 | Mini-MCP server stdio protocol |
+| `tests/unit/test_diff_mixing.py` | Unit | 6 | Diff isolation, concurrent diffs, base commit pinning |
+| `tests/unit/test_git_timeout.py` | Unit | 5 | Git timeout configuration and recovery |
+| `tests/unit/test_annotation_prompt.py` | Unit | 5 | Annotation prompt formatting |
 | `tests/unit/test_annotation_summary.py` | Unit | 2 | Annotation summary generation |
-| `tests/unit/test_annotation_prompt.py` | Unit | 5 | Annotation prompt formatting for agents |
-| `tests/integration/test_orchestrator_lifecycle.py` | Integration | 14 | Orchestrator lifecycle |
-| `tests/conftest.py` | Fixtures | — | Shared test fixtures |
+| `tests/integration/test_orchestrator_lifecycle.py` | Integration | 14 | Full orchestrator lifecycle |
 
 ### Recommended Additional Tests
 
 | Priority | Area | Type | Effort |
 |----------|------|------|--------|
-| **P1** | Service layer unit tests (WorkflowService, DatabaseService) | Unit | Medium |
-| **P1** | WebSocket rate limiting | Unit | Low |
-| **P1** | API routes (CRUD, agent actions) | Integration | Medium |
-| **P2** | Token usage extraction | Unit | Low |
+| **P2** | Token usage extraction edge cases | Unit | Low |
 | **P2** | Stats caching and invalidation | Unit | Low |
+| **P2** | Card render parity (Jinja2 vs JS) | E2E | Medium |
 | **P3** | Frontend dialog modules | E2E (Playwright) | High |
 
 ---
@@ -437,12 +449,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 48 | ~7,005 |
-| JavaScript frontend | 24 | ~7,313 |
-| CSS styles | 5 | ~3,449 |
-| HTML templates | 3 | ~746 |
-| Tests | 14 | ~3,491 |
-| **Grand total** | **94** | **~22,004** |
+| Python backend (src/) | 49 | ~7,070 |
+| JavaScript frontend | 24 | ~7,405 |
+| CSS styles | 5 | ~3,453 |
+| HTML templates | 3 | ~788 |
+| Tests | 29 | ~10,839 |
+| **Grand total** | **110** | **~29,555** |
 
 ---
 
@@ -452,5 +464,3 @@ graph LR
 |----------|---------------|--------|
 | **Low** | Remove legacy compatibility methods from orchestrator | Low |
 | **Low** | Sanitize work log markdown rendering | Low |
-| **Low** | Add service layer unit tests | Medium |
-| **Low** | Add WebSocket rate limiting unit tests | Low |

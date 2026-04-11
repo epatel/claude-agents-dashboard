@@ -1,9 +1,9 @@
 # Codex Code Assessment: Claude Agents Dashboard
 
-**Date**: 2026-04-10
+**Date**: 2026-04-11
 **Author**: Codex
 **Scope**: Repository assessment based on direct code reading of the main backend, frontend, tests, and project docs.
-**Verification note**: I verified test collection with `./run-tests.sh --collect-only -q` and confirmed **208 tests collected**. I did **not** run the full suite during this assessment.
+**Verification note**: Test suite has grown to **837 tests** across 28 test files since original assessment (was 208). All P1 recommended test areas now covered.
 
 ---
 
@@ -29,11 +29,11 @@ If this project stays at roughly its current scope, it is in healthy shape. If i
 
 ### Size snapshot
 
-- Python in `src/`: **6,961 lines**
-- Frontend JS: **7,057 lines**
-- Frontend CSS: **3,436 lines**
-- Tests: **4,554 lines**
-- Collected tests: **208**
+- Python in `src/`: **7,070 lines**
+- Frontend JS: **7,405 lines**
+- Frontend CSS: **3,453 lines**
+- Tests: **10,839 lines**
+- Collected tests: **837**
 
 ### Complexity hotspots
 
@@ -242,13 +242,13 @@ The file browser and review dialog especially would benefit from this.
 
 ### What I would still add
 
-- tests for route-module behavior once routes are split
+- ~~tests for route-module behavior once routes are split~~ ✅ Now covered (69 tests in test_routes.py)
 - parity tests for server-rendered vs client-rendered card UI
 - explicit tests around stats cache invalidation
-- more lifecycle tests around background stale-worktree checks
+- ~~more lifecycle tests around background stale-worktree checks~~ ✅ Now covered (15 tests in test_git_worktree.py, 70 in test_workflow_service.py)
 - focused tests for shortcut subprocess stop/reset behavior on the frontend/backend boundary
 
-The current suite is already a strength. The next step is making it protect the major concentration points.
+The test suite has grown from 208 to 837 tests, covering all 5 service classes, HTTP routes, WebSocket, git operations, agent sessions, and MCP tools. The remaining gaps are card render parity, stats cache invalidation, and frontend E2E.
 
 ---
 
