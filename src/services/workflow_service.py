@@ -710,10 +710,26 @@ class WorkflowService:
                 # Use commit message from session
                 commit_message = self.sessions.get_commit_message(item_id)
 
+                # Check if the agent produced any file changes
+                has_file_changes = 1  # assume yes
+                current_item = await self.db.get_item(item_id)
+                wt = Path(current_item["worktree_path"]) if current_item.get("worktree_path") else None
+                br = current_item.get("branch_name")
+                if wt and br:
+                    from ..git.operations import get_changed_files
+                    try:
+                        base = current_item.get("base_branch") or "main"
+                        base_commit = current_item.get("base_commit")
+                        changed = await get_changed_files(wt, br, base, wt, base_commit)
+                        has_file_changes = 1 if len(changed) > 0 else 0
+                    except Exception as e:
+                        logger.warning(f"Failed to check changed files for review: {e}")
+
                 update_kwargs = dict(
                     column_name="review",
                     status=None,
                     session_id=result.session_id,
+                    has_file_changes=has_file_changes,
                 )
                 if commit_message:
                     update_kwargs["commit_message"] = commit_message

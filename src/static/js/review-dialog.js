@@ -976,7 +976,7 @@ const ReviewDialog = {
             if (hasChanges) {
                 await Board.approveItem(itemId);
             } else {
-                await Api.moveItem(itemId, 'done');
+                await Api.moveItem(itemId, 'done', 0);
             }
             DialogCore.close('review-dialog');
         };
