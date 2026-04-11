@@ -212,7 +212,8 @@ The codebase has several good security practices worth noting:
 - **Worktree isolation**: Each agent gets its own git worktree, preventing agents from interfering with each other's work.
 - **Secret file hiding**: The file browser proactively hides common secret files (`.env`, keys, certificates) and supports project-specific `.browserhidden` config files for custom patterns, with mtime-based caching for performance.
 - **Command access workflow**: The `request_command_access` MCP tool provides a controlled way for agents to ask permission for new commands, with user approval required.
-- **Tool filtering**: The `PreToolUse` hook architecture for both command filtering and built-in tool filtering is well-designed and extensible.
+- **Tool filtering**: The `PreToolUse` hook architecture for command filtering, built-in tool filtering, and path guarding is well-designed and extensible.
+- **Path guard**: `PreToolUse` hook (`path_guard.py`) prevents agents from editing files outside their assigned worktree, blocking accidental writes to the main repo or other agents' worktrees.
 - **Shell operator rejection**: The command filter comprehensively blocks shell metacharacters before checking allowed prefixes, using `shlex.split()` for robust parsing.
 - **CORS protection**: Localhost-only origin restriction prevents cross-origin attacks from malicious websites.
 - **YOLO mode visibility**: Even in unrestricted mode, all commands are logged and tagged for audit trail visibility.

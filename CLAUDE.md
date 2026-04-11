@@ -50,6 +50,7 @@ Server binds to `127.0.0.1:8000` (auto-increments if busy, up to 8019). E2E test
 - Agents run with `permission_mode="acceptEdits"` by default. YOLO mode uses `bypassPermissions`.
 - Allowed command prefixes are checked via `PreToolUse` hook (`command_filter.py`). Denied commands prompt `request_command_access`.
 - Optional built-in tools (WebSearch, WebFetch) filtered via `PreToolUse` hook (`tool_filter.py`). Denied tools prompt `request_tool_access`.
+- Path guard via `PreToolUse` hook (`path_guard.py`) prevents agents from editing files outside their worktree.
 - External MCP servers get wildcard tool permissions (`mcp__{server_name}__*`).
 - Attachment deletion uses `/api/attachments/{attachment_id}` (not nested under items).
 - JavaScript-rendered cards and the server-rendered Jinja2 `card.html` partial must stay in sync.

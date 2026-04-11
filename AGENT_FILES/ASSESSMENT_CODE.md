@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-11
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 28 — Maintenance reassessment. Test suite expanded from 208 to 837 tests across 28 test files (15 new files). Updated line counts and file counts to reflect current codebase.
+**Revision**: 29 — Maintenance reassessment. Updated line counts to reflect recent changes (path_guard hook, can_use_tool PermissionResult fix, session improvements). Python backend now ~7,200 lines.
 
 ---
 
@@ -113,27 +113,27 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 1,140 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, and auto-start of dependent items |
+| `services/workflow_service.py` | 1,154 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, and auto-start of dependent items |
 | `services/database_service.py` | 503 | A | All DB operations extracted; parameterized queries throughout; item dependency management |
 | `services/notification_service.py` | 118 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 105 | A | Git worktree and merge operations with proper error handling |
-| `services/session_service.py` | 220 | A | Session lifecycle, commit messages, plugin parsing |
+| `services/session_service.py` | 229 | A | Session lifecycle, commit messages, plugin parsing |
 
 ### Backend Python — Core
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `main.py` | 107 | A | Clean entry point, proper git validation, port discovery |
+| `main.py` | 111 | A | Clean entry point, proper git validation, port discovery |
 | `config.py` | 110 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
-| `constants.py` | 32 | A | Centralized `AVAILABLE_MODELS` dict, `DEFAULT_MODEL`, `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
-| `models.py` | 136 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
+| `constants.py` | 38 | A | Centralized `AVAILABLE_MODELS` dict, `DEFAULT_MODEL`, `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
+| `models.py` | 138 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
-| `web/app.py` | 128 | A | Proper lifespan management, clean factory pattern, CORS middleware, security headers |
-| `web/routes.py` | 1,273 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations |
+| `web/app.py` | 129 | A | Proper lifespan management, clean factory pattern, CORS middleware, security headers |
+| `web/routes.py` | 1,274 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations |
 | `web/file_routes.py` | 322 | A | File browser endpoints with path validation, secret hiding, .browserhidden support, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 123 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
-| `agent/session.py` | 545 | A- | Clean SDK wrapper; good token extraction with fallbacks |
+| `agent/session.py` | 583 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult` |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
 | `agent/todo.py` | 147 | A | Clean MCP tool definition with epic and dependency support |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
@@ -141,6 +141,7 @@ graph TB
 | `agent/command_filter.py` | 90 | A | PreToolUse hook for bash command filtering with shell operator rejection and shlex parsing |
 | `agent/board_view.py` | 42 | A | Board introspection MCP tool |
 | `agent/tool_access.py` | 42 | A | Runtime tool access request MCP tool |
+| `agent/path_guard.py` | 119 | A | PreToolUse hook preventing agents from editing files outside their worktree |
 | `agent/tool_filter.py` | 38 | A | PreToolUse hook for optional built-in tool filtering |
 | `agent/shortcut.py` | 54 | A | Create shortcut MCP tool for agents to add bash command shortcuts to the board |
 | `git/operations.py` | 354 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
@@ -166,7 +167,7 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
 | `app.js` | 479 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
-| `board.js` | 985 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
+| `board.js` | 986 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
 | `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 12 specialized modules |
 | `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
 | `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
@@ -186,9 +187,9 @@ graph TB
 | `api.js` | 102 | A | Clean HTTP helpers |
 | `diff.js` | 62 | A- | Functional diff viewer |
 | `theme.js` | 24 | A | Simple, correct theme toggle |
-| `stats.js` | 184 | A- | Good auto-refresh and WebSocket update pattern |
+| `stats.js` | 189 | A- | Good auto-refresh and WebSocket update pattern |
 | `sound.js` | 76 | A | Notification sound effects for agent events |
-| `flame.js` | ~256 | A | Animated flame background with activity-driven intensity behind board columns |
+| `flame.js` | 328 | A | Animated flame background with activity-driven intensity behind board columns |
 
 ### Frontend CSS
 
@@ -200,7 +201,7 @@ graph TB
 | `file-browser.css` | 574 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 101 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~3,449 lines across 5 modules.
+**Note**: CSS total is ~3,453 lines across 5 modules.
 
 ---
 
@@ -291,6 +292,7 @@ stateDiagram-v2
 | Input validation | **Good** | Pydantic models validate API inputs |
 | Secret handling | **Good** | API key from env var, never logged; file browser hides `.env`, `*.key`, `*.pem`, credentials, and SSH keys |
 | Agent permissions | **Good** | `acceptEdits` mode, not `bypassPermissions` |
+| Path guard | **Good** | `PreToolUse` hook prevents agents from editing files outside their worktree (`path_guard.py`) |
 | WebSocket rate limiting | **Good** | Per-IP connection limits (5 concurrent, 10 per 60s window), connection attempt tracking |
 | Git timeouts | **Good** | Configurable timeouts: operations (5min), merge (10min), HTTP requests (11min) |
 
@@ -318,7 +320,7 @@ stateDiagram-v2
 | 10 | No WebSocket rate limiting | ✅ Per-IP rate limiting with concurrent connection limits and windowed attempt tracking |
 | 11 | No request timeout for blocking operations | ✅ `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT` on approve route |
 | 12 | Migration class discovery uses string comparison | ✅ Justified — `issubclass` fails with dynamic module loading |
-| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (1,140), DatabaseService (503), NotificationService (118), GitService (105), SessionService (220). Orchestrator now 123-line facade |
+| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (1,154), DatabaseService (503), NotificationService (118), GitService (105), SessionService (229). Orchestrator now 123-line facade |
 | 14 | `dialogs.js` too large (801 lines) | ✅ Split into 12 specialized modules with coordinator pattern. Largest module is `search-dialog.js` at 246 lines |
 
 ### Remaining Issues
@@ -339,7 +341,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 837 automated tests across 28 test files (plus conftest.py) via `./run-tests.sh`, plus E2E tests via `./run-e2e-tests.sh`. Database has 13 migrations.
+**Current state**: 837 automated tests across 28 test files (plus conftest.py with 5 shared test fixtures) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 13 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -449,12 +451,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 49 | ~7,070 |
+| Python backend (src/) | 50 | ~7,200 |
 | JavaScript frontend | 24 | ~7,405 |
 | CSS styles | 5 | ~3,453 |
 | HTML templates | 3 | ~788 |
-| Tests | 29 | ~10,839 |
-| **Grand total** | **110** | **~29,555** |
+| Tests | 29 | ~10,857 |
+| **Grand total** | **111** | **~29,703** |
 
 ---
 
