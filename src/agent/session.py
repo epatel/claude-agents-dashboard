@@ -1,7 +1,10 @@
 import asyncio
 import json
 import logging
+import os
 import re
+import signal
+import subprocess as _subprocess
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -158,6 +161,7 @@ class AgentSession:
         self._task: asyncio.Task | None = None
         self._cancelled = False
         self.current_session_id: str | None = None
+        self._subprocess_pid: int | None = None  # PID of the claude CLI subprocess
 
     async def start(self, prompt: str, attachments: list[dict] | None = None, resume_session_id: str | None = None) -> None:
         """Start the agent with a prompt and optional image attachments."""
@@ -399,6 +403,11 @@ class AgentSession:
         self.client = ClaudeSDKClient(options=options)
         await self.client.connect()
 
+        # Capture subprocess PID for reliable cleanup — the SDK may null
+        # its transport reference during disconnect(), making PID-based kill
+        # the only reliable fallback.
+        self._capture_subprocess_pid()
+
         # Check MCP server status and report issues
         await self._check_mcp_status()
 
@@ -509,15 +518,9 @@ class AgentSession:
                     await client_ref.disconnect()
                 except Exception:
                     pass
-                # Fallback: directly kill the subprocess if it's still alive
-                try:
-                    transport = getattr(client_ref, '_transport', None)
-                    process = getattr(transport, '_process', None) if transport else None
-                    if process and process.returncode is None:
-                        logger.warning("Subprocess still alive after disconnect, terminating")
-                        process.terminate()
-                except Exception:
-                    pass
+
+            # Last-resort: force-kill by saved PID if process somehow survived
+            self._force_kill_subprocess()
 
     async def send_message(self, text: str) -> None:
         """Send a follow-up message to the agent (e.g., clarification response)."""
@@ -554,6 +557,56 @@ class AgentSession:
         except Exception as e:
             logger.warning(f"Failed to check MCP status: {e}")
 
+    def _capture_subprocess_pid(self) -> None:
+        """Capture the PID of the underlying claude subprocess for reliable cleanup.
+
+        The SDK nulls its _transport reference during disconnect(), which makes
+        it impossible to reach the subprocess later. Capturing the PID upfront
+        gives us a reliable fallback for force-killing stray processes.
+        """
+        try:
+            transport = getattr(self.client, '_transport', None)
+            process = getattr(transport, '_process', None) if transport else None
+            if process and hasattr(process, 'pid'):
+                self._subprocess_pid = process.pid
+                logger.info(f"Captured claude subprocess PID: {self._subprocess_pid}")
+        except Exception:
+            pass
+
+    def _force_kill_subprocess(self) -> None:
+        """Force-kill the claude subprocess tree by PID.
+
+        This is a last-resort fallback when the SDK's disconnect() chain
+        fails to terminate the process (e.g., query.close() raises before
+        reaching transport.close()).
+        """
+        pid = self._subprocess_pid
+        if not pid:
+            return
+
+        # Check if still alive
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return  # Already dead — nothing to do
+
+        logger.warning(f"Claude subprocess PID {pid} still alive after disconnect, force-killing")
+
+        # Kill child processes first (MCP node processes, subagents, etc.)
+        try:
+            _subprocess.run(
+                ["pkill", "-KILL", "-P", str(pid)],
+                capture_output=True, timeout=3,
+            )
+        except Exception:
+            pass
+
+        # Kill the main claude process
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
     async def cancel(self) -> None:
         """Cancel the running agent."""
         self._cancelled = True
@@ -569,6 +622,11 @@ class AgentSession:
                 pass
             self.client = None
 
+        # Fallback: force-kill by PID if the SDK's disconnect chain
+        # failed to terminate the subprocess (e.g., query.close() errored
+        # before reaching transport.close()).
+        self._force_kill_subprocess()
+
         # Then cancel the receive loop task
         if self._task and not self._task.done():
             self._task.cancel()
@@ -581,3 +639,4 @@ class AgentSession:
         """Clean disconnect."""
         if self.client:
             await self.client.disconnect()
+        self._force_kill_subprocess()
