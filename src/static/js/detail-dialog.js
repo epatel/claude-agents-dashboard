@@ -233,7 +233,10 @@ const DetailDialog = {
         document.getElementById('detail-body').innerHTML = DialogUtils.renderMarkdown(item.description || '(no description)');
 
         const editBtn = document.getElementById('detail-edit-btn');
-        editBtn.style.display = '';
+        const deleteBtn = document.getElementById('detail-delete-btn');
+        const isQuestions = item.column_name === 'questions';
+        editBtn.style.display = isQuestions ? 'none' : '';
+        deleteBtn.style.display = isQuestions ? 'none' : '';
         editBtn.onclick = () => { DialogCore.close('detail-dialog'); ItemDialog.openEditItem(item); };
 
         const oldPlay = document.getElementById('detail-play-btn');
