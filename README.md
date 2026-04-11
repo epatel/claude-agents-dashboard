@@ -34,7 +34,7 @@ Your project must be a git repository. Requires Python 3.12+.
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 856 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 861 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -185,7 +185,7 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~7,472 lines
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~6,996 lines (excluding migrations)
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~7,492 lines JS + ~3,455 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 3, Claude Haiku 3, 7 built-in MCP tools
 - **Database**: SQLite with 15 versioned migrations
@@ -519,7 +519,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 - `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
 - `AUDIT.md` — Security audit report with 14 findings (9 of 9 actionable remediated), threat model, and remediation tracking
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `TESTING.md` — Detailed testing guide with test inventory (856 unit/integration tests + E2E tests), writing guidelines, and 15 database migrations
+- `TESTING.md` — Detailed testing guide with test inventory (861 unit/integration tests + E2E tests), writing guidelines, and 15 database migrations
 
 ## License
 

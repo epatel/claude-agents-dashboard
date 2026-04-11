@@ -2,13 +2,13 @@
 
 **Date**: 2026-04-11
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 33 — Maintenance reassessment. Verified all line counts and test counts against codebase. Python backend ~7,472 lines across 52 files. JavaScript frontend ~7,492 lines across 24 files. CSS ~3,455 lines across 5 files. 15 migrations. 856 tests.
+**Revision**: 34 — Maintenance reassessment. Verified all line counts and test counts against codebase. Python backend ~6,996 lines across 52 source files (excluding migrations). JavaScript frontend ~7,492 lines across 24 files. CSS ~3,455 lines across 5 files. 15 migrations. 861 tests across 28 test files + conftest.py (5 fixture validation tests).
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), **dependency management endpoints**, **animated flame background** (migration 013 — activity-driven flame effect behind board columns), **start_copy flag** (migration 014 — configurable per-item flag to show Start Copy button instead of Start), and **has_file_changes detection** (migration 015 — tracks whether agent produced file changes, cards show "Done" vs "Approve & Merge" accordingly) have been added. Recent additions include a **standalone item detail page** and a **copy-link button** on the Done detail dialog. The test suite includes **856 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), **dependency management endpoints**, **animated flame background** (migration 013 — activity-driven flame effect behind board columns), **start_copy flag** (migration 014 — configurable per-item flag to show Start Copy button instead of Start), and **has_file_changes detection** (migration 015 — tracks whether agent produced file changes, cards show "Done" vs "Approve & Merge" accordingly) have been added. Recent additions include a **standalone item detail page** and a **copy-link button** on the Done detail dialog. The test suite includes **861 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -343,7 +343,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 856 automated tests across 28 test files (plus conftest.py with shared test fixtures) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 15 migrations.
+**Current state**: 861 automated tests across 28 test files plus conftest.py (5 fixture validation tests) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 15 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -455,7 +455,7 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 52 | ~7,472 |
+| Python backend (src/, excl. migrations) | 52 | ~6,996 |
 | JavaScript frontend | 24 | ~7,492 |
 | CSS styles | 5 | ~3,455 |
 | HTML templates | 3 | ~808 |
