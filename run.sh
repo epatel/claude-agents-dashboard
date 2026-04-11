@@ -24,23 +24,26 @@ if ! git -C "$TARGET_PROJECT" rev-parse --git-dir > /dev/null 2>&1; then
 fi
 
 # Check if the dashboard repo has upstream commits to pull
-if git -C "$SCRIPT_DIR" rev-parse --git-dir > /dev/null 2>&1; then
-    # Fetch latest from remote (silently)
-    if git -C "$SCRIPT_DIR" fetch --quiet 2>/dev/null; then
-        LOCAL=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null)
-        REMOTE=$(git -C "$SCRIPT_DIR" rev-parse '@{u}' 2>/dev/null || echo "")
-        if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
-            BEHIND=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..'@{u}' 2>/dev/null || echo "0")
-            if [ "$BEHIND" -gt 0 ]; then
-                echo "Dashboard repo has $BEHIND commit(s) available to pull."
-                read -rp "Pull latest updates? [Y/n] " answer
-                answer="${answer:-Y}"
-                if [[ "$answer" =~ ^[Yy]$ ]]; then
-                    echo "Pulling updates..."
-                    git -C "$SCRIPT_DIR" pull --quiet
-                    echo "Updated successfully."
-                else
-                    echo "Skipping update."
+# When AGENTS_DASHBOARD_AUTO_UPDATE=1 (set by the macOS app), skip the interactive prompt
+if [ "${AGENTS_DASHBOARD_AUTO_UPDATE:-0}" != "1" ]; then
+    if git -C "$SCRIPT_DIR" rev-parse --git-dir > /dev/null 2>&1; then
+        # Fetch latest from remote (silently)
+        if git -C "$SCRIPT_DIR" fetch --quiet 2>/dev/null; then
+            LOCAL=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null)
+            REMOTE=$(git -C "$SCRIPT_DIR" rev-parse '@{u}' 2>/dev/null || echo "")
+            if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
+                BEHIND=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..'@{u}' 2>/dev/null || echo "0")
+                if [ "$BEHIND" -gt 0 ]; then
+                    echo "Dashboard repo has $BEHIND commit(s) available to pull."
+                    read -rp "Pull latest updates? [Y/n] " answer
+                    answer="${answer:-Y}"
+                    if [[ "$answer" =~ ^[Yy]$ ]]; then
+                        echo "Pulling updates..."
+                        git -C "$SCRIPT_DIR" pull --quiet
+                        echo "Updated successfully."
+                    else
+                        echo "Skipping update."
+                    fi
                 fi
             fi
         fi
