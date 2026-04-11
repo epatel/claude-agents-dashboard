@@ -162,11 +162,10 @@
     color: var(--warning);
     margin-bottom: 4px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 3px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex-wrap: wrap;
+    word-break: break-word;
     max-width: 100%;
 }
 
