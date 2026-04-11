@@ -5,6 +5,10 @@ RELEASE_DIR = $(BUILD_DIR)/release
 BIN_DIR = $(shell swift build -c release --show-bin-path 2>/dev/null || echo "$(BUILD_DIR)/arm64-apple-macosx/release")
 DEBUG_DIR = $(BUILD_DIR)/arm64-apple-macosx/debug
 INSTALL_DIR = /Applications
+# Load .env if present (SIGNING_IDENTITY, APPLE_ID, TEAM_ID, APP_PASSWORD)
+-include .env
+export
+
 SIGNING_IDENTITY ?= -
 APPLE_ID ?=
 TEAM_ID ?=
