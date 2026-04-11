@@ -38,7 +38,15 @@ class SessionService:
                            on_create_shortcut: Optional[Callable] = None) -> AgentSession:
         """Create a new agent session with all callbacks."""
         # Use provided model or fall back to config model
-        session_model = model or config.get("model")
+        raw_model = model or config.get("model")
+
+        # Detect "+advisor" suffix — configures an Opus advisor subagent
+        use_advisor = False
+        if raw_model and "+advisor" in raw_model:
+            use_advisor = True
+            session_model = raw_model.replace("+advisor", "")
+        else:
+            session_model = raw_model
 
         # Build system prompt with project context
         system_prompt = config.get("system_prompt", "") or ""
@@ -94,6 +102,7 @@ class SessionService:
             allowed_commands=allowed_commands,
             bash_yolo=config.get("bash_yolo", False),
             allowed_builtin_tools=allowed_builtin_tools,
+            use_advisor=use_advisor,
         )
 
         self.sessions[item_id] = session

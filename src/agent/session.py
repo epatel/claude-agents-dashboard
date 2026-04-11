@@ -126,6 +126,7 @@ class AgentSession:
         allowed_commands: list[str] | None = None,
         bash_yolo: bool = False,
         allowed_builtin_tools: list[str] | None = None,
+        use_advisor: bool = False,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
@@ -150,6 +151,7 @@ class AgentSession:
         self.mcp_servers = mcp_servers      # JSON string of MCP server configurations from agent config
         self.mcp_enabled = mcp_enabled      # Whether MCP is enabled from agent config
         self.plugins = plugins              # List of plugin configs: [{"type": "local", "path": "..."}]
+        self.use_advisor = use_advisor      # Enable Opus advisor subagent
         self.client: ClaudeSDKClient | None = None
         self._task: asyncio.Task | None = None
         self._cancelled = False
@@ -346,6 +348,19 @@ class AgentSession:
                 return not tool_name.startswith("mcp__")
             can_use_tool_fn = can_use_tool
 
+        # Configure advisor subagent if enabled
+        agents = None
+        if self.use_advisor:
+            from claude_agent_sdk import AgentDefinition
+            agents = {
+                "advisor": AgentDefinition(
+                    model="opus",
+                    description="A more powerful model for complex reasoning, architecture decisions, and code review. Use when you need a second opinion or face a difficult problem.",
+                    prompt="You are an expert advisor. Provide thorough, well-reasoned analysis. Focus on correctness, edge cases, and best practices.",
+                ),
+            }
+            logger.info("Advisor subagent enabled (Opus)")
+
         options = ClaudeAgentOptions(
             cwd=self.worktree_path,
             system_prompt=full_system_prompt,
@@ -359,6 +374,7 @@ class AgentSession:
             plugins=plugins if plugins else None,
             hooks=hooks,
             setting_sources=["project"],  # Load CLAUDE.md from target project
+            agents=agents,
         )
 
         if resume_session_id:

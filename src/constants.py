@@ -5,6 +5,7 @@ Constants for the agents dashboard application.
 # Available models - centralized to avoid duplication
 AVAILABLE_MODELS = {
     "CLAUDE_SONNET_4": "claude-sonnet-4-20250514",
+    "CLAUDE_SONNET_4_ADVISOR": "claude-sonnet-4-20250514+advisor",
     "CLAUDE_OPUS_3": "claude-3-opus-20240229",
     "CLAUDE_HAIKU_3": "claude-3-haiku-20240307",
 }
