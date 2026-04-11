@@ -12,5 +12,8 @@ struct ContentView: View {
         .sheet(isPresented: $projectManager.showAddProject) {
             AddProjectSheet()
         }
+        .sheet(isPresented: $projectManager.showInstallSheet) {
+            InstallSheet(serverManager: projectManager.serverManager)
+        }
     }
 }
