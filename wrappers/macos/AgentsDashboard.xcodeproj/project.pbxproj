@@ -15,6 +15,8 @@
 		A10000006 /* DashboardTabsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000006; };
 		A10000007 /* DashboardWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000007; };
 		A10000008 /* AddProjectSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000008; };
+		A10000009 /* ServerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000011; };
+		A10000010 /* InstallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000012; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +30,8 @@
 		A20000008 /* AddProjectSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddProjectSheet.swift; sourceTree = "<group>"; };
 		A20000009 /* AgentsDashboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AgentsDashboard.entitlements; sourceTree = "<group>"; };
 		A20000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000011 /* ServerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerManager.swift; sourceTree = "<group>"; };
+		A20000012 /* InstallSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallSheet.swift; sourceTree = "<group>"; };
 		A30000001 /* AgentsDashboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgentsDashboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -67,6 +71,7 @@
 			children = (
 				A20000003 /* Project.swift */,
 				A20000004 /* ProjectManager.swift */,
+				A20000011 /* ServerManager.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -79,6 +84,7 @@
 				A20000006 /* DashboardTabsView.swift */,
 				A20000007 /* DashboardWebView.swift */,
 				A20000008 /* AddProjectSheet.swift */,
+				A20000012 /* InstallSheet.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -151,6 +157,8 @@
 				A10000006 /* DashboardTabsView.swift in Sources */,
 				A10000007 /* DashboardWebView.swift in Sources */,
 				A10000008 /* AddProjectSheet.swift in Sources */,
+				A10000009 /* ServerManager.swift in Sources */,
+				A10000010 /* InstallSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

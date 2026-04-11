@@ -1,51 +1,19 @@
 import Foundation
 import Combine
+import AppKit
 
 class ProjectManager: ObservableObject {
     @Published var projects: [Project] = []
     @Published var dashboards: [DashboardInstance] = []
     @Published var selectedTab: UUID?
     @Published var showAddProject = false
+    @Published var showInstallSheet = false
+    @Published var pendingProject: Project?
+    let serverManager = ServerManager()
 
     private let storageKey = "saved_projects"
     private var outputPipes: [UUID: Pipe] = [:]
     private var errorPipes: [UUID: Pipe] = [:]
-
-    /// Path to the dashboard repo (parent of wrappers/macos/)
-    var dashboardRepoPath: String {
-        // Walk up from the app bundle to find run.sh
-        // In development, use a relative path; in production, use the bundled path
-        if let bundlePath = Bundle.main.resourcePath,
-           FileManager.default.fileExists(atPath: bundlePath + "/run.sh") {
-            return bundlePath
-        }
-
-        // Try to find run.sh relative to the executable
-        let execURL = Bundle.main.executableURL?.deletingLastPathComponent()
-        var searchDir = execURL
-
-        for _ in 0..<10 {
-            guard let dir = searchDir else { break }
-            let runSh = dir.appendingPathComponent("run.sh")
-            if FileManager.default.fileExists(atPath: runSh.path) {
-                return dir.path
-            }
-            searchDir = dir.deletingLastPathComponent()
-        }
-
-        // Fallback: check for DASHBOARD_REPO_PATH environment variable
-        if let envPath = ProcessInfo.processInfo.environment["DASHBOARD_REPO_PATH"] {
-            return envPath
-        }
-
-        // Last resort: derive from the known project structure
-        // The app is at wrappers/macos/ relative to the dashboard repo
-        let appDir = Bundle.main.bundleURL.deletingLastPathComponent()
-        return appDir
-            .deletingLastPathComponent() // macos
-            .deletingLastPathComponent() // wrappers
-            .path
-    }
 
     init() {
         loadProjects()
@@ -137,21 +105,69 @@ class ProjectManager: ObservableObject {
     // MARK: - Server Process
 
     private func launchServer(for instance: DashboardInstance) {
+        // Check if server is installed
+        guard serverManager.installationExists() else {
+            pendingProject = instance.project
+            showInstallSheet = true
+            dashboards.removeAll { $0.id == instance.id }
+            return
+        }
+
+        // Check for updates before launching
+        Task {
+            let status = await serverManager.checkForUpdates()
+            await MainActor.run {
+                switch status {
+                case .updatesAvailable(let count):
+                    showUpdateAlert(count: count, instance: instance)
+                default:
+                    launchProcess(for: instance)
+                }
+            }
+        }
+    }
+
+    private func showUpdateAlert(count: Int, instance: DashboardInstance) {
+        let alert = NSAlert()
+        alert.messageText = "\(count) update(s) available"
+        alert.informativeText = "A newer version of the dashboard server is available. Update now?"
+        alert.addButton(withTitle: "Update")
+        alert.addButton(withTitle: "Skip")
+        alert.alertStyle = .informational
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            Task {
+                do {
+                    try await serverManager.pullUpdates()
+                } catch {
+                    print("Update failed: \(error.localizedDescription)")
+                }
+                await MainActor.run {
+                    launchProcess(for: instance)
+                }
+            }
+        } else {
+            launchProcess(for: instance)
+        }
+    }
+
+    private func launchProcess(for instance: DashboardInstance) {
         let process = Process()
         let outputPipe = Pipe()
         let errorPipe = Pipe()
 
-        let runShPath = dashboardRepoPath + "/run.sh"
+        let runShPath = serverManager.serverPath + "/run.sh"
 
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = [runShPath, instance.project.path]
-        process.currentDirectoryURL = URL(fileURLWithPath: dashboardRepoPath)
+        process.currentDirectoryURL = URL(fileURLWithPath: serverManager.serverPath)
         process.standardOutput = outputPipe
         process.standardError = errorPipe
 
-        // Set environment to ensure proper terminal behavior
         var env = ProcessInfo.processInfo.environment
         env["TERM"] = "xterm-256color"
+        env["AGENTS_DASHBOARD_AUTO_UPDATE"] = "1"
         process.environment = env
 
         self.outputPipes[instance.id] = outputPipe
@@ -169,8 +185,6 @@ class ProjectManager: ObservableObject {
 
                     self.dashboards[index].outputLog += output
 
-                    // Detect "Uvicorn running on http://127.0.0.1:XXXX" (stderr)
-                    // or "Starting on: http://127.0.0.1:XXXX" (stdout)
                     if self.dashboards[index].port == nil,
                        let range = output.range(of: #"http://[\d.]+:(\d+)"#, options: .regularExpression) {
                         let urlStr = String(output[range])
@@ -184,7 +198,6 @@ class ProjectManager: ObservableObject {
             }
         }
 
-        // Monitor both stdout and stderr for server URL and log output
         handleOutput(outputPipe)
         handleOutput(errorPipe)
 
