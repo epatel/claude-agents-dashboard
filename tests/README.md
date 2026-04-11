@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (861 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (15 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
+This directory contains the automated test suite (856 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (15 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
 
 ## Test Structure
 
@@ -103,7 +103,7 @@ Run with: `./run-e2e-tests.sh` (supports `--verbose` flag for colored output)
 
 ### Quick Start
 ```bash
-# Run all 861 tests
+# Run all 856 tests
 ./run-tests.sh
 
 # Run specific test categories

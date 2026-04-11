@@ -34,7 +34,7 @@ Your project must be a git repository. Requires Python 3.12+.
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 861 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 856 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -496,6 +496,18 @@ python3 --version  # Should show 3.12.0 or higher
 
 If agents seem stuck or unresponsive, check the work log in the UI for error messages. You can always stop a running agent and restart it, or move items back to "Todo" to try a different approach.
 
+## macOS app
+
+A native macOS wrapper app is available under [Releases](../../releases) as a prebuilt `.app` bundle. It provides a desktop interface for managing multiple projects without using the terminal:
+
+- **Add projects** via a file browser with smart suggestions (scans ~/Developer, ~/Development, etc.)
+- **Start/stop dashboards** per project with real-time startup logs
+- **Tabbed interface** — switch between running dashboards, each rendered in an embedded WebView
+- **Auto-install** — on first run, clones the server repo to `~/.agents-dashboard/`, creates a Python venv, and installs dependencies
+- **Update detection** — checks for upstream changes and prompts to pull
+
+Requires macOS 14+. Source code is in `wrappers/macos/`.
+
 ## Multiple projects
 
 Each project gets its own server instance. Run `run.sh` from different repos — ports auto-increment (8000, 8001, 8002, ...)
@@ -507,7 +519,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 - `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
 - `AUDIT.md` — Security audit report with 14 findings (9 of 9 actionable remediated), threat model, and remediation tracking
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `TESTING.md` — Detailed testing guide with test inventory (861 unit/integration tests + E2E tests), writing guidelines, and 15 database migrations
+- `TESTING.md` — Detailed testing guide with test inventory (856 unit/integration tests + E2E tests), writing guidelines, and 15 database migrations
 
 ## License
 
