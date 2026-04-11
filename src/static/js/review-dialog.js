@@ -884,7 +884,53 @@ const ReviewDialog = {
         const item = items.find(i => i.id === itemId);
         if (!item) return;
 
-        document.getElementById('review-title').textContent = `Review: ${item.title}`;
+        document.getElementById('review-title').textContent = item.title;
+
+        // Set column badge
+        const badge = document.getElementById('review-column-badge');
+        badge.textContent = '👀 Review';
+
+        // Wire up header action buttons
+        const editBtn = document.getElementById('review-edit-btn');
+        editBtn.onclick = () => {
+            DialogCore.close('review-dialog');
+            ItemDialog.openEditItem(item);
+        };
+
+        const deleteBtn = document.getElementById('review-delete-btn');
+        deleteBtn.onclick = async () => {
+            DialogCore.close('review-dialog');
+            const ok = await DialogCore.confirm(`Delete "${item.title}"?`);
+            if (!ok) return;
+            try {
+                await Api.deleteItem(item.id);
+                Board.removeCard(item.id);
+            } catch (err) {
+                console.error('Failed to delete item:', err);
+            }
+        };
+
+        const copyLinkBtn = document.getElementById('review-copy-link-btn');
+        copyLinkBtn.onclick = async (e) => {
+            e.stopPropagation();
+            const url = `${window.location.origin}${window.location.pathname}?item=${itemId}`;
+            try {
+                await navigator.clipboard.writeText(url);
+                copyLinkBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                setTimeout(() => {
+                    copyLinkBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+                }, 1500);
+            } catch {
+                const ta = document.createElement('textarea');
+                ta.value = url;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+        };
 
         // Populate description tab
         const descEl = document.getElementById('review-description');
