@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (861 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (15 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
+This directory contains the automated test suite (856 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (15 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
 
 ## Test Structure
 
@@ -99,11 +99,17 @@ Tests the complete agent workflow end-to-end:
 
 Run with: `./run-e2e-tests.sh` (supports `--verbose` flag for colored output)
 
+Use `--model` to override the Claude model used by all E2E agents (defaults to the server's configured model):
+```bash
+./run-e2e-tests.sh --model claude-haiku-4-5-20251001   # cheaper/faster runs
+./run-e2e-tests.sh --model claude-opus-4-6 --verbose    # combine with other flags
+```
+
 ## Running Tests
 
 ### Quick Start
 ```bash
-# Run all 861 tests
+# Run all 856 tests
 ./run-tests.sh
 
 # Run specific test categories
