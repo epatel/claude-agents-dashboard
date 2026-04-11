@@ -19,57 +19,46 @@ class ServerManager: ObservableObject {
 
     static let repoURL = "https://github.com/epatel/claude-agents-dashboard.git"
 
-    var serverPath: String {
+    var serverURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".agents-dashboard")
-            .path
     }
 
+    var serverPath: String { serverURL.path }
+
     func installationExists() -> Bool {
-        let runSh = (serverPath as NSString).appendingPathComponent("run.sh")
+        let runSh = serverURL.appendingPathComponent("run.sh").path
         return FileManager.default.fileExists(atPath: runSh)
     }
 
     func clone() async throws {
         await MainActor.run { installStage = .cloning; installError = nil }
 
-        // Clone repo
-        try runProcess("/usr/bin/git", arguments: ["clone", Self.repoURL, serverPath])
+        var cloned = false
+        do {
+            // Clone repo
+            try await runProcessBackground("/usr/bin/git", arguments: ["clone", Self.repoURL, serverPath])
+            cloned = true
 
-        // Create venv
-        await MainActor.run { installStage = .creatingVenv }
-        let venvPath = (serverPath as NSString).appendingPathComponent("venv")
-        try runProcess("/usr/bin/python3", arguments: ["-m", "venv", venvPath])
+            // Create venv
+            await MainActor.run { installStage = .creatingVenv }
+            let venvPath = serverURL.appendingPathComponent("venv").path
+            try await runProcessBackground("/usr/bin/python3", arguments: ["-m", "venv", venvPath])
 
-        // Install dependencies
-        await MainActor.run { installStage = .installingDeps }
-        let pipPath = (venvPath as NSString).appendingPathComponent("bin/pip")
-        let reqPath = (serverPath as NSString).appendingPathComponent("requirements.txt")
-        try runProcess(pipPath, arguments: ["install", "-q", "-r", reqPath])
+            // Install dependencies
+            await MainActor.run { installStage = .installingDeps }
+            let pipPath = serverURL.appendingPathComponent("venv/bin/pip").path
+            let reqPath = serverURL.appendingPathComponent("requirements.txt").path
+            try await runProcessBackground(pipPath, arguments: ["install", "-q", "-r", reqPath])
 
-        await MainActor.run { installStage = .done }
-    }
-
-    private func runProcess(_ executablePath: String, arguments: [String]) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = arguments
-
-        let errorPipe = Pipe()
-        process.standardError = errorPipe
-        process.standardOutput = FileHandle.nullDevice
-
-        try process.run()
-        process.waitUntilExit()
-
-        if process.terminationStatus != 0 {
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorMsg = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-            throw NSError(
-                domain: "ServerManager",
-                code: Int(process.terminationStatus),
-                userInfo: [NSLocalizedDescriptionKey: errorMsg]
-            )
+            await MainActor.run { installStage = .done }
+        } catch {
+            // Clean up partial clone so a retry can start fresh
+            if cloned {
+                try? FileManager.default.removeItem(at: serverURL)
+            }
+            await MainActor.run { installError = error.localizedDescription }
+            throw error
         }
     }
 
@@ -78,22 +67,22 @@ class ServerManager: ObservableObject {
 
         // Fetch
         do {
-            try runProcess("/usr/bin/git", arguments: ["-C", serverPath, "fetch", "--quiet"])
+            try await runProcessBackground("/usr/bin/git", arguments: ["-C", serverPath, "fetch", "--quiet"])
         } catch {
             return .error("Fetch failed: \(error.localizedDescription)")
         }
 
         // Compare HEAD vs @{u}
         do {
-            let local = try runProcessOutput("/usr/bin/git", arguments: ["-C", serverPath, "rev-parse", "HEAD"])
-            let remote = try runProcessOutput("/usr/bin/git", arguments: ["-C", serverPath, "rev-parse", "@{u}"])
+            let local = try await runProcessBackground("/usr/bin/git", arguments: ["-C", serverPath, "rev-parse", "HEAD"])
+            let remote = try await runProcessBackground("/usr/bin/git", arguments: ["-C", serverPath, "rev-parse", "@{u}"])
 
             if local.trimmingCharacters(in: .whitespacesAndNewlines)
                 == remote.trimmingCharacters(in: .whitespacesAndNewlines) {
                 return .upToDate
             }
 
-            let behindStr = try runProcessOutput(
+            let behindStr = try await runProcessBackground(
                 "/usr/bin/git",
                 arguments: ["-C", serverPath, "rev-list", "--count", "HEAD..@{u}"]
             )
@@ -105,26 +94,48 @@ class ServerManager: ObservableObject {
     }
 
     func pullUpdates() async throws {
-        try runProcess("/usr/bin/git", arguments: ["-C", serverPath, "pull", "--quiet"])
+        try await runProcessBackground("/usr/bin/git", arguments: ["-C", serverPath, "pull", "--quiet"])
     }
 
-    private func runProcessOutput(_ executablePath: String, arguments: [String]) throws -> String {
+    /// Runs a process on a background thread and returns its stdout output.
+    /// Throws if the process exits with a non-zero status.
+    @discardableResult
+    private func runProcessBackground(_ executablePath: String, arguments: [String]) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let output = try self.runProcess(executablePath, arguments: arguments)
+                    continuation.resume(returning: output)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Synchronous process runner — always captures stdout and returns it.
+    /// Must only be called from a background thread (never from MainActor).
+    @discardableResult
+    private func runProcess(_ executablePath: String, arguments: [String]) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executablePath)
         process.arguments = arguments
 
         let outputPipe = Pipe()
+        let errorPipe = Pipe()
         process.standardOutput = outputPipe
-        process.standardError = FileHandle.nullDevice
+        process.standardError = errorPipe
 
         try process.run()
         process.waitUntilExit()
 
         if process.terminationStatus != 0 {
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorMsg = String(data: errorData, encoding: .utf8) ?? "Unknown error"
             throw NSError(
                 domain: "ServerManager",
                 code: Int(process.terminationStatus),
-                userInfo: [NSLocalizedDescriptionKey: "Command failed with status \(process.terminationStatus)"]
+                userInfo: [NSLocalizedDescriptionKey: errorMsg]
             )
         }
 
