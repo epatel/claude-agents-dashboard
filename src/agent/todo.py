@@ -28,7 +28,7 @@ CREATE_TODO_SCHEMA = {
         },
         "autostart": {
             "type": "boolean",
-            "description": "If true, automatically start an agent to work on this todo item immediately after creation. Defaults to false.",
+            "description": "If true, automatically start an agent to work on this todo item. Starts immediately if no dependencies, or auto-starts when all dependencies are completed. Defaults to false.",
         },
     },
     "required": ["title"],
@@ -86,8 +86,9 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
         "IMPORTANT: If this todo depends on other todos being completed first, "
         "pass their item IDs in the 'requires' array — this enforces the dependency "
         "so agents cannot start this task until prerequisites are done. "
-        "Set 'autostart' to true to immediately launch an agent on the new todo "
-        "(only works when the todo has no dependencies).",
+        "Set 'autostart' to true to automatically launch an agent on this todo. "
+        "If the todo has no dependencies, the agent starts immediately. "
+        "If the todo has dependencies, the agent auto-starts once all dependencies are completed.",
         CREATE_TODO_SCHEMA,
     )
     async def create_todo(input: dict) -> dict:
@@ -102,7 +103,7 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
         if item_info.get("autostart_scheduled"):
             msg += " — agent auto-start scheduled"
         elif autostart and requires:
-            msg += " — autostart skipped (item has dependencies that must complete first)"
+            msg += " — agent will auto-start when all dependencies are completed"
         elif autostart:
             msg += " — autostart was requested but could not be scheduled"
         return {
