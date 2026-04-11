@@ -779,7 +779,7 @@ class TestCanUseTool:
     def _make_can_use_tool(self, allowed_tools, all_prefixes):
         """Recreate the closure logic from session.py directly."""
         allowed_set = set(allowed_tools)
-        def can_use_tool(tool_name: str) -> bool:
+        def can_use_tool(tool_name: str, *args) -> bool:
             if tool_name in allowed_set:
                 return True
             for prefix in all_prefixes:
