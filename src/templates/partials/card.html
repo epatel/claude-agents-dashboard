@@ -4,6 +4,7 @@
      data-done-at="{{ item.done_at or '' }}"
      data-updated-at="{{ item.updated_at or '' }}"
      data-epic-id="{{ item.epic_id or '' }}"
+     data-start-copy="{{ 'true' if item.start_copy else 'false' }}"
      draggable="true"
      ondragstart="Board.handleDragStart(event)"
      onclick="Dialogs.showDetail('{{ item.id }}')">

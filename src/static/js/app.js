@@ -30,6 +30,7 @@ const App = {
             if (card.dataset.doneAt) item.done_at = card.dataset.doneAt;
             if (card.dataset.updatedAt) item.updated_at = card.dataset.updatedAt;
             if (card.dataset.epicId) item.epic_id = card.dataset.epicId;
+            if (card.dataset.startCopy === 'true') item.start_copy = true;
             items.push(item);
         });
         Board.init(items);
