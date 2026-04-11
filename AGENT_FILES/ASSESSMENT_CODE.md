@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-11
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 32 — Maintenance reassessment. Verified all line counts and test counts against codebase. Python backend ~7,395 lines across 52 files. JavaScript frontend ~7,454 lines across 24 files. CSS ~3,455 lines across 5 files. 15 migrations. 856 tests.
+**Revision**: 33 — Maintenance reassessment. Verified all line counts and test counts against codebase. Python backend ~7,472 lines across 52 files. JavaScript frontend ~7,492 lines across 24 files. CSS ~3,455 lines across 5 files. 15 migrations. 856 tests.
 
 ---
 
@@ -128,10 +128,10 @@ graph TB
 | `constants.py` | 38 | A | Centralized `AVAILABLE_MODELS` dict, `DEFAULT_MODEL`, `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
 | `models.py` | 140 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants; `start_copy` and `has_file_changes` fields |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
-| `web/app.py` | 129 | A | Proper lifespan management, clean factory pattern, CORS middleware, security headers |
-| `web/routes.py` | 1,328 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations; item detail page |
+| `web/app.py` | 133 | A | Proper lifespan management, clean factory pattern, CORS middleware, security headers |
+| `web/routes.py` | 1,345 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations; item detail page |
 | `web/file_routes.py` | 322 | A | File browser endpoints with path validation, secret hiding, .browserhidden support, binary detection, language mapping, lazy tree scanning |
-| `web/websocket.py` | 131 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
+| `web/websocket.py` | 187 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 123 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
 | `agent/session.py` | 583 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult` |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
@@ -168,8 +168,8 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
-| `app.js` | 479 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
-| `board.js` | 993 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive, Start Copy support, has_file_changes display |
+| `app.js` | 493 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
+| `board.js` | 1,017 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive, Start Copy support, has_file_changes display |
 | `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 12 specialized modules |
 | `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
 | `dialog-utils.js` | 28 | A | Shared utilities (markdown rendering, model display names) |
@@ -455,12 +455,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 52 | ~7,395 |
-| JavaScript frontend | 24 | ~7,454 |
+| Python backend (src/) | 52 | ~7,472 |
+| JavaScript frontend | 24 | ~7,492 |
 | CSS styles | 5 | ~3,455 |
-| HTML templates | 3 | ~807 |
+| HTML templates | 3 | ~808 |
 | Tests | 29 | ~11,049 |
-| **Grand total** | **113** | **~30,160** |
+| **Grand total** | **113** | **~30,276** |
 
 ---
 
