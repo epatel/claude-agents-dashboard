@@ -9,9 +9,9 @@
 	<key>CFBundleIdentifier</key>
 	<string>com.agentsdashboard.macos</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>__BUILD_NUMBER__</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>__VERSION__</string>
 	<key>CFBundleExecutable</key>
 	<string>AgentsDashboard</string>
 	<key>CFBundleIconFile</key>

@@ -5,6 +5,12 @@ RELEASE_DIR = $(BUILD_DIR)/release
 BIN_DIR = $(shell swift build -c release --show-bin-path 2>/dev/null || echo "$(BUILD_DIR)/arm64-apple-macosx/release")
 DEBUG_DIR = $(BUILD_DIR)/arm64-apple-macosx/debug
 INSTALL_DIR = /Applications
+
+# Version from VERSION file
+VERSION = $(shell cat VERSION | tr -d '[:space:]')
+BUILD_NUMBER = $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
+ZIP_NAME = $(APP_NAME)_$(VERSION)+$(BUILD_NUMBER).zip
+
 # Load .env if present (SIGNING_IDENTITY, APPLE_ID, TEAM_ID, APP_PASSWORD)
 -include .env
 export
@@ -14,7 +20,7 @@ APPLE_ID ?=
 TEAM_ID ?=
 APP_PASSWORD ?=
 
-.PHONY: all build release sign notarize run clean install uninstall
+.PHONY: all build release sign notarize zip run clean install uninstall
 
 all: build
 
@@ -29,10 +35,12 @@ release:
 	@mkdir -p "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/Resources"
 	@cp $(BIN_DIR)/$(APP_NAME) "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/MacOS/$(APP_NAME)"
 	@cp $(APP_NAME)/Info.plist "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/Info.plist"
+	@sed -i '' 's/__VERSION__/$(VERSION)/g' "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/Info.plist"
+	@sed -i '' 's/__BUILD_NUMBER__/$(BUILD_NUMBER)/g' "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/Info.plist"
 	@cp $(APP_NAME)/AppIcon.icns "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/Resources/"
 	@cp $(APP_NAME)/$(APP_NAME).entitlements "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/Resources/"
 	@codesign --force --sign - --entitlements $(APP_NAME)/$(APP_NAME).entitlements "$(RELEASE_DIR)/$(BUNDLE_NAME)"
-	@echo "Built: $(RELEASE_DIR)/$(BUNDLE_NAME)"
+	@echo "Built: $(RELEASE_DIR)/$(BUNDLE_NAME) ($(VERSION)+$(BUILD_NUMBER))"
 
 # Sign release build with a Developer ID (or ad-hoc if SIGNING_IDENTITY is -)
 # Usage: make sign SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
@@ -62,7 +70,14 @@ notarize: sign
 		--wait
 	@echo "Stapling notarization ticket..."
 	@xcrun stapler staple "$(RELEASE_DIR)/$(BUNDLE_NAME)"
-	@echo "Notarized: $(RELEASE_DIR)/$(BUNDLE_NAME)"
+	@rm -f "$(RELEASE_DIR)/$(APP_NAME).zip"
+	@ditto -c -k "$(RELEASE_DIR)/$(BUNDLE_NAME)" "$(RELEASE_DIR)/$(ZIP_NAME)"
+	@echo "Notarized: $(RELEASE_DIR)/$(ZIP_NAME)"
+
+# Create versioned zip of the release build
+zip: release
+	@ditto -c -k "$(RELEASE_DIR)/$(BUNDLE_NAME)" "$(RELEASE_DIR)/$(ZIP_NAME)"
+	@echo "Created: $(RELEASE_DIR)/$(ZIP_NAME)"
 
 # Run debug build
 run:
