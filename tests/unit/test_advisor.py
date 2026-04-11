@@ -13,16 +13,21 @@ from src.services.session_service import SessionService
 class TestAdvisorModelConstants:
     """Verify advisor model is defined in constants."""
 
+    def _get_model_ids(self):
+        return [model_id for model_id, _, _ in AVAILABLE_MODELS]
+
     def test_advisor_model_exists(self):
-        assert "CLAUDE_SONNET_4_ADVISOR" in AVAILABLE_MODELS
+        assert "claude-sonnet-4-20250514+advisor" in self._get_model_ids()
 
     def test_advisor_model_has_suffix(self):
-        model = AVAILABLE_MODELS["CLAUDE_SONNET_4_ADVISOR"]
-        assert model.endswith("+advisor")
+        model_ids = self._get_model_ids()
+        advisor = [m for m in model_ids if "+advisor" in m][0]
+        assert advisor.endswith("+advisor")
 
     def test_advisor_model_contains_sonnet(self):
-        model = AVAILABLE_MODELS["CLAUDE_SONNET_4_ADVISOR"]
-        assert "sonnet" in model
+        model_ids = self._get_model_ids()
+        advisor = [m for m in model_ids if "+advisor" in m][0]
+        assert "sonnet" in advisor
 
 
 class TestSessionServiceAdvisorParsing:

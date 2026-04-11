@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from ..config import COLUMNS
-from ..constants import EPIC_COLORS
+from ..constants import AVAILABLE_MODELS, EPIC_COLORS
 from ..models import ItemCreate, ItemUpdate, ItemMove, ClarificationResponse, AgentConfig, EpicCreate, EpicUpdate, new_id
 from ..git.operations import get_diff, get_changed_files, get_file_content, get_current_branch
 
@@ -214,6 +214,7 @@ async def board_page(request: Request):
             "project_name": request.app.state.target_project.name,
             "current_branch": current_branch,
             "experimental": getattr(request.app.state, "experimental", False),
+            "available_models": AVAILABLE_MODELS,
         },
     )
 

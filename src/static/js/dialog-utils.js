@@ -5,12 +5,7 @@ const DialogUtils = {
     // --- Model display helpers ---
 
     _getModelDisplayName(modelId) {
-        const modelNames = {
-            'claude-sonnet-4-20250514': 'Claude Sonnet 4',
-            'claude-sonnet-4-20250514+advisor': 'Claude Sonnet 4 + Advisor',
-            'claude-opus-4-6': 'Claude Opus 4.6',
-            'claude-haiku-4-5-20251001': 'Claude Haiku 4.5'
-        };
+        const modelNames = window.__MODEL_NAMES__ || {};
         return modelNames[modelId] || modelId;
     },
 
