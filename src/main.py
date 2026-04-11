@@ -1,10 +1,53 @@
 import argparse
+import atexit
+import os
+import signal
 import sys
 import socket
 import subprocess
 from pathlib import Path
 
 from .config import DATA_DIR_NAME, DEFAULT_HOST, DEFAULT_PORT, MAX_PORT_TRIES
+
+
+def _kill_child_processes():
+    """Kill all child processes of the current process.
+
+    This is a last-resort cleanup to prevent orphaned Claude agent processes
+    when the macOS wrapper (or any parent) terminates the server.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    pid = os.getpid()
+    try:
+        # Use pkill to send SIGTERM to all children of this process
+        subprocess.run(
+            ["pkill", "-TERM", "-P", str(pid)],
+            capture_output=True,
+            timeout=5,
+        )
+    except Exception as e:
+        logger.debug(f"pkill cleanup: {e}")
+
+    # Give children a moment to exit, then force-kill stragglers
+    try:
+        import time
+        time.sleep(0.5)
+        subprocess.run(
+            ["pkill", "-KILL", "-P", str(pid)],
+            capture_output=True,
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+
+def _signal_handler(signum, frame):
+    """Handle SIGTERM/SIGINT by killing children then exiting."""
+    _kill_child_processes()
+    # Re-raise with default handler so uvicorn can also do its cleanup
+    signal.signal(signum, signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
 
 
 def find_available_port(host: str = DEFAULT_HOST, start: int = DEFAULT_PORT) -> int:
@@ -102,6 +145,12 @@ def main():
             return "/api/stats" not in record.getMessage()
 
     logging.getLogger("uvicorn.access").addFilter(_QuietStatsFilter())
+
+    # Register cleanup handlers to kill child processes (Claude agents) on exit.
+    # This prevents orphaned processes when the macOS wrapper terminates the server.
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGINT, _signal_handler)
+    atexit.register(_kill_child_processes)
 
     app = create_app(target_project, data_dir, experimental=args.experimental)
     uvicorn.run(app, host=host, port=port)
