@@ -20,13 +20,17 @@ APPLE_ID ?=
 TEAM_ID ?=
 APP_PASSWORD ?=
 
-.PHONY: all build release sign notarize zip run clean install uninstall
+.PHONY: all build test release sign notarize zip run clean install uninstall
 
 all: build
 
 # Debug build
 build:
 	swift build
+
+# Run tests
+test:
+	swift test
 
 # Release build + .app bundle
 release:
