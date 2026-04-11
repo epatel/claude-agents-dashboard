@@ -348,6 +348,35 @@ class WorkflowService:
         except Exception as e:
             logger.warning(f"Failed to check repo status: {e}")
 
+        # Check if there are any changed files — skip merge if none
+        has_changes = True
+        if worktree_path and branch:
+            from ..git.operations import get_changed_files
+            try:
+                base = base_branch or "main"
+                base_commit = item.get("base_commit")
+                changed = await get_changed_files(
+                    worktree_path, branch, base, worktree_path, base_commit
+                )
+                has_changes = len(changed) > 0
+            except Exception as e:
+                logger.warning(f"Failed to check changed files, assuming changes exist: {e}")
+
+        if not has_changes:
+            # No modified files — skip merge, just clean up and move to done
+            await self._log_and_notify(item_id, "system",
+                "No modified files — skipping merge")
+            if worktree_path:
+                await self.git.cleanup_worktree_and_branch(worktree_path, branch)
+            item = await self.db.update_item(
+                item_id,
+                column_name="done",
+                status=None,
+                worktree_path=None,
+            )
+            await self._notify_and_auto_start_dependents(item_id)
+            return item
+
         success, message = await self.git.merge_agent_work(
             branch, base_branch, worktree_path, commit_msg
         )
