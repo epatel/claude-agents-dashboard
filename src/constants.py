@@ -10,6 +10,11 @@ AVAILABLE_MODELS = {
     "CLAUDE_HAIKU_3": "claude-3-haiku-20240307",
 }
 
+# Models that require --experimental flag to be visible
+EXPERIMENTAL_MODELS = {
+    "CLAUDE_SONNET_4_ADVISOR",
+}
+
 # Default model to use when none specified
 DEFAULT_MODEL = AVAILABLE_MODELS["CLAUDE_SONNET_4"]
 

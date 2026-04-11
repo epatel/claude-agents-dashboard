@@ -212,6 +212,7 @@ async def board_page(request: Request):
             "items": items,
             "project_name": request.app.state.target_project.name,
             "current_branch": current_branch,
+            "experimental": getattr(request.app.state, "experimental", False),
         },
     )
 
