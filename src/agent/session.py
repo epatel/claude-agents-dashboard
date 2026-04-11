@@ -349,7 +349,7 @@ class AgentSession:
         all_prefixes = plugin_prefixes + external_mcp_prefixes
         if all_prefixes:
             allowed_set = set(allowed_tools) if allowed_tools else set()
-            def can_use_tool(tool_name: str, *args) -> bool:
+            async def can_use_tool(tool_name: str, *args) -> bool:
                 if tool_name in allowed_set:
                     return True
                 for prefix in all_prefixes:
