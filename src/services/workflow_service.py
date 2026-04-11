@@ -899,7 +899,7 @@ class WorkflowService:
         return on_request_tool
 
     def _create_on_create_todo_callback(self, item_id: str):
-        async def on_create_todo(title: str, description: str, epic_id: str = None, requires: list[str] = None) -> Dict[str, Any]:
+        async def on_create_todo(title: str, description: str, epic_id: str = None, requires: list[str] = None, autostart: bool = False) -> Dict[str, Any]:
             item = await self.db.create_todo_item(title, description, epic_id)
             if requires:
                 await self.db.set_item_dependencies(item["id"], requires)
@@ -910,6 +910,10 @@ class WorkflowService:
                 await self.notifications.ws_manager.broadcast("blocked_status_changed", {
                     "blocked": blocked_status,
                 })
+            if autostart and not requires:
+                import asyncio
+                asyncio.create_task(self.start_agent(item["id"]))
+                await self._log_and_notify(item_id, "system", f"Auto-starting agent for: {title}")
             return item
         return on_create_todo
 
