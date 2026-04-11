@@ -9,7 +9,7 @@
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 13 migrations.
+The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 14 migrations.
 
 ## Test Structure
 

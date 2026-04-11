@@ -2,13 +2,13 @@
 
 **Date**: 2026-04-11
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 29 — Maintenance reassessment. Updated line counts to reflect recent changes (path_guard hook, can_use_tool PermissionResult fix, session improvements). Python backend now ~7,200 lines.
+**Revision**: 30 — Maintenance reassessment. Updated for migration 014 (start_copy flag on items), updated line counts. Python backend now ~7,255 lines across 51 files. 14 migrations.
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), **dependency management endpoints**, and **animated flame background** (migration 013 — activity-driven flame effect behind board columns) have been added. The test suite includes **837 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), **dependency management endpoints**, **animated flame background** (migration 013 — activity-driven flame effect behind board columns), and **start_copy flag** (migration 014 — configurable per-item flag to show Start Copy button instead of Start) have been added. The test suite includes **837 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -126,7 +126,7 @@ graph TB
 | `main.py` | 111 | A | Clean entry point, proper git validation, port discovery |
 | `config.py` | 110 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
 | `constants.py` | 38 | A | Centralized `AVAILABLE_MODELS` dict, `DEFAULT_MODEL`, `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
-| `models.py` | 138 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants |
+| `models.py` | 140 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants; `start_copy` field |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 129 | A | Proper lifespan management, clean factory pattern, CORS middleware, security headers |
 | `web/routes.py` | 1,274 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations |
@@ -135,7 +135,7 @@ graph TB
 | `agent/orchestrator.py` | 123 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
 | `agent/session.py` | 583 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult` |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
-| `agent/todo.py` | 147 | A | Clean MCP tool definition with epic and dependency support |
+| `agent/todo.py` | 165 | A | Clean MCP tool definition with epic and dependency support |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
 | `agent/command_access.py` | 42 | A | Clean MCP tool for runtime command approval |
 | `agent/command_filter.py` | 90 | A | PreToolUse hook for bash command filtering with shell operator rejection and shlex parsing |
@@ -160,14 +160,15 @@ graph TB
 | `migrations/versions/010_add_epics.py` | 39 | A | Creates `epics` table and adds `epic_id` FK to items |
 | `migrations/versions/011_add_item_dependencies.py` | 32 | A | Creates `item_dependencies` join table for dependency tracking |
 | `migrations/versions/012_add_auto_start.py` | 38 | A | Adds `auto_start` column to items for automatic agent start on dependency resolution |
-| `migrations/versions/013_add_flame_settings.py` | ~30 | A | Adds `flame_enabled` setting to agent_config for animated flame background |
+| `migrations/versions/013_add_flame_settings.py` | 42 | A | Adds `flame_enabled` setting to agent_config for animated flame background |
+| `migrations/versions/014_add_start_copy.py` | 38 | A | Adds `start_copy` flag to items for configurable Start Copy button |
 
 ### Frontend JavaScript
 
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
 | `app.js` | 479 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
-| `board.js` | 986 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive |
+| `board.js` | 986 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive, Start Copy support |
 | `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 12 specialized modules |
 | `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
 | `dialog-utils.js` | 27 | A | Shared utilities (markdown rendering, model display names) |
@@ -196,12 +197,12 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `style.css` | 1,763 | A- | Main styles with CSS variables |
-| `board.css` | 547 | A | Board layout, card styles, Done day grouping with collapsible sections |
+| `board.css` | 564 | A | Board layout, card styles, Done day grouping with collapsible sections |
 | `dialog.css` | 451 | A | Dialog component styles |
 | `file-browser.css` | 574 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 101 | A | Light/dark theme definitions |
 
-**Note**: CSS total is ~3,453 lines across 5 modules.
+**Note**: CSS total is ~3,455 lines across 5 modules.
 
 ---
 
@@ -341,7 +342,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 837 automated tests across 28 test files (plus conftest.py with 5 shared test fixtures) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 13 migrations.
+**Current state**: 837 automated tests across 28 test files (plus conftest.py with 5 shared test fixtures) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 14 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -451,12 +452,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/) | 50 | ~7,200 |
-| JavaScript frontend | 24 | ~7,405 |
-| CSS styles | 5 | ~3,453 |
-| HTML templates | 3 | ~788 |
+| Python backend (src/) | 51 | ~7,255 |
+| JavaScript frontend | 24 | ~7,423 |
+| CSS styles | 5 | ~3,455 |
+| HTML templates | 3 | ~803 |
 | Tests | 29 | ~10,857 |
-| **Grand total** | **111** | **~29,703** |
+| **Grand total** | **112** | **~29,793** |
 
 ---
 
