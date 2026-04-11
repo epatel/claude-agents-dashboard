@@ -890,26 +890,6 @@ const ReviewDialog = {
         const badge = document.getElementById('review-column-badge');
         badge.textContent = '👀 Review';
 
-        // Wire up header action buttons
-        const editBtn = document.getElementById('review-edit-btn');
-        editBtn.onclick = () => {
-            DialogCore.close('review-dialog');
-            ItemDialog.openEditItem(item);
-        };
-
-        const deleteBtn = document.getElementById('review-delete-btn');
-        deleteBtn.onclick = async () => {
-            DialogCore.close('review-dialog');
-            const ok = await DialogCore.confirm(`Delete "${item.title}"?`);
-            if (!ok) return;
-            try {
-                await Api.deleteItem(item.id);
-                Board.removeCard(item.id);
-            } catch (err) {
-                console.error('Failed to delete item:', err);
-            }
-        };
-
         // Populate description tab
         const descEl = document.getElementById('review-description');
         descEl.innerHTML = DialogUtils.renderMarkdown(item.description || '(no description)');
