@@ -4,6 +4,46 @@ set -euo pipefail
 # Resolve the directory where this script lives (the dashboard repo)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Ensure full user PATH is available (macOS GUI apps inherit a minimal PATH)
+# Source the user's shell profile to pick up node, homebrew, nvm, etc.
+if [ -z "${__PATH_INITIALIZED:-}" ]; then
+    export __PATH_INITIALIZED=1
+    # Detect user's preferred shell
+    USER_SHELL="${SHELL:-/bin/bash}"
+    case "$USER_SHELL" in
+        */zsh)
+            # Source zsh profile non-interactively
+            if [ -f "$HOME/.zprofile" ]; then
+                set +euo pipefail
+                source "$HOME/.zprofile" 2>/dev/null || true
+                set -euo pipefail
+            fi
+            if [ -f "$HOME/.zshrc" ]; then
+                set +euo pipefail
+                source "$HOME/.zshrc" 2>/dev/null || true
+                set -euo pipefail
+            fi
+            ;;
+        */bash)
+            if [ -f "$HOME/.bash_profile" ]; then
+                set +euo pipefail
+                source "$HOME/.bash_profile" 2>/dev/null || true
+                set -euo pipefail
+            elif [ -f "$HOME/.bashrc" ]; then
+                set +euo pipefail
+                source "$HOME/.bashrc" 2>/dev/null || true
+                set -euo pipefail
+            fi
+            ;;
+    esac
+    # Also add common tool directories if not already present
+    for dir in /opt/homebrew/bin /usr/local/bin "$HOME/.nvm/current/bin"; do
+        if [ -d "$dir" ] && [[ ":$PATH:" != *":$dir:"* ]]; then
+            export PATH="$dir:$PATH"
+        fi
+    done
+fi
+
 # Parse arguments: first positional arg is target project, rest are forwarded
 TARGET_PROJECT=""
 EXTRA_ARGS=()
