@@ -539,6 +539,60 @@ async def get_all_blocked_status(request: Request):
     return await db_service.get_all_blocked_status()
 
 
+@router.get("/api/items/{item_id}")
+async def get_item_detail(request: Request, item_id: str):
+    """Return a standalone HTML page with item details and work log."""
+    db = request.app.state.db
+    async with db.connect() as conn:
+        cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+        item = await cursor.fetchone()
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+        item = dict(item)
+
+        cursor = await conn.execute(
+            "SELECT * FROM work_log WHERE item_id = ? ORDER BY timestamp",
+            (item_id,),
+        )
+        log_entries = [dict(row) for row in await cursor.fetchall()]
+
+    # Build a simple standalone HTML page
+    import html as html_mod
+    title = html_mod.escape(item.get("title", ""))
+    description = html_mod.escape(item.get("description", "") or "")
+    column = html_mod.escape(item.get("column_name", ""))
+    commit_msg = html_mod.escape(item.get("commit_message", "") or "")
+
+    log_html = ""
+    for entry in log_entries:
+        ts = html_mod.escape(str(entry.get("timestamp", "")))
+        etype = html_mod.escape(str(entry.get("entry_type", "")))
+        content = html_mod.escape(str(entry.get("content", "")))
+        log_html += f'<div class="log-entry"><span class="log-meta">[{ts}] {etype}:</span><pre>{content}</pre></div>\n'
+
+    if not log_html:
+        log_html = '<div class="log-entry">No work log entries</div>'
+
+    page = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>{title}</title>
+<style>
+body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; background: #1a1a2e; color: #e0e0e0; }}
+h1 {{ color: #fff; }} .badge {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; background: #333; color: #ccc; margin-right: 8px; }}
+.description {{ background: #222; padding: 1rem; border-radius: 6px; margin: 1rem 0; white-space: pre-wrap; }}
+.commit-msg {{ background: #1a2e1a; padding: 0.5rem 1rem; border-radius: 6px; margin: 1rem 0; font-family: monospace; }}
+.log-entry {{ margin: 0.5rem 0; }} .log-meta {{ color: #888; font-size: 0.85em; }}
+pre {{ white-space: pre-wrap; word-break: break-word; margin: 0.25rem 0 0.75rem 0; background: #222; padding: 0.5rem; border-radius: 4px; font-size: 0.9em; }}
+</style></head><body>
+<h1>{title}</h1>
+<span class="badge">{column}</span> <span class="badge">ID: {item_id}</span>
+{"<div class='description'>" + description + "</div>" if description else ""}
+{"<div class='commit-msg'>Commit: " + commit_msg + "</div>" if commit_msg else ""}
+<h2>Work Log</h2>
+{log_html}
+</body></html>"""
+    return HTMLResponse(content=page)
+
+
 # --- Work log ---
 
 @router.get("/api/items/{item_id}/log")

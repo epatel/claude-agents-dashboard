@@ -141,8 +141,25 @@ const DetailDialog = {
             actionsEl.insertBefore(startCopyBtn, editBtn);
         }
 
-        // Add re-run button in Done
+        // Add copy-link and re-run buttons in Done
         if (item.column_name === 'done') {
+            const copyLinkBtn = document.createElement('button');
+            copyLinkBtn.id = 'detail-copy-link-btn';
+            copyLinkBtn.className = 'btn btn-sm';
+            copyLinkBtn.innerHTML = '&#128279;';
+            copyLinkBtn.title = 'Copy item detail link';
+            copyLinkBtn.onclick = async () => {
+                const url = `${window.location.origin}/api/items/${item.id}`;
+                try {
+                    await navigator.clipboard.writeText(url);
+                    copyLinkBtn.textContent = '✓';
+                    setTimeout(() => { copyLinkBtn.innerHTML = '&#128279;'; }, 1500);
+                } catch (err) {
+                    console.error('Failed to copy link:', err);
+                }
+            };
+            actionsEl.insertBefore(copyLinkBtn, editBtn);
+
             const rerunBtn = document.createElement('button');
             rerunBtn.id = 'detail-rerun-btn';
             rerunBtn.className = 'btn btn-sm btn-primary';
