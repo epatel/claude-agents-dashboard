@@ -26,6 +26,10 @@ CREATE_TODO_SCHEMA = {
             "items": {"type": "string"},
             "description": "Optional list of item IDs that this todo depends on (must be completed before this one can start). Use view_board to see available item IDs.",
         },
+        "autostart": {
+            "type": "boolean",
+            "description": "If true, automatically start an agent to work on this todo item immediately after creation. Defaults to false.",
+        },
     },
     "required": ["title"],
 }
@@ -81,7 +85,9 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
         "Provide a clear title and optionally a detailed description. "
         "IMPORTANT: If this todo depends on other todos being completed first, "
         "pass their item IDs in the 'requires' array — this enforces the dependency "
-        "so agents cannot start this task until prerequisites are done.",
+        "so agents cannot start this task until prerequisites are done. "
+        "Set 'autostart' to true to immediately launch an agent on the new todo "
+        "(only works when the todo has no dependencies).",
         CREATE_TODO_SCHEMA,
     )
     async def create_todo(input: dict) -> dict:
@@ -90,7 +96,8 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
         description = input.get("description", "")
         epic_id = input.get("epic_id")
         requires = input.get("requires")
-        item_info = await on_create_todo(title, description, epic_id, requires)
+        autostart = input.get("autostart", False)
+        item_info = await on_create_todo(title, description, epic_id, requires, autostart)
         return {
             "content": [
                 {
