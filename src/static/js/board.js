@@ -489,7 +489,10 @@ const Board = {
             const hasChanges = item.has_file_changes !== 0;
             const approveLabel = hasChanges ? '✓ Approve' : '✓ Done';
             const approveTitle = hasChanges ? 'Approve & Merge' : 'Done';
-            actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.approveItem('${item.id}')" title="${approveTitle}">${approveLabel}</button>
+            const approveAction = hasChanges
+                ? `Board.approveItem('${item.id}')`
+                : `Board.moveItem('${item.id}', 'done')`;
+            actionsHtml = `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); ${approveAction}" title="${approveTitle}">${approveLabel}</button>
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')" title="Request changes">↩</button>
                 <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelReview('${item.id}')" title="Cancel review">✕</button>`;
         } else if (col === 'questions') {

@@ -65,7 +65,7 @@
             <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('{{ item.id }}')" title="Cancel">✕</button>
             {% elif item.column_name == 'review' %}
             {% if item.has_file_changes == 0 %}
-            <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.approveItem('{{ item.id }}')" title="Done">✓ Done</button>
+            <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'done')" title="Done">✓ Done</button>
             {% else %}
             <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.approveItem('{{ item.id }}')" title="Approve & Merge">✓ Approve</button>
             {% endif %}

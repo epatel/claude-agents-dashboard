@@ -426,8 +426,8 @@ async def move_item(request: Request, item_id: str, body: ItemMove):
     db = request.app.state.db
     orchestrator = request.app.state.orchestrator
 
-    # Clean up agent resources when moving to archive
-    if body.column_name == "archive":
+    # Clean up agent resources when moving to done or archive
+    if body.column_name in ("done", "archive"):
         async with db.connect() as conn:
             cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
             old_item = dict(await cursor.fetchone())
@@ -455,8 +455,8 @@ async def move_item(request: Request, item_id: str, body: ItemMove):
             params.append(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"))
         else:
             done_at_clause = ", done_at = NULL"
-        # Clear git metadata when archiving
-        if body.column_name == "archive":
+        # Clear git metadata when moving to done or archive
+        if body.column_name in ("done", "archive"):
             extra_clauses = ", status = NULL, worktree_path = NULL"
         params.append(item_id)
         await conn.execute(
