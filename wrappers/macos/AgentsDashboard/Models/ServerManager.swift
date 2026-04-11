@@ -70,7 +70,11 @@ class ServerManager: ObservableObject {
     /// Find the Claude CLI binary, searching the user's full PATH.
     func findClaudePath(userPATH: String? = nil) -> String? {
         // Check common locations first
+        // Expand ~ since FileManager needs absolute paths
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
         let candidates = [
+            "\(home)/.local/bin/claude",
+            "\(home)/.claude/bin/claude",
             "/opt/homebrew/bin/claude",
             "/usr/local/bin/claude",
         ]
