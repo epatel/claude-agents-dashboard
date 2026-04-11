@@ -132,10 +132,11 @@ class ServerManager: ObservableObject {
     /// Throws if the process exits with a non-zero status.
     @discardableResult
     private func runProcessBackground(_ executablePath: String, arguments: [String]) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
+        let runner = self.runProcess
+        return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let output = try self.runProcess(executablePath, arguments: arguments)
+                    let output = try runner(executablePath, arguments)
                     continuation.resume(returning: output)
                 } catch {
                     continuation.resume(throwing: error)
