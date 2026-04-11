@@ -40,11 +40,17 @@
         <div class="card-actions">
             {% if item.column_name == 'todo' %}
             {% if item.is_blocked %}
+            {% if item.start_copy %}
+            <button class="btn btn-xs btn-primary btn-disabled" onclick="event.stopPropagation();" title="Blocked by: {{ item.blocking_items | map(attribute='title') | join(', ') }}" disabled>▶⧉</button>
+            {% else %}
             <button class="btn btn-xs btn-primary btn-disabled" onclick="event.stopPropagation();" title="Blocked by: {{ item.blocking_items | map(attribute='title') | join(', ') }}" disabled>▶</button>
-            <button class="btn btn-xs btn-disabled" onclick="event.stopPropagation();" title="Blocked by: {{ item.blocking_items | map(attribute='title') | join(', ') }}" disabled>▶⧉</button>
+            {% endif %}
+            {% else %}
+            {% if item.start_copy %}
+            <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startCopyAgent('{{ item.id }}')" title="Start Copy (keep original in Todo)">▶⧉</button>
             {% else %}
             <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startAgent('{{ item.id }}')" title="Start agent">▶</button>
-            <button class="btn btn-xs" onclick="event.stopPropagation(); Board.startCopyAgent('{{ item.id }}')" title="Start Copy (keep original in Todo)">▶⧉</button>
+            {% endif %}
             {% endif %}
             <button class="btn btn-xs btn-delete" onclick="event.stopPropagation(); Board.deleteItem('{{ item.id }}')" title="Delete">✕</button>
             {% elif item.column_name == 'doing' and item.status == 'failed' %}
