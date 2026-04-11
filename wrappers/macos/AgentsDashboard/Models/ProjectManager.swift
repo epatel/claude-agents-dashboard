@@ -14,7 +14,9 @@ class ProjectManager: ObservableObject {
     private let storageKey = "saved_projects"
     private var outputPipes: [UUID: Pipe] = [:]
     private var errorPipes: [UUID: Pipe] = [:]
-    private lazy var resolvedUserPATH: String? = {
+    /// The user's full login-shell PATH, resolved once on first access.
+    /// Exposed so that views (InstallSheet, ContentView) can pass it to checkClaudeCLI.
+    lazy var resolvedUserPATH: String? = {
         // macOS GUI apps get a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin).
         // Spawn the user's login shell to get the fully-resolved PATH that
         // includes homebrew, nvm, rbenv, etc.

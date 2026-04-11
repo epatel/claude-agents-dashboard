@@ -29,7 +29,7 @@ struct InstallSheet: View {
         .frame(width: 540)
         .task {
             isCheckingClaude = true
-            claudeStatus = await serverManager.checkClaudeCLI()
+            claudeStatus = await serverManager.checkClaudeCLI(userPATH: projectManager.resolvedUserPATH)
             isCheckingClaude = false
         }
     }
@@ -106,7 +106,7 @@ struct InstallSheet: View {
                 Button("Recheck") {
                     Task {
                         isCheckingClaude = true
-                        claudeStatus = await serverManager.checkClaudeCLI()
+                        claudeStatus = await serverManager.checkClaudeCLI(userPATH: projectManager.resolvedUserPATH)
                         isCheckingClaude = false
 
                         if claudeStatus?.isReady == true {
@@ -256,7 +256,7 @@ struct InstallSheet: View {
         Button {
             Task {
                 isCheckingClaude = true
-                claudeStatus = await serverManager.checkClaudeCLI()
+                claudeStatus = await serverManager.checkClaudeCLI(userPATH: projectManager.resolvedUserPATH)
                 isCheckingClaude = false
 
                 if claudeStatus?.isReady == true {

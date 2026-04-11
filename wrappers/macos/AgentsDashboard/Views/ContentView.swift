@@ -20,7 +20,7 @@ struct ContentView: View {
             if !projectManager.serverManager.installationExists() {
                 projectManager.showInstallSheet = true
             } else {
-                let status = await projectManager.serverManager.checkClaudeCLI()
+                let status = await projectManager.serverManager.checkClaudeCLI(userPATH: projectManager.resolvedUserPATH)
                 if !status.isReady {
                     projectManager.showInstallSheet = true
                 }
