@@ -441,7 +441,8 @@ const Board = {
         if (isBlocked) {
             const blockers = this.getBlockingItems(item.id);
             const names = blockers.map(b => this.escapeHtml(b.title)).join(', ');
-            blockedHtml = `<div class="card-blocked-badge" title="Requires: ${names}">🔒 ${names}</div>`;
+            const items = blockers.map(b => `<span class="blocked-item">🔒 ${this.escapeHtml(b.title)}</span>`).join('');
+            blockedHtml = `<div class="card-blocked-badge" title="Requires: ${names}">${items}</div>`;
         }
 
         let actionsHtml = '';

@@ -161,12 +161,17 @@
     font-size: 11px;
     color: var(--warning);
     margin-bottom: 4px;
-    display: flex;
-    align-items: flex-start;
-    gap: 3px;
-    flex-wrap: wrap;
-    word-break: break-word;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 6px;
     max-width: 100%;
+}
+
+.card-blocked-badge .blocked-item {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
 }
 
 .btn-disabled,
