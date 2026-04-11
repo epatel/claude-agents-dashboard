@@ -451,7 +451,9 @@ class WorkflowService:
                 # Reset worktree to latest base branch
                 try:
                     base = base_branch or await get_current_branch(self.git.target_project)
-                    await run_git(worktree_path, "fetch", "origin", base)
+                    # Worktrees share refs with the parent repo, so just reset
+                    # directly to the base branch — no fetch needed (target project
+                    # is local, not a remote clone).
                     await run_git(worktree_path, "reset", "--hard", base)
                     await self._log_and_notify(item_id, "system",
                         f"Reset worktree to latest {base}, restarting agent with previous diff "
