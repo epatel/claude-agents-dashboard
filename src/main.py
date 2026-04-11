@@ -38,6 +38,8 @@ def main():
                              "Use 0.0.0.0 to accept connections from any network interface.")
     parser.add_argument("--port", type=int, default=None,
                         help=f"Port to bind to (default: auto-detect starting from {DEFAULT_PORT})")
+    parser.add_argument("--experimental", action="store_true", default=False,
+                        help="Enable experimental features (e.g. Sonnet + Advisor model)")
     args = parser.parse_args()
 
     target_project = Path(args.target).resolve()
@@ -84,6 +86,8 @@ def main():
     print(f"Starting on: http://{display_host}:{port}")
     if host == "0.0.0.0":
         print(f"⚠️  Accepting connections from all network interfaces")
+    if args.experimental:
+        print(f"🧪 Experimental features enabled")
 
     import logging
     import uvicorn
@@ -99,7 +103,7 @@ def main():
 
     logging.getLogger("uvicorn.access").addFilter(_QuietStatsFilter())
 
-    app = create_app(target_project, data_dir)
+    app = create_app(target_project, data_dir, experimental=args.experimental)
     uvicorn.run(app, host=host, port=port)
 
 

@@ -92,7 +92,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
-def create_app(target_project: Path, data_dir: Path) -> FastAPI:
+def create_app(target_project: Path, data_dir: Path, *, experimental: bool = False) -> FastAPI:
     app = FastAPI(title="Agents Dashboard", lifespan=lifespan)
 
     # Security headers (X-Content-Type-Options, X-Frame-Options)
@@ -114,6 +114,7 @@ def create_app(target_project: Path, data_dir: Path) -> FastAPI:
     app.state.db = Database(data_dir / "dashboard.db")
     app.state.ws_manager = ConnectionManager()
     app.state.templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    app.state.experimental = experimental
 
     # Mount static files
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
