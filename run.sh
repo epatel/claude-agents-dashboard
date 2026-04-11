@@ -82,4 +82,16 @@ fi
 
 # Launch the server (must run from the dashboard directory for module imports)
 cd "$SCRIPT_DIR"
-exec "$VENV_DIR/bin/python" -m src.main "$TARGET_PROJECT" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
+
+# Kill all child processes on exit to prevent orphaned Claude agent processes
+# when the macOS wrapper (or terminal) closes.
+cleanup() {
+    # Send SIGTERM to the entire process group
+    kill -- -$$ 2>/dev/null || true
+    sleep 0.5
+    # Force-kill any stragglers
+    kill -9 -- -$$ 2>/dev/null || true
+}
+trap cleanup EXIT TERM INT HUP
+
+"$VENV_DIR/bin/python" -m src.main "$TARGET_PROJECT" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
