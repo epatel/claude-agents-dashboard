@@ -15,7 +15,7 @@
     {% endif %}
     <div class="card-title">{{ item.title }}</div>
     {% if item.is_blocked and item.column_name == 'todo' %}
-    <div class="card-blocked-badge" title="Requires: {{ item.blocking_items | map(attribute='title') | join(', ') }}">🔒 {{ item.blocking_items | map(attribute='title') | join(', ') }}</div>
+    <div class="card-blocked-badge" title="Requires: {{ item.blocking_items | map(attribute='title') | join(', ') }}">{% for dep in item.blocking_items %}<span class="blocked-item">🔒 {{ dep.title }}</span>{% endfor %}</div>
     {% endif %}
     {% if item.status %}
     <div class="card-status card-status-{{ item.status }}">
