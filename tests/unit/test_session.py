@@ -779,7 +779,7 @@ class TestCanUseTool:
     def _make_can_use_tool(self, allowed_tools, all_prefixes):
         """Recreate the closure logic from session.py directly."""
         allowed_set = set(allowed_tools)
-        def can_use_tool(tool_name: str, *args) -> bool:
+        async def can_use_tool(tool_name: str, *args) -> bool:
             if tool_name in allowed_set:
                 return True
             for prefix in all_prefixes:
@@ -788,34 +788,41 @@ class TestCanUseTool:
             return not tool_name.startswith("mcp__")
         return can_use_tool
 
-    def test_allowed_tool_permitted(self):
+    @pytest.mark.asyncio
+    async def test_allowed_tool_permitted(self):
         fn = self._make_can_use_tool(["Bash", "Read"], [])
-        assert fn("Bash") is True
-        assert fn("Read") is True
+        assert await fn("Bash") is True
+        assert await fn("Read") is True
 
-    def test_standard_non_mcp_tool_permitted(self):
+    @pytest.mark.asyncio
+    async def test_standard_non_mcp_tool_permitted(self):
         fn = self._make_can_use_tool([], [])
-        assert fn("Write") is True
-        assert fn("Edit") is True
+        assert await fn("Write") is True
+        assert await fn("Edit") is True
 
-    def test_unknown_mcp_tool_blocked(self):
+    @pytest.mark.asyncio
+    async def test_unknown_mcp_tool_blocked(self):
         fn = self._make_can_use_tool([], [])
-        assert fn("mcp__unknown__tool") is False
+        assert await fn("mcp__unknown__tool") is False
 
-    def test_prefix_match_permits_mcp_tool(self):
+    @pytest.mark.asyncio
+    async def test_prefix_match_permits_mcp_tool(self):
         fn = self._make_can_use_tool([], ["mcp__my_plugin_"])
-        assert fn("mcp__my_plugin_do_thing") is True
+        assert await fn("mcp__my_plugin_do_thing") is True
 
-    def test_no_prefix_match_blocks_mcp_tool(self):
+    @pytest.mark.asyncio
+    async def test_no_prefix_match_blocks_mcp_tool(self):
         fn = self._make_can_use_tool([], ["mcp__other_"])
-        assert fn("mcp__my_plugin_do_thing") is False
+        assert await fn("mcp__my_plugin_do_thing") is False
 
-    def test_explicit_mcp_tool_in_allowed_set_permitted(self):
+    @pytest.mark.asyncio
+    async def test_explicit_mcp_tool_in_allowed_set_permitted(self):
         fn = self._make_can_use_tool(["mcp__todo__create_todo"], [])
-        assert fn("mcp__todo__create_todo") is True
+        assert await fn("mcp__todo__create_todo") is True
 
-    def test_wildcard_prefix_allows_all_variants(self):
+    @pytest.mark.asyncio
+    async def test_wildcard_prefix_allows_all_variants(self):
         fn = self._make_can_use_tool([], ["mcp__ext_server__"])
-        assert fn("mcp__ext_server__tool_a") is True
-        assert fn("mcp__ext_server__tool_b") is True
-        assert fn("mcp__other__tool") is False
+        assert await fn("mcp__ext_server__tool_a") is True
+        assert await fn("mcp__ext_server__tool_b") is True
+        assert await fn("mcp__other__tool") is False
