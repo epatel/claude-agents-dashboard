@@ -310,7 +310,7 @@ class TestAllowedToolsWhitelist:
         assert "PreToolUse" in options.hooks
         matchers = options.hooks["PreToolUse"]
         bash_matchers = [m for m in matchers if m.matcher == "Bash"]
-        assert len(bash_matchers) == 0  # No Bash hook without allowed_commands
+        assert len(bash_matchers) == 1  # Path guard hook always present for Bash
 
         # With commands — Bash hook should also be set
         mock_sdk.reset_mock()
@@ -325,7 +325,7 @@ class TestAllowedToolsWhitelist:
         assert "PreToolUse" in options.hooks
         matchers = options.hooks["PreToolUse"]
         bash_matchers = [m for m in matchers if m.matcher == "Bash"]
-        assert len(bash_matchers) == 1
+        assert len(bash_matchers) == 2  # command filter + path guard
 
 
 from src.agent.command_access import create_command_access_server

@@ -323,6 +323,17 @@ class AgentSession:
                 )
             )
 
+        # Add path guard hook to prevent agents from editing main repo
+        from .path_guard import make_path_guard_hook
+        path_guard_hook = make_path_guard_hook(self.worktree_path)
+        for guarded_tool in ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash']:
+            hook_matchers.append(
+                HookMatcher(
+                    matcher=guarded_tool,
+                    hooks=[path_guard_hook],
+                )
+            )
+
         if hook_matchers:
             hooks = {"PreToolUse": hook_matchers}
 
