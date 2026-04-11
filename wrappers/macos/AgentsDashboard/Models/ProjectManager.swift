@@ -157,41 +157,36 @@ class ProjectManager: ObservableObject {
         self.outputPipes[instance.id] = outputPipe
         self.errorPipes[instance.id] = errorPipe
 
-        // Monitor stdout for port detection
-        outputPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return }
+        // Shared handler: appends output to log and detects the server URL
+        let handleOutput: (Pipe) -> Void = { pipe in
+            pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                let data = handle.availableData
+                guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return }
 
-            DispatchQueue.main.async {
-                guard let self = self,
-                      let index = self.dashboards.firstIndex(where: { $0.id == instance.id }) else { return }
+                DispatchQueue.main.async {
+                    guard let self = self,
+                          let index = self.dashboards.firstIndex(where: { $0.id == instance.id }) else { return }
 
-                self.dashboards[index].outputLog += output
+                    self.dashboards[index].outputLog += output
 
-                // Parse port from "Starting on: http://127.0.0.1:XXXX"
-                if self.dashboards[index].port == nil,
-                   let range = output.range(of: #"http://[\d.]+:(\d+)"#, options: .regularExpression) {
-                    let urlStr = String(output[range])
-                    if let url = URL(string: urlStr),
-                       let portStr = url.port {
-                        self.dashboards[index].port = portStr
-                        self.dashboards[index].status = .running
+                    // Detect "Uvicorn running on http://127.0.0.1:XXXX" (stderr)
+                    // or "Starting on: http://127.0.0.1:XXXX" (stdout)
+                    if self.dashboards[index].port == nil,
+                       let range = output.range(of: #"http://[\d.]+:(\d+)"#, options: .regularExpression) {
+                        let urlStr = String(output[range])
+                        if let url = URL(string: urlStr),
+                           let portStr = url.port {
+                            self.dashboards[index].port = portStr
+                            self.dashboards[index].status = .running
+                        }
                     }
                 }
             }
         }
 
-        // Monitor stderr
-        errorPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return }
-
-            DispatchQueue.main.async {
-                guard let self = self,
-                      let index = self.dashboards.firstIndex(where: { $0.id == instance.id }) else { return }
-                self.dashboards[index].outputLog += output
-            }
-        }
+        // Monitor both stdout and stderr for server URL and log output
+        handleOutput(outputPipe)
+        handleOutput(errorPipe)
 
         process.terminationHandler = { [weak self] proc in
             DispatchQueue.main.async {
