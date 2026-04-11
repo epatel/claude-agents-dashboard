@@ -11,6 +11,11 @@ let package = Package(
             name: "AgentsDashboard",
             path: "AgentsDashboard",
             exclude: ["Info.plist", "AgentsDashboard.entitlements", "AppIcon.icns", "Assets.xcassets"]
+        ),
+        .testTarget(
+            name: "AgentsDashboardTests",
+            dependencies: ["AgentsDashboard"],
+            path: "Tests"
         )
     ]
 )

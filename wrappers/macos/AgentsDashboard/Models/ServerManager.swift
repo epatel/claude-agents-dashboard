@@ -45,10 +45,14 @@ class ServerManager: ObservableObject {
         return "/usr/bin/python3"
     }
 
+    /// Override in tests to use a temp directory instead of ~/.agents-dashboard
     var serverURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        _serverURLOverride ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".agents-dashboard")
     }
+
+    /// For testing only — set to redirect serverURL to a temp path
+    var _serverURLOverride: URL?
 
     var serverPath: String { serverURL.path }
 
