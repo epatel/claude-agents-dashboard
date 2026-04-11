@@ -61,7 +61,7 @@ notarize: sign
 	@test -n "$(TEAM_ID)" || (echo "Error: TEAM_ID is required" && exit 1)
 	@test -n "$(APP_PASSWORD)" || (echo "Error: APP_PASSWORD is required (app-specific password)" && exit 1)
 	@echo "Creating zip for notarization..."
-	@ditto -c -k "$(RELEASE_DIR)/$(BUNDLE_NAME)" "$(RELEASE_DIR)/$(APP_NAME).zip"
+	@cd "$(RELEASE_DIR)" && ditto -c -k --keepParent "$(BUNDLE_NAME)" "$(APP_NAME).zip"
 	@echo "Submitting to Apple for notarization..."
 	@xcrun notarytool submit "$(RELEASE_DIR)/$(APP_NAME).zip" \
 		--apple-id "$(APPLE_ID)" \
@@ -71,12 +71,12 @@ notarize: sign
 	@echo "Stapling notarization ticket..."
 	@xcrun stapler staple "$(RELEASE_DIR)/$(BUNDLE_NAME)"
 	@rm -f "$(RELEASE_DIR)/$(APP_NAME).zip"
-	@ditto -c -k "$(RELEASE_DIR)/$(BUNDLE_NAME)" "$(RELEASE_DIR)/$(ZIP_NAME)"
+	@cd "$(RELEASE_DIR)" && ditto -c -k --keepParent "$(BUNDLE_NAME)" "$(ZIP_NAME)"
 	@echo "Notarized: $(RELEASE_DIR)/$(ZIP_NAME)"
 
 # Create versioned zip of the release build
 zip: release
-	@ditto -c -k "$(RELEASE_DIR)/$(BUNDLE_NAME)" "$(RELEASE_DIR)/$(ZIP_NAME)"
+	@cd "$(RELEASE_DIR)" && ditto -c -k --keepParent "$(BUNDLE_NAME)" "$(ZIP_NAME)"
 	@echo "Created: $(RELEASE_DIR)/$(ZIP_NAME)"
 
 # Run debug build
