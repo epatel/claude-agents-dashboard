@@ -206,8 +206,18 @@ class ProjectManager: ObservableObject {
             return
         }
 
-        // Check for updates before launching
+        // Check Claude CLI prerequisites, then check for updates
         Task {
+            let cliStatus = await serverManager.checkClaudeCLI(userPATH: resolvedUserPATH)
+            await MainActor.run {
+                guard cliStatus.isReady else {
+                    pendingProject = instance.project
+                    showInstallSheet = true
+                    dashboards.removeAll { $0.id == instance.id }
+                    return
+                }
+            }
+
             let status = await serverManager.checkForUpdates()
             await MainActor.run {
                 switch status {

@@ -13,6 +13,17 @@ enum InstallStage {
     case done
 }
 
+enum ClaudeCLIStatus {
+    case installed(version: String, loggedIn: Bool)
+    case notInstalled
+    case error(String)
+
+    var isReady: Bool {
+        if case .installed(_, let loggedIn) = self { return loggedIn }
+        return false
+    }
+}
+
 class ServerManager: ObservableObject {
     @Published var installStage: InstallStage?
     @Published var installError: String?
@@ -55,6 +66,57 @@ class ServerManager: ObservableObject {
     var _serverURLOverride: URL?
 
     var serverPath: String { serverURL.path }
+
+    /// Find the Claude CLI binary, searching the user's full PATH.
+    func findClaudePath(userPATH: String? = nil) -> String? {
+        // Check common locations first
+        let candidates = [
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude",
+        ]
+        for path in candidates {
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+
+        // Search the user's PATH directories
+        if let pathStr = userPATH ?? ProcessInfo.processInfo.environment["PATH"] {
+            for dir in pathStr.split(separator: ":") {
+                let candidate = "\(dir)/claude"
+                if FileManager.default.isExecutableFile(atPath: candidate) {
+                    return candidate
+                }
+            }
+        }
+
+        return nil
+    }
+
+    /// Check if Claude CLI is installed and the user is logged in.
+    func checkClaudeCLI(userPATH: String? = nil) async -> ClaudeCLIStatus {
+        guard let claudeBin = findClaudePath(userPATH: userPATH) else {
+            return .notInstalled
+        }
+
+        // Get version
+        let version: String
+        do {
+            let output = try await runProcessBackground(claudeBin, arguments: ["--version"])
+            version = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            return .error("Claude CLI found at \(claudeBin) but failed to run: \(error.localizedDescription)")
+        }
+
+        // Check login status by running `claude auth status`
+        // Exit code 0 = logged in, non-zero = not logged in
+        do {
+            _ = try await runProcessBackground(claudeBin, arguments: ["auth", "status"])
+            return .installed(version: version, loggedIn: true)
+        } catch {
+            return .installed(version: version, loggedIn: false)
+        }
+    }
 
     func installationExists() -> Bool {
         let runSh = serverURL.appendingPathComponent("run.sh").path

@@ -15,9 +15,15 @@ struct ContentView: View {
         .sheet(isPresented: $projectManager.showInstallSheet) {
             InstallSheet(serverManager: projectManager.serverManager)
         }
-        .onAppear {
+        .task {
+            // Check both server installation and Claude CLI on launch
             if !projectManager.serverManager.installationExists() {
                 projectManager.showInstallSheet = true
+            } else {
+                let status = await projectManager.serverManager.checkClaudeCLI()
+                if !status.isReady {
+                    projectManager.showInstallSheet = true
+                }
             }
         }
     }
