@@ -910,28 +910,6 @@ const ReviewDialog = {
             }
         };
 
-        const copyLinkBtn = document.getElementById('review-copy-link-btn');
-        copyLinkBtn.onclick = async (e) => {
-            e.stopPropagation();
-            const url = `${window.location.origin}${window.location.pathname}?item=${itemId}`;
-            try {
-                await navigator.clipboard.writeText(url);
-                copyLinkBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-                setTimeout(() => {
-                    copyLinkBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
-                }, 1500);
-            } catch {
-                const ta = document.createElement('textarea');
-                ta.value = url;
-                ta.style.position = 'fixed';
-                ta.style.opacity = '0';
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-            }
-        };
-
         // Populate description tab
         const descEl = document.getElementById('review-description');
         descEl.innerHTML = DialogUtils.renderMarkdown(item.description || '(no description)');
