@@ -1,0 +1,61 @@
+{
+  "": {
+    "swift-dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/master.swiftdeps"
+  },
+  "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/AgentsDashboard/AgentsDashboardApp.swift": {
+    "dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/AgentsDashboardApp.d",
+    "object": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/AgentsDashboardApp.swift.o",
+    "swiftmodule": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/AgentsDashboardApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/AgentsDashboardApp.swiftdeps",
+    "diagnostics": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/AgentsDashboardApp.dia"
+  },
+  "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/AgentsDashboard/Models/Project.swift": {
+    "dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/Project.d",
+    "object": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/Project.swift.o",
+    "swiftmodule": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/Project~partial.swiftmodule",
+    "swift-dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/Project.swiftdeps",
+    "diagnostics": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/Project.dia"
+  },
+  "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/AgentsDashboard/Models/ProjectManager.swift": {
+    "dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/ProjectManager.d",
+    "object": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/ProjectManager.swift.o",
+    "swiftmodule": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/ProjectManager~partial.swiftmodule",
+    "swift-dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/ProjectManager.swiftdeps",
+    "diagnostics": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/ProjectManager.dia"
+  },
+  "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/AgentsDashboard/Views/AddProjectSheet.swift": {
+    "dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/AddProjectSheet.d",
+    "object": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/AddProjectSheet.swift.o",
+    "swiftmodule": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/AddProjectSheet~partial.swiftmodule",
+    "swift-dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/AddProjectSheet.swiftdeps",
+    "diagnostics": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/AddProjectSheet.dia"
+  },
+  "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/AgentsDashboard/Views/ContentView.swift": {
+    "dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/ContentView.d",
+    "object": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/ContentView.swift.o",
+    "swiftmodule": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/ContentView~partial.swiftmodule",
+    "swift-dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/ContentView.swiftdeps",
+    "diagnostics": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/ContentView.dia"
+  },
+  "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/AgentsDashboard/Views/DashboardTabsView.swift": {
+    "dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/DashboardTabsView.d",
+    "object": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/DashboardTabsView.swift.o",
+    "swiftmodule": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/DashboardTabsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/DashboardTabsView.swiftdeps",
+    "diagnostics": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/DashboardTabsView.dia"
+  },
+  "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/AgentsDashboard/Views/DashboardWebView.swift": {
+    "dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/DashboardWebView.d",
+    "object": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/DashboardWebView.swift.o",
+    "swiftmodule": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/DashboardWebView~partial.swiftmodule",
+    "swift-dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/DashboardWebView.swiftdeps",
+    "diagnostics": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/DashboardWebView.dia"
+  },
+  "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/AgentsDashboard/Views/SidebarView.swift": {
+    "dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/SidebarView.d",
+    "object": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/SidebarView.swift.o",
+    "swiftmodule": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/SidebarView~partial.swiftmodule",
+    "swift-dependencies": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/SidebarView.swiftdeps",
+    "diagnostics": "/Users/epatel/Development/claude/claude-agents-dashboard/agents-lab/worktrees/agent-03cc9b615539/wrappers/macos/.build/arm64-apple-macosx/debug/AgentsDashboard.build/SidebarView.dia"
+  }
+}
