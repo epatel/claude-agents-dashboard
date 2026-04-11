@@ -66,7 +66,7 @@ Quick checks that core components work:
 - **SessionService** (54 tests): Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests): WebSocket broadcasting, tool formatting, event types
 
-### Unit Tests — Web Layer (137 tests)
+### Unit Tests — Web Layer (203 tests)
 - **Routes** (69 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search
 - **File Routes** (66 tests): Path validation, secret detection, .browserhidden, language mapping, directory scanning, file content
 - **WebSocket** (45 tests): Connection management, rate limiting, dead-connection cleanup
@@ -96,7 +96,7 @@ Quick checks that core components work:
 - **Manage** (24 tests): Migration CLI commands
 - **Path Validation** (14 tests): Traversal prevention, null bytes, symlinks, control characters
 
-### Unit Tests — Features (48 tests)
+### Unit Tests — Features (56 tests)
 - **Epics** (19 tests): CRUD, progress stats, item assignment, filtering, dependencies
 - **Todo Auto-start** (13 tests): Todo creation with dependency-based auto-start
 - **Diff Mixing** (6 tests): Diff isolation between concurrent items, base commit pinning

@@ -50,7 +50,7 @@ tests/
 - **SessionService** (54 tests) — Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests) — WebSocket broadcasting, tool formatting, event types
 
-### 2. Web Layer (137 tests)
+### 2. Web Layer (203 tests)
 - **Routes** (69 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search
 - **File Routes** (66 tests) — File browser path validation, secret detection, .browserhidden, language mapping, directory scanning
 - **WebSocket** (45 tests) — Connection management, rate limiting, dead-connection cleanup
@@ -61,13 +61,13 @@ tests/
 - **Git Worktree** (15 tests) — Worktree create/cleanup, base branch tracking
 - **Git Timeout** (5 tests) — Timeout configuration and recovery
 
-### 4. Agent Tools (113 tests)
+### 4. Agent Tools (153 tests)
 - **MCP Tool Servers** (50 tests) — Tool server creation, invocation, request/response flow
 - **Allowed Commands** (26 tests) — Command filter hook, shell operator rejection, YOLO mode bypass
 - **Advisor** (13 tests) — Agent advisor logic
 - **Session** (64 tests) — AgentSession SDK wrapper, token extraction, event handling
 
-### 5. Features (48 tests)
+### 5. Features (56 tests)
 - **Epics** (19 tests) — CRUD, progress stats, item assignment, filtering, dependencies
 - **Todo Auto-start** (13 tests) — Todo creation with dependency-based auto-start
 - **Diff Mixing** (6 tests) — Diff isolation between concurrent items
@@ -75,7 +75,7 @@ tests/
 - **Annotation Prompt** (5 tests) — Prompt formatting for agents
 - **Mini-MCP** (11 tests) — Example MCP server protocol compliance
 
-### 6. Infrastructure (110 tests)
+### 6. Infrastructure (112 tests)
 - **Migrations** (28 tests) — Runner, up/down, discovery, edge cases
 - **Main** (34 tests) — Server startup, port discovery, git validation
 - **Manage** (24 tests) — Migration CLI commands
