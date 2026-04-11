@@ -18,6 +18,8 @@ from claude_agent_sdk import (
     ToolResultBlock,
     ThinkingBlock,
     HookMatcher,
+    PermissionResultAllow,
+    PermissionResultDeny,
 )
 
 logger = logging.getLogger(__name__)
@@ -349,14 +351,16 @@ class AgentSession:
         all_prefixes = plugin_prefixes + external_mcp_prefixes
         if all_prefixes:
             allowed_set = set(allowed_tools) if allowed_tools else set()
-            async def can_use_tool(tool_name: str, *args) -> bool:
+            async def can_use_tool(tool_name: str, *args):
                 if tool_name in allowed_set:
-                    return True
+                    return PermissionResultAllow()
                 for prefix in all_prefixes:
                     if tool_name.startswith(prefix):
-                        return True
+                        return PermissionResultAllow()
                 # Allow standard (non-MCP) tools — permission_mode handles them
-                return not tool_name.startswith("mcp__")
+                if not tool_name.startswith("mcp__"):
+                    return PermissionResultAllow()
+                return PermissionResultDeny()
             can_use_tool_fn = can_use_tool
 
         # Configure advisor subagent if enabled

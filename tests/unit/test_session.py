@@ -778,51 +778,61 @@ class TestCanUseTool:
 
     def _make_can_use_tool(self, allowed_tools, all_prefixes):
         """Recreate the closure logic from session.py directly."""
+        from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
         allowed_set = set(allowed_tools)
-        async def can_use_tool(tool_name: str, *args) -> bool:
+        async def can_use_tool(tool_name: str, *args):
             if tool_name in allowed_set:
-                return True
+                return PermissionResultAllow()
             for prefix in all_prefixes:
                 if tool_name.startswith(prefix):
-                    return True
-            return not tool_name.startswith("mcp__")
+                    return PermissionResultAllow()
+            if not tool_name.startswith("mcp__"):
+                return PermissionResultAllow()
+            return PermissionResultDeny()
         return can_use_tool
 
     @pytest.mark.asyncio
     async def test_allowed_tool_permitted(self):
+        from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
         fn = self._make_can_use_tool(["Bash", "Read"], [])
-        assert await fn("Bash") is True
-        assert await fn("Read") is True
+        assert isinstance(await fn("Bash"), PermissionResultAllow)
+        assert isinstance(await fn("Read"), PermissionResultAllow)
 
     @pytest.mark.asyncio
     async def test_standard_non_mcp_tool_permitted(self):
+        from claude_agent_sdk import PermissionResultAllow
         fn = self._make_can_use_tool([], [])
-        assert await fn("Write") is True
-        assert await fn("Edit") is True
+        assert isinstance(await fn("Write"), PermissionResultAllow)
+        assert isinstance(await fn("Edit"), PermissionResultAllow)
 
     @pytest.mark.asyncio
     async def test_unknown_mcp_tool_blocked(self):
+        from claude_agent_sdk import PermissionResultDeny
         fn = self._make_can_use_tool([], [])
-        assert await fn("mcp__unknown__tool") is False
+        assert isinstance(await fn("mcp__unknown__tool"), PermissionResultDeny)
 
     @pytest.mark.asyncio
     async def test_prefix_match_permits_mcp_tool(self):
+        from claude_agent_sdk import PermissionResultAllow
         fn = self._make_can_use_tool([], ["mcp__my_plugin_"])
-        assert await fn("mcp__my_plugin_do_thing") is True
+        assert isinstance(await fn("mcp__my_plugin_do_thing"), PermissionResultAllow)
 
     @pytest.mark.asyncio
     async def test_no_prefix_match_blocks_mcp_tool(self):
+        from claude_agent_sdk import PermissionResultDeny
         fn = self._make_can_use_tool([], ["mcp__other_"])
-        assert await fn("mcp__my_plugin_do_thing") is False
+        assert isinstance(await fn("mcp__my_plugin_do_thing"), PermissionResultDeny)
 
     @pytest.mark.asyncio
     async def test_explicit_mcp_tool_in_allowed_set_permitted(self):
+        from claude_agent_sdk import PermissionResultAllow
         fn = self._make_can_use_tool(["mcp__todo__create_todo"], [])
-        assert await fn("mcp__todo__create_todo") is True
+        assert isinstance(await fn("mcp__todo__create_todo"), PermissionResultAllow)
 
     @pytest.mark.asyncio
     async def test_wildcard_prefix_allows_all_variants(self):
+        from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
         fn = self._make_can_use_tool([], ["mcp__ext_server__"])
-        assert await fn("mcp__ext_server__tool_a") is True
-        assert await fn("mcp__ext_server__tool_b") is True
-        assert await fn("mcp__other__tool") is False
+        assert isinstance(await fn("mcp__ext_server__tool_a"), PermissionResultAllow)
+        assert isinstance(await fn("mcp__ext_server__tool_b"), PermissionResultAllow)
+        assert isinstance(await fn("mcp__other__tool"), PermissionResultDeny)
