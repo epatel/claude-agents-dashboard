@@ -17,6 +17,7 @@ class ItemCreate(BaseModel):
     model: Optional[str] = None
     epic_id: Optional[str] = None
     auto_start: bool = False
+    start_copy: bool = False
 
 
 class ItemUpdate(BaseModel):
@@ -28,6 +29,7 @@ class ItemUpdate(BaseModel):
     model: Optional[str] = None
     epic_id: Optional[str] = None
     auto_start: Optional[bool] = None
+    start_copy: Optional[bool] = None
 
 
 class EpicCreate(BaseModel):

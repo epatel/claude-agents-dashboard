@@ -454,7 +454,11 @@ const Board = {
                 : 'Start agent';
             const disabledAttr = isBlocked ? ' disabled' : '';
             const disabledClass = isBlocked ? ' btn-disabled' : '';
-            actionsHtml = `<button class="btn btn-xs btn-primary${disabledClass}" onclick="event.stopPropagation(); Board.startAgent('${item.id}')" title="${this.escapeHtml(blockedTooltip)}"${disabledAttr}>▶</button><button class="btn btn-xs${disabledClass}" onclick="event.stopPropagation(); Board.startCopyAgent('${item.id}')" title="${isBlocked ? this.escapeHtml(blockedTooltip) : 'Start Copy (keep original in Todo)'}"${disabledAttr}>▶⧉</button>${deleteBtn}`;
+            if (item.start_copy) {
+                actionsHtml = `<button class="btn btn-xs btn-primary${disabledClass}" onclick="event.stopPropagation(); Board.startCopyAgent('${item.id}')" title="${isBlocked ? this.escapeHtml(blockedTooltip) : 'Start Copy (keep original in Todo)'}"${disabledAttr}>▶⧉</button>${deleteBtn}`;
+            } else {
+                actionsHtml = `<button class="btn btn-xs btn-primary${disabledClass}" onclick="event.stopPropagation(); Board.startAgent('${item.id}')" title="${this.escapeHtml(blockedTooltip)}"${disabledAttr}>▶</button>${deleteBtn}`;
+            }
         } else if (col === 'doing' && item.status === 'failed') {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.retryAgent('${item.id}')" title="Retry">↻ Retry</button>
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>`;

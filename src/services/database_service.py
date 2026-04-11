@@ -120,7 +120,7 @@ class DatabaseService:
                 return dict(row)
             return {}
 
-    async def create_todo_item(self, title: str, description: str, epic_id: str = None, auto_start: bool = False) -> Dict[str, Any]:
+    async def create_todo_item(self, title: str, description: str, epic_id: str = None, auto_start: bool = False, start_copy: bool = False) -> Dict[str, Any]:
         """Create a new todo item and return it."""
         from ..models import new_id
 
@@ -136,8 +136,8 @@ class DatabaseService:
 
             # Create new todo item
             await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position, epic_id, auto_start) VALUES (?, ?, ?, 'todo', ?, ?, ?)",
-                (todo_id, title, description, position, epic_id, auto_start),
+                "INSERT INTO items (id, title, description, column_name, position, epic_id, auto_start, start_copy) VALUES (?, ?, ?, 'todo', ?, ?, ?, ?)",
+                (todo_id, title, description, position, epic_id, auto_start, int(start_copy)),
             )
             await conn.commit()
 
@@ -168,8 +168,8 @@ class DatabaseService:
 
             # Create copied item
             await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position, model) VALUES (?, ?, ?, 'todo', ?, ?)",
-                (copy_id, item["title"], item.get("description", ""), position, item.get("model")),
+                "INSERT INTO items (id, title, description, column_name, position, model, start_copy) VALUES (?, ?, ?, 'todo', ?, ?, ?)",
+                (copy_id, item["title"], item.get("description", ""), position, item.get("model"), item.get("start_copy", 0)),
             )
 
             # Copy attachments

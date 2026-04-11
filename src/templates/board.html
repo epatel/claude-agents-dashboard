@@ -103,6 +103,15 @@
                 <div id="item-form-attachments" class="attachments-grid"></div>
                 <button type="button" class="btn btn-sm" style="margin-top: 8px;" onclick="Dialogs.openAnnotateForNewItem()">+ Add Annotated Image</button>
             </div>
+            <div class="form-group">
+                <label for="item-form-start-copy" style="display:flex;align-items:center;gap:8px;">
+                    Start as Copy
+                    <input type="checkbox" id="item-form-start-copy" style="cursor:pointer;">
+                </label>
+                <p class="text-muted" style="font-size:12px;margin:4px 0 0;">
+                    When enabled, the Start button becomes Start Copy — keeping the original item in Todo when started.
+                </p>
+            </div>
             <div class="modal-footer">
                 <button type="button" class="btn" onclick="Dialogs.close('item-dialog')">Cancel</button>
                 <button type="button" id="item-play-btn" class="btn btn-primary" onclick="Dialogs.submitItemAndStart(event)" title="Save item and immediately start agent">▶ Save & Start</button>

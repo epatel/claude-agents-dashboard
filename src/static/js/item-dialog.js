@@ -25,6 +25,7 @@ const ItemDialog = {
         this._renderDepChips();
         this._initDepPicker(null);
         this._setAutoStart(false);
+        this._setStartCopy(false);
         await this._updateDefaultModelDisplay();
         // Show play button for new items
         const playBtn = document.getElementById('item-play-btn');
@@ -50,6 +51,7 @@ const ItemDialog = {
         this._renderDepChips();
         this._initDepPicker(item.id);
         this._setAutoStart(!!item.auto_start);
+        this._setStartCopy(!!item.start_copy);
         if (item.id) {
             await this._loadDependencies(item.id);
         }
@@ -154,15 +156,16 @@ const ItemDialog = {
         if (!title) return;
 
         const auto_start = this._getAutoStart();
+        const start_copy = this._getStartCopy();
 
         try {
             let itemId = id;
             if (id) {
-                const updateData = { title, description, epic_id, auto_start };
+                const updateData = { title, description, epic_id, auto_start, start_copy };
                 if (model !== null) updateData.model = model;
                 await Api.updateItem(id, updateData);
             } else {
-                const item = await Api.createItem(title, description, model, epic_id, auto_start);
+                const item = await Api.createItem(title, description, model, epic_id, auto_start, start_copy);
                 itemId = item.id;
             }
 
@@ -195,6 +198,7 @@ const ItemDialog = {
         const description = document.getElementById('item-form-desc').value;
         const model = document.getElementById('item-form-model').value || null;
         const epic_id = document.getElementById('item-form-epic').value || null;
+        const start_copy = this._getStartCopy();
 
         if (!title) return;
 
@@ -209,12 +213,12 @@ const ItemDialog = {
             let itemId = id;
             if (id) {
                 // For existing items, just update
-                const updateData = { title, description, epic_id };
+                const updateData = { title, description, epic_id, start_copy };
                 if (model !== null) updateData.model = model;
                 await Api.updateItem(id, updateData);
             } else {
                 // For new items, create first
-                const item = await Api.createItem(title, description, model, epic_id);
+                const item = await Api.createItem(title, description, model, epic_id, false, start_copy);
                 itemId = item.id;
             }
 
@@ -458,6 +462,16 @@ const ItemDialog = {
 
     _getAutoStart() {
         const cb = document.getElementById('item-form-auto-start');
+        return cb ? cb.checked : false;
+    },
+
+    _setStartCopy(value) {
+        const cb = document.getElementById('item-form-start-copy');
+        if (cb) cb.checked = value;
+    },
+
+    _getStartCopy() {
+        const cb = document.getElementById('item-form-start-copy');
         return cb ? cb.checked : false;
     },
 
