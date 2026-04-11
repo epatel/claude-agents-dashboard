@@ -1320,8 +1320,25 @@ async def websocket_endpoint(websocket: WebSocket):
         await manager.connect(websocket)
         try:
             while True:
-                await websocket.receive_text()
+                # Timeout prevents connections from lingering forever
+                # when the client (e.g. a closed wrapper tab) silently
+                # drops without sending a close frame.
+                try:
+                    await asyncio.wait_for(
+                        websocket.receive_text(),
+                        timeout=120,  # 2 min idle timeout
+                    )
+                except asyncio.TimeoutError:
+                    # No data in 2 minutes — verify the connection is alive.
+                    # If the heartbeat already reaped it, receive_text will
+                    # raise on the next loop iteration.
+                    try:
+                        await websocket.send_json({"type": "ping"})
+                    except Exception:
+                        break
         except WebSocketDisconnect:
+            pass
+        finally:
             manager.disconnect(websocket)
     except HTTPException:
         # Rate limit exceeded - connection was already closed in manager

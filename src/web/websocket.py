@@ -1,4 +1,6 @@
+import asyncio
 import json
+import logging
 import time
 from collections import defaultdict, deque
 from typing import Dict, List
@@ -9,6 +11,13 @@ from ..config import (
     WEBSOCKET_MAX_CONNECTIONS_PER_WINDOW
 )
 
+logger = logging.getLogger(__name__)
+
+# How often to ping connections and reap dead ones (seconds)
+HEARTBEAT_INTERVAL = 30
+# How long to wait for a pong response before considering the connection dead
+HEARTBEAT_TIMEOUT = 10
+
 
 class ConnectionManager:
     def __init__(self):
@@ -17,6 +26,8 @@ class ConnectionManager:
         self.connections_by_ip: Dict[str, List[WebSocket]] = defaultdict(list)
         # Track connection attempts by IP with timestamps
         self.connection_attempts: Dict[str, deque] = defaultdict(lambda: deque())
+        # Background heartbeat task reference
+        self._heartbeat_task: asyncio.Task | None = None
 
     def _get_client_ip(self, websocket: WebSocket) -> str:
         """Get client IP address from WebSocket headers."""
@@ -128,4 +139,49 @@ class ConnectionManager:
             except Exception:
                 dead.append(connection)
         for conn in dead:
-            self.active_connections.remove(conn)
+            self.disconnect(conn)
+
+    def start_heartbeat(self):
+        """Start periodic heartbeat task to detect and clean up dead connections."""
+        if self._heartbeat_task is None or self._heartbeat_task.done():
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+    def stop_heartbeat(self):
+        """Stop the heartbeat task."""
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+
+    async def _heartbeat_loop(self):
+        """Periodically ping all connections and remove dead ones."""
+        while True:
+            try:
+                await asyncio.sleep(HEARTBEAT_INTERVAL)
+                await self._reap_dead_connections()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Heartbeat loop error: {e}")
+
+    async def _reap_dead_connections(self):
+        """Ping all connections and disconnect those that don't respond."""
+        if not self.active_connections:
+            return
+
+        dead = []
+        for conn in list(self.active_connections):
+            try:
+                await asyncio.wait_for(
+                    conn.send_json({"type": "ping"}),
+                    timeout=HEARTBEAT_TIMEOUT,
+                )
+            except Exception:
+                dead.append(conn)
+
+        if dead:
+            logger.info(f"Reaping {len(dead)} dead WebSocket connection(s)")
+            for conn in dead:
+                self.disconnect(conn)
+                try:
+                    await conn.close(code=1001, reason="Heartbeat timeout")
+                except Exception:
+                    pass

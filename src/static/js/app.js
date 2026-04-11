@@ -136,8 +136,14 @@ const App = {
             });
         }
 
-        // Handle page unload to cleanup WebSocket connection
+        // Handle page unload to cleanup WebSocket connection.
+        // Both events are registered because 'pagehide' fires more
+        // reliably in WKWebView (macOS wrapper) while 'beforeunload'
+        // is the traditional fallback for regular browsers.
         window.addEventListener('beforeunload', () => {
+            this.cleanup();
+        });
+        window.addEventListener('pagehide', () => {
             this.cleanup();
         });
 
@@ -213,6 +219,13 @@ const App = {
         this.ws.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data);
+                // Respond to server heartbeat pings to keep connection alive
+                if (msg.type === 'ping') {
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({type: 'pong'}));
+                    }
+                    return;
+                }
                 this.handleEvent(msg.type, msg.data);
             } catch (error) {
                 console.error('Failed to parse WebSocket message:', error);

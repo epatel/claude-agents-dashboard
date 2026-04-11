@@ -21,6 +21,19 @@ struct DashboardWebView: NSViewRepresentable {
         }
     }
 
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        // Close WebSocket and stop all network activity before the view is deallocated.
+        // Without this, closed wrapper tabs leave unbound connections on the server.
+        webView.evaluateJavaScript(
+            "if (typeof App !== 'undefined' && App.cleanup) { App.cleanup(); }",
+            completionHandler: nil
+        )
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        // Load blank page to tear down any remaining connections
+        webView.loadHTMLString("", baseURL: nil)
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
