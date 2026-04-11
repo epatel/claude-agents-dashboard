@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (837 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (14 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
+This directory contains the automated test suite (861 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (15 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
 
 ## Test Structure
 
@@ -17,7 +17,7 @@ tests/
 │   ├── test_annotation_summary.py               # Annotation summary generation (2 tests)
 │   ├── test_app.py                              # FastAPI app creation and middleware (23 tests)
 │   ├── test_create_todo_autostart.py            # Todo creation with auto-start (13 tests)
-│   ├── test_database_service.py                 # DatabaseService CRUD operations (47 tests)
+│   ├── test_database_service.py                 # DatabaseService CRUD operations (55 tests)
 │   ├── test_diff_mixing.py                      # Diff isolation between items (6 tests)
 │   ├── test_epics.py                            # Epic CRUD, progress, item assignment (19 tests)
 │   ├── test_file_routes.py                      # File browser routes (66 tests)
@@ -30,7 +30,7 @@ tests/
 │   ├── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
 │   ├── test_notification_service.py             # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
-│   ├── test_routes.py                           # HTTP endpoint tests (69 tests)
+│   ├── test_routes.py                           # HTTP endpoint tests (80 tests)
 │   ├── test_session.py                          # AgentSession SDK wrapper (64 tests)
 │   ├── test_session_service.py                  # SessionService lifecycle (54 tests)
 │   ├── test_websocket.py                        # WebSocket connection and rate limiting (45 tests)
@@ -44,14 +44,14 @@ tests/
 
 ## Test Coverage by Area
 
-### 1. Service Layer (212 tests)
+### 1. Service Layer (220 tests)
 - **WorkflowService** (70 tests) — State transitions, agent lifecycle, merge conflict resolution, dependency auto-start, callback factories
-- **DatabaseService** (47 tests) — CRUD operations, item dependencies, column whitelist validation
+- **DatabaseService** (55 tests) — CRUD operations, item dependencies, column whitelist validation
 - **SessionService** (54 tests) — Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests) — WebSocket broadcasting, tool formatting, event types
 
-### 2. Web Layer (203 tests)
-- **Routes** (69 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search
+### 2. Web Layer (214 tests)
+- **Routes** (80 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail
 - **File Routes** (66 tests) — File browser path validation, secret detection, .browserhidden, language mapping, directory scanning
 - **WebSocket** (45 tests) — Connection management, rate limiting, dead-connection cleanup
 - **App** (23 tests) — FastAPI factory, middleware, CORS, security headers, lifespan
@@ -103,7 +103,7 @@ Run with: `./run-e2e-tests.sh` (supports `--verbose` flag for colored output)
 
 ### Quick Start
 ```bash
-# Run all 837 tests
+# Run all 861 tests
 ./run-tests.sh
 
 # Run specific test categories
