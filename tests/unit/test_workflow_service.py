@@ -643,10 +643,11 @@ class TestOnViewBoardCallback:
         assert isinstance(result, str)
         assert item["title"] in result
 
-    async def test_empty_board_returns_string(self, workflow):
+    async def test_empty_board_returns_no_items_indicator(self, workflow):
         cb = workflow._create_on_view_board_callback()
         result = await cb()
         assert isinstance(result, str)
+        assert len(result) > 0  # Should return some board representation even when empty
 
 
 # ---------------------------------------------------------------------------

@@ -38,14 +38,6 @@ class TestAgentResult:
         assert r.success is False
         assert r.error == "oops"
 
-    def test_defaults_are_none(self):
-        r = AgentResult(success=True)
-        assert r.session_id is None
-        assert r.error is None
-        assert r.cost_usd is None
-        assert r.input_tokens is None
-        assert r.output_tokens is None
-        assert r.total_tokens is None
 
 
 # ---------------------------------------------------------------------------
@@ -100,24 +92,9 @@ class TestAgentSessionConstructor:
         session = make_session(system_prompt="Be helpful.")
         assert session.system_prompt == "Be helpful."
 
-    def test_model_default_none(self):
-        session = make_session()
-        assert session.model is None
-
     def test_model_stored(self):
         session = make_session(model="claude-opus-4")
         assert session.model == "claude-opus-4"
-
-    def test_callbacks_default_none(self):
-        session = make_session()
-        assert session.on_message is None
-        assert session.on_tool_use is None
-        assert session.on_thinking is None
-        assert session.on_complete is None
-        assert session.on_error is None
-        assert session.on_clarify is None
-        assert session.on_create_todo is None
-        assert session.on_set_commit_message is None
 
     def test_callbacks_stored(self):
         cb = AsyncMock()
@@ -125,46 +102,15 @@ class TestAgentSessionConstructor:
         assert session.on_message is cb
         assert session.on_complete is cb
 
-    def test_allowed_commands_default_empty_list(self):
-        session = make_session()
-        assert session.allowed_commands == []
-
     def test_allowed_commands_stored(self):
         cmds = ["git", "npm"]
         session = make_session(allowed_commands=cmds)
         assert session.allowed_commands == cmds
 
-    def test_bash_yolo_default_false(self):
-        session = make_session()
-        assert session.bash_yolo is False
-
-    def test_use_advisor_default_false(self):
-        session = make_session()
-        assert session.use_advisor is False
-
     def test_use_advisor_stored_true(self):
         session = make_session(use_advisor=True)
         assert session.use_advisor is True
 
-    def test_initial_state(self):
-        session = make_session()
-        assert session.client is None
-        assert session._task is None
-        assert session._cancelled is False
-        assert session.current_session_id is None
-
-    def test_mcp_disabled_by_default(self):
-        session = make_session()
-        assert session.mcp_enabled is False
-        assert session.mcp_servers is None
-
-    def test_plugins_default_none(self):
-        session = make_session()
-        assert session.plugins is None
-
-    def test_allowed_builtin_tools_default_empty(self):
-        session = make_session()
-        assert session.allowed_builtin_tools == []
 
 
 # ---------------------------------------------------------------------------

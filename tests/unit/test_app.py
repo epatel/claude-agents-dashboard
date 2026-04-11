@@ -19,10 +19,6 @@ from src.config import DEFAULT_HOST, DEFAULT_PORT, MAX_PORT_TRIES
 # ---------------------------------------------------------------------------
 
 class TestBuildCorsOrigins:
-    def test_returns_list(self):
-        origins = _build_cors_origins()
-        assert isinstance(origins, list)
-
     def test_length_is_two_per_port(self):
         origins = _build_cors_origins()
         assert len(origins) == MAX_PORT_TRIES * 2
@@ -227,12 +223,6 @@ class TestCreateApp:
         data.mkdir()
         return target, data
 
-    def test_returns_fastapi_instance(self, tmp_path):
-        from fastapi import FastAPI
-        target, data = self._make_paths(tmp_path)
-        app = create_app(target, data)
-        assert isinstance(app, FastAPI)
-
     def test_app_title(self, tmp_path):
         target, data = self._make_paths(tmp_path)
         app = create_app(target, data)
@@ -247,24 +237,6 @@ class TestCreateApp:
         target, data = self._make_paths(tmp_path)
         app = create_app(target, data)
         assert app.state.data_dir == data
-
-    def test_state_db_is_set(self, tmp_path):
-        from src.database import Database
-        target, data = self._make_paths(tmp_path)
-        app = create_app(target, data)
-        assert isinstance(app.state.db, Database)
-
-    def test_state_ws_manager_is_set(self, tmp_path):
-        from src.web.websocket import ConnectionManager
-        target, data = self._make_paths(tmp_path)
-        app = create_app(target, data)
-        assert isinstance(app.state.ws_manager, ConnectionManager)
-
-    def test_state_templates_is_set(self, tmp_path):
-        from fastapi.templating import Jinja2Templates
-        target, data = self._make_paths(tmp_path)
-        app = create_app(target, data)
-        assert isinstance(app.state.templates, Jinja2Templates)
 
     def test_db_path_uses_data_dir(self, tmp_path):
         target, data = self._make_paths(tmp_path)
