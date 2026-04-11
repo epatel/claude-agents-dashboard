@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (837 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (13 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
+This directory contains the automated test suite (837 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (14 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
 
 ## Test Structure
 

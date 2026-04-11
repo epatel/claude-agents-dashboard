@@ -24,7 +24,7 @@ Server binds to `127.0.0.1:8000` (auto-increments if busy, up to 8019). E2E test
 
 **Frontend**: Vanilla JS, no build step. Jinja2 server-renders initial board; JS handles updates via WebSocket + fetch. `dialogs.js` coordinates 12 specialized dialog modules.
 
-**Database**: SQLite with 13 versioned migrations in `src/migrations/versions/`. Auto-migrates on startup. CLI: `python -m src.manage [status|migrate|rollback]`.
+**Database**: SQLite with 14 versioned migrations (001–014) in `src/migrations/versions/`. Auto-migrates on startup. CLI: `python -m src.manage [status|migrate|rollback]`.
 
 ### Key flows
 
