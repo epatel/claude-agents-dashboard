@@ -501,7 +501,6 @@ Each project gets its own server instance. Run `run.sh` from different repos —
 The `AGENT_FILES/` directory contains supplementary documentation for agents working on this project:
 
 - `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
-- `ASSESSMENT_CODE_CODEX.md` — Independent code assessment by Codex with architectural analysis, risk areas, and refactoring recommendations
 - `AUDIT.md` — Security audit report with 14 findings (9 of 9 actionable remediated), threat model, and remediation tracking
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
 - `TESTING.md` — Detailed testing guide with test inventory (837 unit/integration tests + E2E tests), writing guidelines, and 13 database migrations
