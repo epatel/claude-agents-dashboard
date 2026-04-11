@@ -14,6 +14,27 @@ class ProjectManager: ObservableObject {
     private let storageKey = "saved_projects"
     private var outputPipes: [UUID: Pipe] = [:]
     private var errorPipes: [UUID: Pipe] = [:]
+    private lazy var resolvedUserPATH: String? = {
+        // macOS GUI apps get a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin).
+        // Spawn the user's login shell to get the fully-resolved PATH that
+        // includes homebrew, nvm, rbenv, etc.
+        let userShell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: userShell)
+        proc.arguments = ["-l", "-c", "echo $PATH"]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (path?.isEmpty == false) ? path : nil
+        } catch {
+            return nil
+        }
+    }()
 
     init() {
         loadProjects()
@@ -168,6 +189,11 @@ class ProjectManager: ObservableObject {
         var env = ProcessInfo.processInfo.environment
         env["TERM"] = "xterm-256color"
         env["AGENTS_DASHBOARD_AUTO_UPDATE"] = "1"
+        // Use the fully-resolved user PATH so spawned processes (Claude agents,
+        // MCP servers) can find node, npx, etc.
+        if let fullPATH = resolvedUserPATH {
+            env["PATH"] = fullPATH
+        }
         process.environment = env
 
         self.outputPipes[instance.id] = outputPipe
