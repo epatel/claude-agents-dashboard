@@ -88,13 +88,15 @@ const DetailDialog = {
         const deleteBtn = document.getElementById('detail-delete-btn');
         const actionsEl = document.getElementById('detail-header-actions');
 
-        // Remove any previously added play/rerun/start-copy buttons
+        // Remove any previously added play/rerun/start-copy/copy-link buttons
         const oldPlay = document.getElementById('detail-play-btn');
         if (oldPlay) oldPlay.remove();
         const oldStartCopy = document.getElementById('detail-start-copy-btn');
         if (oldStartCopy) oldStartCopy.remove();
         const oldRerun = document.getElementById('detail-rerun-btn');
         if (oldRerun) oldRerun.remove();
+        const oldCopyLink = document.getElementById('detail-copy-link-btn');
+        if (oldCopyLink) oldCopyLink.remove();
 
         const isAgentActive = item.status === 'running' || item.status === 'resolving_conflicts' || item.status === 'paused';
 
