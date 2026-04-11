@@ -35,7 +35,6 @@
 }
 
 .modal-header h3 {
-    flex: 1;
     min-width: 0;
     font-size: 16px;
     font-weight: 600;
