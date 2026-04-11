@@ -283,13 +283,14 @@ class TestAllowedToolsWhitelist:
 
         options = mock_sdk.call_args.kwargs.get("options") or mock_sdk.call_args.args[0]
         assert options.can_use_tool is not None
+        from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
         # Plugin tools should be allowed by prefix match
-        assert await options.can_use_tool("mcp__plugin_context-mode_context-mode__ctx_batch_execute")
-        assert await options.can_use_tool("mcp__plugin_context-mode_context-mode__ctx_execute")
+        assert isinstance(await options.can_use_tool("mcp__plugin_context-mode_context-mode__ctx_batch_execute"), PermissionResultAllow)
+        assert isinstance(await options.can_use_tool("mcp__plugin_context-mode_context-mode__ctx_execute"), PermissionResultAllow)
         # Non-plugin tools should also work if in allowed_tools
-        assert await options.can_use_tool("Bash")
+        assert isinstance(await options.can_use_tool("Bash"), PermissionResultAllow)
         # Unknown tools should not be allowed
-        assert not await options.can_use_tool("mcp__unknown__tool")
+        assert isinstance(await options.can_use_tool("mcp__unknown__tool"), PermissionResultDeny)
 
     @patch("src.agent.session.ClaudeSDKClient")
     async def test_hook_only_set_with_allowed_commands(self, mock_sdk):
