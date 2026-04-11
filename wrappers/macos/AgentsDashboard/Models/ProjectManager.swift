@@ -93,20 +93,92 @@ class ProjectManager: ObservableObject {
         dashboards[index].status = .stopping
 
         if let process = dashboards[index].process, process.isRunning {
-            // Send SIGTERM for graceful shutdown
-            process.terminate()
+            // Call the shutdown endpoint first so the server can gracefully
+            // clean up all Claude agent sessions (child + grandchild processes).
+            // pkill -P only kills direct children, so the HTTP endpoint is needed
+            // to properly tear down SDK-spawned agent process trees.
+            if let port = dashboards[index].port {
+                callShutdownEndpoint(port: port) { [weak self] in
+                    // Whether the endpoint succeeded or not, terminate the process
+                    if process.isRunning {
+                        process.terminate()
+                    }
 
-            // Force kill after 5 seconds if still running
-            DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [weak self] in
-                if process.isRunning {
-                    process.interrupt()
+                    // Force kill after 5 seconds if still running
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [weak self] in
+                        if process.isRunning {
+                            process.interrupt()
+                        }
+                        DispatchQueue.main.async {
+                            self?.cleanupDashboard(id: id)
+                        }
+                    }
                 }
-                DispatchQueue.main.async {
-                    self?.cleanupDashboard(id: id)
+            } else {
+                // No port known — fall back to direct termination
+                process.terminate()
+
+                DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [weak self] in
+                    if process.isRunning {
+                        process.interrupt()
+                    }
+                    DispatchQueue.main.async {
+                        self?.cleanupDashboard(id: id)
+                    }
                 }
             }
         } else {
             cleanupDashboard(id: id)
+        }
+    }
+
+    /// Call the server's /api/shutdown endpoint to gracefully stop all agents.
+    /// Calls the completion handler when done (success or failure, with a short timeout).
+    private func callShutdownEndpoint(port: Int, completion: @escaping () -> Void) {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/api/shutdown") else {
+            completion()
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5  // Don't wait too long
+
+        URLSession.shared.dataTask(with: request) { _, _, _ in
+            // Give the server a moment to finish cleanup before we terminate
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+                completion()
+            }
+        }.resume()
+    }
+
+    func stopAllDashboards() {
+        // Call shutdown endpoint on all running dashboards synchronously.
+        // Used during app termination to ensure Claude agents are cleaned up.
+        let running = dashboards.filter { $0.status == .running && $0.port != nil }
+        let semaphore = DispatchSemaphore(value: 0)
+
+        for dashboard in running {
+            guard let port = dashboard.port,
+                  let url = URL(string: "http://127.0.0.1:\(port)/api/shutdown") else { continue }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 3
+
+            URLSession.shared.dataTask(with: request) { _, _, _ in
+                semaphore.signal()
+            }.resume()
+
+            // Wait up to 3 seconds per server
+            _ = semaphore.wait(timeout: .now() + 3)
+        }
+
+        // Now terminate all processes
+        for dashboard in dashboards {
+            if let process = dashboard.process, process.isRunning {
+                process.terminate()
+            }
         }
     }
 

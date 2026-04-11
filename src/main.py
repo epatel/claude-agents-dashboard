@@ -10,36 +10,58 @@ from pathlib import Path
 from .config import DATA_DIR_NAME, DEFAULT_HOST, DEFAULT_PORT, MAX_PORT_TRIES
 
 
+def _get_all_descendant_pids(root_pid: int) -> list[int]:
+    """Recursively find all descendant PIDs of a process using pgrep."""
+    descendants = []
+    try:
+        result = subprocess.run(
+            ["pgrep", "-P", str(root_pid)],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.strip().splitlines():
+            child_pid = int(line.strip())
+            descendants.append(child_pid)
+            # Recurse into grandchildren
+            descendants.extend(_get_all_descendant_pids(child_pid))
+    except Exception:
+        pass
+    return descendants
+
+
 def _kill_child_processes():
-    """Kill all child processes of the current process.
+    """Kill all descendant processes (children, grandchildren, etc.) of the current process.
 
     This is a last-resort cleanup to prevent orphaned Claude agent processes
     when the macOS wrapper (or any parent) terminates the server.
+    Uses recursive pgrep to find the entire process tree, since pkill -P
+    only kills direct children and misses grandchildren spawned by the SDK.
     """
     import logging
     logger = logging.getLogger(__name__)
     pid = os.getpid()
-    try:
-        # Use pkill to send SIGTERM to all children of this process
-        subprocess.run(
-            ["pkill", "-TERM", "-P", str(pid)],
-            capture_output=True,
-            timeout=5,
-        )
-    except Exception as e:
-        logger.debug(f"pkill cleanup: {e}")
 
-    # Give children a moment to exit, then force-kill stragglers
-    try:
-        import time
-        time.sleep(0.5)
-        subprocess.run(
-            ["pkill", "-KILL", "-P", str(pid)],
-            capture_output=True,
-            timeout=5,
-        )
-    except Exception:
-        pass
+    descendants = _get_all_descendant_pids(pid)
+    if not descendants:
+        return
+
+    logger.info(f"Killing {len(descendants)} descendant process(es): {descendants}")
+
+    # Send SIGTERM to all descendants (leaf-first = reversed)
+    for dpid in reversed(descendants):
+        try:
+            os.kill(dpid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+    # Give them a moment to exit, then force-kill stragglers
+    import time
+    time.sleep(0.5)
+
+    for dpid in reversed(descendants):
+        try:
+            os.kill(dpid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
 
 
 def _signal_handler(signum, frame):

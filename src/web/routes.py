@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import uuid
 from pathlib import Path
 import time
@@ -1022,6 +1023,38 @@ async def clear_notifications():
     global _notifications
     _notifications.clear()
     return {"ok": True}
+
+
+# --- Shutdown ---
+
+@router.post("/api/shutdown")
+async def shutdown_server(request: Request):
+    """Gracefully shut down all running agents and then terminate the server.
+
+    The macOS wrapper calls this before killing the server process,
+    ensuring Claude agent child processes are properly cleaned up
+    (pkill -P only kills direct children, missing grandchildren spawned by the SDK).
+    """
+    import os
+    import signal
+
+    orchestrator = request.app.state.orchestrator
+    logger = logging.getLogger(__name__)
+    logger.info("Shutdown endpoint called — cleaning up all sessions")
+
+    try:
+        await orchestrator.shutdown()
+    except Exception as e:
+        logger.warning(f"Error during graceful shutdown: {e}")
+
+    # Schedule server termination after returning the response
+    async def _deferred_exit():
+        await asyncio.sleep(0.5)  # Let the HTTP response flush
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    asyncio.create_task(_deferred_exit())
+
+    return {"ok": True, "message": "Shutting down"}
 
 
 # --- Stale Worktree Cleanup ---
