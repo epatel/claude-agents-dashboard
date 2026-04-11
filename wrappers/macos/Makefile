@@ -5,8 +5,9 @@ RELEASE_DIR = $(BUILD_DIR)/release
 BIN_DIR = $(shell swift build -c release --show-bin-path 2>/dev/null || echo "$(BUILD_DIR)/arm64-apple-macosx/release")
 DEBUG_DIR = $(BUILD_DIR)/arm64-apple-macosx/debug
 INSTALL_DIR = /Applications
+SIGNING_IDENTITY ?= -
 
-.PHONY: all build release run clean install uninstall
+.PHONY: all build release sign run clean install uninstall
 
 all: build
 
@@ -25,6 +26,13 @@ release:
 	@cp $(APP_NAME)/$(APP_NAME).entitlements "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/Resources/"
 	@codesign --force --sign - --entitlements $(APP_NAME)/$(APP_NAME).entitlements "$(RELEASE_DIR)/$(BUNDLE_NAME)"
 	@echo "Built: $(RELEASE_DIR)/$(BUNDLE_NAME)"
+
+# Sign release build with a Developer ID (or ad-hoc if SIGNING_IDENTITY is -)
+# Usage: make sign SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+sign: release
+	@codesign --force --options runtime --sign "$(SIGNING_IDENTITY)" --entitlements $(APP_NAME)/$(APP_NAME).entitlements "$(RELEASE_DIR)/$(BUNDLE_NAME)"
+	@echo "Signed: $(RELEASE_DIR)/$(BUNDLE_NAME) with '$(SIGNING_IDENTITY)'"
+	@codesign -dv "$(RELEASE_DIR)/$(BUNDLE_NAME)" 2>&1 | head -5
 
 # Run debug build
 run:
