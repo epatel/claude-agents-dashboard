@@ -7,7 +7,7 @@
  * Usage: node tests/e2e/test_clarification.mjs <target-repo-path>
  */
 import { chromium } from 'playwright';
-import { startServer, deleteItem, printWorkLog, pass, fail } from './helpers.mjs';
+import { startServer, stopServer, deleteItem, printWorkLog, pass, fail, E2E_MODEL } from './helpers.mjs';
 
 const TARGET_REPO = process.argv[2];
 if (!TARGET_REPO) {
@@ -34,25 +34,27 @@ async function main() {
 
     // 1. Create an item that forces the agent to ask a question
     const createRes = await page.evaluate(async (args) => {
-      const [b] = args;
+      const [b, model] = args;
+      const payload = {
+        title: 'E2E Test: Clarification flow',
+        description: [
+          'You MUST use the ask_user tool (mcp__clarification__ask_user) to ask the user what greeting to write.',
+          'Ask them: "What greeting should I write to README.md?"',
+          'Wait for their response, then append their exact answer to README.md.',
+          'Then call set_commit_message with "test: clarification flow".',
+        ].join('\n'),
+      };
+      if (model) payload.model = model;
       const r = await fetch(`${b}/api/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: 'E2E Test: Clarification flow',
-          description: [
-            'You MUST use the ask_user tool (mcp__clarification__ask_user) to ask the user what greeting to write.',
-            'Ask them: "What greeting should I write to README.md?"',
-            'Wait for their response, then append their exact answer to README.md.',
-            'Then call set_commit_message with "test: clarification flow".',
-          ].join('\n'),
-        }),
+        body: JSON.stringify(payload),
       });
       return r.json();
-    }, [BASE]);
+    }, [BASE, E2E_MODEL]);
 
     const itemId = createRes.id;
-    console.log(`Created item: ${itemId}`);
+    console.log(`Created item: ${itemId}${E2E_MODEL ? ` (model: ${E2E_MODEL})` : ''}`);
 
     // 2. Start the agent
     await page.evaluate(async (args) => {
@@ -182,8 +184,7 @@ async function main() {
     process.exit(1);
   } finally {
     await browser.close();
-    serverProc.kill();
-    console.log('Server stopped');
+    await stopServer(port, serverProc);
   }
 }
 

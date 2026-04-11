@@ -12,10 +12,12 @@ RESET=$'\033[0m'
 # Parse flags — pass remaining args to test scripts
 VERBOSE=""
 TEST_ARGS=()
-for arg in "$@"; do
-    case "$arg" in
-        -v|--verbose) VERBOSE="-v" ;;
-        *) TEST_ARGS+=("$arg") ;;
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -v|--verbose) VERBOSE="-v"; shift ;;
+        --model) export E2E_MODEL="$2"; shift 2 ;;
+        --model=*) export E2E_MODEL="${1#--model=}"; shift ;;
+        *) TEST_ARGS+=("$1"); shift ;;
     esac
 done
 
@@ -67,6 +69,7 @@ fi
 echo ""
 echo "=== Running E2E tests ==="
 [ -n "$VERBOSE" ] && echo "(verbose mode)"
+[ -n "${E2E_MODEL:-}" ] && echo "Model override: $E2E_MODEL"
 echo ""
 
 # Collect test files

@@ -17,6 +17,16 @@ if [ ! -d "$VENV_DIR" ]; then
     "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
 fi
 
+# Parse flags
+TEST_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --model) export E2E_MODEL="$2"; shift 2 ;;
+        --model=*) export E2E_MODEL="${1#--model=}"; shift ;;
+        *) TEST_ARGS+=("$1"); shift ;;
+    esac
+done
+
 cd "$SCRIPT_DIR"
 
 # Clean previous coverage data
@@ -30,13 +40,14 @@ echo ""
     --cov-branch \
     --cov-report=term \
     -q \
-    "$@"
+    "${TEST_ARGS[@]+"${TEST_ARGS[@]}"}"
 
 # Rename the coverage file so it doesn't get overwritten
 mv .coverage .coverage.unit
 
 echo ""
 echo "${GREEN}=== Phase 2: E2E Tests (server under coverage) ===${RESET}"
+[ -n "${E2E_MODEL:-}" ] && echo "Model override: $E2E_MODEL"
 echo ""
 
 # Ensure playwright is installed
@@ -52,7 +63,7 @@ if [ -d "$REPO_DIR" ]; then
     git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
     git worktree list --porcelain | grep "^worktree " | grep -v "$(pwd)" | while read -r _ wt; do
         git worktree remove --force "$wt" 2>/dev/null || true
-    done
+    done || true
     git worktree prune
     git reset --hard HEAD
     git clean -fd
@@ -70,20 +81,25 @@ else
     cd "$SCRIPT_DIR"
 fi
 
-# Start server under coverage
+# Start server under coverage, capture output to detect port
 echo "Starting server under coverage..."
+SERVER_LOG=$(mktemp)
 "$VENV_DIR/bin/python" -m coverage run \
     --source=src \
     --branch \
     --data-file=.coverage.e2e \
-    -m src.main "$REPO_DIR" &
+    -m src.main "$REPO_DIR" > "$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 
-# Wait for server to be ready
+# Wait for server to be ready and detect port
 echo -n "Waiting for server"
+SERVER_PORT=""
 for i in $(seq 1 30); do
-    if curl -s http://127.0.0.1:8000/api/items > /dev/null 2>&1; then
-        echo " ready!"
+    if [ -z "$SERVER_PORT" ]; then
+        SERVER_PORT=$(grep -o 'http://127\.0\.0\.1:[0-9]*' "$SERVER_LOG" 2>/dev/null | head -1 | grep -o '[0-9]*$' || true)
+    fi
+    if [ -n "$SERVER_PORT" ] && curl -s "http://127.0.0.1:${SERVER_PORT}/api/items" > /dev/null 2>&1; then
+        echo " ready on port $SERVER_PORT!"
         break
     fi
     echo -n "."
@@ -92,9 +108,24 @@ done
 
 if ! kill -0 $SERVER_PID 2>/dev/null; then
     echo ""
+    cat "$SERVER_LOG"
+    rm -f "$SERVER_LOG"
     echo "${RED}Server failed to start${RESET}"
     exit 1
 fi
+
+if [ -z "$SERVER_PORT" ]; then
+    echo ""
+    cat "$SERVER_LOG"
+    rm -f "$SERVER_LOG"
+    echo "${RED}Could not detect server port${RESET}"
+    kill $SERVER_PID 2>/dev/null || true
+    exit 1
+fi
+rm -f "$SERVER_LOG"
+
+# Tell E2E tests to reuse this server instead of spawning their own
+export E2E_PORT="$SERVER_PORT"
 
 # Run E2E tests
 tests=("$SCRIPT_DIR"/tests/e2e/test_*.mjs)
@@ -115,9 +146,9 @@ for test_file in "${tests[@]}"; do
     echo ""
 done
 
-# Stop server gracefully so coverage data is flushed
+# Stop server gracefully via shutdown endpoint so coverage data is flushed
 echo "Stopping server..."
-kill -INT $SERVER_PID 2>/dev/null || true
+curl -s -X POST "http://127.0.0.1:${SERVER_PORT}/api/shutdown" > /dev/null 2>&1 || true
 wait $SERVER_PID 2>/dev/null || true
 
 # Small delay to ensure .coverage.e2e is written

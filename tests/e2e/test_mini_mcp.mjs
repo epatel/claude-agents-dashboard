@@ -9,7 +9,7 @@
  * Usage: node tests/e2e/test_mini_mcp.mjs <target-repo-path>
  */
 import { chromium } from 'playwright';
-import { startServer, runAgentTask, deleteItem, printWorkLog, pass, fail, warn, PROJECT_ROOT } from './helpers.mjs';
+import { startServer, stopServer, runAgentTask, deleteItem, printWorkLog, pass, fail, warn, PROJECT_ROOT } from './helpers.mjs';
 import path from 'node:path';
 
 const TARGET_REPO = process.argv[2];
@@ -108,8 +108,7 @@ async function main() {
     process.exit(1);
   } finally {
     await browser.close();
-    serverProc.kill();
-    console.log('Server stopped');
+    await stopServer(port, serverProc);
   }
 }
 

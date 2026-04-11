@@ -5,7 +5,7 @@
  * Usage: node tests/e2e/test_allowed_tools.mjs <target-repo-path>
  */
 import { chromium } from 'playwright';
-import { startServer, runAgentTask, deleteItem, printWorkLog, pass, fail } from './helpers.mjs';
+import { startServer, stopServer, runAgentTask, deleteItem, printWorkLog, pass, fail } from './helpers.mjs';
 
 const TARGET_REPO = process.argv[2];
 if (!TARGET_REPO) {
@@ -60,8 +60,7 @@ async function main() {
     process.exit(1);
   } finally {
     await browser.close();
-    serverProc.kill();
-    console.log('Server stopped');
+    await stopServer(port, serverProc);
   }
 }
 

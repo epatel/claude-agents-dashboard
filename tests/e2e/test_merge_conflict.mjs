@@ -8,7 +8,7 @@
  * Usage: node tests/e2e/test_merge_conflict.mjs <target-repo-path>
  */
 import { chromium } from 'playwright';
-import { startServer, deleteItem, printWorkLog, pass, fail } from './helpers.mjs';
+import { startServer, stopServer, deleteItem, printWorkLog, pass, fail, E2E_MODEL } from './helpers.mjs';
 
 const TARGET_REPO = process.argv[2];
 if (!TARGET_REPO) {
@@ -64,14 +64,16 @@ async function main() {
     // 1. Create both items
     const createItem = async (title, description) => {
       return page.evaluate(async (args) => {
-        const [b, t, d] = args;
+        const [b, t, d, model] = args;
+        const payload = { title: t, description: d };
+        if (model) payload.model = model;
         const r = await fetch(`${b}/api/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: t, description: d }),
+          body: JSON.stringify(payload),
         });
         return r.json();
-      }, [BASE, title, description]);
+      }, [BASE, title, description, E2E_MODEL]);
     };
 
     const snail = await createItem(
@@ -79,14 +81,14 @@ async function main() {
       'Write a short 4-line poem about a snail. Write it to poem.txt using the Write tool. Then call set_commit_message with "Add snail poem".'
     );
     snailId = snail.id;
-    console.log(`Created snail item: ${snailId}`);
+    console.log(`Created snail item: ${snailId}${E2E_MODEL ? ` (model: ${E2E_MODEL})` : ''}`);
 
     const butterfly = await createItem(
       'E2E: Butterfly poem',
       'Write a short 4-line poem about a butterfly. Write it to poem.txt using the Write tool. Then call set_commit_message with "Add butterfly poem".'
     );
     butterflyId = butterfly.id;
-    console.log(`Created butterfly item: ${butterflyId}`);
+    console.log(`Created butterfly item: ${butterflyId}${E2E_MODEL ? ` (model: ${E2E_MODEL})` : ''}`);
 
     // 2. Start both agents simultaneously
     const startItem = async (id) => {
@@ -205,8 +207,7 @@ async function main() {
       if (butterflyId) await deleteItem(page, BASE, butterflyId).catch(() => {});
     } catch {}
     await browser.close();
-    serverProc.kill();
-    console.log('Server stopped');
+    await stopServer(port, serverProc);
   }
 }
 

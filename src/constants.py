@@ -6,6 +6,7 @@ Constants for the agents dashboard application.
 AVAILABLE_MODELS = {
     "CLAUDE_SONNET_4": "claude-sonnet-4-20250514",
     "CLAUDE_SONNET_4_ADVISOR": "claude-sonnet-4-20250514+advisor",
+    "CLAUDE_HAIKU_4": "claude-haiku-4-5-20251001",
     "CLAUDE_OPUS_3": "claude-3-opus-20240229",
     "CLAUDE_HAIKU_3": "claude-3-haiku-20240307",
 }

@@ -1050,7 +1050,11 @@ async def shutdown_server(request: Request):
     # Schedule server termination after returning the response
     async def _deferred_exit():
         await asyncio.sleep(0.5)  # Let the HTTP response flush
-        os.kill(os.getpid(), signal.SIGTERM)
+        # Use sys.exit() for clean shutdown — allows atexit handlers
+        # (e.g. coverage) to flush. The SIGTERM handler kills with SIG_DFL
+        # which skips atexit.
+        import sys
+        sys.exit(0)
 
     asyncio.create_task(_deferred_exit())
 

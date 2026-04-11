@@ -12,6 +12,12 @@ export const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const MAX_WAIT = 120_000;
 const POLL_INTERVAL = 3000;
 
+/** Model override from E2E_MODEL env var (e.g. "claude-haiku-4-5-20251001"). */
+export const E2E_MODEL = process.env.E2E_MODEL || null;
+
+/** When set, tests reuse an externally started server instead of spawning their own. */
+export const E2E_PORT = process.env.E2E_PORT ? parseInt(process.env.E2E_PORT, 10) : null;
+
 /** Check if -v or --verbose was passed as a CLI argument. */
 export const VERBOSE = process.argv.includes('-v') || process.argv.includes('--verbose');
 
@@ -37,8 +43,13 @@ export function warn(msg) {
   console.warn(`${YELLOW}WARNING: ${msg}${RESET}`);
 }
 
-/** Start the server and return { port, proc } once it's ready. */
+/** Start the server and return { port, proc } once it's ready.
+ *  When E2E_PORT is set, reuses the external server (proc is null). */
 export function startServer(targetRepo) {
+  if (E2E_PORT) {
+    console.log(`Using external server on port ${E2E_PORT}`);
+    return Promise.resolve({ port: E2E_PORT, proc: null });
+  }
   return new Promise((resolve, reject) => {
     const runSh = path.join(PROJECT_ROOT, 'run.sh');
     const proc = spawn(runSh, [targetRepo], {
@@ -76,6 +87,21 @@ export function startServer(targetRepo) {
   });
 }
 
+/** Gracefully stop the server via the shutdown endpoint, then kill the process as fallback.
+ *  No-op when using an external server (proc is null). */
+export async function stopServer(port, proc) {
+  if (!proc) return;  // External server — managed by caller
+  try {
+    await fetch(`http://127.0.0.1:${port}/api/shutdown`, { method: 'POST' });
+    // Give it a moment to exit cleanly
+    await new Promise(r => setTimeout(r, 1000));
+  } catch {
+    // Endpoint may already be down
+  }
+  proc.kill();
+  console.log('Server stopped');
+}
+
 /**
  * Create an item, start the agent, and poll until completion.
  * Returns { finished, finalStatus, workLog, itemId }.
@@ -83,16 +109,18 @@ export function startServer(targetRepo) {
 export async function runAgentTask(page, base, { title, description }) {
   const createRes = await page.evaluate(async (args) => {
     const [b, t, d] = args;
+    const payload = { title: t, description: d };
+    if (args[3]) payload.model = args[3];
     const r = await fetch(`${b}/api/items`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: t, description: d }),
+      body: JSON.stringify(payload),
     });
     return r.json();
-  }, [base, title, description]);
+  }, [base, title, description, E2E_MODEL]);
 
   const itemId = createRes.id;
-  console.log(`Created item: ${itemId}`);
+  console.log(`Created item: ${itemId}${E2E_MODEL ? ` (model: ${E2E_MODEL})` : ''}`);
 
   await page.evaluate(async (args) => {
     const [b, id] = args;
