@@ -963,12 +963,21 @@ const ReviewDialog = {
             if (!filesTab.querySelector('.column-count')) filesTab.appendChild(badge);
         }
 
+        // Update approve button based on whether there are file changes
+        const approveBtn = document.getElementById('review-approve-btn');
+        const hasChanges = diffData?.files?.length > 0;
+        approveBtn.textContent = hasChanges ? '✓ Approve & Merge' : '✓ Done';
+
         // Preselect Work Log tab for review
         this.switchReviewTab('log');
 
         // Wire up buttons
-        document.getElementById('review-approve-btn').onclick = async () => {
-            await Board.approveItem(itemId);
+        approveBtn.onclick = async () => {
+            if (hasChanges) {
+                await Board.approveItem(itemId);
+            } else {
+                await Api.moveItem(itemId, 'done');
+            }
             DialogCore.close('review-dialog');
         };
         document.getElementById('review-changes-btn').onclick = () => {
