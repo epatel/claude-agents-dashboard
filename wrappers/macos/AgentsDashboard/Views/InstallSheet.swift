@@ -31,10 +31,19 @@ struct InstallSheet: View {
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("The dashboard server is not installed. This will clone the repository into ~/.agents-dashboard/ and set up a Python virtual environment.")
+            Text("The dashboard server needs to be installed before you can start managing projects. This is a one-time setup.")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Clone the dashboard repository into ~/.agents-dashboard/", systemImage: "1.circle")
+                Label("Create a Python virtual environment", systemImage: "2.circle")
+                Label("Install Python dependencies (FastAPI, aiosqlite, etc.)", systemImage: "3.circle")
+            }
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 8)
 
             HStack {
                 Button("Cancel") {

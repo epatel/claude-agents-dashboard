@@ -18,6 +18,32 @@ class ServerManager: ObservableObject {
     @Published var installError: String?
 
     static let repoURL = "https://github.com/epatel/claude-agents-dashboard.git"
+    static let minimumPythonVersion = "3.10"
+
+    /// Find a suitable Python 3.10+ binary, preferring Homebrew over system Python.
+    var pythonPath: String {
+        let candidates = [
+            "/opt/homebrew/bin/python3",
+            "/usr/local/bin/python3",
+            "/opt/homebrew/bin/python3.14",
+            "/opt/homebrew/bin/python3.13",
+            "/opt/homebrew/bin/python3.12",
+            "/opt/homebrew/bin/python3.11",
+            "/opt/homebrew/bin/python3.10",
+            "/usr/local/bin/python3.14",
+            "/usr/local/bin/python3.13",
+            "/usr/local/bin/python3.12",
+            "/usr/local/bin/python3.11",
+            "/usr/local/bin/python3.10",
+            "/usr/bin/python3",
+        ]
+        for path in candidates {
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+        return "/usr/bin/python3"
+    }
 
     var serverURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -43,11 +69,12 @@ class ServerManager: ObservableObject {
             // Create venv
             await MainActor.run { installStage = .creatingVenv }
             let venvPath = serverURL.appendingPathComponent("venv").path
-            try await runProcessBackground("/usr/bin/python3", arguments: ["-m", "venv", venvPath])
+            try await runProcessBackground(pythonPath, arguments: ["-m", "venv", venvPath])
 
-            // Install dependencies
+            // Upgrade pip, then install dependencies
             await MainActor.run { installStage = .installingDeps }
             let pipPath = serverURL.appendingPathComponent("venv/bin/pip").path
+            try await runProcessBackground(pipPath, arguments: ["install", "--upgrade", "-q", "pip"])
             let reqPath = serverURL.appendingPathComponent("requirements.txt").path
             try await runProcessBackground(pipPath, arguments: ["install", "-q", "-r", reqPath])
 

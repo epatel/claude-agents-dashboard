@@ -15,5 +15,10 @@ struct ContentView: View {
         .sheet(isPresented: $projectManager.showInstallSheet) {
             InstallSheet(serverManager: projectManager.serverManager)
         }
+        .onAppear {
+            if !projectManager.serverManager.installationExists() {
+                projectManager.showInstallSheet = true
+            }
+        }
     }
 }

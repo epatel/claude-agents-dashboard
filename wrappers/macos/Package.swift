@@ -10,7 +10,7 @@ let package = Package(
         .executableTarget(
             name: "AgentsDashboard",
             path: "AgentsDashboard",
-            exclude: ["Info.plist", "AgentsDashboard.entitlements"]
+            exclude: ["Info.plist", "AgentsDashboard.entitlements", "AppIcon.icns", "Assets.xcassets"]
         )
     ]
 )
