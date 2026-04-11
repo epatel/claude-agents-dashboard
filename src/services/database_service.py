@@ -18,6 +18,7 @@ ALLOWED_ITEM_COLUMNS = {
     "branch_name", "worktree_path", "session_id", "model",
     "base_branch", "base_commit", "done_at", "epic_id",
     "merge_commit", "auto_start", "commit_message",
+    "has_file_changes",
 }
 
 # Whitelist of columns that may be set via update_epic()
