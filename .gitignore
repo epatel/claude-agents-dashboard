@@ -16,3 +16,6 @@ annotation_*.jpg
 annotation_*.jpeg
 annotation_*.gif
 annotation_*.webp
+
+.build
+
