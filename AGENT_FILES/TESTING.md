@@ -3,7 +3,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 208 tests
+./run-tests.sh              # Run all 837 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -22,15 +22,30 @@ tests/
 │   ├── migrations/
 │   │   ├── test_migration_runner.py    # Migration up/down/status (14 tests)
 │   │   └── test_migration_edge_cases.py # Edge cases, discovery (14 tests)
-│   ├── test_path_validation.py         # Path traversal prevention (14 tests)
-│   ├── test_git_timeout.py            # Git timeout handling (5 tests)
-│   ├── test_file_routes.py            # File browser routes (66 tests)
+│   ├── test_advisor.py                # Advisor logic (13 tests)
 │   ├── test_allowed_commands.py       # Command filter + access MCP (26 tests)
+│   ├── test_annotation_prompt.py      # Annotation prompt formatting (5 tests)
+│   ├── test_annotation_summary.py     # Annotation summary generation (2 tests)
+│   ├── test_app.py                    # FastAPI app and middleware (23 tests)
+│   ├── test_create_todo_autostart.py  # Todo creation with auto-start (13 tests)
+│   ├── test_database_service.py       # DatabaseService CRUD (47 tests)
 │   ├── test_diff_mixing.py           # Diff isolation between items (6 tests)
+│   ├── test_epics.py                 # Epic CRUD, progress, assignment (19 tests)
+│   ├── test_file_routes.py           # File browser routes (66 tests)
+│   ├── test_git_operations.py        # Git diff, merge, commit (67 tests)
+│   ├── test_git_timeout.py           # Git timeout handling (5 tests)
+│   ├── test_git_worktree.py          # Worktree create/cleanup (15 tests)
+│   ├── test_main.py                  # Server startup, port discovery (34 tests)
+│   ├── test_manage.py                # Migration CLI commands (24 tests)
+│   ├── test_mcp_tool_servers.py      # MCP tool server tests (50 tests)
 │   ├── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
-│   ├── test_epics.py               # Epic CRUD, progress, assignment (19 tests)
-│   ├── test_annotation_summary.py  # Annotation summary generation (2 tests)
-│   └── test_annotation_prompt.py   # Annotation prompt formatting (5 tests)
+│   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
+│   ├── test_path_validation.py       # Path traversal prevention (14 tests)
+│   ├── test_routes.py               # HTTP endpoint tests (69 tests)
+│   ├── test_session.py              # AgentSession SDK wrapper (64 tests)
+│   ├── test_session_service.py      # SessionService lifecycle (54 tests)
+│   ├── test_websocket.py            # WebSocket rate limiting (45 tests)
+│   └── test_workflow_service.py     # WorkflowService transitions (70 tests)
 ├── integration/
 │   └── test_orchestrator_lifecycle.py  # Full agent workflow (14 tests)
 └── README.md
@@ -45,82 +60,49 @@ Quick checks that core components work:
 - Migration runner initialization
 - Requirements and config validation
 
+### Unit Tests — Service Layer (212 tests)
+- **WorkflowService** (70 tests): State transitions, agent lifecycle, merge conflict resolution, dependency auto-start, callback factories
+- **DatabaseService** (47 tests): CRUD operations, item dependencies, column whitelist validation
+- **SessionService** (54 tests): Session lifecycle, commit messages, plugin parsing, SDK wrapper
+- **NotificationService** (41 tests): WebSocket broadcasting, tool formatting, event types
+
+### Unit Tests — Web Layer (137 tests)
+- **Routes** (69 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search
+- **File Routes** (66 tests): Path validation, secret detection, .browserhidden, language mapping, directory scanning, file content
+- **WebSocket** (45 tests): Connection management, rate limiting, dead-connection cleanup
+- **App** (23 tests): FastAPI factory, middleware, CORS, security headers, lifespan
+
+### Unit Tests — Git Layer (87 tests)
+- **Git Operations** (67 tests): Diff generation, merge, commit, path validation, timeout handling
+- **Git Worktree** (15 tests): Worktree create/cleanup, base branch tracking
+- **Git Timeout** (5 tests): Timeout configuration and recovery
+
+### Unit Tests — Agent Tools (89 tests)
+- **MCP Tool Servers** (50 tests): Tool server creation, invocation, request/response flow
+- **Allowed Commands** (26 tests): Command filter hook, shell operator rejection, YOLO mode bypass, runtime approval persistence
+- **Advisor** (13 tests): Agent advisor logic
+
+### Unit Tests — Session (64 tests)
+- AgentSession SDK wrapper, token extraction, event handling
+
 ### Unit Tests — Migrations (28 tests)
-Tests the migration runner in isolation using raw SQLite (no app schema):
 - Apply/rollback single and multiple migrations
 - Migration discovery from files
 - Edge cases: malformed files, concurrent apply, long versions, empty methods
 - Performance: 100-file discovery under 1 second
 
-### Unit Tests — Path Validation (14 tests)
-Tests `validate_file_path()` security:
-- Path traversal patterns (`..`, absolute paths)
-- Null bytes, control characters, Windows separators
-- Symlink-aware validation
-- Length limits
+### Unit Tests — Infrastructure (72 tests)
+- **Main** (34 tests): Server startup, port discovery, git validation
+- **Manage** (24 tests): Migration CLI commands
+- **Path Validation** (14 tests): Traversal prevention, null bytes, symlinks, control characters
 
-### Unit Tests — Git Timeout (5 tests)
-Tests timeout handling in git operations:
-- Default timeout configuration
-- Merge-specific timeout
-- Timeout abort and recovery
-
-### Unit Tests — File Browser Routes (66 tests)
-Tests `file_routes.py` endpoints:
-- Path validation and security (traversal, symlinks, null bytes)
-- Secret file detection and hiding
-- Language/extension mapping
-- Directory tree scanning with depth limits
-- File content reading (text, binary, images)
-
-### Unit Tests — Allowed Commands (26 tests)
-Tests command filtering and runtime access:
-- Command filter hook: allow/deny bash commands by first-word prefix
-- Non-bash tools pass through without filtering
-- Empty allowlist denies all bash commands
-- Command access MCP tool server creation
-- Permission request flow: approve saves to agent_config
-- Multiple commands can be saved and retrieved
-- YOLO mode bypass, runtime approval persistence
-- Edge cases: empty commands, multi-word prefixes
-
-### Unit Tests — Diff Mixing (6 tests)
-Tests diff isolation between concurrent agent items:
-- Independent diffs: each item only sees its own changes
-- Diff during concurrent merge: diffs remain stable
-- Uncommitted changes don't leak between items
-- Diff after base moves forward (using base_commit pinning)
-- Concurrent diff requests return correct results
-- Diff while merge is in progress (race condition testing)
-
-### Unit Tests — Mini-MCP Server (11 tests)
-Tests the mini-MCP example server via stdio JSON-RPC protocol:
-- Server initialization and JSON-RPC handshake
-- Tool listing and invocation
-- Protocol compliance (NDJSON over stdio)
-- Error handling for malformed requests
-
-### Unit Tests — Epics (19 tests)
-Tests epic CRUD and item integration:
-- Epic creation with title and color
-- Epic listing with progress stats (item counts per column)
-- Epic update (title, color, position)
-- Epic deletion (nullifies epic_id on related items)
-- Item-epic assignment and unassignment
-- Epic filtering and board integration
-- Item dependency tracking via epics
-
-### Unit Tests — Annotation Summary (2 tests)
-Tests annotation summary generation:
-- Summary text generation from annotation shapes
-- Empty annotation handling
-
-### Unit Tests — Annotation Prompt (5 tests)
-Tests annotation prompt formatting for agents:
-- Paired annotation file grouping (original + overlay)
-- Summary inclusion in agent prompts
-- Multiple attachment handling
-- Non-annotation file handling
+### Unit Tests — Features (48 tests)
+- **Epics** (19 tests): CRUD, progress stats, item assignment, filtering, dependencies
+- **Todo Auto-start** (13 tests): Todo creation with dependency-based auto-start
+- **Diff Mixing** (6 tests): Diff isolation between concurrent items, base commit pinning
+- **Annotation Summary** (2 tests): Summary text generation
+- **Annotation Prompt** (5 tests): Prompt formatting for agents
+- **Mini-MCP** (11 tests): Example MCP server protocol compliance
 
 ### Integration Tests (14 tests)
 Tests the full orchestrator lifecycle through the service layer:
@@ -151,6 +133,8 @@ Tests the full orchestrator lifecycle through the service layer:
 | `test_orchestrator` | Full orchestrator with git-initialized temp project |
 | `test_item` | Pre-created item in the test database |
 | `mock_git_operations` | Mocked git/worktree functions |
+| `test_client` | HTTPX AsyncClient for route testing |
+| `mock_services` | Mocked service layer for isolated testing |
 
 ## Writing Tests
 
