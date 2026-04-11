@@ -900,7 +900,7 @@ class WorkflowService:
 
     def _create_on_create_todo_callback(self, item_id: str):
         async def on_create_todo(title: str, description: str, epic_id: str = None, requires: list[str] = None, autostart: bool = False) -> Dict[str, Any]:
-            item = await self.db.create_todo_item(title, description, epic_id)
+            item = await self.db.create_todo_item(title, description, epic_id, autostart)
             if requires:
                 await self.db.set_item_dependencies(item["id"], requires)
             await self._log_and_notify(item_id, "system", f"Created todo item: {title}")
@@ -911,9 +911,17 @@ class WorkflowService:
                     "blocked": blocked_status,
                 })
             if autostart and not requires:
-                import asyncio
-                asyncio.create_task(self.start_agent(item["id"]))
-                await self._log_and_notify(item_id, "system", f"Auto-starting agent for: {title}")
+                async def _autostart_agent(new_item_id: str, new_title: str):
+                    try:
+                        await self.start_agent(new_item_id)
+                        await self._log_and_notify(item_id, "system", f"Auto-started agent for: {new_title}")
+                    except Exception as e:
+                        logger.error(f"Autostart failed for item {new_item_id}: {e}")
+                        await self._log_and_notify(item_id, "system", f"⚠️ Auto-start failed for '{new_title}': {e}")
+
+                task = asyncio.create_task(_autostart_agent(item["id"], title))
+                task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
+                item["autostart_scheduled"] = True
             return item
         return on_create_todo
 

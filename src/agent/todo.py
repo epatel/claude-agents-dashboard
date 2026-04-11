@@ -98,11 +98,18 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
         requires = input.get("requires")
         autostart = input.get("autostart", False)
         item_info = await on_create_todo(title, description, epic_id, requires, autostart)
+        msg = f"Created todo item: {item_info['title']} (ID: {item_info['id']})"
+        if item_info.get("autostart_scheduled"):
+            msg += " — agent auto-start scheduled"
+        elif autostart and requires:
+            msg += " — autostart skipped (item has dependencies that must complete first)"
+        elif autostart:
+            msg += " — autostart was requested but could not be scheduled"
         return {
             "content": [
                 {
                     "type": "text",
-                    "text": f"Created todo item: {item_info['title']} (ID: {item_info['id']})"
+                    "text": msg,
                 }
             ]
         }
