@@ -1,7 +1,7 @@
 # Security Audit Report
 
 **Date**: 2026-04-10
-**Last updated**: 2026-04-11 (rev 4)
+**Last updated**: 2026-04-11 (rev 5)
 **Scope**: Full codebase review of Claude Agents Dashboard
 **Threat model**: Localhost single-user developer tool. The server binds to `127.0.0.1` only, is operated by the local developer, and is not designed for network exposure or multi-user access.
 
