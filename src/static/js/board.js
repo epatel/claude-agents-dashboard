@@ -22,6 +22,10 @@ const Board = {
         for (const item of initialItems) {
             this.items[item.id] = item;
         }
+        // Fetch full item data from API to supplement data-attribute-based
+        // initial items. This ensures fields like start_copy (which may not
+        // be present in data attributes on older cached templates) are loaded.
+        await this.refreshItemData();
         await this.loadEpics();
         await this.loadBlockedStatus();
         await this.loadYoloItems();
@@ -29,6 +33,19 @@ const Board = {
         this.renderDoneColumn();
         this.renderArchiveColumn();
         this.updateCounts();
+    },
+
+    async refreshItemData() {
+        try {
+            const items = await Api.getItems();
+            for (const item of items) {
+                // Merge API data into existing items, preserving any
+                // client-side-only fields (e.g. log_count from data attrs)
+                this.items[item.id] = { ...this.items[item.id], ...item };
+            }
+        } catch (e) {
+            console.error('Failed to refresh item data:', e);
+        }
     },
 
     async loadYoloItems() {
@@ -882,10 +899,17 @@ const Board = {
     },
 
     updateCard(item) {
-        // Preserve log_count from previous state if not in new data
+        // Merge with previous state to preserve fields not in the update
         const prev = this.items[item.id];
-        if (prev && prev.log_count && !item.log_count) {
-            item.log_count = prev.log_count;
+        if (prev) {
+            // Preserve log_count from previous state if not in new data
+            if (prev.log_count && !item.log_count) {
+                item.log_count = prev.log_count;
+            }
+            // Preserve start_copy from previous state if not in new data
+            if (prev.start_copy && item.start_copy === undefined) {
+                item.start_copy = prev.start_copy;
+            }
         }
         this.items[item.id] = item;
 
