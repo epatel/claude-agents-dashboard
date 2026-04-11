@@ -66,7 +66,7 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 - **Status**: ✅ **REMEDIATED**
 - **File**: `src/services/database_service.py`
 - **Original issue**: `update_item()` built SQL with f-string column names from dict keys without validation.
-- **Fix implemented**: `ALLOWED_ITEM_COLUMNS` whitelist is defined at module level containing all valid columns (title, description, column_name, status, position, branch_name, worktree_path, session_id, model, base_branch, base_commit, done_at, epic_id, merge_commit, auto_start, commit_message). `update_item()` validates `set(kwargs) - ALLOWED_ITEM_COLUMNS` and raises `ValueError` for invalid keys. A similar `ALLOWED_EPIC_COLUMNS` whitelist is enforced for epic updates.
+- **Fix implemented**: `ALLOWED_ITEM_COLUMNS` whitelist is defined at module level containing all valid columns (title, description, column_name, status, position, branch_name, worktree_path, session_id, model, base_branch, base_commit, done_at, epic_id, merge_commit, auto_start, commit_message, start_copy, has_file_changes). `update_item()` validates `set(kwargs) - ALLOWED_ITEM_COLUMNS` and raises `ValueError` for invalid keys. A similar `ALLOWED_EPIC_COLUMNS` whitelist is enforced for epic updates.
 
 ### 6. No CORS Middleware
 

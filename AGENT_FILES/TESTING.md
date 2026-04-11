@@ -3,13 +3,13 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 837 tests
+./run-tests.sh              # Run all 861 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 14 migrations.
+The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 15 migrations.
 
 ## Test Structure
 
@@ -28,7 +28,7 @@ tests/
 │   ├── test_annotation_summary.py     # Annotation summary generation (2 tests)
 │   ├── test_app.py                    # FastAPI app and middleware (23 tests)
 │   ├── test_create_todo_autostart.py  # Todo creation with auto-start (13 tests)
-│   ├── test_database_service.py       # DatabaseService CRUD (47 tests)
+│   ├── test_database_service.py       # DatabaseService CRUD (55 tests)
 │   ├── test_diff_mixing.py           # Diff isolation between items (6 tests)
 │   ├── test_epics.py                 # Epic CRUD, progress, assignment (19 tests)
 │   ├── test_file_routes.py           # File browser routes (66 tests)
@@ -41,7 +41,7 @@ tests/
 │   ├── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
 │   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
-│   ├── test_routes.py               # HTTP endpoint tests (69 tests)
+│   ├── test_routes.py               # HTTP endpoint tests (80 tests)
 │   ├── test_session.py              # AgentSession SDK wrapper (64 tests)
 │   ├── test_session_service.py      # SessionService lifecycle (54 tests)
 │   ├── test_websocket.py            # WebSocket rate limiting (45 tests)
@@ -60,14 +60,14 @@ Quick checks that core components work:
 - Migration runner initialization
 - Requirements and config validation
 
-### Unit Tests — Service Layer (212 tests)
+### Unit Tests — Service Layer (220 tests)
 - **WorkflowService** (70 tests): State transitions, agent lifecycle, merge conflict resolution, dependency auto-start, callback factories
-- **DatabaseService** (47 tests): CRUD operations, item dependencies, column whitelist validation
+- **DatabaseService** (55 tests): CRUD operations, item dependencies, column whitelist validation
 - **SessionService** (54 tests): Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests): WebSocket broadcasting, tool formatting, event types
 
-### Unit Tests — Web Layer (203 tests)
-- **Routes** (69 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search
+### Unit Tests — Web Layer (214 tests)
+- **Routes** (80 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail
 - **File Routes** (66 tests): Path validation, secret detection, .browserhidden, language mapping, directory scanning, file content
 - **WebSocket** (45 tests): Connection management, rate limiting, dead-connection cleanup
 - **App** (23 tests): FastAPI factory, middleware, CORS, security headers, lifespan
