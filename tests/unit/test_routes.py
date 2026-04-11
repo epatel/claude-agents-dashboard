@@ -791,6 +791,141 @@ class TestAttachments:
 
 
 # ---------------------------------------------------------------------------
+# Item detail (standalone page)
+# ---------------------------------------------------------------------------
+
+class TestItemDetail:
+    @pytest.mark.asyncio
+    async def test_get_item_detail_returns_html(self, client_with_item):
+        client, app = client_with_item
+        resp = await client.get("/api/items/item001")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Test Item" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_get_item_detail_not_found(self, client):
+        resp = await client.get("/api/items/nonexistent")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_item_detail_includes_work_log(self, app_and_db):
+        app, db = app_and_db
+        async with db.connect() as conn:
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, ?, ?)",
+                ("item-log", "Logged Item", "desc", "done", 0),
+            )
+            await conn.execute(
+                "INSERT INTO work_log (item_id, entry_type, content) VALUES (?, ?, ?)",
+                ("item-log", "agent_message", "Completed the migration"),
+            )
+            await conn.commit()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.get("/api/items/item-log")
+        assert resp.status_code == 200
+        assert "Completed the migration" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_get_item_detail_shows_no_log_message(self, client_with_item):
+        client, app = client_with_item
+        resp = await client.get("/api/items/item001")
+        assert "No work log entries" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_get_item_detail_escapes_html(self, app_and_db):
+        app, db = app_and_db
+        async with db.connect() as conn:
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, ?, ?)",
+                ("item-xss", "<script>alert(1)</script>", "desc", "todo", 0),
+            )
+            await conn.commit()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.get("/api/items/item-xss")
+        assert resp.status_code == 200
+        assert "<script>" not in resp.text
+        assert "&lt;script&gt;" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_get_item_detail_includes_commit_message(self, app_and_db):
+        app, db = app_and_db
+        async with db.connect() as conn:
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, position, commit_message) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("item-cm", "With Commit", "desc", "done", 0, "Fix the bug"),
+            )
+            await conn.commit()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.get("/api/items/item-cm")
+        assert "Fix the bug" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Start copy agent
+# ---------------------------------------------------------------------------
+
+class TestStartCopyAgent:
+    @pytest.mark.asyncio
+    async def test_start_copy_agent(self, client_with_item):
+        client, app = client_with_item
+        resp = await client.post("/api/items/item001/start-copy")
+        assert resp.status_code == 200
+        app.state.orchestrator.start_copy_agent.assert_awaited_once_with("item001")
+
+    @pytest.mark.asyncio
+    async def test_start_copy_agent_returns_result(self, client_with_item):
+        client, app = client_with_item
+        resp = await client.post("/api/items/item001/start-copy")
+        data = resp.json()
+        assert data["status"] == "started"
+
+
+# ---------------------------------------------------------------------------
+# Create item with start_copy flag
+# ---------------------------------------------------------------------------
+
+class TestCreateItemStartCopy:
+    @pytest.mark.asyncio
+    async def test_create_item_with_start_copy_true(self, client):
+        resp = await client.post("/api/items", json={
+            "title": "Copy Task",
+            "description": "A task with start_copy",
+            "start_copy": True,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["start_copy"] == 1
+
+    @pytest.mark.asyncio
+    async def test_create_item_start_copy_defaults_false(self, client):
+        resp = await client.post("/api/items", json={
+            "title": "Normal Task",
+            "description": "A normal task",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["start_copy"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Retry merge
+# ---------------------------------------------------------------------------
+
+class TestRetryMerge:
+    @pytest.mark.asyncio
+    async def test_retry_merge(self, client_with_item):
+        client, app = client_with_item
+        resp = await client.post("/api/items/item001/retry-merge")
+        assert resp.status_code == 200
+        app.state.orchestrator.db_service.update_item.assert_awaited_once_with(
+            "item001", column_name="review", status=None
+        )
+        app.state.orchestrator.approve_item.assert_awaited_once_with("item001")
+
+
+# ---------------------------------------------------------------------------
 # Diff / file content
 # ---------------------------------------------------------------------------
 

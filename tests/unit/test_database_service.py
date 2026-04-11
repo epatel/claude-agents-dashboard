@@ -419,6 +419,63 @@ class TestDependencies:
 
 
 # ---------------------------------------------------------------------------
+# has_file_changes column
+# ---------------------------------------------------------------------------
+
+class TestHasFileChanges:
+    async def test_update_item_with_has_file_changes(self, db_service, item):
+        updated = await db_service.update_item(item["id"], has_file_changes=1)
+        assert updated["has_file_changes"] == 1
+
+    async def test_has_file_changes_defaults_to_none(self, db_service, item):
+        fetched = await db_service.get_item(item["id"])
+        assert fetched["has_file_changes"] is None
+
+    async def test_has_file_changes_zero_means_no_changes(self, db_service, item):
+        updated = await db_service.update_item(item["id"], has_file_changes=0)
+        assert updated["has_file_changes"] == 0
+
+    async def test_has_file_changes_set_with_review_column(self, db_service, item):
+        updated = await db_service.update_item(
+            item["id"], column_name="review", has_file_changes=1
+        )
+        assert updated["column_name"] == "review"
+        assert updated["has_file_changes"] == 1
+
+    async def test_has_file_changes_preserved_on_other_update(self, db_service, item):
+        await db_service.update_item(item["id"], has_file_changes=1)
+        updated = await db_service.update_item(item["id"], status="some_status")
+        assert updated["has_file_changes"] == 1
+
+
+# ---------------------------------------------------------------------------
+# start_copy column
+# ---------------------------------------------------------------------------
+
+class TestStartCopyColumn:
+    async def test_start_copy_defaults_to_zero(self, db_service, item):
+        fetched = await db_service.get_item(item["id"])
+        assert fetched["start_copy"] == 0
+
+    async def test_start_copy_set_at_creation(self, db_service):
+        """start_copy is set via INSERT at creation, not via update_item."""
+        async with db_service.db.connect() as conn:
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, position, start_copy) "
+                "VALUES (?, ?, ?, 'todo', 0, 1)",
+                ("item-sc", "Start Copy Item", "desc"),
+            )
+            await conn.commit()
+        fetched = await db_service.get_item("item-sc")
+        assert fetched["start_copy"] == 1
+
+    async def test_start_copy_not_in_update_allowed_columns(self, db_service, item):
+        """start_copy is not updatable via update_item."""
+        with pytest.raises(ValueError, match="Invalid item column"):
+            await db_service.update_item(item["id"], start_copy=1)
+
+
+# ---------------------------------------------------------------------------
 # update_item invalid column guard
 # ---------------------------------------------------------------------------
 
