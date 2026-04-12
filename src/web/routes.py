@@ -876,6 +876,75 @@ async def get_available_tools():
     return OPTIONAL_BUILTIN_TOOLS
 
 
+@router.get("/api/ollama/models")
+async def get_ollama_models(request: Request):
+    """Discover locally available Ollama models via the Ollama REST API."""
+    import urllib.request
+    import urllib.error
+
+    # Get Ollama base URL from config
+    db = request.app.state.db
+    base_url = "http://localhost:11434"
+    try:
+        async with db.connect() as conn:
+            cursor = await conn.execute("SELECT ollama_base_url, ollama_enabled FROM agent_config WHERE id = 1")
+            row = await cursor.fetchone()
+            if row:
+                base_url = row["ollama_base_url"] or base_url
+                if not row["ollama_enabled"]:
+                    return {"models": [], "error": None, "enabled": False}
+    except Exception:
+        pass
+
+    def _fetch_ollama_tags():
+        """Synchronous fetch — runs in a thread to avoid blocking the event loop."""
+        req = urllib.request.Request(f"{base_url}/api/tags", method="GET")
+        req.add_header("Accept", "application/json")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read().decode())
+
+    try:
+        data = await asyncio.to_thread(_fetch_ollama_tags)
+
+        models = []
+        for m in data.get("models", []):
+            details = m.get("details", {})
+            name = m.get("name", "")
+            param_size = details.get("parameter_size", "")
+            quant = details.get("quantization_level", "")
+            family = details.get("family", "")
+
+            # Build a human-readable display name
+            display_parts = [name]
+            if param_size:
+                display_parts.append(f"({param_size})")
+            if quant:
+                display_parts.append(f"[{quant}]")
+
+            models.append({
+                "name": name,
+                "display_name": " ".join(display_parts),
+                "parameter_size": param_size,
+                "quantization_level": quant,
+                "family": family,
+                "size": m.get("size", 0),
+            })
+
+        # Sort by name for stable ordering
+        models.sort(key=lambda x: x["name"])
+        return {"models": models, "error": None, "enabled": True}
+
+    except urllib.error.URLError as e:
+        reason = str(e.reason) if hasattr(e, 'reason') else str(e)
+        if "Connection refused" in reason or "No connection" in reason:
+            return {"models": [], "error": "Cannot connect to Ollama. Is it running?", "enabled": True}
+        return {"models": [], "error": f"Failed to reach Ollama: {reason}", "enabled": True}
+    except TimeoutError:
+        return {"models": [], "error": "Ollama API timed out.", "enabled": True}
+    except Exception as e:
+        return {"models": [], "error": f"Failed to fetch models: {str(e)}", "enabled": True}
+
+
 @router.get("/api/yolo-items")
 async def get_yolo_items(request: Request):
     """Return item IDs currently running in YOLO mode."""

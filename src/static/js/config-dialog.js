@@ -12,6 +12,10 @@ const ConfigDialog = {
     _configBuiltinTools: [],
     _availableBuiltinTools: [],
 
+    // Cached Ollama models
+    _ollamaModels: [],
+    _ollamaEnabled: false,
+
     switchConfigTab(tabName) {
         document.querySelectorAll('#config-dialog .review-tab').forEach(t => {
             t.classList.toggle('active', t.dataset.tab === tabName);
@@ -33,6 +37,11 @@ const ConfigDialog = {
             // Load Ollama settings
             document.getElementById('config-ollama-enabled').checked = config.ollama_enabled || false;
             document.getElementById('config-ollama-base-url').value = config.ollama_base_url || 'http://localhost:11434';
+
+            // Auto-fetch Ollama models if enabled
+            if (config.ollama_enabled) {
+                this.refreshOllamaModels();
+            }
 
             // Load plugins
             try {
@@ -74,6 +83,14 @@ const ConfigDialog = {
             const intensityVal = parseFloat(config.flame_intensity_multiplier) || 1.0;
             intensitySlider.value = intensityVal;
             document.getElementById('config-flame-intensity-value').textContent = intensityVal.toFixed(1);
+
+            // Populate Ollama models in the config model dropdown
+            if (config.ollama_enabled && this._ollamaModels.length > 0) {
+                this._updateModelSelect('config-model', false);
+            } else {
+                // Still populate from shared cache
+                await DialogUtils.populateOllamaOptions(document.getElementById('config-model'));
+            }
 
             this.switchConfigTab('general');
             DialogCore.open('config-dialog');
@@ -188,6 +205,91 @@ const ConfigDialog = {
             this._configBuiltinTools.push(name);
         } else if (!enabled) {
             this._configBuiltinTools = this._configBuiltinTools.filter(t => t !== name);
+        }
+    },
+
+    async refreshOllamaModels() {
+        const listEl = document.getElementById('ollama-models-list');
+        if (listEl) listEl.innerHTML = '<span style="color:var(--text-muted);">Fetching models…</span>';
+
+        try {
+            const result = await Api.request('GET', '/api/ollama/models');
+            this._ollamaModels = result.models || [];
+            this._ollamaEnabled = result.enabled !== false;
+
+            if (listEl) {
+                if (result.error) {
+                    listEl.innerHTML = `<span style="color:var(--warning);">⚠ ${result.error}</span>`;
+                } else if (this._ollamaModels.length === 0) {
+                    listEl.innerHTML = '<span style="color:var(--text-muted);">No models found. Pull one with: <code>ollama pull qwen3.5</code></span>';
+                } else {
+                    listEl.innerHTML = this._ollamaModels.map(m => {
+                        const sizeGB = m.size ? (m.size / 1e9).toFixed(1) + ' GB' : '';
+                        return `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:3px;">
+                            <code style="flex:1;font-size:12px;">${m.name}</code>
+                            <span style="font-size:11px;color:var(--text-muted);">${m.parameter_size || ''}</span>
+                            <span style="font-size:11px;color:var(--text-muted);">${m.quantization_level || ''}</span>
+                            <span style="font-size:11px;color:var(--text-muted);">${sizeGB}</span>
+                        </div>`;
+                    }).join('');
+                }
+            }
+
+            // Update model names map for display
+            for (const m of this._ollamaModels) {
+                window.__MODEL_NAMES__[m.name] = m.display_name;
+            }
+
+            // Sync with shared DialogUtils cache
+            DialogUtils._ollamaCache = {
+                models: this._ollamaModels,
+                enabled: this._ollamaEnabled,
+                fetched: true,
+            };
+
+            // Update all model dropdowns
+            this._updateModelDropdowns();
+        } catch (err) {
+            console.error('Failed to fetch Ollama models:', err);
+            if (listEl) listEl.innerHTML = '<span style="color:var(--warning);">⚠ Failed to fetch models</span>';
+        }
+    },
+
+    _updateModelDropdowns() {
+        // Update both config-model and item-form-model selects
+        this._updateModelSelect('config-model', false);
+        this._updateModelSelect('item-form-model', true);
+    },
+
+    _updateModelSelect(selectId, hasDefaultOption) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+
+        // Remember current selection
+        const currentValue = select.value;
+
+        // Remove existing Ollama optgroup if any
+        const existingGroup = select.querySelector('optgroup[label="Ollama Models"]');
+        if (existingGroup) existingGroup.remove();
+
+        // Add Ollama models if enabled and available
+        if (this._ollamaEnabled && this._ollamaModels.length > 0) {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = 'Ollama Models';
+            for (const m of this._ollamaModels) {
+                const opt = document.createElement('option');
+                opt.value = m.name;
+                opt.textContent = m.display_name;
+                optgroup.appendChild(opt);
+            }
+            select.appendChild(optgroup);
+        }
+
+        // Restore selection
+        select.value = currentValue;
+        // If the value couldn't be set (removed option), fallback
+        if (select.value !== currentValue) {
+            select.value = hasDefaultOption ? '' : select.options[0]?.value || '';
         }
     },
 
