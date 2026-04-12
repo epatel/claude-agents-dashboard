@@ -35,14 +35,16 @@ const DetailDialog = {
         // Add model information if available
         if (item.model) {
             const modelDisplayName = DialogUtils._getModelDisplayName(item.model);
-            content += `<div class="detail-model-info"><strong>Model:</strong> ${modelDisplayName}</div>`;
+            const providerBadge = DialogUtils._getProviderBadgeHtml(item.model);
+            content += `<div class="detail-model-info"><strong>Model:</strong> ${modelDisplayName} ${providerBadge}</div>`;
         } else {
             // Show default model from config
             try {
                 const config = await Api.request('GET', '/api/config');
                 const defaultModel = config.model || 'claude-sonnet-4-20250514';
                 const modelDisplayName = DialogUtils._getModelDisplayName(defaultModel);
-                content += `<div class="detail-model-info"><strong>Model:</strong> ${modelDisplayName} (default)</div>`;
+                const providerBadge = DialogUtils._getProviderBadgeHtml(defaultModel);
+                content += `<div class="detail-model-info"><strong>Model:</strong> ${modelDisplayName} ${providerBadge} (default)</div>`;
             } catch (err) {
                 console.warn('Failed to fetch config for default model display:', err);
             }

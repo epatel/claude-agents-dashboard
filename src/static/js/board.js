@@ -516,6 +516,13 @@ const Board = {
             timestampHtml = `<span class="card-timestamp">${timeStr}</span>`;
         }
 
+        // Model badge (show only for non-default / Ollama models)
+        let modelBadgeHtml = '';
+        if (item.model && DialogUtils._isOllamaModel(item.model)) {
+            const shortName = DialogUtils._getModelDisplayName(item.model);
+            modelBadgeHtml = `<span class="card-model-badge" title="${item.model}">${shortName}</span>`;
+        }
+
         div.innerHTML = `
             ${epicBadgeHtml}
             <div class="card-title">${this.escapeHtml(item.title)}</div>
@@ -523,6 +530,7 @@ const Board = {
             ${statusHtml}
             <div class="card-bottom">
                 <div class="card-actions">${actionsHtml}</div>
+                ${modelBadgeHtml}
                 ${timestampHtml}
                 ${logCountHtml}
             </div>
