@@ -132,6 +132,7 @@ class AgentSession:
         bash_yolo: bool = False,
         allowed_builtin_tools: list[str] | None = None,
         use_advisor: bool = False,
+        ollama_env: dict[str, str] | None = None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
@@ -139,6 +140,7 @@ class AgentSession:
         self.allowed_commands = allowed_commands or []
         self.bash_yolo = bash_yolo
         self.allowed_builtin_tools = allowed_builtin_tools or []
+        self.ollama_env = ollama_env
         self.on_message = on_message        # async callback(text: str)
         self.on_tool_use = on_tool_use      # async callback(tool_name: str, input: dict)
         self.on_thinking = on_thinking      # async callback(thinking: str)
@@ -394,6 +396,7 @@ class AgentSession:
             hooks=hooks,
             setting_sources=["project"],  # Load CLAUDE.md from target project
             agents=agents,
+            env=self.ollama_env or {},
         )
 
         if resume_session_id:
