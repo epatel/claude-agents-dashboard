@@ -67,12 +67,28 @@ Ollama recommends at least 64k context window. Their recommended models for Clau
 
 ## Integration with the Dashboard
 
-To use Ollama models in the dashboard's `AgentSession`, the env vars need to be set before the SDK subprocess spawns. In `session.py`, the `ClaudeAgentOptions` already accepts a `model` parameter (line 386). The env vars could be set:
+Ollama is fully integrated into the dashboard as an experimental feature. Enable it with:
 
-- Globally before starting the server
-- Per-agent by injecting them into the subprocess environment
+```bash
+./run.sh /path/to/project --experimental
+```
 
-No code changes are needed in the SDK layer — only environment configuration.
+### How it works
+
+1. **Migration 016** adds `ollama_enabled` and `ollama_base_url` columns to `agent_config`
+2. **Agent config dialog** exposes Ollama toggle and base URL setting
+3. **Dynamic model discovery** — the dashboard queries Ollama's REST API (`/api/tags`) to populate model dropdowns with available local models and their sizes
+4. **Connection status indicator** — the header shows Ollama connection status (connected/disconnected)
+5. **Provider badges** — cards display provider badges (Claude vs Ollama) based on the selected model
+6. **Per-agent env injection** — `session.py` sets `ANTHROPIC_AUTH_TOKEN=ollama`, `ANTHROPIC_API_KEY=""`, and `ANTHROPIC_BASE_URL` in the subprocess environment when an Ollama model is selected
+7. **Model size info** — dropdowns show model file sizes alongside names
+
+### Architecture
+
+- `constants.py` — `AVAILABLE_MODELS` list uses `(model_id, display_name, experimental)` tuples; Ollama models are discovered dynamically at runtime
+- `session.py` — Ollama env passthrough via subprocess environment override
+- `session_service.py` — Reads Ollama config from agent_config and passes to session creation
+- `routes.py` — `/api/ollama/models` endpoint for dynamic model discovery; `/api/ollama/status` for connection checking
 
 ## Test Script
 
