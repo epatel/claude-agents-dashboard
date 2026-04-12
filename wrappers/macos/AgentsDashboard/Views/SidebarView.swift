@@ -9,6 +9,7 @@ struct SidebarView: View {
                 ForEach(projectManager.projects) { project in
                     ProjectRow(project: project)
                 }
+                .onMove { projectManager.moveProjects(from: $0, to: $1) }
             }
         }
         .listStyle(.sidebar)
@@ -18,6 +19,7 @@ struct SidebarView: View {
                 Button(action: { projectManager.showAddProject = true }) {
                     Label("Add Project", systemImage: "plus")
                 }
+                .help("Add a project")
             }
         }
         .navigationTitle("Agents Dashboard")
@@ -26,6 +28,7 @@ struct SidebarView: View {
 
 struct ProjectRow: View {
     @EnvironmentObject var projectManager: ProjectManager
+    @State private var showRemoveConfirm = false
     let project: Project
 
     private var isRunning: Bool {
@@ -47,6 +50,7 @@ struct ProjectRow: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
+            .help(project.path)
 
             Spacer()
 
@@ -74,10 +78,46 @@ struct ProjectRow: View {
 
             Divider()
 
+            Button("Open in Terminal") {
+                TerminalHelper.open(path: project.path)
+            }
+
+            Divider()
+
             Button("Remove Project", role: .destructive) {
-                projectManager.removeProject(project)
+                showRemoveConfirm = true
             }
         }
+        .alert("Remove Project?", isPresented: $showRemoveConfirm) {
+            Button("Remove", role: .destructive) {
+                projectManager.removeProject(project)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Remove \"\(project.name)\" from the sidebar? This won't delete any files.")
+        }
+    }
+
+    private var terminalButton: some View {
+        Button(action: { TerminalHelper.open(path: project.path) }) {
+            Image(systemName: "terminal")
+                .foregroundColor(.secondary)
+                .font(.caption)
+        }
+        .buttonStyle(.plain)
+        .help("Open in terminal")
+    }
+
+    private var removeButton: some View {
+        Button(action: {
+            showRemoveConfirm = true
+        }) {
+            Image(systemName: "trash")
+                .foregroundColor(.secondary)
+                .font(.caption)
+        }
+        .buttonStyle(.plain)
+        .help("Remove project")
     }
 
     @ViewBuilder
@@ -85,32 +125,66 @@ struct ProjectRow: View {
         if let dashboard = dashboard {
             switch dashboard.status {
             case .running:
-                Button(action: {
-                    projectManager.selectedTab = dashboard.id
-                }) {
-                    Image(systemName: "play.circle.fill")
-                        .foregroundColor(.green)
-                        .font(.title2)
+                HStack(spacing: 4) {
+                    terminalButton
+                    removeButton
+                    Button(action: {
+                        projectManager.selectedTab = dashboard.id
+                    }) {
+                        Image(systemName: "play.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.title2)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show dashboard (port \(dashboard.port ?? 0))")
                 }
-                .buttonStyle(.plain)
-                .help("Dashboard running on port \(dashboard.port ?? 0)")
 
             case .starting:
-                ProgressView()
-                    .controlSize(.small)
-                    .help("Starting...")
+                HStack(spacing: 4) {
+                    terminalButton
+                    removeButton
+                    ProgressView()
+                        .controlSize(.small)
+                        .help("Starting dashboard...")
+                }
 
             case .stopping:
-                ProgressView()
-                    .controlSize(.small)
-                    .help("Stopping...")
+                HStack(spacing: 4) {
+                    terminalButton
+                    removeButton
+                    ProgressView()
+                        .controlSize(.small)
+                        .help("Stopping dashboard...")
+                }
 
             case .error:
-                Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundColor(.red)
-                    .help(dashboard.errorMessage ?? "Error")
+                HStack(spacing: 4) {
+                    terminalButton
+                    removeButton
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundColor(.red)
+                        .help(dashboard.errorMessage ?? "Error")
+                }
 
             case .stopped:
+                HStack(spacing: 4) {
+                    terminalButton
+                    removeButton
+                    Button(action: {
+                        projectManager.startDashboard(for: project)
+                    }) {
+                        Image(systemName: "play.circle")
+                            .foregroundColor(.secondary)
+                            .font(.title2)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Start dashboard")
+                }
+            }
+        } else {
+            HStack(spacing: 4) {
+                terminalButton
+                removeButton
                 Button(action: {
                     projectManager.startDashboard(for: project)
                 }) {
@@ -121,16 +195,6 @@ struct ProjectRow: View {
                 .buttonStyle(.plain)
                 .help("Start dashboard")
             }
-        } else {
-            Button(action: {
-                projectManager.startDashboard(for: project)
-            }) {
-                Image(systemName: "play.circle")
-                    .foregroundColor(.secondary)
-                    .font(.title2)
-            }
-            .buttonStyle(.plain)
-            .help("Start dashboard")
         }
     }
 }

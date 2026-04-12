@@ -52,6 +52,11 @@ class ProjectManager: ObservableObject {
         saveProjects()
     }
 
+    func moveProjects(from source: IndexSet, to destination: Int) {
+        projects.move(fromOffsets: source, toOffset: destination)
+        saveProjects()
+    }
+
     func removeProject(_ project: Project) {
         // Stop dashboard if running
         if let dashboard = dashboards.first(where: { $0.project.id == project.id }) {

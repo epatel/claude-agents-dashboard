@@ -20,7 +20,11 @@ APPLE_ID ?=
 TEAM_ID ?=
 APP_PASSWORD ?=
 
-.PHONY: all build test release sign notarize zip run clean install uninstall
+# Source files that trigger rebuilds
+SOURCES = $(shell find $(APP_NAME) -name '*.swift') Package.swift
+RESOURCES = $(APP_NAME)/Info.plist $(APP_NAME)/AppIcon.icns $(APP_NAME)/$(APP_NAME).entitlements VERSION
+
+.PHONY: all build test sign notarize zip run clean install uninstall
 
 all: build
 
@@ -32,8 +36,8 @@ build:
 test:
 	swift test
 
-# Release build + .app bundle
-release:
+# Stamp file tracks when the release bundle was last built
+$(BUILD_DIR)/.release-stamp: $(SOURCES) $(RESOURCES)
 	swift build -c release
 	@mkdir -p "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/MacOS"
 	@mkdir -p "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/Resources"
@@ -44,7 +48,11 @@ release:
 	@cp $(APP_NAME)/AppIcon.icns "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/Resources/"
 	@cp $(APP_NAME)/$(APP_NAME).entitlements "$(RELEASE_DIR)/$(BUNDLE_NAME)/Contents/Resources/"
 	@codesign --force --sign - --entitlements $(APP_NAME)/$(APP_NAME).entitlements "$(RELEASE_DIR)/$(BUNDLE_NAME)"
+	@touch $@
 	@echo "Built: $(RELEASE_DIR)/$(BUNDLE_NAME) ($(VERSION)+$(BUILD_NUMBER))"
+
+# Release build + .app bundle (only rebuilds when sources change)
+release: $(BUILD_DIR)/.release-stamp
 
 # Sign release build with a Developer ID (or ad-hoc if SIGNING_IDENTITY is -)
 # Usage: make sign SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
@@ -83,14 +91,30 @@ zip: release
 	@cd "$(RELEASE_DIR)" && ditto -c -k --keepParent "$(BUNDLE_NAME)" "$(ZIP_NAME)"
 	@echo "Created: $(RELEASE_DIR)/$(ZIP_NAME)"
 
-# Run debug build
-run:
-	swift run
+# Stamp file tracks when the debug bundle was last built
+$(BUILD_DIR)/.debug-stamp: $(SOURCES) $(RESOURCES)
+	swift build
+	@mkdir -p "$(BUILD_DIR)/debug/$(BUNDLE_NAME)/Contents/MacOS"
+	@mkdir -p "$(BUILD_DIR)/debug/$(BUNDLE_NAME)/Contents/Resources"
+	@cp $(DEBUG_DIR)/$(APP_NAME) "$(BUILD_DIR)/debug/$(BUNDLE_NAME)/Contents/MacOS/$(APP_NAME)"
+	@cp $(APP_NAME)/Info.plist "$(BUILD_DIR)/debug/$(BUNDLE_NAME)/Contents/Info.plist"
+	@sed -i '' 's/__VERSION__/$(VERSION)/g' "$(BUILD_DIR)/debug/$(BUNDLE_NAME)/Contents/Info.plist"
+	@sed -i '' 's/__BUILD_NUMBER__/$(BUILD_NUMBER)/g' "$(BUILD_DIR)/debug/$(BUNDLE_NAME)/Contents/Info.plist"
+	@cp $(APP_NAME)/AppIcon.icns "$(BUILD_DIR)/debug/$(BUNDLE_NAME)/Contents/Resources/"
+	@cp $(APP_NAME)/$(APP_NAME).entitlements "$(BUILD_DIR)/debug/$(BUNDLE_NAME)/Contents/Resources/"
+	@codesign --force --sign - --entitlements $(APP_NAME)/$(APP_NAME).entitlements "$(BUILD_DIR)/debug/$(BUNDLE_NAME)"
+	@touch $@
+
+# Run debug build as .app bundle (only rebuilds when sources change)
+run: $(BUILD_DIR)/.debug-stamp
+	@-pkill -x $(APP_NAME) 2>/dev/null; sleep 0.5
+	@open "$(BUILD_DIR)/debug/$(BUNDLE_NAME)"
 
 # Remove build artifacts
 clean:
 	swift package clean
-	rm -rf "$(RELEASE_DIR)/$(BUNDLE_NAME)"
+	rm -rf "$(RELEASE_DIR)/$(BUNDLE_NAME)" "$(BUILD_DIR)/debug/$(BUNDLE_NAME)"
+	rm -f "$(BUILD_DIR)/.debug-stamp" "$(BUILD_DIR)/.release-stamp"
 
 # Copy .app to /Applications
 install: release

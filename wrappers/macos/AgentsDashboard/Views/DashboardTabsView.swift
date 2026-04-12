@@ -31,11 +31,9 @@ struct DashboardTabsView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
 
-            if !projectManager.projects.isEmpty {
-                Button("Start First Project") {
-                    if let project = projectManager.projects.first {
-                        projectManager.startDashboard(for: project)
-                    }
+            if let first = projectManager.projects.first {
+                Button("Start \(first.name)") {
+                    projectManager.startDashboard(for: first)
                 }
                 .buttonStyle(.borderedProminent)
             } else {
@@ -51,11 +49,28 @@ struct DashboardTabsView: View {
     // MARK: - Tab Bar
 
     private var tabBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 0) {
-                ForEach(projectManager.dashboards) { dashboard in
-                    TabButton(dashboard: dashboard)
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    ForEach(projectManager.dashboards) { dashboard in
+                        TabButton(dashboard: dashboard)
+                    }
                 }
+            }
+
+            if let selectedId = projectManager.selectedTab,
+               let dashboard = projectManager.dashboards.first(where: { $0.id == selectedId }) {
+                Divider().frame(height: 20)
+                Button(action: {
+                    TerminalHelper.open(path: dashboard.project.path)
+                }) {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 8)
+                .help("Open terminal at \(dashboard.project.name)")
             }
         }
         .frame(height: 36)
