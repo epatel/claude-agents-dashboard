@@ -14,8 +14,10 @@ RESET=$'\033[0m'
 # Create venv if needed
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR"
-    "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
 fi
+
+# Install/update dependencies
+"$VENV_DIR/bin/pip" install -q -r "$SCRIPT_DIR/requirements.txt"
 
 # Parse flags
 TEST_ARGS=()
