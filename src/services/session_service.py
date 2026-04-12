@@ -78,6 +78,16 @@ class SessionService:
         except (json.JSONDecodeError, TypeError):
             allowed_builtin_tools = []
 
+        # Build Ollama env if enabled
+        ollama_env = None
+        if config.get("ollama_enabled"):
+            ollama_base_url = config.get("ollama_base_url", "http://localhost:11434")
+            ollama_env = {
+                "ANTHROPIC_AUTH_TOKEN": "ollama",
+                "ANTHROPIC_API_KEY": "",
+                "ANTHROPIC_BASE_URL": ollama_base_url,
+            }
+
         session = AgentSession(
             worktree_path=worktree_path,
             system_prompt=system_prompt,
@@ -103,6 +113,7 @@ class SessionService:
             bash_yolo=config.get("bash_yolo", False),
             allowed_builtin_tools=allowed_builtin_tools,
             use_advisor=use_advisor,
+            ollama_env=ollama_env,
         )
 
         self.sessions[item_id] = session

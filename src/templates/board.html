@@ -347,6 +347,7 @@
             <div class="review-tabs">
                 <button type="button" class="review-tab active" data-tab="general" onclick="Dialogs.switchConfigTab('general')">General</button>
                 <button type="button" class="review-tab" data-tab="prompts" onclick="Dialogs.switchConfigTab('prompts')">Prompts</button>
+                <button type="button" class="review-tab" data-tab="ollama" onclick="Dialogs.switchConfigTab('ollama')">Ollama</button>
                 <button type="button" class="review-tab" data-tab="mcp" onclick="Dialogs.switchConfigTab('mcp')">MCP</button>
                 <button type="button" class="review-tab" data-tab="plugins" onclick="Dialogs.switchConfigTab('plugins')">Plugins</button>
                 <button type="button" class="review-tab" data-tab="appearance" onclick="Dialogs.switchConfigTab('appearance')">Appearance</button>
@@ -391,6 +392,32 @@
                 <div class="form-group">
                     <label for="config-project-context">Project Context <span class="tooltip" title="Background information about the project that helps the agent understand the codebase. Architecture, tech stack, key decisions, etc.">?</span></label>
                     <textarea id="config-project-context" rows="6" placeholder="e.g. This is a React + FastAPI app. The frontend is in /web, the API is in /api. We use PostgreSQL for persistence."></textarea>
+                </div>
+            </div>
+            <!-- Ollama tab -->
+            <div class="config-tab-content" data-config-tab="ollama" style="padding:20px;display:none;">
+                <div class="form-group">
+                    <label for="config-ollama-enabled" style="display:flex;align-items:center;gap:8px;">
+                        Enable Ollama Provider <span class="tooltip" data-tip-html="<b>Run agents against a local Ollama instance.</b><br><br>When enabled, agents use Ollama instead of the Anthropic API. Requires Ollama running locally.<br><br><b>Setup:</b> Install Ollama and pull a model:<br><code>ollama pull qwen3.5</code><br><br>Then select the model name in the General tab's Model field (e.g. <code>qwen3.5</code>).">?</span>
+                        <input type="checkbox" id="config-ollama-enabled" style="cursor:pointer;">
+                    </label>
+                    <p class="text-muted" style="font-size:12px;margin:4px 0 0;">
+                        Route agent tasks through a local Ollama server instead of the Anthropic API.
+                    </p>
+                </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label for="config-ollama-base-url">Base URL <span class="tooltip" title="The Ollama API endpoint. Default is http://localhost:11434 for a local installation.">?</span></label>
+                    <input type="text" id="config-ollama-base-url" placeholder="http://localhost:11434" value="http://localhost:11434">
+                </div>
+                <div class="form-group" style="margin-top:16px;padding:12px;background:var(--bg-hover);border-radius:var(--radius-sm);">
+                    <label style="font-size:12px;font-weight:600;margin-bottom:6px;display:block;">How it works</label>
+                    <p class="text-muted" style="font-size:12px;margin:0;line-height:1.5;">
+                        When Ollama is enabled, agents connect to your local Ollama server via environment variable overrides.<br><br>
+                        <b>1.</b> Install <a href="https://ollama.com" target="_blank" style="color:var(--accent);">Ollama</a> and start the server<br>
+                        <b>2.</b> Pull a model: <code>ollama pull qwen3.5</code><br>
+                        <b>3.</b> Set the model name in the <b>General</b> tab (e.g. <code>qwen3.5</code>)<br>
+                        <b>4.</b> Enable this toggle and save
+                    </p>
                 </div>
             </div>
             <!-- MCP tab -->

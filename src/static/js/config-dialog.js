@@ -30,6 +30,10 @@ const ConfigDialog = {
             document.getElementById('config-mcp-enabled').checked = config.mcp_enabled || false;
             document.getElementById('config-mcp-servers').value = config.mcp_servers || '{}';
 
+            // Load Ollama settings
+            document.getElementById('config-ollama-enabled').checked = config.ollama_enabled || false;
+            document.getElementById('config-ollama-base-url').value = config.ollama_base_url || 'http://localhost:11434';
+
             // Load plugins
             try {
                 this._configPlugins = JSON.parse(config.plugins || '[]');
@@ -201,6 +205,8 @@ const ConfigDialog = {
             allowed_builtin_tools: JSON.stringify(this._configBuiltinTools),
             flame_enabled: document.getElementById('config-flame-enabled').checked,
             flame_intensity_multiplier: parseFloat(document.getElementById('config-flame-intensity').value) || 1.0,
+            ollama_enabled: document.getElementById('config-ollama-enabled').checked,
+            ollama_base_url: document.getElementById('config-ollama-base-url').value || 'http://localhost:11434',
         };
         try {
             await Api.request('PUT', '/api/config', config);
