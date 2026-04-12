@@ -38,6 +38,10 @@ const ConfigDialog = {
             document.getElementById('config-ollama-enabled').checked = config.ollama_enabled || false;
             document.getElementById('config-ollama-base-url').value = config.ollama_base_url || 'http://localhost:11434';
 
+            // Reset connection status
+            const statusEl = document.getElementById('ollama-connection-status');
+            if (statusEl) statusEl.innerHTML = '';
+
             // Auto-fetch Ollama models if enabled
             if (config.ollama_enabled) {
                 this.refreshOllamaModels();
@@ -208,14 +212,29 @@ const ConfigDialog = {
         }
     },
 
+    _updateConnectionStatus(state, message) {
+        const el = document.getElementById('ollama-connection-status');
+        if (!el) return;
+        const dotCls = state === 'connected' ? 'connected' : state === 'checking' ? 'checking' : 'disconnected';
+        el.innerHTML = `<span class="ollama-status-dot ${dotCls}"></span>${message || ''}`;
+    },
+
     async refreshOllamaModels() {
         const listEl = document.getElementById('ollama-models-list');
         if (listEl) listEl.innerHTML = '<span style="color:var(--text-muted);">Fetching models…</span>';
+        this._updateConnectionStatus('checking', 'Connecting…');
 
         try {
             const result = await Api.request('GET', '/api/ollama/models');
             this._ollamaModels = result.models || [];
             this._ollamaEnabled = result.enabled !== false;
+
+            if (result.error) {
+                this._updateConnectionStatus('disconnected', 'Not available');
+            } else {
+                const count = this._ollamaModels.length;
+                this._updateConnectionStatus('connected', `Connected (${count} model${count !== 1 ? 's' : ''})`);
+            }
 
             if (listEl) {
                 if (result.error) {
@@ -251,6 +270,7 @@ const ConfigDialog = {
             this._updateModelDropdowns();
         } catch (err) {
             console.error('Failed to fetch Ollama models:', err);
+            this._updateConnectionStatus('disconnected', 'Not available');
             if (listEl) listEl.innerHTML = '<span style="color:var(--warning);">⚠ Failed to fetch models</span>';
         }
     },
@@ -279,7 +299,9 @@ const ConfigDialog = {
             for (const m of this._ollamaModels) {
                 const opt = document.createElement('option');
                 opt.value = m.name;
-                opt.textContent = m.display_name;
+                const sizeStr = m.size ? ` (${(m.size / 1e9).toFixed(1)}GB)` : '';
+                const paramStr = m.parameter_size ? `:${m.parameter_size}` : '';
+                opt.textContent = `${m.display_name}${paramStr}${sizeStr}`;
                 optgroup.appendChild(opt);
             }
             select.appendChild(optgroup);

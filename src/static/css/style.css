@@ -475,6 +475,57 @@ body {
     color: var(--text-muted);
 }
 
+.provider-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 6px;
+    letter-spacing: 0.3px;
+}
+
+.provider-badge-anthropic {
+    background: rgba(204, 120, 50, 0.15);
+    color: #cc7832;
+}
+
+.provider-badge-ollama {
+    background: rgba(100, 180, 100, 0.15);
+    color: #64b464;
+}
+
+.card-model-badge {
+    font-size: 10px;
+    color: var(--text-muted);
+    padding: 1px 5px;
+    background: var(--bg-hover);
+    border-radius: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+.ollama-status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.ollama-status-dot.connected { background: #4caf50; }
+.ollama-status-dot.disconnected { background: #f44336; }
+.ollama-status-dot.checking { background: #ff9800; animation: pulse 1s infinite; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
 .detail-git-info {
     display: flex;
     flex-direction: column;

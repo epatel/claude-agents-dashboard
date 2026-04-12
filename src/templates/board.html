@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
-<script>window.__MODEL_NAMES__ = { {% for model_id, display_name, _ in available_models %}'{{ model_id }}': '{{ display_name }}'{% if not loop.last %}, {% endif %}{% endfor %} };</script>
+<script>window.__MODEL_NAMES__ = { {% for model_id, display_name, _ in available_models %}'{{ model_id }}': '{{ display_name }}'{% if not loop.last %}, {% endif %}{% endfor %} };
+window.__ANTHROPIC_MODEL_IDS__ = new Set([{% for model_id, _, _ in available_models %}'{{ model_id }}'{% if not loop.last %}, {% endif %}{% endfor %}]);</script>
 <div class="epic-panel-toggle" onclick="Board.toggleEpicPanel()">
     <svg class="epic-panel-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
     Epics
@@ -410,7 +411,10 @@
                     </p>
                 </div>
                 <div class="form-group" style="margin-top:16px;">
-                    <label for="config-ollama-base-url">Base URL <span class="tooltip" title="The Ollama API endpoint. Default is http://localhost:11434 for a local installation.">?</span></label>
+                    <label for="config-ollama-base-url" style="display:flex;align-items:center;gap:8px;">
+                        Base URL <span class="tooltip" title="The Ollama API endpoint. Default is http://localhost:11434 for a local installation.">?</span>
+                        <span id="ollama-connection-status" style="font-size:11px;font-weight:normal;"></span>
+                    </label>
                     <input type="text" id="config-ollama-base-url" placeholder="http://localhost:11434" value="http://localhost:11434">
                 </div>
                 <div class="form-group" style="margin-top:16px;">

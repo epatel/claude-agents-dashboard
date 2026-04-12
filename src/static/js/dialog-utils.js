@@ -9,6 +9,42 @@ const DialogUtils = {
         return modelNames[modelId] || modelId;
     },
 
+    /**
+     * Determine if a model ID is an Ollama model.
+     * Anthropic models follow patterns like "claude-*" or contain "claude".
+     */
+    _isOllamaModel(modelId) {
+        if (!modelId) return false;
+        // Check cache first
+        if (this._ollamaCache.fetched && this._ollamaCache.models.some(m => m.name === modelId)) {
+            return true;
+        }
+        // Anthropic models always start with "claude-"
+        if (modelId.startsWith('claude-')) return false;
+        // If it's in the server-rendered list, it's Anthropic
+        const serverModels = window.__MODEL_NAMES__ || {};
+        // Models that were in the initial server render are Anthropic
+        if (window.__ANTHROPIC_MODEL_IDS__ && window.__ANTHROPIC_MODEL_IDS__.has(modelId)) return false;
+        // Fallback: if not a known Anthropic model and contains / or : it's likely Ollama
+        return !modelId.startsWith('claude-');
+    },
+
+    /**
+     * Get provider label for a model.
+     */
+    _getModelProvider(modelId) {
+        return this._isOllamaModel(modelId) ? 'Ollama' : 'Anthropic';
+    },
+
+    /**
+     * Get HTML for a provider badge.
+     */
+    _getProviderBadgeHtml(modelId) {
+        const provider = this._getModelProvider(modelId);
+        const cls = provider === 'Ollama' ? 'provider-badge-ollama' : 'provider-badge-anthropic';
+        return `<span class="provider-badge ${cls}">${provider}</span>`;
+    },
+
     // --- Ollama model discovery ---
 
     _ollamaCache: { models: [], enabled: false, fetched: false },
@@ -53,7 +89,9 @@ const DialogUtils = {
             for (const m of this._ollamaCache.models) {
                 const opt = document.createElement('option');
                 opt.value = m.name;
-                opt.textContent = m.display_name;
+                const sizeStr = m.size ? ` (${(m.size / 1e9).toFixed(1)}GB)` : '';
+                const paramStr = m.parameter_size ? `:${m.parameter_size}` : '';
+                opt.textContent = `${m.display_name}${paramStr}${sizeStr}`;
                 optgroup.appendChild(opt);
             }
             selectEl.appendChild(optgroup);
