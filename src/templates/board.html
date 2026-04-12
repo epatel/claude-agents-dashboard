@@ -67,9 +67,11 @@
                 <label for="item-form-model">Model <span class="tooltip" title="The Claude model to use for this specific task. Leave empty to use the global default model. Sonnet is fast and capable, Sonnet + Advisor adds an Opus advisor subagent for complex reasoning, Opus is most powerful, Haiku is cheapest.">?</span></label>
                 <select id="item-form-model">
                     <option value="">Use Global Default</option>
+                    <optgroup label="Anthropic Models">
                     {% for model_id, display_name, is_experimental in available_models %}
                     {% if not is_experimental or experimental %}<option value="{{ model_id }}">{{ display_name }}</option>{% endif %}
                     {% endfor %}
+                    </optgroup>
                 </select>
             </div>
             <div class="form-group">
@@ -357,9 +359,11 @@
                 <div class="form-group">
                     <label for="config-model">Model <span class="tooltip" title="The Claude model used for all agent tasks. Sonnet is fast and capable, Sonnet + Advisor adds an Opus advisor subagent for complex reasoning, Opus is most powerful, Haiku is cheapest.">?</span></label>
                     <select id="config-model">
+                        <optgroup label="Anthropic Models">
                         {% for model_id, display_name, is_experimental in available_models %}
                         {% if not is_experimental or experimental %}<option value="{{ model_id }}">{{ display_name }}</option>{% endif %}
                         {% endfor %}
+                        </optgroup>
                     </select>
                 </div>
                 <div class="form-group" style="margin-top: 16px;">
@@ -399,7 +403,7 @@
                 <div class="form-group">
                     <label for="config-ollama-enabled" style="display:flex;align-items:center;gap:8px;">
                         Enable Ollama Provider <span class="tooltip" data-tip-html="<b>Run agents against a local Ollama instance.</b><br><br>When enabled, agents use Ollama instead of the Anthropic API. Requires Ollama running locally.<br><br><b>Setup:</b> Install Ollama and pull a model:<br><code>ollama pull qwen3.5</code><br><br>Then select the model name in the General tab's Model field (e.g. <code>qwen3.5</code>).">?</span>
-                        <input type="checkbox" id="config-ollama-enabled" style="cursor:pointer;">
+                        <input type="checkbox" id="config-ollama-enabled" style="cursor:pointer;" onchange="if(this.checked) ConfigDialog.refreshOllamaModels()">
                     </label>
                     <p class="text-muted" style="font-size:12px;margin:4px 0 0;">
                         Route agent tasks through a local Ollama server instead of the Anthropic API.
@@ -409,14 +413,22 @@
                     <label for="config-ollama-base-url">Base URL <span class="tooltip" title="The Ollama API endpoint. Default is http://localhost:11434 for a local installation.">?</span></label>
                     <input type="text" id="config-ollama-base-url" placeholder="http://localhost:11434" value="http://localhost:11434">
                 </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
+                        Available Models
+                        <button type="button" class="btn btn-xs" onclick="ConfigDialog.refreshOllamaModels()" title="Refresh model list" style="font-size:11px;padding:2px 8px;">↻ Refresh</button>
+                    </label>
+                    <div id="ollama-models-list" style="font-size:12px;color:var(--text-muted);">
+                        Click Refresh to discover models from your Ollama server.
+                    </div>
+                </div>
                 <div class="form-group" style="margin-top:16px;padding:12px;background:var(--bg-hover);border-radius:var(--radius-sm);">
                     <label style="font-size:12px;font-weight:600;margin-bottom:6px;display:block;">How it works</label>
                     <p class="text-muted" style="font-size:12px;margin:0;line-height:1.5;">
                         When Ollama is enabled, agents connect to your local Ollama server via environment variable overrides.<br><br>
                         <b>1.</b> Install <a href="https://ollama.com" target="_blank" style="color:var(--accent);">Ollama</a> and start the server<br>
                         <b>2.</b> Pull a model: <code>ollama pull qwen3.5</code><br>
-                        <b>3.</b> Set the model name in the <b>General</b> tab (e.g. <code>qwen3.5</code>)<br>
-                        <b>4.</b> Enable this toggle and save
+                        <b>3.</b> Enable this toggle — Ollama models will appear in all Model dropdowns automatically
                     </p>
                 </div>
             </div>
