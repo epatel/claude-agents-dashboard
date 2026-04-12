@@ -3,13 +3,13 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 861 tests
+./run-tests.sh              # Run all 866 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 15 migrations.
+The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 16 migrations.
 
 ## Test Structure
 
@@ -42,7 +42,7 @@ tests/
 │   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
 │   ├── test_routes.py               # HTTP endpoint tests (80 tests)
-│   ├── test_session.py              # AgentSession SDK wrapper (64 tests)
+│   ├── test_session.py              # AgentSession SDK wrapper (69 tests)
 │   ├── test_session_service.py      # SessionService lifecycle (54 tests)
 │   ├── test_websocket.py            # WebSocket rate limiting (45 tests)
 │   └── test_workflow_service.py     # WorkflowService transitions (70 tests)
@@ -82,8 +82,8 @@ Quick checks that core components work:
 - **Allowed Commands** (26 tests): Command filter hook, shell operator rejection, YOLO mode bypass, runtime approval persistence
 - **Advisor** (13 tests): Agent advisor logic
 
-### Unit Tests — Session (64 tests)
-- AgentSession SDK wrapper, token extraction, event handling
+### Unit Tests — Session (69 tests)
+- AgentSession SDK wrapper, token extraction, event handling, Ollama provider env configuration
 
 ### Unit Tests — Migrations (28 tests)
 - Apply/rollback single and multiple migrations

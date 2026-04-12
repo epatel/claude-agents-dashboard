@@ -1,14 +1,14 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-04-11
+**Date**: 2026-04-12
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 34 — Maintenance reassessment. Verified all line counts and test counts against codebase. Python backend ~6,996 lines across 52 source files (excluding migrations). JavaScript frontend ~7,492 lines across 24 files. CSS ~3,455 lines across 5 files. 15 migrations. 861 tests across 28 test files + conftest.py (5 fixture validation tests).
+**Revision**: 35 — Maintenance reassessment. Added Ollama provider (experimental) with migration 016, model updates (Claude Opus 4.6, Claude Haiku 4.5, Sonnet 4 + Advisor). Python backend ~7,149 lines across 53 source files (excluding migrations). JavaScript frontend ~7,492 lines across 24 files. CSS ~3,455 lines across 5 files. 16 migrations. 866 tests across 29 test files (including conftest.py with 5 fixture validation tests).
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), **dependency management endpoints**, **animated flame background** (migration 013 — activity-driven flame effect behind board columns), **start_copy flag** (migration 014 — configurable per-item flag to show Start Copy button instead of Start), and **has_file_changes detection** (migration 015 — tracks whether agent produced file changes, cards show "Done" vs "Approve & Merge" accordingly) have been added. Recent additions include a **standalone item detail page** and a **copy-link button** on the Done detail dialog. The test suite includes **861 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), **dependency management endpoints**, **animated flame background** (migration 013 — activity-driven flame effect behind board columns), **start_copy flag** (migration 014 — configurable per-item flag to show Start Copy button instead of Start), **has_file_changes detection** (migration 015 — tracks whether agent produced file changes, cards show "Done" vs "Approve & Merge" accordingly), and **Ollama provider** (migration 016 — experimental local model support with dynamic model discovery, connection status, provider badges) have been added. Recent additions include a **standalone item detail page**, a **copy-link button** on the Done detail dialog, and **Ollama integration** gated behind the `--experimental` flag. The test suite includes **866 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, Ollama provider configuration, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -113,27 +113,28 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 1,199 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, has_file_changes detection, and auto-start of dependent items |
+| `services/workflow_service.py` | 1,226 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, has_file_changes detection, and auto-start of dependent items |
 | `services/database_service.py` | 504 | A | All DB operations extracted; parameterized queries throughout; item dependency management |
 | `services/notification_service.py` | 118 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 105 | A | Git worktree and merge operations with proper error handling |
-| `services/session_service.py` | 229 | A | Session lifecycle, commit messages, plugin parsing |
+| `services/session_service.py` | 242 | A | Session lifecycle, commit messages, plugin parsing, Ollama config |
 
 ### Backend Python — Core
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `main.py` | 111 | A | Clean entry point, proper git validation, port discovery |
+| `main.py` | 182 | A | Clean entry point, proper git validation, port discovery, `--experimental` flag |
+| `manage.py` | 166 | A | Migration CLI (status, migrate, rollback, init) with argument parsing and DB path override |
 | `config.py` | 110 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
-| `constants.py` | 38 | A | Centralized `AVAILABLE_MODELS` dict, `DEFAULT_MODEL`, `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
+| `constants.py` | 34 | A | Centralized `AVAILABLE_MODELS` list (with experimental flag), `DEFAULT_MODEL`, `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
 | `models.py` | 140 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants; `start_copy` and `has_file_changes` fields |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 133 | A | Proper lifespan management, clean factory pattern, CORS middleware, security headers |
-| `web/routes.py` | 1,345 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations; item detail page |
+| `web/routes.py` | 1,452 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations; item detail page; Ollama model discovery |
 | `web/file_routes.py` | 322 | A | File browser endpoints with path validation, secret hiding, .browserhidden support, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 187 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 123 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
-| `agent/session.py` | 583 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult` |
+| `agent/session.py` | 683 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult`; Ollama env passthrough |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
 | `agent/todo.py` | 165 | A | Clean MCP tool definition with epic and dependency support |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
@@ -163,6 +164,7 @@ graph TB
 | `migrations/versions/013_add_flame_settings.py` | 42 | A | Adds `flame_enabled` setting to agent_config for animated flame background |
 | `migrations/versions/014_add_start_copy.py` | 38 | A | Adds `start_copy` flag to items for configurable Start Copy button |
 | `migrations/versions/015_add_has_file_changes.py` | 40 | A | Adds `has_file_changes` flag to items for tracking whether agent produced file changes |
+| `migrations/versions/016_add_ollama_config.py` | 41 | A | Adds `ollama_enabled` flag and `ollama_base_url` to agent_config for local Ollama provider |
 
 ### Frontend JavaScript
 
@@ -343,7 +345,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 861 automated tests across 28 test files plus conftest.py (5 fixture validation tests) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 15 migrations.
+**Current state**: 866 automated tests across 29 test files (including conftest.py with 5 fixture validation tests) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 16 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -352,8 +354,8 @@ stateDiagram-v2
 | `tests/unit/test_routes.py` | Unit | 80 | HTTP endpoints for items, review, epics, config, stats, item detail |
 | `tests/unit/test_git_operations.py` | Unit | 67 | Diff generation, merge, commit, path validation |
 | `tests/unit/test_file_routes.py` | Unit | 66 | File browser path validation, secret detection, .browserhidden |
-| `tests/unit/test_session.py` | Unit | 64 | AgentSession SDK wrapper, token extraction, events |
-| `tests/unit/test_session_service.py` | Unit | 54 | SessionService lifecycle, commit messages, plugins |
+| `tests/unit/test_session.py` | Unit | 69 | AgentSession SDK wrapper, token extraction, events, Ollama provider |
+| `tests/unit/test_session_service.py` | Unit | 54 | SessionService lifecycle, commit messages, plugins, Ollama config |
 | `tests/unit/test_mcp_tool_servers.py` | Unit | 50 | MCP tool server creation, invocation, request flow |
 | `tests/unit/test_database_service.py` | Unit | 55 | DatabaseService CRUD, dependencies, column whitelist |
 | `tests/unit/test_websocket.py` | Unit | 45 | WebSocket connection, rate limiting, cleanup |
@@ -448,6 +450,7 @@ graph LR
 37. **Animated flame background**: Optional animated flame effect behind board columns with activity-driven intensity — configurable via `flame_enabled` in agent_config (migration 013), adds visual feedback for active agent work
 38. **File change detection**: When an agent completes, `WorkflowService` checks for changed files and stores the result in `has_file_changes` (migration 015) — review cards display "Done" (no changes) or "Approve & Merge" (has changes) to avoid unnecessary merge steps
 39. **Standalone item detail page**: Each item has a shareable URL via the item detail endpoint — Done detail dialog includes a copy-link button for easy sharing
+40. **Ollama provider (experimental)**: Local model support via Ollama's Anthropic-compatible API, gated behind `--experimental` flag — dynamic model discovery via REST API, connection status indicator, provider badges on cards, per-item model selection from Ollama dropdown; env vars (`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`) injected per-agent subprocess
 
 ---
 
@@ -455,12 +458,12 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/, excl. migrations) | 52 | ~6,996 |
+| Python backend (src/, excl. migrations) | 53 | ~7,149 |
 | JavaScript frontend | 24 | ~7,492 |
 | CSS styles | 5 | ~3,455 |
 | HTML templates | 3 | ~808 |
-| Tests | 29 | ~11,049 |
-| **Grand total** | **113** | **~30,276** |
+| Tests | 29 | ~11,130 |
+| **Grand total** | **114** | **~30,510** |
 
 ---
 

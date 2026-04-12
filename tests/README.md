@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (856 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (15 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
+This directory contains the automated test suite (866 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (16 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
 
 ## Test Structure
 
@@ -31,7 +31,7 @@ tests/
 │   ├── test_notification_service.py             # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
 │   ├── test_routes.py                           # HTTP endpoint tests (80 tests)
-│   ├── test_session.py                          # AgentSession SDK wrapper (64 tests)
+│   ├── test_session.py                          # AgentSession SDK wrapper (69 tests)
 │   ├── test_session_service.py                  # SessionService lifecycle (54 tests)
 │   ├── test_websocket.py                        # WebSocket connection and rate limiting (45 tests)
 │   └── test_workflow_service.py                 # WorkflowService state transitions (70 tests)
@@ -61,11 +61,11 @@ tests/
 - **Git Worktree** (15 tests) — Worktree create/cleanup, base branch tracking
 - **Git Timeout** (5 tests) — Timeout configuration and recovery
 
-### 4. Agent Tools (153 tests)
+### 4. Agent Tools (158 tests)
 - **MCP Tool Servers** (50 tests) — Tool server creation, invocation, request/response flow
 - **Allowed Commands** (26 tests) — Command filter hook, shell operator rejection, YOLO mode bypass
 - **Advisor** (13 tests) — Agent advisor logic
-- **Session** (64 tests) — AgentSession SDK wrapper, token extraction, event handling
+- **Session** (69 tests) — AgentSession SDK wrapper, token extraction, event handling, Ollama provider
 
 ### 5. Features (56 tests)
 - **Epics** (19 tests) — CRUD, progress stats, item assignment, filtering, dependencies
@@ -109,7 +109,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 856 tests
+# Run all 866 tests
 ./run-tests.sh
 
 # Run specific test categories
