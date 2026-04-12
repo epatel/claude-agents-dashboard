@@ -111,6 +111,19 @@ class TestAgentSessionConstructor:
         session = make_session(use_advisor=True)
         assert session.use_advisor is True
 
+    def test_ollama_env_stored(self):
+        env = {
+            "ANTHROPIC_AUTH_TOKEN": "ollama",
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_BASE_URL": "http://localhost:11434",
+        }
+        session = make_session(ollama_env=env)
+        assert session.ollama_env == env
+
+    def test_ollama_env_default_none(self):
+        session = make_session()
+        assert session.ollama_env is None
+
 
 
 # ---------------------------------------------------------------------------
@@ -767,6 +780,69 @@ class TestStart:
 
         kwargs = mock_options_cls.call_args.kwargs
         assert kwargs.get("setting_sources") == ["project"]
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_passes_ollama_env_to_options(self, mock_options_cls, mock_client_cls, tmp_path):
+        """Ollama env vars are forwarded to ClaudeAgentOptions.env."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        ollama_env = {
+            "ANTHROPIC_AUTH_TOKEN": "ollama",
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_BASE_URL": "http://localhost:11434",
+        }
+        session = make_session(worktree_path=tmp_path, model="qwen3.5", ollama_env=ollama_env)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        kwargs = mock_options_cls.call_args.kwargs
+        assert kwargs["env"] == ollama_env
+        assert kwargs["model"] == "qwen3.5"
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_ollama_env_none_passes_empty_dict(self, mock_options_cls, mock_client_cls, tmp_path):
+        """When ollama_env is None, env should be an empty dict (SDK default)."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        session = make_session(worktree_path=tmp_path)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        kwargs = mock_options_cls.call_args.kwargs
+        assert kwargs["env"] == {}
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_ollama_env_custom_base_url(self, mock_options_cls, mock_client_cls, tmp_path):
+        """Ollama running on a custom host/port is forwarded correctly."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        ollama_env = {
+            "ANTHROPIC_AUTH_TOKEN": "ollama",
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_BASE_URL": "http://192.168.1.100:11434",
+        }
+        session = make_session(worktree_path=tmp_path, model="llama3.2", ollama_env=ollama_env)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        kwargs = mock_options_cls.call_args.kwargs
+        assert kwargs["env"]["ANTHROPIC_BASE_URL"] == "http://192.168.1.100:11434"
+        assert kwargs["model"] == "llama3.2"
 
 
 # ---------------------------------------------------------------------------
