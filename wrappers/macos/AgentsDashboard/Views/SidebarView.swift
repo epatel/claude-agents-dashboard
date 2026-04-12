@@ -16,10 +16,17 @@ struct SidebarView: View {
         .frame(minWidth: 220)
         .toolbar {
             ToolbarItem {
-                Button(action: { projectManager.showAddProject = true }) {
-                    Label("Add Project", systemImage: "plus")
+                Menu {
+                    Button(action: { projectManager.showCreateProject = true }) {
+                        Label("New Project...", systemImage: "plus.rectangle.on.folder")
+                    }
+                    Button(action: { projectManager.showAddProject = true }) {
+                        Label("Add Existing Project...", systemImage: "folder.badge.plus")
+                    }
+                } label: {
+                    Label("Add", systemImage: "plus")
                 }
-                .help("Add a project")
+                .help("Add or create a project")
             }
         }
         .navigationTitle("Agents Dashboard")

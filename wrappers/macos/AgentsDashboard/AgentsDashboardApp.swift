@@ -21,7 +21,12 @@ struct AgentsDashboardApp: App {
         .windowStyle(.titleBar)
         .commands {
             CommandGroup(after: .newItem) {
-                Button("Add Project...") {
+                Button("New Project...") {
+                    projectManager.showCreateProject = true
+                }
+                .keyboardShortcut("n", modifiers: [.command])
+
+                Button("Add Existing Project...") {
                     projectManager.showAddProject = true
                 }
                 .keyboardShortcut("o", modifiers: [.command])

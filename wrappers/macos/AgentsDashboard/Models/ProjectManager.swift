@@ -7,6 +7,7 @@ class ProjectManager: ObservableObject {
     @Published var dashboards: [DashboardInstance] = []
     @Published var selectedTab: UUID?
     @Published var showAddProject = false
+    @Published var showCreateProject = false
     @Published var showInstallSheet = false
     @Published var pendingProject: Project?
     let serverManager = ServerManager()
