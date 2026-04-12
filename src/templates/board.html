@@ -2,7 +2,8 @@
 
 {% block content %}
 <script>window.__MODEL_NAMES__ = { {% for model_id, display_name, _ in available_models %}'{{ model_id }}': '{{ display_name }}'{% if not loop.last %}, {% endif %}{% endfor %} };
-window.__ANTHROPIC_MODEL_IDS__ = new Set([{% for model_id, _, _ in available_models %}'{{ model_id }}'{% if not loop.last %}, {% endif %}{% endfor %}]);</script>
+window.__ANTHROPIC_MODEL_IDS__ = new Set([{% for model_id, _, _ in available_models %}'{{ model_id }}'{% if not loop.last %}, {% endif %}{% endfor %}]);
+window.__EXPERIMENTAL__ = {{ 'true' if experimental else 'false' }};</script>
 <div class="epic-panel-toggle" onclick="Board.toggleEpicPanel()">
     <svg class="epic-panel-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
     Epics
@@ -350,7 +351,7 @@ window.__ANTHROPIC_MODEL_IDS__ = new Set([{% for model_id, _, _ in available_mod
             <div class="review-tabs">
                 <button type="button" class="review-tab active" data-tab="general" onclick="Dialogs.switchConfigTab('general')">General</button>
                 <button type="button" class="review-tab" data-tab="prompts" onclick="Dialogs.switchConfigTab('prompts')">Prompts</button>
-                <button type="button" class="review-tab" data-tab="ollama" onclick="Dialogs.switchConfigTab('ollama')">Ollama</button>
+                {% if experimental %}<button type="button" class="review-tab" data-tab="ollama" onclick="Dialogs.switchConfigTab('ollama')">Ollama <span style="font-size:9px;opacity:0.6;font-weight:normal;vertical-align:super;">experimental</span></button>{% endif %}
                 <button type="button" class="review-tab" data-tab="mcp" onclick="Dialogs.switchConfigTab('mcp')">MCP</button>
                 <button type="button" class="review-tab" data-tab="plugins" onclick="Dialogs.switchConfigTab('plugins')">Plugins</button>
                 <button type="button" class="review-tab" data-tab="appearance" onclick="Dialogs.switchConfigTab('appearance')">Appearance</button>
@@ -401,6 +402,9 @@ window.__ANTHROPIC_MODEL_IDS__ = new Set([{% for model_id, _, _ in available_mod
             </div>
             <!-- Ollama tab -->
             <div class="config-tab-content" data-config-tab="ollama" style="padding:20px;display:none;">
+                <div style="padding:8px 12px;margin-bottom:16px;background:var(--warning-bg, rgba(255,180,0,0.1));border:1px solid var(--warning, #e6a700);border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary);">
+                    <b>Experimental.</b> Ollama support is early-stage. External MCP servers and plugins are disabled for Ollama agents to keep context size manageable for local models. Cloud-hosted Ollama models (e.g. <code>kimi-k2.5:cloud</code>) tend to work best.
+                </div>
                 <div class="form-group">
                     <label for="config-ollama-enabled" style="display:flex;align-items:center;gap:8px;">
                         Enable Ollama Provider <span class="tooltip" data-tip-html="<b>Run agents against a local Ollama instance.</b><br><br>When enabled, agents use Ollama instead of the Anthropic API. Requires Ollama running locally.<br><br><b>Setup:</b> Install Ollama and pull a model:<br><code>ollama pull qwen3.5</code><br><br>Then select the model name in the General tab's Model field (e.g. <code>qwen3.5</code>).">?</span>

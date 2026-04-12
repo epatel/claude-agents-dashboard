@@ -42,8 +42,8 @@ const ConfigDialog = {
             const statusEl = document.getElementById('ollama-connection-status');
             if (statusEl) statusEl.innerHTML = '';
 
-            // Auto-fetch Ollama models if enabled
-            if (config.ollama_enabled) {
+            // Auto-fetch Ollama models if enabled (experimental only)
+            if (config.ollama_enabled && window.__EXPERIMENTAL__) {
                 this.refreshOllamaModels();
             }
 
@@ -225,7 +225,7 @@ const ConfigDialog = {
         this._updateConnectionStatus('checking', 'Connecting…');
 
         try {
-            const result = await Api.request('GET', '/api/ollama/models');
+            const result = await Api.request('GET', '/api/ollama/models?force=true');
             this._ollamaModels = result.models || [];
             this._ollamaEnabled = result.enabled !== false;
 

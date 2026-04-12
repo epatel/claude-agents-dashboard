@@ -60,6 +60,13 @@ const ItemDialog = {
             this._loadFormAttachments(item.id);
         }
         await this._updateDefaultModelDisplay();
+        // Re-apply model value after Ollama options were rebuilt
+        // Fall back to Default ("") if the saved model no longer exists in the dropdown
+        const modelSelect = document.getElementById('item-form-model');
+        modelSelect.value = item.model || '';
+        if (modelSelect.value !== (item.model || '')) {
+            modelSelect.value = '';
+        }
         // Hide play button for existing items
         const playBtn = document.getElementById('item-play-btn');
         if (playBtn) playBtn.style.display = 'none';
@@ -162,7 +169,7 @@ const ItemDialog = {
             let itemId = id;
             if (id) {
                 const updateData = { title, description, epic_id, auto_start, start_copy };
-                if (model !== null) updateData.model = model;
+                updateData.model = model;  // null clears to default
                 await Api.updateItem(id, updateData);
             } else {
                 const item = await Api.createItem(title, description, model, epic_id, auto_start, start_copy);

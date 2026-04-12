@@ -104,7 +104,7 @@ def main():
     parser.add_argument("--port", type=int, default=None,
                         help=f"Port to bind to (default: auto-detect starting from {DEFAULT_PORT})")
     parser.add_argument("--experimental", action="store_true", default=False,
-                        help="Enable experimental features (e.g. Sonnet + Advisor model)")
+                        help="Enable experimental features (e.g. Ollama provider, Sonnet + Advisor model)")
     args = parser.parse_args()
 
     target_project = Path(args.target).resolve()

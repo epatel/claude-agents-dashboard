@@ -73,6 +73,8 @@ const DialogUtils = {
      */
     async populateOllamaOptions(selectEl) {
         if (!selectEl) return;
+        // Ollama is experimental — skip if not enabled
+        if (!window.__EXPERIMENTAL__) return;
 
         // Fetch if not yet cached
         if (!this._ollamaCache.fetched) {

@@ -78,9 +78,11 @@ class SessionService:
         except (json.JSONDecodeError, TypeError):
             allowed_builtin_tools = []
 
-        # Build Ollama env if enabled
+        # Build Ollama env only if enabled AND the model is actually an Ollama model
+        # (Anthropic/Claude models start with "claude-" and must not be routed to Ollama)
         ollama_env = None
-        if config.get("ollama_enabled"):
+        is_ollama_model = session_model and not session_model.startswith("claude-")
+        if config.get("ollama_enabled") and is_ollama_model:
             ollama_base_url = config.get("ollama_base_url", "http://localhost:11434")
             ollama_env = {
                 "ANTHROPIC_AUTH_TOKEN": "ollama",

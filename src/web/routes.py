@@ -877,7 +877,7 @@ async def get_available_tools():
 
 
 @router.get("/api/ollama/models")
-async def get_ollama_models(request: Request):
+async def get_ollama_models(request: Request, force: bool = False):
     """Discover locally available Ollama models via the Ollama REST API."""
     import urllib.request
     import urllib.error
@@ -891,7 +891,7 @@ async def get_ollama_models(request: Request):
             row = await cursor.fetchone()
             if row:
                 base_url = row["ollama_base_url"] or base_url
-                if not row["ollama_enabled"]:
+                if not row["ollama_enabled"] and not force:
                     return {"models": [], "error": None, "enabled": False}
     except Exception:
         pass

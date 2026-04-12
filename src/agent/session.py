@@ -192,13 +192,18 @@ class AgentSession:
             mcp_servers["shortcut"] = create_shortcut_server(self.on_create_shortcut)
 
         # Load MCP servers from agent configuration (database)
-        if self.mcp_enabled and self.mcp_servers:
+        # Skip external MCP servers for Ollama — their tool definitions flood the
+        # context window and overwhelm small local models.
+        is_ollama = bool(self.ollama_env)
+        if self.mcp_enabled and self.mcp_servers and not is_ollama:
             try:
                 agent_mcp_servers = json.loads(self.mcp_servers)
                 mcp_servers.update(agent_mcp_servers)
                 logger.info(f"Loaded {len(agent_mcp_servers)} MCP servers from agent configuration")
             except Exception as e:
                 logger.warning(f"Failed to parse MCP servers from agent config: {e}")
+        elif is_ollama and self.mcp_enabled and self.mcp_servers:
+            logger.info("Ollama mode: skipping external MCP servers to reduce context size")
 
         # Ensure agent knows to work in the worktree directory
         cwd_note = f"\n\nIMPORTANT: Your working directory is {self.worktree_path}. All file operations must be within this directory."
@@ -286,9 +291,11 @@ class AgentSession:
                 logger.info(f"Allowing all tools from external MCP server: {server_name}")
 
         # Build plugins list from configured plugin paths
+        # Skip plugins for Ollama — they add many tool definitions that
+        # overwhelm small local models.
         plugins = None
         plugin_prefixes = []
-        if self.plugins:
+        if self.plugins and not is_ollama:
             plugins = []
             for plugin_config in self.plugins:
                 plugin_path = plugin_config.get("path", "")
@@ -297,6 +304,8 @@ class AgentSession:
                     plugin_name = Path(plugin_path).name
                     plugin_prefixes.append(f"mcp__plugin_{plugin_name}")
                     logger.info(f"Loading plugin from: {plugin_path}")
+        elif is_ollama and self.plugins:
+            logger.info("Ollama mode: skipping plugins to reduce context size")
 
         # Always allow Bash in the tool whitelist — permission_mode and the
         # PreToolUse hook handle actual command filtering.
@@ -369,9 +378,12 @@ class AgentSession:
                 return PermissionResultDeny()
             can_use_tool_fn = can_use_tool
 
-        # Configure advisor subagent if enabled
+        # Detect Ollama mode — use lighter SDK options for local models
+        is_ollama = bool(self.ollama_env)
+
+        # Configure advisor subagent if enabled (Anthropic-only — uses Opus)
         agents = None
-        if self.use_advisor:
+        if self.use_advisor and not is_ollama:
             from claude_agent_sdk import AgentDefinition
             agents = {
                 "advisor": AgentDefinition(
@@ -382,22 +394,48 @@ class AgentSession:
             }
             logger.info("Advisor subagent enabled (Opus)")
 
-        options = ClaudeAgentOptions(
-            cwd=self.worktree_path,
-            system_prompt=full_system_prompt,
-            model=self.model,
-            permission_mode="acceptEdits",  # More targeted than bypassPermissions
-            mcp_servers=mcp_servers if mcp_servers else None,
-            allowed_tools=allowed_tools if allowed_tools else None,
-            can_use_tool=can_use_tool_fn,
-            add_dirs=[str(self.worktree_path)],
-            thinking={"type": "enabled", "budget_tokens": 10000},
-            plugins=plugins if plugins else None,
-            hooks=hooks,
-            setting_sources=["project"],  # Load CLAUDE.md from target project
-            agents=agents,
-            env=self.ollama_env or {},
-        )
+        if is_ollama:
+            # Ollama models: lighter config to avoid overwhelming small models.
+            # - No thinking budget (models handle thinking natively)
+            # - bypassPermissions (avoids permission prompt handling issues)
+            # - No setting_sources (skip CLAUDE.md to reduce context size)
+            logger.info(f"Ollama mode: using lightweight SDK options for model {self.model}")
+            logger.info(f"Ollama env: {self.ollama_env}")
+
+            def _ollama_stderr(line: str):
+                logger.info(f"[ollama-stderr] {line.rstrip()}")
+
+            options = ClaudeAgentOptions(
+                cwd=self.worktree_path,
+                system_prompt=full_system_prompt,
+                model=self.model,
+                permission_mode="bypassPermissions",
+                mcp_servers=mcp_servers if mcp_servers else None,
+                allowed_tools=allowed_tools if allowed_tools else None,
+                can_use_tool=can_use_tool_fn,
+                add_dirs=[str(self.worktree_path)],
+                plugins=plugins if plugins else None,
+                hooks=hooks,
+                env=self.ollama_env,
+                stderr=_ollama_stderr,
+            )
+        else:
+            options = ClaudeAgentOptions(
+                cwd=self.worktree_path,
+                system_prompt=full_system_prompt,
+                model=self.model,
+                permission_mode="acceptEdits",  # More targeted than bypassPermissions
+                mcp_servers=mcp_servers if mcp_servers else None,
+                allowed_tools=allowed_tools if allowed_tools else None,
+                can_use_tool=can_use_tool_fn,
+                add_dirs=[str(self.worktree_path)],
+                thinking={"type": "enabled", "budget_tokens": 10000},
+                plugins=plugins if plugins else None,
+                hooks=hooks,
+                setting_sources=["project"],  # Load CLAUDE.md from target project
+                agents=agents,
+                env={},
+            )
 
         if resume_session_id:
             options.resume = resume_session_id

@@ -81,8 +81,10 @@ class WorkflowService:
         else:
             self._yolo_items.discard(item_id)
 
-        # Create session
+        # Create session — validate Ollama model availability first
         model = item.get("model") or config.get("model")
+        if model and not model.startswith("claude-") and config.get("ollama_enabled"):
+            model = await self._validate_ollama_model(item_id, model, config)
         session = await self.sessions.create_session(
             item_id, worktree_path, config, model,
             on_message=self._create_on_message_callback(item_id),
@@ -1193,6 +1195,31 @@ class WorkflowService:
             await self.notifications.broadcast_item_updated(updated)
 
         return {"ok": True, "item_id": item_id}
+
+    async def _validate_ollama_model(self, item_id: str, model: str, config: Dict[str, Any]) -> str:
+        """Check if an Ollama model is available. Falls back to config default if not."""
+        import urllib.request
+        import urllib.error
+        base_url = config.get("ollama_base_url", "http://localhost:11434")
+        try:
+            req = urllib.request.Request(f"{base_url}/api/tags", method="GET")
+            req.add_header("Accept", "application/json")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode())
+            available = {m["name"] for m in data.get("models", [])}
+            if model in available:
+                return model
+            # Model not found — fall back
+            fallback = config.get("model") or "claude-sonnet-4-20250514"
+            await self._log_and_notify(
+                item_id, "system",
+                f"Ollama model '{model}' not available (pulled models: {', '.join(sorted(available)) or 'none'}). "
+                f"Falling back to {fallback}."
+            )
+            return fallback
+        except Exception:
+            # Can't reach Ollama — let it proceed and fail with a clear error
+            return model
 
     async def _log_and_notify(self, item_id: str, entry_type: str, content: str, metadata: Optional[str] = None):
         """Log entry to database and broadcast notification."""
