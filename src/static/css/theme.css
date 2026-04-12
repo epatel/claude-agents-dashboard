@@ -74,10 +74,20 @@
     --epic-pink: #f472b6;
 }
 
+/* Explicit scrollbar colors for all scrollable elements */
+:root, [data-theme="light"] {
+    scrollbar-color: rgba(0, 0, 0, 0.35) transparent;
+}
+
+[data-theme="dark"] {
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
 /* System preference when set to auto */
 @media (prefers-color-scheme: dark) {
     [data-theme="auto"] {
         color-scheme: dark;
+        scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
         --bg-primary: #1c1c1e;
         --bg-secondary: #2c2c2e;
         --bg-card: #2c2c2e;
@@ -100,5 +110,44 @@
         --minimap-thumb: rgba(255, 255, 255, 0.3);
         --minimap-thumb-hover: rgba(255, 255, 255, 0.45);
         --minimap-thumb-active: rgba(255, 255, 255, 0.55);
+    }
+}
+
+/* Webkit scrollbar styling for dark mode (Chrome, Safari, Edge) */
+[data-theme="dark"] ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-track {
+    background: transparent;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.45);
+}
+[data-theme="dark"] ::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+    [data-theme="auto"] ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    [data-theme="auto"] ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    [data-theme="auto"] ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 4px;
+    }
+    [data-theme="auto"] ::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.45);
+    }
+    [data-theme="auto"] ::-webkit-scrollbar-corner {
+        background: transparent;
     }
 }
