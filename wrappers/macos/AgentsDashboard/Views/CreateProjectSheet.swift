@@ -186,13 +186,16 @@ struct CreateProjectSheet: View {
             return
         }
 
-        // Create an initial commit with an empty README
+        // Create an initial commit with an empty README and .gitignore
         let readmeURL = projectURL.appendingPathComponent("README.md")
         FileManager.default.createFile(atPath: readmeURL.path, contents: Data())
 
+        let gitignoreURL = projectURL.appendingPathComponent(".gitignore")
+        try? "agents-lab/\n".data(using: .utf8)?.write(to: gitignoreURL)
+
         let addProcess = Process()
         addProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        addProcess.arguments = ["add", "README.md"]
+        addProcess.arguments = ["add", "README.md", ".gitignore"]
         addProcess.currentDirectoryURL = projectURL
         addProcess.standardOutput = FileHandle.nullDevice
         addProcess.standardError = FileHandle.nullDevice

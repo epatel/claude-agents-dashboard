@@ -128,6 +128,7 @@ def main():
     # Ensure agents-lab/ is in .gitignore
     gitignore = target_project / ".gitignore"
     ignore_entry = DATA_DIR_NAME + "/"
+    gitignore_changed = False
     if gitignore.exists():
         content = gitignore.read_text()
         if ignore_entry not in content.splitlines():
@@ -135,8 +136,20 @@ def main():
                 if not content.endswith("\n"):
                     f.write("\n")
                 f.write(f"{ignore_entry}\n")
+            gitignore_changed = True
     else:
         gitignore.write_text(f"{ignore_entry}\n")
+        gitignore_changed = True
+
+    if gitignore_changed:
+        subprocess.run(
+            ["git", "-C", str(target_project), "add", ".gitignore"],
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(target_project), "commit", "-m", "Add agents-lab/ to .gitignore"],
+            capture_output=True,
+        )
 
     if args.port is not None:
         port = args.port
