@@ -136,14 +136,14 @@ struct ProjectRow: View {
                     terminalButton
                     removeButton
                     Button(action: {
-                        projectManager.selectedTab = dashboard.id
+                        projectManager.stopDashboard(id: dashboard.id)
                     }) {
-                        Image(systemName: "play.circle.fill")
-                            .foregroundColor(.green)
+                        Image(systemName: "stop.circle.fill")
+                            .foregroundColor(.red)
                             .font(.title2)
                     }
                     .buttonStyle(.plain)
-                    .help("Show dashboard (port \(dashboard.port ?? 0))")
+                    .help("Stop dashboard (port \(dashboard.port ?? 0))")
                 }
 
             case .starting:
