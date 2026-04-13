@@ -42,6 +42,10 @@ struct ProjectRow: View {
         projectManager.isProjectRunning(project)
     }
 
+    private var isAvailable: Bool {
+        projectManager.isProjectAvailable(project)
+    }
+
     private var dashboard: DashboardInstance? {
         projectManager.dashboardFor(project: project)
     }
@@ -49,8 +53,16 @@ struct ProjectRow: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(project.name)
-                    .font(.headline)
+                HStack(spacing: 4) {
+                    Text(project.name)
+                        .font(.headline)
+                    if !isAvailable {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                            .font(.caption)
+                            .help("Project unavailable — no database found at \(project.path)/agents-lab/dashboard.db")
+                    }
+                }
                 Text(project.path)
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -58,6 +70,7 @@ struct ProjectRow: View {
                     .truncationMode(.middle)
             }
             .help(project.path)
+            .opacity(isAvailable ? 1.0 : 0.5)
 
             Spacer()
 
@@ -83,16 +96,23 @@ struct ProjectRow: View {
                         projectManager.stopDashboard(id: d.id)
                     }
                 }
-            } else {
+            } else if isAvailable {
                 Button("Start Dashboard") {
                     projectManager.startDashboard(for: project)
                 }
+            } else {
+                Button("Project Unavailable") {}
+                    .disabled(true)
             }
 
             Divider()
 
             Button("Open in Terminal") {
                 TerminalHelper.open(path: project.path)
+            }
+
+            Button("Recheck Availability") {
+                projectManager.checkProjectAvailability()
             }
 
             Divider()
@@ -183,6 +203,29 @@ struct ProjectRow: View {
                 HStack(spacing: 4) {
                     terminalButton
                     removeButton
+                    if isAvailable {
+                        Button(action: {
+                            projectManager.startDashboard(for: project)
+                        }) {
+                            Image(systemName: "play.circle")
+                                .foregroundColor(.secondary)
+                                .font(.title2)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Start dashboard")
+                    } else {
+                        Image(systemName: "nosign")
+                            .foregroundColor(.orange)
+                            .font(.title2)
+                            .help("No database found — start the dashboard once via CLI first")
+                    }
+                }
+            }
+        } else {
+            HStack(spacing: 4) {
+                terminalButton
+                removeButton
+                if isAvailable {
                     Button(action: {
                         projectManager.startDashboard(for: project)
                     }) {
@@ -192,21 +235,12 @@ struct ProjectRow: View {
                     }
                     .buttonStyle(.plain)
                     .help("Start dashboard")
-                }
-            }
-        } else {
-            HStack(spacing: 4) {
-                terminalButton
-                removeButton
-                Button(action: {
-                    projectManager.startDashboard(for: project)
-                }) {
-                    Image(systemName: "play.circle")
-                        .foregroundColor(.secondary)
+                } else {
+                    Image(systemName: "nosign")
+                        .foregroundColor(.orange)
                         .font(.title2)
+                        .help("No database found — start the dashboard once via CLI first")
                 }
-                .buttonStyle(.plain)
-                .help("Start dashboard")
             }
         }
     }

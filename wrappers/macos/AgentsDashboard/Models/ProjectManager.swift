@@ -10,6 +10,8 @@ class ProjectManager: ObservableObject {
     @Published var showCreateProject = false
     @Published var showInstallSheet = false
     @Published var pendingProject: Project?
+    /// Projects whose database file is missing (path/agents-lab/dashboard.db).
+    @Published var unavailableProjectIDs: Set<UUID> = []
     let serverManager = ServerManager()
 
     private let storageKey = "saved_projects"
@@ -41,6 +43,27 @@ class ProjectManager: ObservableObject {
 
     init() {
         loadProjects()
+        checkProjectAvailability()
+    }
+
+    // MARK: - Availability
+
+    /// Check which projects have an existing database file.
+    /// A project is "available" if `<path>/agents-lab/dashboard.db` exists.
+    func checkProjectAvailability() {
+        var missing = Set<UUID>()
+        let fm = FileManager.default
+        for project in projects {
+            let dbPath = (project.path as NSString).appendingPathComponent("agents-lab/dashboard.db")
+            if !fm.fileExists(atPath: dbPath) {
+                missing.insert(project.id)
+            }
+        }
+        unavailableProjectIDs = missing
+    }
+
+    func isProjectAvailable(_ project: Project) -> Bool {
+        !unavailableProjectIDs.contains(project.id)
     }
 
     // MARK: - Project Management
