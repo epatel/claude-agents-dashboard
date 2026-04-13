@@ -34,7 +34,7 @@ Your project must be a git repository. Requires Python 3.12+.
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 866 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 872 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -92,7 +92,8 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Cancel & cancel review** — cancel a running agent or discard review changes, clean up worktree/branch
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
-- **Per-item model selection** — choose between Claude Sonnet 4, Claude Opus 4.6, and Claude Haiku 4.5 per item (falls back to global config); experimental Sonnet 4 + Advisor mode available with `--experimental` flag
+- **Per-item model selection** — choose between Claude Opus 4.6 (default), Claude Sonnet 4, and Claude Haiku 4.5 per item (falls back to global config); experimental Sonnet 4 + Advisor mode available with `--experimental` flag
+- **WIP limit** — configurable cap on concurrent running agents; items started beyond the limit are queued and auto-started when a slot opens
 - **Agent config** — set system prompt, model, project context, MCP servers, and plugins
 - **MCP support** — connect external tools and data sources via Model Context Protocol; includes an example stdio server (`examples/mini-mcp/`) for reference
 - **Plugin support** — load local Claude Code plugins via directory paths
@@ -186,10 +187,10 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~7,149 lines (excluding migrations)
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~7,492 lines JS + ~3,455 lines CSS
-- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Sonnet 4 (default), Claude Opus 4.6, Claude Haiku 4.5, 7 built-in MCP tools; optional Ollama provider (experimental)
-- **Database**: SQLite with 16 versioned migrations
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~7,352 lines across 37 source files (excluding migrations)
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~7,947 lines JS + ~3,679 lines CSS
+- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Opus 4.6 (default), Claude Sonnet 4, Claude Haiku 4.5, 7 built-in MCP tools; optional Ollama provider (experimental)
+- **Database**: SQLite with 18 versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, WebSocket rate limiting, git operation timeouts
 
 ### Item lifecycle
@@ -229,7 +230,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–016) adding columns and tables incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–018) adding columns and tables incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -312,8 +313,10 @@ erDiagram
         bool bash_yolo
         text allowed_builtin_tools
         bool flame_enabled
+        real flame_intensity_multiplier
         bool ollama_enabled
         text ollama_base_url
+        int wip_limit
         text updated_at
     }
 
@@ -523,7 +526,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 - `AUDIT.md` — Security audit report with 14 findings (9 of 9 actionable remediated), threat model, and remediation tracking
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
 - `OLLAMA_PROVIDER.md` — Documentation for using Ollama as a local model provider via Claude Agent SDK
-- `TESTING.md` — Detailed testing guide with test inventory (866 unit/integration tests + E2E tests), writing guidelines, and 16 database migrations
+- `TESTING.md` — Detailed testing guide with test inventory (872 unit/integration tests + E2E tests), writing guidelines, and 18 database migrations
 
 ## License
 

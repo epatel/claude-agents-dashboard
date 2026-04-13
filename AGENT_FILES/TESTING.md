@@ -3,13 +3,13 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 866 tests
+./run-tests.sh              # Run all 872 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 16 migrations.
+The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 18 migrations.
 
 ## Test Structure
 
@@ -41,7 +41,7 @@ tests/
 │   ├── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
 │   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
-│   ├── test_routes.py               # HTTP endpoint tests (80 tests)
+│   ├── test_routes.py               # HTTP endpoint tests (84 tests)
 │   ├── test_session.py              # AgentSession SDK wrapper (69 tests)
 │   ├── test_session_service.py      # SessionService lifecycle (54 tests)
 │   ├── test_websocket.py            # WebSocket rate limiting (45 tests)
@@ -66,8 +66,8 @@ Quick checks that core components work:
 - **SessionService** (54 tests): Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests): WebSocket broadcasting, tool formatting, event types
 
-### Unit Tests — Web Layer (214 tests)
-- **Routes** (80 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail
+### Unit Tests — Web Layer (218 tests)
+- **Routes** (84 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail
 - **File Routes** (66 tests): Path validation, secret detection, .browserhidden, language mapping, directory scanning, file content
 - **WebSocket** (45 tests): Connection management, rate limiting, dead-connection cleanup
 - **App** (23 tests): FastAPI factory, middleware, CORS, security headers, lifespan

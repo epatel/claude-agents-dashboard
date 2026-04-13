@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (866 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (16 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
+This directory contains the automated test suite (872 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (18 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
 
 ## Test Structure
 
@@ -30,7 +30,7 @@ tests/
 │   ├── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
 │   ├── test_notification_service.py             # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
-│   ├── test_routes.py                           # HTTP endpoint tests (80 tests)
+│   ├── test_routes.py                           # HTTP endpoint tests (84 tests)
 │   ├── test_session.py                          # AgentSession SDK wrapper (69 tests)
 │   ├── test_session_service.py                  # SessionService lifecycle (54 tests)
 │   ├── test_websocket.py                        # WebSocket connection and rate limiting (45 tests)
@@ -50,8 +50,8 @@ tests/
 - **SessionService** (54 tests) — Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests) — WebSocket broadcasting, tool formatting, event types
 
-### 2. Web Layer (214 tests)
-- **Routes** (80 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail
+### 2. Web Layer (218 tests)
+- **Routes** (84 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail
 - **File Routes** (66 tests) — File browser path validation, secret detection, .browserhidden, language mapping, directory scanning
 - **WebSocket** (45 tests) — Connection management, rate limiting, dead-connection cleanup
 - **App** (23 tests) — FastAPI factory, middleware, CORS, security headers, lifespan
@@ -109,7 +109,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 866 tests
+# Run all 872 tests
 ./run-tests.sh
 
 # Run specific test categories
