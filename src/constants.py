@@ -12,7 +12,7 @@ AVAILABLE_MODELS = [
 ]
 
 # Default model to use when none specified
-DEFAULT_MODEL = "claude-sonnet-4-20250514"
+DEFAULT_MODEL = "claude-opus-4-6"
 
 # Built-in Claude Code tools that can be opted-in via agent config.
 # These require explicit allowlisting in permission_mode="acceptEdits".
