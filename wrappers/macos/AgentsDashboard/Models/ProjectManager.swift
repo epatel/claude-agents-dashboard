@@ -237,6 +237,15 @@ class ProjectManager: ObservableObject {
                 }
             }
 
+            // Check for wrapper (app) updates via GitHub releases
+            let wrapperStatus = await serverManager.checkForWrapperUpdate()
+            await MainActor.run {
+                if case .updateAvailable(let current, let latest) = wrapperStatus {
+                    self.showWrapperUpdateAlert(current: current, latest: latest)
+                }
+            }
+
+            // Check for server (git repo) updates
             let status = await serverManager.checkForUpdates()
             await MainActor.run {
                 switch status {
@@ -246,6 +255,20 @@ class ProjectManager: ObservableObject {
                     launchProcess(for: instance)
                 }
             }
+        }
+    }
+
+    private func showWrapperUpdateAlert(current: String, latest: String) {
+        let alert = NSAlert()
+        alert.messageText = "New version available"
+        alert.informativeText = "Agents Dashboard v\(latest) is available (you have v\(current)). Visit GitHub to download the update."
+        alert.addButton(withTitle: "Open GitHub")
+        alert.addButton(withTitle: "Later")
+        alert.alertStyle = .informational
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(ServerManager.releasesLatestURL)
         }
     }
 

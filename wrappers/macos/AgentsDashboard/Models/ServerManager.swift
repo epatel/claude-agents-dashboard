@@ -6,6 +6,12 @@ enum UpdateStatus {
     case error(String)
 }
 
+enum WrapperUpdateStatus {
+    case upToDate
+    case updateAvailable(current: String, latest: String)
+    case error(String)
+}
+
 enum InstallStage {
     case cloning
     case creatingVenv
@@ -194,6 +200,57 @@ class ServerManager: ObservableObject {
         try await runProcessBackground("/usr/bin/git", arguments: ["-C", serverPath, "pull", "--quiet"])
     }
 
+    /// Check if a newer wrapper release exists on GitHub.
+    /// Follows the /releases/latest redirect to extract the tag version.
+    static let releasesLatestURL = URL(string: "https://github.com/epatel/claude-agents-dashboard/releases/latest")!
+
+    func checkForWrapperUpdate() async -> WrapperUpdateStatus {
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+
+        // Use a session that doesn't follow redirects so we can read the Location header
+        let config = URLSessionConfiguration.ephemeral
+        let session = URLSession(configuration: config, delegate: RedirectStopper(), delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+
+        do {
+            let (_, response) = try await session.data(from: Self.releasesLatestURL)
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (300...399).contains(httpResponse.statusCode),
+                  let location = httpResponse.value(forHTTPHeaderField: "Location") else {
+                return .error("Unexpected response from GitHub")
+            }
+
+            // Location looks like: https://github.com/.../releases/tag/v1.2.0
+            guard let tagRange = location.range(of: "/tag/v", options: .backwards),
+                  !location[tagRange.upperBound...].isEmpty else {
+                return .error("Could not parse version from redirect")
+            }
+            let latestVersion = String(location[tagRange.upperBound...])
+
+            if compareVersions(currentVersion, latestVersion) == .orderedAscending {
+                return .updateAvailable(current: currentVersion, latest: latestVersion)
+            }
+            return .upToDate
+        } catch {
+            return .error(error.localizedDescription)
+        }
+    }
+
+    /// Compare two semver strings (e.g. "1.1.0" vs "1.2.0").
+    private func compareVersions(_ a: String, _ b: String) -> ComparisonResult {
+        let partsA = a.split(separator: ".").compactMap { Int($0) }
+        let partsB = b.split(separator: ".").compactMap { Int($0) }
+        let count = max(partsA.count, partsB.count)
+        for i in 0..<count {
+            let va = i < partsA.count ? partsA[i] : 0
+            let vb = i < partsB.count ? partsB[i] : 0
+            if va < vb { return .orderedAscending }
+            if va > vb { return .orderedDescending }
+        }
+        return .orderedSame
+    }
+
     /// Runs a process on a background thread and returns its stdout output.
     /// Throws if the process exits with a non-zero status.
     @discardableResult
@@ -239,5 +296,15 @@ class ServerManager: ObservableObject {
 
         let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
         return String(data: data, encoding: .utf8) ?? ""
+    }
+}
+
+/// URLSession delegate that stops redirect following so we can read the Location header.
+private class RedirectStopper: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)  // Don't follow the redirect
     }
 }
