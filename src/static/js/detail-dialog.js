@@ -41,7 +41,7 @@ const DetailDialog = {
             // Show default model from config
             try {
                 const config = await Api.request('GET', '/api/config');
-                const defaultModel = config.model || 'claude-sonnet-4-20250514';
+                const defaultModel = config.model || 'claude-opus-4-6';
                 const modelDisplayName = DialogUtils._getModelDisplayName(defaultModel);
                 const providerBadge = DialogUtils._getProviderBadgeHtml(defaultModel);
                 content += `<div class="detail-model-info"><strong>Model:</strong> ${modelDisplayName} ${providerBadge} (default)</div>`;

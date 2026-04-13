@@ -28,7 +28,7 @@ const ConfigDialog = {
     async openConfig() {
         try {
             const config = await Api.request('GET', '/api/config');
-            document.getElementById('config-model').value = config.model || 'claude-sonnet-4-20250514';
+            document.getElementById('config-model').value = config.model || 'claude-opus-4-6';
             document.getElementById('config-wip-limit').value = config.wip_limit || 0;
             document.getElementById('config-system-prompt').value = config.system_prompt || '';
             document.getElementById('config-project-context').value = config.project_context || '';

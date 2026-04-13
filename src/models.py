@@ -14,7 +14,7 @@ def new_id() -> str:
 class ItemCreate(BaseModel):
     title: str
     description: str = ""
-    model: Optional[str] = None
+    model: Optional[str] = DEFAULT_MODEL
     epic_id: Optional[str] = None
     auto_start: bool = False
     start_copy: bool = False
