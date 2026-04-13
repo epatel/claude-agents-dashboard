@@ -333,6 +333,12 @@ class ProjectManager: ObservableObject {
                 guard let self = self,
                       let index = self.dashboards.firstIndex(where: { $0.id == instance.id }) else { return }
 
+                // If a new process has already been launched (dashboard restarted),
+                // don't let the old process's termination corrupt the new state.
+                if let currentProcess = self.dashboards[index].process, currentProcess !== proc {
+                    return
+                }
+
                 if self.dashboards[index].status != .stopping {
                     self.dashboards[index].status = .error
                     self.dashboards[index].errorMessage = "Process exited with code \(proc.terminationStatus)"
@@ -357,7 +363,8 @@ class ProjectManager: ObservableObject {
     }
 
     private func cleanupDashboard(id: UUID) {
-        guard let index = dashboards.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = dashboards.firstIndex(where: { $0.id == id }),
+              dashboards[index].status == .stopping else { return }
         dashboards[index].status = .stopped
         dashboards[index].process = nil
         outputPipes[id]?.fileHandleForReading.readabilityHandler = nil
