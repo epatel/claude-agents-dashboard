@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
 import uuid
-from .constants import DEFAULT_MODEL, EPIC_COLORS
+from .constants import DEFAULT_MODEL, DEFAULT_OLLAMA_BASE_URL, EPIC_COLORS
 
 VALID_EPIC_COLOR_KEYS = {c["key"] for c in EPIC_COLORS}
 
@@ -139,5 +139,5 @@ class AgentConfig(BaseModel):
     flame_enabled: bool = True
     flame_intensity_multiplier: float = 1.0
     ollama_enabled: bool = False
-    ollama_base_url: str = "http://localhost:11434"
+    ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
     wip_limit: int = 0

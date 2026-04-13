@@ -1260,7 +1260,8 @@ class WorkflowService:
         """Check if an Ollama model is available. Falls back to config default if not."""
         import urllib.request
         import urllib.error
-        base_url = config.get("ollama_base_url", "http://localhost:11434")
+        from ..constants import DEFAULT_OLLAMA_BASE_URL
+        base_url = config.get("ollama_base_url", DEFAULT_OLLAMA_BASE_URL)
         try:
             req = urllib.request.Request(f"{base_url}/api/tags", method="GET")
             req.add_header("Accept", "application/json")

@@ -14,6 +14,9 @@ AVAILABLE_MODELS = [
 # Default model to use when none specified
 DEFAULT_MODEL = "claude-opus-4-6"
 
+# Default Ollama base URL
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
+
 # Built-in Claude Code tools that can be opted-in via agent config.
 # These require explicit allowlisting in permission_mode="acceptEdits".
 OPTIONAL_BUILTIN_TOOLS = [

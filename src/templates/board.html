@@ -3,7 +3,9 @@
 {% block content %}
 <script>window.__MODEL_NAMES__ = { {% for model_id, display_name, _ in available_models %}'{{ model_id }}': '{{ display_name }}'{% if not loop.last %}, {% endif %}{% endfor %} };
 window.__ANTHROPIC_MODEL_IDS__ = new Set([{% for model_id, _, _ in available_models %}'{{ model_id }}'{% if not loop.last %}, {% endif %}{% endfor %}]);
-window.__EXPERIMENTAL__ = {{ 'true' if experimental else 'false' }};</script>
+window.__EXPERIMENTAL__ = {{ 'true' if experimental else 'false' }};
+window.__DEFAULT_MODEL__ = '{{ default_model }}';
+window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
 <div class="epic-panel-toggle" onclick="Board.toggleEpicPanel()">
     <svg class="epic-panel-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
     Epics

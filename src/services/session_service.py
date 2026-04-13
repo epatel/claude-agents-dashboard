@@ -86,7 +86,8 @@ class SessionService:
         ollama_env = None
         is_ollama_model = session_model and not session_model.startswith("claude-")
         if config.get("ollama_enabled") and is_ollama_model:
-            ollama_base_url = config.get("ollama_base_url", "http://localhost:11434")
+            from ..constants import DEFAULT_OLLAMA_BASE_URL
+            ollama_base_url = config.get("ollama_base_url", DEFAULT_OLLAMA_BASE_URL)
             ollama_env = {
                 "ANTHROPIC_AUTH_TOKEN": "ollama",
                 "ANTHROPIC_API_KEY": "",

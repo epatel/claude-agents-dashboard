@@ -496,7 +496,7 @@ const ItemDialog = {
     async _updateDefaultModelDisplay() {
         try {
             const config = await Api.request('GET', '/api/config');
-            const defaultModel = config.model || 'claude-opus-4-6';
+            const defaultModel = config.model || window.__DEFAULT_MODEL__;
             const displayName = DialogUtils._getModelDisplayName(defaultModel);
 
             // Update the first option in the model select dropdown

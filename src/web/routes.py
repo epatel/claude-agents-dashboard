@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from ..config import COLUMNS
-from ..constants import AVAILABLE_MODELS, EPIC_COLORS
+from ..constants import AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_OLLAMA_BASE_URL, EPIC_COLORS
 from ..models import ItemCreate, ItemUpdate, ItemMove, ClarificationResponse, AgentConfig, EpicCreate, EpicUpdate, new_id
 from ..git.operations import get_diff, get_changed_files, get_file_content, get_current_branch
 
@@ -215,6 +215,8 @@ async def board_page(request: Request):
             "current_branch": current_branch,
             "experimental": getattr(request.app.state, "experimental", False),
             "available_models": AVAILABLE_MODELS,
+            "default_model": DEFAULT_MODEL,
+            "default_ollama_url": DEFAULT_OLLAMA_BASE_URL,
         },
     )
 
@@ -884,7 +886,7 @@ async def get_ollama_models(request: Request, force: bool = False):
 
     # Get Ollama base URL from config
     db = request.app.state.db
-    base_url = "http://localhost:11434"
+    base_url = DEFAULT_OLLAMA_BASE_URL
     try:
         async with db.connect() as conn:
             cursor = await conn.execute("SELECT ollama_base_url, ollama_enabled FROM agent_config WHERE id = 1")
