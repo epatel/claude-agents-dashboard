@@ -64,6 +64,12 @@ struct ProjectRow: View {
             statusIndicator
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let d = dashboard {
+                projectManager.selectedTab = d.id
+            }
+        }
         .contextMenu {
             if isRunning {
                 Button("Show Dashboard") {
