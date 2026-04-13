@@ -166,14 +166,22 @@ const App = {
     },
 
     async updateWakeLock() {
+        const running = this.hasRunningAgents();
+        // Native macOS wrapper bridge (IOPMAssertion)
+        if (window.webkit?.messageHandlers?.wakeLock) {
+            window.webkit.messageHandlers.wakeLock.postMessage(running ? 'acquire' : 'release');
+            this._wakeLock = running || null;
+            return;
+        }
+        // Web Wake Lock API fallback
         if (!('wakeLock' in navigator)) return;
-        if (this.hasRunningAgents() && !this._wakeLock) {
+        if (running && !this._wakeLock) {
             try {
                 this._wakeLock = await navigator.wakeLock.request('screen');
             } catch {
                 // Can fail (e.g. low battery)
             }
-        } else if (!this.hasRunningAgents() && this._wakeLock) {
+        } else if (!running && this._wakeLock) {
             this._wakeLock.release();
             this._wakeLock = null;
         }
@@ -186,7 +194,11 @@ const App = {
         }
 
         if (this._wakeLock) {
-            this._wakeLock.release();
+            if (window.webkit?.messageHandlers?.wakeLock) {
+                window.webkit.messageHandlers.wakeLock.postMessage('release');
+            } else if (this._wakeLock.release) {
+                this._wakeLock.release();
+            }
             this._wakeLock = null;
         }
 

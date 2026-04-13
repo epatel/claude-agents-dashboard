@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import IOKit.pwr_mgt
 
 struct DashboardWebView: NSViewRepresentable {
     let url: URL
@@ -7,6 +8,7 @@ struct DashboardWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        config.userContentController.add(context.coordinator, name: "wakeLock")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -30,6 +32,8 @@ struct DashboardWebView: NSViewRepresentable {
         )
         webView.stopLoading()
         webView.navigationDelegate = nil
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "wakeLock")
+        coordinator.releaseWakeLock()
         // Load blank page to tear down any remaining connections
         webView.loadHTMLString("", baseURL: nil)
     }
@@ -38,7 +42,42 @@ struct DashboardWebView: NSViewRepresentable {
         Coordinator()
     }
 
-    class Coordinator: NSObject, WKNavigationDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        private var powerAssertionID: IOPMAssertionID = 0
+        private var assertionHeld = false
+
+        func acquireWakeLock() {
+            guard !assertionHeld else { return }
+            let success = IOPMAssertionCreateWithName(
+                "AgentsDashboard agents running" as CFString,
+                IOPMAssertionLevel(kIOPMAssertionLevelOn),
+                "Preventing sleep while agents are running" as CFString,
+                &powerAssertionID
+            )
+            if success == kIOReturnSuccess {
+                assertionHeld = true
+            }
+        }
+
+        func releaseWakeLock() {
+            guard assertionHeld else { return }
+            IOPMAssertionRelease(powerAssertionID)
+            assertionHeld = false
+        }
+
+        // MARK: - WKScriptMessageHandler
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "wakeLock", let action = message.body as? String else { return }
+            if action == "acquire" {
+                acquireWakeLock()
+            } else if action == "release" {
+                releaseWakeLock()
+            }
+        }
+
+        // MARK: - WKNavigationDelegate
+
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             print("WebView navigation failed: \(error.localizedDescription)")
         }
