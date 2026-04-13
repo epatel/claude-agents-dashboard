@@ -13,9 +13,10 @@ Unlike brainstorm (which explores what to build), this skill assumes the goal is
 ## Rules
 
 1. **Read the board first.** Check for existing epics and todos that overlap.
-2. **Each todo = one agent session.** A single agent should be able to complete it in one run.
+2. **Each todo = one agent session.** A single agent should be able to complete it in one run. Each agent works in its own isolated git worktree (a separate copy of the project), so parallel tasks can safely edit different files without interfering with each other.
 3. **No placeholders.** Every todo needs a title and description with enough detail to execute.
 4. **Order by dependency.** Create foundational tasks first — they appear at the top.
+5. **Worktree isolation.** Since each task runs in its own worktree, parallel tasks that edit the same file will cause merge conflicts. Use `requires` to chain such tasks sequentially.
 
 ## Process
 

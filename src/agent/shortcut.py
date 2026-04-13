@@ -19,8 +19,9 @@ CREATE_SHORTCUT_SCHEMA = {
         "command": {
             "type": "string",
             "description": (
-                "The bash command to run when the shortcut is activated "
-                "(e.g., 'npm test', 'cargo build', 'python -m pytest')."
+                "The bash command to run when the shortcut is activated. "
+                "Use relative paths only — shortcuts run from the project root, not your worktree "
+                "(e.g., 'npm test', 'cargo build', 'python -m pytest tests/')."
             ),
         },
     },
@@ -41,7 +42,11 @@ def create_shortcut_server(on_create_shortcut):
         "create_shortcut",
         "Create a quick-launch bash command shortcut on the board's shortcut bar. "
         "Use this to set up useful commands that the user can run with one click, "
-        "such as test runners, build commands, linters, or dev servers.",
+        "such as test runners, build commands, linters, or dev servers. "
+        "IMPORTANT: Shortcuts run from the target project root directory, NOT from "
+        "your worktree. Use relative paths (e.g., 'npm test', 'python -m pytest') — "
+        "never use absolute paths or worktree-specific paths, as worktrees are "
+        "temporary and cleaned up after tasks complete.",
         CREATE_SHORTCUT_SCHEMA,
     )
     async def create_shortcut(input: dict) -> dict:

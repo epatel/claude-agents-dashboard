@@ -206,7 +206,15 @@ class AgentSession:
             logger.info("Ollama mode: skipping external MCP servers to reduce context size")
 
         # Ensure agent knows to work in the worktree directory
-        cwd_note = f"\n\nIMPORTANT: Your working directory is {self.worktree_path}. All file operations must be within this directory."
+        cwd_note = (
+            f"\n\nIMPORTANT: Your working directory is {self.worktree_path}. "
+            "All file operations must be within this directory."
+            "\n\nThis directory is a git worktree — an isolated copy of the target project. "
+            "Your changes here will be merged back to the main branch when your task is done. "
+            "Other agents working on other tasks have their own separate worktrees. "
+            "Always use relative paths or paths within this worktree — never reference "
+            "other worktrees or the main project checkout directly."
+        )
         clarify_note = (
             "\n\nIMPORTANT: If you need to ask the user a question or need clarification, "
             "you MUST use the ask_user MCP tool (mcp__clarification__ask_user). "
