@@ -9,7 +9,6 @@ const App = {
     reconnectTimer: null,
     isPageVisible: true,
     _epicRefreshTimer: null,
-    _wakeLock: null,
 
     // Delegate auto-scroll to DialogCore
     autoScroll(element) {
@@ -77,8 +76,6 @@ const App = {
                 if (this.connectionState === 'disconnected' || this.connectionState === 'error') {
                     this.connectWS();
                 }
-                // Re-acquire wake lock if agents are still running
-                this.updateWakeLock();
             } else {
                 console.log('Page became hidden, pausing reconnection attempts');
                 // Clear any pending reconnect timers when page is hidden
@@ -159,47 +156,10 @@ const App = {
         this.connectWS();
     },
 
-    hasRunningAgents() {
-        return Object.values(Board.items).some(i =>
-            i.column_name === 'doing' && (i.status === 'running' || i.status === 'resolving_conflicts')
-        );
-    },
-
-    async updateWakeLock() {
-        const running = this.hasRunningAgents();
-        // Native macOS wrapper bridge (IOPMAssertion)
-        if (window.webkit?.messageHandlers?.wakeLock) {
-            window.webkit.messageHandlers.wakeLock.postMessage(running ? 'acquire' : 'release');
-            this._wakeLock = running || null;
-            return;
-        }
-        // Web Wake Lock API fallback
-        if (!('wakeLock' in navigator)) return;
-        if (running && !this._wakeLock) {
-            try {
-                this._wakeLock = await navigator.wakeLock.request('screen');
-            } catch {
-                // Can fail (e.g. low battery)
-            }
-        } else if (!running && this._wakeLock) {
-            this._wakeLock.release();
-            this._wakeLock = null;
-        }
-    },
-
     cleanup() {
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
-        }
-
-        if (this._wakeLock) {
-            if (window.webkit?.messageHandlers?.wakeLock) {
-                window.webkit.messageHandlers.wakeLock.postMessage('release');
-            } else if (this._wakeLock.release) {
-                this._wakeLock.release();
-            }
-            this._wakeLock = null;
         }
 
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -384,7 +344,6 @@ const App = {
             case 'item_updated':
             case 'item_moved':
                 Board.updateCard(data);
-                this.updateWakeLock();
                 // Refresh epic progress — column changes affect done/total counts
                 this._refreshEpicsDebounced();
 

@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -19,6 +21,7 @@ class SessionService:
         self._agent_tasks: Dict[str, asyncio.Task] = {}  # item_id -> _run_agent task
         self._last_agent_messages: Dict[str, str] = {}  # item_id -> last agent text
         self._commit_messages: Dict[str, str] = {}  # item_id -> commit message from tool
+        self._caffeinate_proc: Optional[subprocess.Popen] = None
 
     async def create_session(self, item_id: str, worktree_path: Path, config: Dict[str, Any],
                            model: Optional[str] = None,
@@ -119,6 +122,7 @@ class SessionService:
         )
 
         self.sessions[item_id] = session
+        self._update_caffeinate()
         return session
 
     async def start_session_task(self, item_id: str, session: AgentSession, prompt: str,
@@ -168,6 +172,8 @@ class SessionService:
             except (asyncio.CancelledError, Exception):
                 pass
 
+        self._update_caffeinate()
+
     async def cleanup_all_sessions(self):
         """Gracefully stop all running agents."""
         item_ids = list(set(list(self.sessions.keys()) + list(self._agent_tasks.keys())))
@@ -176,6 +182,7 @@ class SessionService:
                 await self.cleanup_session(item_id)
             except Exception:
                 pass
+        self._stop_caffeinate()
 
     def remove_session(self, item_id: str):
         """Remove a finished session from tracking without cancelling it.
@@ -186,6 +193,7 @@ class SessionService:
         has already finished naturally.
         """
         self.sessions.pop(item_id, None)
+        self._update_caffeinate()
 
     def get_session(self, item_id: str) -> Optional[AgentSession]:
         """Get session for an item."""
@@ -203,6 +211,34 @@ class SessionService:
     def get_commit_message(self, item_id: str) -> Optional[str]:
         """Get commit message for an item."""
         return self._commit_messages.pop(item_id, None)
+
+    def _update_caffeinate(self):
+        """Start or stop caffeinate based on whether agents are running."""
+        if self.sessions and not self._caffeinate_proc:
+            self._start_caffeinate()
+        elif not self.sessions and self._caffeinate_proc:
+            self._stop_caffeinate()
+
+    def _start_caffeinate(self):
+        """Spawn caffeinate to prevent idle sleep (macOS only)."""
+        if sys.platform != "darwin" or self._caffeinate_proc:
+            return
+        try:
+            self._caffeinate_proc = subprocess.Popen(
+                ["caffeinate", "-i"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            logger.info("caffeinate started — preventing idle sleep while agents run")
+        except FileNotFoundError:
+            pass
+
+    def _stop_caffeinate(self):
+        """Kill the caffeinate process."""
+        if self._caffeinate_proc:
+            self._caffeinate_proc.terminate()
+            self._caffeinate_proc = None
+            logger.info("caffeinate stopped — idle sleep re-enabled")
 
     def _parse_plugins(self, plugins_json: Optional[str]) -> Optional[List[Dict[str, Any]]]:
         """Parse plugins JSON string from config into a list of plugin configs.
