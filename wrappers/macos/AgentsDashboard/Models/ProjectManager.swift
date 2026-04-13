@@ -59,9 +59,9 @@ class ProjectManager: ObservableObject {
     }
 
     func removeProject(_ project: Project) {
-        // Stop dashboard if running
+        // Remove dashboard (stops process and removes tab)
         if let dashboard = dashboards.first(where: { $0.project.id == project.id }) {
-            stopDashboard(id: dashboard.id)
+            removeDashboard(id: dashboard.id)
         }
         projects.removeAll { $0.id == project.id }
         saveProjects()
