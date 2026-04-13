@@ -81,6 +81,17 @@ class ProjectManager: ObservableObject {
         // Don't start if already running
         guard !isProjectRunning(project) else { return }
 
+        // Reuse existing stopped/error dashboard tab if present
+        if let existingIndex = dashboards.firstIndex(where: { $0.project.id == project.id }) {
+            dashboards[existingIndex].status = .starting
+            dashboards[existingIndex].port = nil
+            dashboards[existingIndex].errorMessage = nil
+            dashboards[existingIndex].outputLog = ""
+            selectedTab = dashboards[existingIndex].id
+            launchServer(for: dashboards[existingIndex])
+            return
+        }
+
         let instance = DashboardInstance(
             id: UUID(),
             project: project,
