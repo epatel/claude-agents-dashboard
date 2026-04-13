@@ -104,6 +104,9 @@ const FileBrowser = {
                 tab.truncated = data.truncated || false;
                 tab.size = data.size;
                 tab.lines = data.lines;
+                tab.viewer = data.viewer || null;
+                tab.modelFormat = data.model_format || null;
+                tab.archiveEntries = data.archive_entries || null;
                 this._renderContent();
             } catch (err) { /* file may have been deleted */ }
         }
@@ -258,6 +261,8 @@ const FileBrowser = {
             '.json': '📋', '.md': '📝', '.yaml': '⚙️', '.yml': '⚙️',
             '.png': '🖼️', '.jpg': '🖼️', '.jpeg': '🖼️', '.gif': '🖼️', '.svg': '🖼️',
             '.sh': '💻', '.sql': '🗃️', '.toml': '⚙️', '.xml': '📄',
+            '.stl': '🧊', '.obj': '🧊',
+            '.zip': '📦',
         };
         return iconMap[ext] || '📄';
     },
@@ -294,6 +299,9 @@ const FileBrowser = {
                 truncated: data.truncated || false,
                 size: data.size,
                 lines: data.lines,
+                viewer: data.viewer || null,
+                modelFormat: data.model_format || null,
+                archiveEntries: data.archive_entries || null,
             };
 
             // Enforce max tabs
@@ -418,6 +426,9 @@ const FileBrowser = {
     },
 
     _renderContent() {
+        // Cleanup previous 3D viewer if any
+        if (this._cleanup3D) this._cleanup3D();
+
         const contentEl = document.getElementById('file-content');
         const fontControls = document.getElementById('file-font-controls');
 
@@ -440,6 +451,20 @@ const FileBrowser = {
                     <div class="file-binary-icon">🔒</div>
                     <p>Hidden for security</p>
                 </div>`;
+            if (fontControls) fontControls.style.display = 'none';
+            return;
+        }
+
+        // 3D model viewer
+        if (tab.viewer === '3d' && tab.content) {
+            this._render3DModel(contentEl, tab);
+            if (fontControls) fontControls.style.display = 'none';
+            return;
+        }
+
+        // Archive contents viewer
+        if (tab.viewer === 'archive' && tab.archiveEntries) {
+            this._renderArchive(contentEl, tab);
             if (fontControls) fontControls.style.display = 'none';
             return;
         }
@@ -569,6 +594,185 @@ const FileBrowser = {
         wrapper.appendChild(mdDiv);
         container.innerHTML = '';
         container.appendChild(wrapper);
+    },
+
+    async _render3DModel(container, tab) {
+        container.innerHTML = `
+            <div class="file-3d-viewer">
+                <div class="file-3d-canvas-wrap">
+                    <canvas id="three-canvas"></canvas>
+                </div>
+                <div class="file-3d-controls">
+                    <span class="file-3d-info">${this._escapeHtml(tab.name)} — ${this._formatSize(tab.size)} — ${tab.modelFormat.toUpperCase()}</span>
+                    <span class="file-3d-hint">Drag to rotate · Scroll to zoom · Shift+drag to pan</span>
+                </div>
+            </div>`;
+
+        try {
+            const THREE = await import('three');
+            const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+
+            const canvas = document.getElementById('three-canvas');
+            const wrap = canvas.parentElement;
+            const width = wrap.clientWidth || 800;
+            const height = wrap.clientHeight || 600;
+
+            // Scene setup
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(getComputedStyle(document.documentElement)
+                .getPropertyValue('--bg-primary').trim() || '#1a1a2e');
+
+            const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 10000);
+            const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // Controls
+            const controls = new OrbitControls(camera, canvas);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+
+            // Lighting
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 10, 7);
+            scene.add(dirLight);
+            const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+            dirLight2.position.set(-5, -3, -5);
+            scene.add(dirLight2);
+
+            // Decode base64 data
+            const binaryStr = atob(tab.content);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+            let geometry;
+            if (tab.modelFormat === 'stl') {
+                const { STLLoader } = await import('three/addons/loaders/STLLoader.js');
+                const loader = new STLLoader();
+                geometry = loader.parse(bytes.buffer);
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0x4a9eff, specular: 0x222222, shininess: 60,
+                    flatShading: false,
+                });
+                geometry.computeVertexNormals();
+                const mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+            } else if (tab.modelFormat === 'obj') {
+                const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js');
+                const loader = new OBJLoader();
+                const text = new TextDecoder().decode(bytes);
+                const obj = loader.parse(text);
+                obj.traverse(child => {
+                    if (child.isMesh) {
+                        child.material = new THREE.MeshPhongMaterial({
+                            color: 0x4a9eff, specular: 0x222222, shininess: 60,
+                        });
+                    }
+                });
+                scene.add(obj);
+            }
+
+            // Fit camera to model
+            const box = new THREE.Box3().setFromObject(scene);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const dist = maxDim * 1.8;
+            camera.position.set(center.x + dist * 0.5, center.y + dist * 0.5, center.z + dist);
+            camera.lookAt(center);
+            controls.target.copy(center);
+            controls.update();
+
+            // Animation loop
+            let animId;
+            const animate = () => {
+                animId = requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            };
+            animate();
+
+            // Resize handling
+            const observer = new ResizeObserver(() => {
+                const w = wrap.clientWidth;
+                const h = wrap.clientHeight;
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+                renderer.setSize(w, h);
+            });
+            observer.observe(wrap);
+
+            // Cleanup when tab changes
+            this._cleanup3D = () => {
+                cancelAnimationFrame(animId);
+                observer.disconnect();
+                renderer.dispose();
+                controls.dispose();
+                this._cleanup3D = null;
+            };
+        } catch (err) {
+            container.innerHTML = `
+                <div class="file-binary-placeholder">
+                    <div class="file-binary-icon">🧊</div>
+                    <p>Failed to load 3D model: ${this._escapeHtml(err.message)}</p>
+                </div>`;
+        }
+    },
+
+    _cleanup3D: null,
+
+    _renderArchive(container, tab) {
+        const entries = tab.archiveEntries || [];
+        const fileEntries = entries.filter(e => !e.is_dir);
+        const dirEntries = entries.filter(e => e.is_dir);
+        const totalUncompressed = fileEntries.reduce((sum, e) => sum + (e.size || 0), 0);
+        const totalCompressed = fileEntries.reduce((sum, e) => sum + (e.compressed_size || 0), 0);
+
+        let html = `
+            <div class="file-archive-viewer">
+                <div class="file-archive-header">
+                    <span class="file-archive-title">📦 ${this._escapeHtml(tab.name)}</span>
+                    <span class="file-archive-stats">
+                        ${fileEntries.length} files, ${dirEntries.length} folders —
+                        ${this._formatSize(totalUncompressed)} uncompressed
+                        ${totalCompressed ? `(${this._formatSize(totalCompressed)} compressed, ${totalUncompressed ? Math.round((1 - totalCompressed/totalUncompressed) * 100) : 0}% saved)` : ''}
+                    </span>
+                </div>
+                <table class="file-archive-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Size</th>
+                            <th>Compressed</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+        for (const entry of entries) {
+            if (entry.error) {
+                html += `<tr class="archive-error"><td colspan="4">${this._escapeHtml(entry.name)}</td></tr>`;
+                continue;
+            }
+            if (entry.truncated) {
+                html += `<tr class="archive-truncated"><td colspan="4">${this._escapeHtml(entry.name)}</td></tr>`;
+                continue;
+            }
+            const icon = entry.is_dir ? '📁' : this._getFileIcon(entry.name);
+            const indent = (entry.name.match(/\//g) || []).length;
+            const displayName = entry.name.endsWith('/') ? entry.name.slice(0, -1) : entry.name;
+            html += `
+                <tr class="${entry.is_dir ? 'archive-dir' : ''}">
+                    <td style="padding-left:${8 + indent * 12}px">${icon} ${this._escapeHtml(displayName)}</td>
+                    <td>${entry.is_dir ? '—' : this._formatSize(entry.size)}</td>
+                    <td>${entry.is_dir ? '—' : this._formatSize(entry.compressed_size)}</td>
+                    <td>${entry.date || '—'}</td>
+                </tr>`;
+        }
+
+        html += `</tbody></table></div>`;
+        container.innerHTML = html;
     },
 
     _showError(message, path) {

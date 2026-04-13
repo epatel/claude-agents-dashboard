@@ -108,3 +108,10 @@ FILE_BROWSER_IMAGE_MIME_TYPES = {
     ".webp": "image/webp",
     ".ico": "image/x-icon",
 }
+
+# 3D model files — served as base64 for client-side rendering
+FILE_BROWSER_3D_EXTENSIONS = {".stl", ".obj"}
+FILE_BROWSER_MAX_3D_SIZE = 50_000_000  # 50MB
+
+# Archive files — contents listed server-side
+FILE_BROWSER_ARCHIVE_EXTENSIONS = {".zip"}
