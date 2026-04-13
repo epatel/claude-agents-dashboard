@@ -84,3 +84,6 @@ Each todo description should contain:
 - **Dependencies** — mention what this task depends on (for human context), but **always also set the `requires` parameter** with the actual item IDs to enforce the dependency technically
 
 Keep descriptions concise but complete. An agent reading only the title and description should know exactly what to build.
+
+- **Declare dependencies explicitly.** Always use the `requires` parameter with actual item IDs so the board enforces execution order — don't rely on text descriptions alone.
+- **Avoid merge conflicts between parallel tasks.** Ensure todos that may run concurrently touch different files; if two tasks must edit the same file, chain them with `requires` so they run sequentially.

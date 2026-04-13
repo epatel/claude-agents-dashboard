@@ -55,3 +55,5 @@ Once approved:
 - **Specific, not vague.** "Add retry logic to API client" not "Improve error handling"
 - **Include acceptance criteria** in the description when the task is non-obvious
 - **Order matters.** Create foundational tasks first (they appear at the top of the epic group)
+- **Declare dependencies explicitly.** Use the `requires` parameter with item IDs so the board enforces execution order — don't rely on text descriptions alone.
+- **Avoid merge conflicts between parallel tasks.** Ensure todos that may run concurrently touch different files; if two tasks must edit the same file, chain them with `requires` so they run sequentially.
