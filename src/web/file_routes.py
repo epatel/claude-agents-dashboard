@@ -6,6 +6,7 @@ import fnmatch
 import logging
 import mimetypes
 import os
+import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -21,6 +22,9 @@ from src.config import (
     FILE_BROWSER_MAX_IMAGE_SIZE,
     FILE_BROWSER_IMAGE_EXTENSIONS,
     FILE_BROWSER_IMAGE_MIME_TYPES,
+    FILE_BROWSER_3D_EXTENSIONS,
+    FILE_BROWSER_MAX_3D_SIZE,
+    FILE_BROWSER_ARCHIVE_EXTENSIONS,
 )
 
 logger = logging.getLogger(__name__)
@@ -234,6 +238,31 @@ def read_file_content(
 
     ext = file_path.suffix.lower()
 
+    # 3D model files — return base64 data for client-side rendering
+    if ext in FILE_BROWSER_3D_EXTENSIONS:
+        if size > FILE_BROWSER_MAX_3D_SIZE:
+            return {
+                "path": rel_path, "content": None, "size": size,
+                "language": None, "binary": True, "viewer": "3d",
+                "model_format": ext.lstrip("."),
+            }
+        raw = file_path.read_bytes()
+        b64 = base64.b64encode(raw).decode("ascii")
+        return {
+            "path": rel_path, "content": b64, "size": size,
+            "language": None, "binary": True, "viewer": "3d",
+            "model_format": ext.lstrip("."),
+        }
+
+    # Archive files — list contents
+    if ext in FILE_BROWSER_ARCHIVE_EXTENSIONS:
+        entries = _read_zip_contents(file_path)
+        return {
+            "path": rel_path, "content": None, "size": size,
+            "language": None, "binary": True, "viewer": "archive",
+            "archive_entries": entries,
+        }
+
     if ext in FILE_BROWSER_IMAGE_EXTENSIONS:
         mime_type = FILE_BROWSER_IMAGE_MIME_TYPES.get(ext, "application/octet-stream")
         if size > FILE_BROWSER_MAX_IMAGE_SIZE:
@@ -269,6 +298,33 @@ def read_file_content(
         "language": detect_language(filename), "binary": False,
         "truncated": truncated,
     }
+
+
+def _read_zip_contents(file_path: Path, max_entries: int = 500) -> list[dict]:
+    """Read the listing of entries inside a ZIP file."""
+    entries = []
+    try:
+        with zipfile.ZipFile(file_path, "r") as zf:
+            for i, info in enumerate(zf.infolist()):
+                if i >= max_entries:
+                    entries.append({
+                        "name": f"... and {len(zf.infolist()) - max_entries} more entries",
+                        "size": 0, "compressed_size": 0,
+                        "is_dir": False, "truncated": True,
+                    })
+                    break
+                entries.append({
+                    "name": info.filename,
+                    "size": info.file_size,
+                    "compressed_size": info.compress_size,
+                    "is_dir": info.is_dir(),
+                    "date": f"{info.date_time[0]:04d}-{info.date_time[1]:02d}-{info.date_time[2]:02d} "
+                            f"{info.date_time[3]:02d}:{info.date_time[4]:02d}",
+                })
+    except (zipfile.BadZipFile, OSError) as e:
+        entries.append({"name": f"Error reading archive: {e}", "size": 0,
+                        "compressed_size": 0, "is_dir": False, "error": True})
+    return entries
 
 
 # --- Endpoints ---
