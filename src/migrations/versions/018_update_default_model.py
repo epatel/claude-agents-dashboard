@@ -18,7 +18,7 @@ class UpdateDefaultModelMigration(Migration):
         )
 
     async def up(self, db: aiosqlite.Connection) -> None:
-        """Update existing items still using the old default, and update any NULL models."""
+        """Update existing items and config still using the old default model."""
         # Update items that have the old default model
         await db.execute(
             "UPDATE items SET model = 'claude-opus-4-6' WHERE model = 'claude-sonnet-4-20250514'"
@@ -27,9 +27,16 @@ class UpdateDefaultModelMigration(Migration):
         await db.execute(
             "UPDATE items SET model = 'claude-opus-4-6' WHERE model IS NULL"
         )
+        # Update agent_config default model
+        await db.execute(
+            "UPDATE agent_config SET model = 'claude-opus-4-6' WHERE model = 'claude-sonnet-4-20250514'"
+        )
 
     async def down(self, db: aiosqlite.Connection) -> None:
         """Revert to old default model."""
         await db.execute(
             "UPDATE items SET model = 'claude-sonnet-4-20250514' WHERE model = 'claude-opus-4-6'"
+        )
+        await db.execute(
+            "UPDATE agent_config SET model = 'claude-sonnet-4-20250514' WHERE model = 'claude-opus-4-6'"
         )

@@ -910,6 +910,49 @@ class TestCreateItemStartCopy:
 
 
 # ---------------------------------------------------------------------------
+# Default values for new projects / items
+# ---------------------------------------------------------------------------
+
+class TestDefaultValues:
+    """Verify that new items and fresh configs use the constants from constants.py."""
+
+    @pytest.mark.asyncio
+    async def test_create_item_default_model(self, client):
+        """A new item created without specifying a model should use DEFAULT_MODEL."""
+        from src.constants import DEFAULT_MODEL
+        resp = await client.post("/api/items", json={"title": "No model specified"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["model"] == DEFAULT_MODEL
+
+    @pytest.mark.asyncio
+    async def test_create_item_explicit_model_overrides_default(self, client):
+        """An explicit model in the request should override the default."""
+        resp = await client.post("/api/items", json={
+            "title": "Custom model",
+            "model": "claude-haiku-4-5-20251001",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["model"] == "claude-haiku-4-5-20251001"
+
+    @pytest.mark.asyncio
+    async def test_config_default_model(self, client):
+        """Fresh config should use DEFAULT_MODEL."""
+        from src.constants import DEFAULT_MODEL
+        resp = await client.get("/api/config")
+        assert resp.status_code == 200
+        assert resp.json()["model"] == DEFAULT_MODEL
+
+    @pytest.mark.asyncio
+    async def test_config_default_ollama_url(self, client):
+        """Fresh config should use DEFAULT_OLLAMA_BASE_URL."""
+        from src.constants import DEFAULT_OLLAMA_BASE_URL
+        resp = await client.get("/api/config")
+        assert resp.status_code == 200
+        assert resp.json()["ollama_base_url"] == DEFAULT_OLLAMA_BASE_URL
+
+
+# ---------------------------------------------------------------------------
 # Retry merge
 # ---------------------------------------------------------------------------
 
