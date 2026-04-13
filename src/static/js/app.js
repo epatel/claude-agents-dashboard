@@ -66,7 +66,7 @@ const App = {
             }
         });
 
-        // Page visibility handling for connection management and wake lock
+        // Page visibility handling for connection management
         document.addEventListener('visibilitychange', () => {
             this.isPageVisible = !document.hidden;
 
