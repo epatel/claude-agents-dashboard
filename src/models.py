@@ -140,3 +140,4 @@ class AgentConfig(BaseModel):
     flame_intensity_multiplier: float = 1.0
     ollama_enabled: bool = False
     ollama_base_url: str = "http://localhost:11434"
+    wip_limit: int = 0

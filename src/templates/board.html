@@ -369,6 +369,13 @@ window.__EXPERIMENTAL__ = {{ 'true' if experimental else 'false' }};</script>
                     </select>
                 </div>
                 <div class="form-group" style="margin-top: 16px;">
+                    <label for="config-wip-limit">WIP Limit <span class="tooltip" title="Maximum number of agents that can run concurrently. Extra items are queued in the Doing column and auto-started when a slot opens. 0 = unlimited.">?</span></label>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <input type="number" id="config-wip-limit" min="0" max="50" value="0" style="width:80px;">
+                        <span class="text-muted" style="font-size:12px;">0 = unlimited</span>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 16px;">
                     <label>Allowed Commands</label>
                     <label for="config-bash-yolo" style="font-size:12px;font-weight:normal;margin-top:8px;">
                         Yolo mode (allow all)

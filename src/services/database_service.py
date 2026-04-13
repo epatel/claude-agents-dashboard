@@ -112,6 +112,16 @@ class DatabaseService:
             )
             await conn.commit()
 
+    async def get_queued_items(self, limit: int = 1) -> List[Dict[str, Any]]:
+        """Get queued items in the doing column, ordered by position (top first)."""
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT * FROM items WHERE column_name = 'doing' AND status = 'queued' ORDER BY position ASC LIMIT ?",
+                (limit,),
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
     async def get_agent_config(self) -> Dict[str, Any]:
         """Get the agent configuration."""
         async with self.db.connect() as conn:

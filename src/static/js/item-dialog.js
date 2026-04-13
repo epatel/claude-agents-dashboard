@@ -376,7 +376,7 @@ const ItemDialog = {
         return Object.values(Board.items || {})
             .filter(item => {
                 if (exclude.has(item.id)) return false;
-                if (item.column_name === 'archive') return false;
+                if (item.column_name === 'done' || item.column_name === 'archive') return false;
                 if (query && !item.title.toLowerCase().includes(query)) return false;
                 return true;
             })

@@ -201,6 +201,10 @@
     color: var(--warning);
 }
 
+.card-status-queued {
+    color: var(--text-muted);
+}
+
 .card-status-cancelled {
     color: var(--text-muted);
 }

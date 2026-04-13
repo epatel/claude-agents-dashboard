@@ -37,8 +37,58 @@ class WorkflowService:
         # Track which items are running with YOLO mode (bash_yolo=True)
         self._yolo_items: set = set()
 
+    async def _count_running_agents(self) -> int:
+        """Count how many agents are currently running (not queued)."""
+        return len(self.sessions.sessions)
+
+    async def _is_at_wip_limit(self) -> bool:
+        """Check if the number of running agents has reached the WIP limit."""
+        config = await self.db.get_agent_config()
+        wip_limit = config.get("wip_limit", 0)
+        if wip_limit <= 0:
+            return False
+        running = await self._count_running_agents()
+        return running >= wip_limit
+
+    async def _enqueue_item(self, item_id: str) -> Dict[str, Any]:
+        """Place an item in the doing column with queued status."""
+        item = await self.db.update_item(item_id, column_name="doing", status="queued")
+        await self.notifications.broadcast_item_updated(item)
+        await self._log_and_notify(item_id, "system",
+            "WIP limit reached — item queued, will auto-start when a slot opens")
+        return item
+
+    async def process_queue(self) -> None:
+        """Start the next queued item(s) if slots are available."""
+        config = await self.db.get_agent_config()
+        wip_limit = config.get("wip_limit", 0)
+        if wip_limit <= 0:
+            return  # No limit — nothing to dequeue
+
+        running = await self._count_running_agents()
+        available_slots = wip_limit - running
+        if available_slots <= 0:
+            return
+
+        # Get queued items ordered by position (top of column = first)
+        queued_items = await self.db.get_queued_items(limit=available_slots)
+        for item in queued_items:
+            try:
+                await self._start_agent_internal(item["id"])
+            except Exception as e:
+                logger.warning(f"Failed to dequeue item {item['id']}: {e}")
+
     async def start_agent(self, item_id: str) -> Dict[str, Any]:
-        """Start an agent for an item. Creates worktree, launches agent."""
+        """Start an agent for an item. Creates worktree, launches agent.
+        If WIP limit is reached, the item is queued instead."""
+        # Check WIP limit before starting
+        if await self._is_at_wip_limit():
+            return await self._enqueue_item(item_id)
+
+        return await self._start_agent_internal(item_id)
+
+    async def _start_agent_internal(self, item_id: str) -> Dict[str, Any]:
+        """Actually start the agent (bypasses WIP limit check)."""
         # Clean up any existing session for this item
         await self.sessions.cleanup_session(item_id)
 
@@ -144,6 +194,10 @@ class WorkflowService:
         await self._log_and_notify(item_id, "system", "Agent cancelled by user")
         item = await self.db.update_item(item_id, column_name="todo", status="cancelled")
         await self.notifications.broadcast_item_updated(item)
+
+        # A slot may have opened — process the queue
+        await self.process_queue()
+
         return item
 
     async def pause_agent(self, item_id: str) -> Dict[str, Any]:
@@ -753,6 +807,9 @@ class WorkflowService:
                     "item_id": item_id, "active": False,
                 })
 
+            # Process queue — a slot just opened
+            await self.process_queue()
+
         return on_complete
 
     def _create_on_error_callback(self, item_id: str):
@@ -769,6 +826,9 @@ class WorkflowService:
                 await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
                     "item_id": item_id, "active": False,
                 })
+
+            # Process queue — a slot just opened
+            await self.process_queue()
         return on_error
 
     def _add_failure_notification(self, item_id: str, error: str):

@@ -440,6 +440,7 @@ const Board = {
         if (item.status) {
             const labels = {
                 running: '<span class="spinner"></span> Running',
+                queued: '⏳ Queued',
                 paused: '⏸ Paused',
                 failed: '✕ Failed',
                 cancelled: '⊘ Cancelled',
@@ -476,6 +477,8 @@ const Board = {
             } else {
                 actionsHtml = `<button class="btn btn-xs btn-primary${disabledClass}" onclick="event.stopPropagation(); Board.startAgent('${item.id}')" title="${this.escapeHtml(blockedTooltip)}"${disabledAttr}>▶</button>${deleteBtn}`;
             }
+        } else if (col === 'doing' && item.status === 'queued') {
+            actionsHtml = `<button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')" title="Cancel">✕</button>`;
         } else if (col === 'doing' && item.status === 'failed') {
             actionsHtml = `<button class="btn btn-xs" onclick="event.stopPropagation(); Board.retryAgent('${item.id}')" title="Retry">↻ Retry</button>
                 <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>`;

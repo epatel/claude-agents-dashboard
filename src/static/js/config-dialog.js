@@ -29,6 +29,7 @@ const ConfigDialog = {
         try {
             const config = await Api.request('GET', '/api/config');
             document.getElementById('config-model').value = config.model || 'claude-sonnet-4-20250514';
+            document.getElementById('config-wip-limit').value = config.wip_limit || 0;
             document.getElementById('config-system-prompt').value = config.system_prompt || '';
             document.getElementById('config-project-context').value = config.project_context || '';
             document.getElementById('config-mcp-enabled').checked = config.mcp_enabled || false;
@@ -331,6 +332,7 @@ const ConfigDialog = {
             flame_intensity_multiplier: parseFloat(document.getElementById('config-flame-intensity').value) || 1.0,
             ollama_enabled: document.getElementById('config-ollama-enabled').checked,
             ollama_base_url: document.getElementById('config-ollama-base-url').value || 'http://localhost:11434',
+            wip_limit: parseInt(document.getElementById('config-wip-limit').value, 10) || 0,
         };
         try {
             await Api.request('PUT', '/api/config', config);
