@@ -288,23 +288,23 @@ body {
     border-radius: 3px;
 }
 
-/* Theme toggle icons */
-[data-theme="dark"] .theme-icon-light,
-[data-theme="light"] .theme-icon-dark {
+/* Theme toggle icons — show only the icon matching the current mode */
+.theme-icon-auto,
+.theme-icon-light,
+.theme-icon-dark {
     display: none;
 }
 
-[data-theme="auto"] .theme-icon-dark {
-    display: none;
+[data-theme="auto"] .theme-icon-auto {
+    display: inline;
 }
 
-@media (prefers-color-scheme: dark) {
-    [data-theme="auto"] .theme-icon-light {
-        display: none;
-    }
-    [data-theme="auto"] .theme-icon-dark {
-        display: inline;
-    }
+[data-theme="light"] .theme-icon-light {
+    display: inline;
+}
+
+[data-theme="dark"] .theme-icon-dark {
+    display: inline;
 }
 
 /* Spinner */
