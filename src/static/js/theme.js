@@ -23,20 +23,22 @@ const Theme = {
 
     /** Resolve 'auto' to explicit light/dark via matchMedia, then set data-theme */
     _applyPreference(preference) {
-        let resolved;
-        if (preference === 'auto') {
-            resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        } else {
-            resolved = preference;
-        }
+        const resolved = this._resolveTheme(preference);
         document.documentElement.setAttribute('data-theme', resolved);
         document.documentElement.setAttribute('data-theme-preference', preference);
     },
 
+    _resolveTheme(preference) {
+        if (preference === 'auto') {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        return preference;
+    },
+
     toggle() {
         const current = this.getPreference();
-        // Cycle: auto → light → dark → auto
-        const next = current === 'auto' ? 'light' : current === 'light' ? 'dark' : 'auto';
+        // Cycle: light → dark → system → light
+        const next = current === 'light' ? 'dark' : current === 'dark' ? 'auto' : 'light';
         this._applyPreference(next);
         localStorage.setItem(this.STORAGE_KEY, next);
         this.updateToggleTitle(next);
