@@ -1,10 +1,21 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="auto">
+<html lang="en" data-theme="auto" data-theme-preference="auto">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ project_name }} — Agents Dashboard</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <!-- Resolve theme before CSS loads to prevent flash of wrong theme -->
+    <script>
+    (function() {
+        var p = 'auto';
+        try { p = localStorage.getItem('agents-dashboard-theme') || 'auto'; } catch(e) {}
+        var resolved = p;
+        if (p === 'auto') resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', resolved);
+        document.documentElement.setAttribute('data-theme-preference', p);
+    })();
+    </script>
     <link rel="stylesheet" href="/static/css/theme.css">
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" href="/static/css/board.css">

@@ -288,22 +288,22 @@ body {
     border-radius: 3px;
 }
 
-/* Theme toggle icons — show only the icon matching the current mode */
+/* Theme toggle icons — show only the icon matching the user preference */
 .theme-icon-auto,
 .theme-icon-light,
 .theme-icon-dark {
     display: none;
 }
 
-[data-theme="auto"] .theme-icon-auto {
+[data-theme-preference="auto"] .theme-icon-auto {
     display: inline;
 }
 
-[data-theme="light"] .theme-icon-light {
+[data-theme-preference="light"] .theme-icon-light {
     display: inline;
 }
 
-[data-theme="dark"] .theme-icon-dark {
+[data-theme-preference="dark"] .theme-icon-dark {
     display: inline;
 }
 
