@@ -17,7 +17,7 @@ class TestAdvisorModelConstants:
         return [model_id for model_id, _, _ in AVAILABLE_MODELS]
 
     def test_advisor_model_exists(self):
-        assert "claude-sonnet-4-20250514+advisor" in self._get_model_ids()
+        assert "claude-sonnet-4-6+advisor" in self._get_model_ids()
 
     def test_advisor_model_has_suffix(self):
         model_ids = self._get_model_ids()
@@ -39,7 +39,7 @@ class TestSessionServiceAdvisorParsing:
             item_id="test-1",
             worktree_path=temp_dir,
             config={},
-            model="claude-sonnet-4-20250514+advisor",
+            model="claude-sonnet-4-6+advisor",
         )
         assert session.use_advisor is True
 
@@ -49,9 +49,9 @@ class TestSessionServiceAdvisorParsing:
             item_id="test-2",
             worktree_path=temp_dir,
             config={},
-            model="claude-sonnet-4-20250514+advisor",
+            model="claude-sonnet-4-6+advisor",
         )
-        assert session.model == "claude-sonnet-4-20250514"
+        assert session.model == "claude-sonnet-4-6"
         assert "+advisor" not in (session.model or "")
 
     async def test_no_advisor_without_suffix(self, temp_dir):
@@ -60,7 +60,7 @@ class TestSessionServiceAdvisorParsing:
             item_id="test-3",
             worktree_path=temp_dir,
             config={},
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
         )
         assert session.use_advisor is False
 
@@ -80,11 +80,11 @@ class TestSessionServiceAdvisorParsing:
         session = await service.create_session(
             item_id="test-5",
             worktree_path=temp_dir,
-            config={"model": "claude-sonnet-4-20250514+advisor"},
+            config={"model": "claude-sonnet-4-6+advisor"},
             model=None,
         )
         assert session.use_advisor is True
-        assert session.model == "claude-sonnet-4-20250514"
+        assert session.model == "claude-sonnet-4-6"
 
 
 class TestAgentSessionAdvisorConfig:
@@ -96,7 +96,7 @@ class TestAgentSessionAdvisorConfig:
         session = AgentSession(
             worktree_path=Path("/tmp/test"),
             system_prompt="test",
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             use_advisor=True,
         )
         assert session.use_advisor is True
@@ -107,7 +107,7 @@ class TestAgentSessionAdvisorConfig:
         session = AgentSession(
             worktree_path=Path("/tmp/test"),
             system_prompt="test",
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
         )
         assert session.use_advisor is False
 
@@ -129,7 +129,7 @@ class TestAgentSessionAdvisorConfig:
         session = AgentSession(
             worktree_path=temp_dir,
             system_prompt="test",
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             use_advisor=True,
             on_complete=AsyncMock(),
         )
@@ -173,7 +173,7 @@ class TestAgentSessionAdvisorConfig:
         session = AgentSession(
             worktree_path=temp_dir,
             system_prompt="test",
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             use_advisor=False,
             on_complete=AsyncMock(),
         )
@@ -205,7 +205,7 @@ class TestAgentSessionAdvisorConfig:
         session = AgentSession(
             worktree_path=temp_dir,
             system_prompt="test",
-            model="claude-sonnet-4-20250514",  # Already stripped by SessionService
+            model="claude-sonnet-4-6",  # Already stripped by SessionService
             use_advisor=True,
             on_complete=AsyncMock(),
         )
@@ -217,5 +217,5 @@ class TestAgentSessionAdvisorConfig:
 
         assert mock_options_cls.called
         call_kwargs = mock_options_cls.call_args.kwargs
-        assert call_kwargs.get("model") == "claude-sonnet-4-20250514"
+        assert call_kwargs.get("model") == "claude-sonnet-4-6"
         assert "+advisor" not in (call_kwargs.get("model") or "")

@@ -20,12 +20,12 @@ enum InstallStage {
 }
 
 enum ClaudeCLIStatus {
-    case installed(version: String, loggedIn: Bool)
+    case installed(version: String, loggedIn: Bool, outdated: Bool)
     case notInstalled
     case error(String)
 
     var isReady: Bool {
-        if case .installed(_, let loggedIn) = self { return loggedIn }
+        if case .installed(_, let loggedIn, let outdated) = self { return loggedIn && !outdated }
         return false
     }
 }
@@ -36,6 +36,7 @@ class ServerManager: ObservableObject {
 
     static let repoURL = "https://github.com/epatel/claude-agents-dashboard.git"
     static let minimumPythonVersion = "3.10"
+    static let minimumClaudeCLIVersion = "2.1.111"
 
     /// Find a suitable Python 3.10+ binary, preferring Homebrew over system Python.
     var pythonPath: String {
@@ -118,14 +119,37 @@ class ServerManager: ObservableObject {
             return .error("Claude CLI found at \(claudeBin) but failed to run: \(error.localizedDescription)")
         }
 
+        let outdated = isClaudeVersionOutdated(version)
+
         // Check login status by running `claude auth status`
         // Exit code 0 = logged in, non-zero = not logged in
         do {
             _ = try await runProcessBackground(claudeBin, arguments: ["auth", "status"])
-            return .installed(version: version, loggedIn: true)
+            return .installed(version: version, loggedIn: true, outdated: outdated)
         } catch {
-            return .installed(version: version, loggedIn: false)
+            return .installed(version: version, loggedIn: false, outdated: outdated)
         }
+    }
+
+    /// Extract the "2.1.111" part from output like "2.1.111 (Claude Code)".
+    /// Returns nil if no version-like token is found.
+    func parseClaudeVersion(_ raw: String) -> String? {
+        // Grab the first whitespace-delimited token that looks like digits.dots
+        for token in raw.split(whereSeparator: { $0.isWhitespace }) {
+            let s = String(token)
+            let allowed = CharacterSet(charactersIn: "0123456789.")
+            if s.unicodeScalars.allSatisfy({ allowed.contains($0) }) && s.contains(".") {
+                return s
+            }
+        }
+        return nil
+    }
+
+    /// True when the parsed CLI version is below `minimumClaudeCLIVersion`.
+    /// On parse failure, returns false (don't block on an unreadable version).
+    func isClaudeVersionOutdated(_ raw: String) -> Bool {
+        guard let parsed = parseClaudeVersion(raw) else { return false }
+        return compareVersions(parsed, Self.minimumClaudeCLIVersion) == .orderedAscending
     }
 
     func installationExists() -> Bool {
@@ -238,7 +262,7 @@ class ServerManager: ObservableObject {
     }
 
     /// Compare two semver strings (e.g. "1.1.0" vs "1.2.0").
-    private func compareVersions(_ a: String, _ b: String) -> ComparisonResult {
+    func compareVersions(_ a: String, _ b: String) -> ComparisonResult {
         let partsA = a.split(separator: ".").compactMap { Int($0) }
         let partsB = b.split(separator: ".").compactMap { Int($0) }
         let count = max(partsA.count, partsB.count)

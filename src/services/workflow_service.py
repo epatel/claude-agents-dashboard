@@ -1271,7 +1271,7 @@ class WorkflowService:
             if model in available:
                 return model
             # Model not found — fall back
-            fallback = config.get("model") or "claude-opus-4-6"
+            fallback = config.get("model") or "claude-opus-4-7"
             await self._log_and_notify(
                 item_id, "system",
                 f"Ollama model '{model}' not available (pulled models: {', '.join(sorted(available)) or 'none'}). "

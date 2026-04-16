@@ -5,14 +5,14 @@ Constants for the agents dashboard application.
 # Available models - centralized to avoid duplication
 # Each entry: (model_id, display_name, experimental)
 AVAILABLE_MODELS = [
-    ("claude-sonnet-4-20250514", "Claude Sonnet 4", False),
-    ("claude-sonnet-4-20250514+advisor", "Claude Sonnet 4 + Advisor", True),
-    ("claude-opus-4-6", "Claude Opus 4.6", False),
+    ("claude-sonnet-4-6", "Claude Sonnet 4.6", False),
+    ("claude-sonnet-4-6+advisor", "Claude Sonnet 4.6 + Advisor", True),
+    ("claude-opus-4-7", "Claude Opus 4.7", False),
     ("claude-haiku-4-5-20251001", "Claude Haiku 4.5", False),
 ]
 
 # Default model to use when none specified
-DEFAULT_MODEL = "claude-opus-4-6"
+DEFAULT_MODEL = "claude-opus-4-7"
 
 # Default Ollama base URL
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"

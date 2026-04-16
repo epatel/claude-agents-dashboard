@@ -192,13 +192,27 @@ struct InstallSheet: View {
                 }
             } else if let status = claudeStatus {
                 switch status {
-                case .installed(let version, let loggedIn):
+                case .installed(let version, let loggedIn, let outdated):
                     HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
+                        Image(systemName: outdated ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                            .foregroundColor(outdated ? .orange : .green)
                         Text("Claude CLI \(version)")
                             .font(.callout)
                             .foregroundColor(.secondary)
+                    }
+                    if outdated {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .foregroundColor(.orange)
+                                Text("Requires \(ServerManager.minimumClaudeCLIVersion)+ — upgrade with:")
+                                    .font(.callout)
+                                    .foregroundColor(.orange)
+                                Spacer()
+                                retryButton
+                            }
+                            commandRow("claude update")
+                        }
                     }
                     if loggedIn {
                         HStack(spacing: 8) {

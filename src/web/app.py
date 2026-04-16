@@ -17,6 +17,47 @@ from .websocket import ConnectionManager
 logger = logging.getLogger(__name__)
 
 STALE_WORKTREE_CHECK_INTERVAL = 300  # 5 minutes
+MINIMUM_CLAUDE_CLI_VERSION = "2.1.111"
+
+
+def _parse_claude_version(raw: str) -> tuple[int, ...] | None:
+    """Extract a version tuple from output like "2.1.111 (Claude Code)"."""
+    for token in raw.split():
+        if "." in token and all(c.isdigit() or c == "." for c in token):
+            try:
+                return tuple(int(p) for p in token.split("."))
+            except ValueError:
+                continue
+    return None
+
+
+async def _check_claude_cli_version() -> None:
+    """Warn if the installed Claude CLI is older than MINIMUM_CLAUDE_CLI_VERSION."""
+    import shutil
+    if not shutil.which("claude"):
+        logger.warning("Claude CLI ('claude') not found on PATH — agents will fail to start.")
+        return
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "--version",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+    except Exception as e:
+        logger.warning(f"Could not run 'claude --version': {e}")
+        return
+
+    raw = stdout.decode(errors="replace").strip()
+    current = _parse_claude_version(raw)
+    minimum = _parse_claude_version(MINIMUM_CLAUDE_CLI_VERSION)
+    if current is None or minimum is None:
+        return
+    if current < minimum:
+        logger.warning(
+            f"Claude CLI version {raw!r} is below required {MINIMUM_CLAUDE_CLI_VERSION}. "
+            "Upgrade with: claude update"
+        )
 
 
 async def _check_stale_worktrees(orchestrator: AgentOrchestrator):
@@ -51,6 +92,9 @@ async def _periodic_stale_check(orchestrator: AgentOrchestrator):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Warn on stale Claude CLI before anything else
+    await _check_claude_cli_version()
+
     # Startup: initialize database and orchestrator
     await app.state.db.initialize()
     app.state.orchestrator = AgentOrchestrator(
