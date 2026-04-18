@@ -1,15 +1,16 @@
 # CLAUDE.md
 
-Standalone scrum board that orchestrates Claude agents working on a **separate target project**. Server code lives here; data directory (`agents-lab/`) is created in the target project.
+Standalone scrum board that orchestrates Claude agents working on a **separate target project** (or a workspace of sibling git repos in multi-repo mode). Server code lives here; data directory (`agents-lab/`) is created in the target project / workspace root.
 
 ## Running
 
 ```bash
-./run.sh /path/to/target-project   # Creates venv, installs deps, starts server (Python 3.12+)
-./run.sh /path/to/project --experimental  # Enable experimental features (Ollama provider)
-./run-tests.sh                     # All tests (872)
-./run-tests.sh tests/smoke/        # Smoke tests only
-./run-tests.sh -k "test_cancel"    # Filter by name
+./run.sh /path/to/target-project    # Single-repo mode — creates venv, installs deps, starts server (Python 3.12+)
+./run.sh /path/to/workspace-folder  # Multi-repo mode — workspace must contain ≥1 sibling git repos
+./run.sh /path/to/project --experimental  # Enable experimental features (Ollama provider, Sonnet 4.6 + Advisor)
+./run-tests.sh                      # All tests (873)
+./run-tests.sh tests/smoke/         # Smoke tests only
+./run-tests.sh -k "test_cancel"     # Filter by name
 ```
 
 Server binds to `127.0.0.1:8000` (auto-increments if busy, up to 8019). E2E tests: `./run-e2e-tests.sh`.
@@ -17,23 +18,27 @@ Server binds to `127.0.0.1:8000` (auto-increments if busy, up to 8019). E2E test
 ## Architecture
 
 **Backend**: FastAPI + aiosqlite. `AgentOrchestrator` is a thin facade delegating to 5 services:
-- `WorkflowService` — agent lifecycle, state transitions, merge conflict auto-resolution, dependency auto-start
-- `DatabaseService` — all DB operations
-- `NotificationService` — WebSocket broadcasting
-- `GitService` — worktree management, merge operations
-- `SessionService` — Claude SDK session lifecycle, commit messages
+- `WorkflowService` — agent lifecycle, state transitions, merge conflict auto-resolution, dependency auto-start, WIP limit queueing, multi-repo session kwargs
+- `DatabaseService` — all DB operations (parameterized, with column whitelists)
+- `NotificationService` — WebSocket broadcasting + tool formatting
+- `GitService` — worktree management, merge operations, repo path resolution
+- `SessionService` — Claude SDK session lifecycle, commit messages, plugin parsing, Ollama config
 
-**Frontend**: Vanilla JS, no build step. Jinja2 server-renders initial board; JS handles updates via WebSocket + fetch. `dialogs.js` coordinates 12 specialized dialog modules.
+**Frontend**: Vanilla JS, no build step. Jinja2 server-renders initial board (`base.html`, `board.html`, `partials/card.html`); JS handles updates via WebSocket + fetch. `dialogs.js` coordinates 12 specialized dialog modules.
 
-**Database**: SQLite with 18 versioned migrations (001–018) in `src/migrations/versions/`. Auto-migrates on startup. CLI: `python -m src.manage [status|migrate|rollback]`.
+**Database**: SQLite with 20 versioned migrations (001–020) in `src/migrations/versions/`. Auto-migrates on startup. CLI: `python -m src.manage [status|migrate|rollback]`.
+
+**Models**: Default is **Claude Opus 4.7**. Other selectable models: Claude Sonnet 4.6, Claude Haiku 4.5, and Claude Sonnet 4.6 + Advisor (experimental). Optional Ollama provider gated behind `--experimental`.
 
 ### Key flows
 
-- **Agent start**: non-blocking via `asyncio.create_task()`. Each item gets its own git worktree (`agents-lab/worktrees/agent-{item_id}`).
+- **Agent start**: non-blocking via `asyncio.create_task()`. Each item gets its own git worktree (`agents-lab/worktrees/agent-{item_id}`). In multi-repo mode the worktree is rooted in the item's chosen sibling repo and `add_dirs` includes the other sibling repos read-only.
 - **Clarification**: `ask_user` MCP tool moves item to "Clarify", `await`s `asyncio.Event`, HTTP endpoint sets the event.
 - **Merge**: commits uncommitted worktree changes first, then merges. On conflict, captures diff, resets worktree to latest base, restarts agent with conflict prompt.
 - **Pause/resume**: captures `session_id`, kills process, later resumes via `ClaudeAgentOptions(resume=session_id, continue_conversation=True)`.
 - **Stale worktree detection**: on startup + every 5min, scans worktrees against DB state, emits cleanup notifications.
+- **WIP limit**: configurable cap on concurrent running agents; items started beyond the limit are placed in 'doing' with `status='queued'` and auto-started in position order when a slot opens.
+- **Multi-repo**: when `target_project` is a parent folder containing ≥1 sibling git repos, items carry a required `repo` field; worktrees are created inside the chosen subrepo.
 
 ### Built-in MCP tools
 
@@ -61,9 +66,10 @@ Server binds to `127.0.0.1:8000` (auto-increments if busy, up to 8019). E2E test
 
 ### Adding features
 
-1. **Backend**: models.py -> migration in `src/migrations/versions/` -> service logic -> routes.py endpoint
+1. **Backend**: models.py -> migration in `src/migrations/versions/` -> service logic (workflow/database/git/session) -> routes.py endpoint
 2. **Frontend**: templates + dialog module + WebSocket event handling in `app.js` + broadcast from `NotificationService`
-3. **DB migration**: copy `000_template.py.example`, implement `up()`/`down()`, test with `python -m src.manage migrate`
+3. **DB migration**: copy `000_template.py.example`, implement `up()`/`down()`, test with `python -m src.manage migrate`. Whitelist any new `items`/`epics` columns in `database_service.py` (`ALLOWED_ITEM_COLUMNS` / `ALLOWED_EPIC_COLUMNS`).
+4. **Card rendering**: keep JS card builder in `board.js` and the Jinja2 `partials/card.html` partial in sync.
 
 ### Debugging
 
