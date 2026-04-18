@@ -1,14 +1,21 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-04-13
+**Date**: 2026-04-18
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 36 — Maintenance reassessment. Added WIP limit (migration 017), default model update to Opus 4.6 (migration 018), flame intensity multiplier. Python backend ~7,352 lines across 37 source files (excluding migrations). JavaScript frontend ~7,947 lines across 24 files. CSS ~3,679 lines across 5 files. 18 migrations. 872 tests across 29 test files (including conftest.py with 5 fixture validation tests).
+**Revision**: 37 — Maintenance reassessment. Added default model upgrade to **Claude Opus 4.7** + Sonnet 4.6 selectable (migration 019), and **multi-repo workspace support** via a new nullable `repo` column on items with index (migration 020). The dashboard now accepts either a single git repo or a parent folder containing several sibling git repos as `target_project`. Python backend ~7,669 lines across 37 source files (excluding migrations). JavaScript frontend ~8,017 lines across 24 files. CSS ~3,702 lines across 5 files. **20 migrations**. **873 tests across 30 test files** (including conftest.py).
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, **annotation summary** (migration 009), **epic grouping** (migration 010 — epics table, epic_id on items, CRUD routes, progress panel, board filtering, Todo grouping, card badges, agent MCP integration), **annotation prompt formatting**, **item dependencies** (migration 011 — join table for tracking dependencies between items), **auto-start pipelines** (migration 012 — items auto-start agents when dependencies resolve), **shortcuts bar** (quick-launch bash commands with process management, stop/auto-reset, progress dialog), **create_shortcut MCP tool** (agents can add shortcuts to the board), **worktree file browsing** (browse agent worktree during review), **retry merge**, **bulk operations** (archive/delete by date/epic), **dependency management endpoints**, **animated flame background** (migration 013 — activity-driven flame effect behind board columns), **start_copy flag** (migration 014 — configurable per-item flag to show Start Copy button instead of Start), **has_file_changes detection** (migration 015 — tracks whether agent produced file changes, cards show "Done" vs "Approve & Merge" accordingly), **Ollama provider** (migration 016 — experimental local model support with dynamic model discovery, connection status, provider badges), **WIP limit** (migration 017 — configurable cap on concurrent agents with queued auto-start), and **default model update** (migration 018 — switched from Sonnet 4 to Opus 4.6) have been added. Recent additions include a **standalone item detail page**, a **copy-link button** on the Done detail dialog, **Ollama integration** gated behind the `--experimental` flag, and **flame intensity multiplier** for fine-tuning the animated background. The test suite includes **872 automated tests** across smoke, unit, and integration tiers plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, Ollama provider configuration, and orchestrator lifecycle.
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, the project has added two new migrations and one major capability:
+
+- **Migration 019 — Selectable model upgrade**: shifts existing rows from `claude-opus-4-6` → `claude-opus-4-7` and from the dated `claude-sonnet-4-20250514` (and its `+advisor` variant) → `claude-sonnet-4-6`. `DEFAULT_MODEL` is now `claude-opus-4-7`. `AVAILABLE_MODELS` exposes Sonnet 4.6, Sonnet 4.6 + Advisor (experimental), Opus 4.7, and Haiku 4.5.
+- **Migration 020 — Multi-repo workspace support**: adds a nullable `repo TEXT` column to `items` with an index on `repo`. NULL means single-repo mode; in multi-repo mode each item names one of the sibling git repos under the workspace root. Worktrees are created inside the chosen subrepo, and agents get read-only access to the other sibling repos through `add_dirs` on the SDK options.
+
+Earlier features still in place include **annotation summary** (009), **epic grouping** (010), **annotation prompt formatting**, **item dependencies** (011), **auto-start pipelines** (012), **shortcuts bar** with **create_shortcut MCP tool**, **worktree file browsing**, **retry merge**, **bulk operations**, **animated flame background** (013) with intensity multiplier, **start_copy** (014), **has_file_changes detection** (015), **Ollama provider** (016) gated behind `--experimental`, **WIP limit** (017) with queued auto-start, and **default model update** (018, now superseded by 019).
+
+The test suite includes **873 automated tests across 30 test files** plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, Ollama provider configuration, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -112,29 +119,29 @@ graph TB
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `services/__init__.py` | — | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 1,226 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, has_file_changes detection, auto-start of dependent items, and WIP limit queue management |
-| `services/database_service.py` | 504 | A | All DB operations extracted; parameterized queries throughout; item dependency management |
+| `services/__init__.py` | 14 | A | Clean re-exports of all 5 services |
+| `services/workflow_service.py` | 1,342 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, has_file_changes detection, auto-start of dependent items, WIP limit queue management, and `_multi_repo_session_kwargs` for multi-repo session wiring |
+| `services/database_service.py` | 514 | A | All DB operations extracted; parameterized queries throughout; item dependency management; `repo` column included in start-copy insert |
 | `services/notification_service.py` | 118 | A | WebSocket broadcasting + tool formatting; clean separation |
-| `services/git_service.py` | 105 | A | Git worktree and merge operations with proper error handling |
-| `services/session_service.py` | 242 | A | Session lifecycle, commit messages, plugin parsing, Ollama config |
+| `services/git_service.py` | 140 | A | Git worktree and merge operations with proper error handling; repo path resolution helpers for multi-repo mode |
+| `services/session_service.py` | 285 | A | Session lifecycle, commit messages, plugin parsing, Ollama config; passes `workspace_root` and `sibling_repo_paths` for multi-repo agents |
 
 ### Backend Python — Core
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
-| `main.py` | 182 | A | Clean entry point, proper git validation, port discovery, `--experimental` flag |
+| `main.py` | 182 | A | Clean entry point, proper git validation (single-repo or multi-repo workspace), port discovery, `--experimental` flag |
 | `manage.py` | 166 | A | Migration CLI (status, migrate, rollback, init) with argument parsing and DB path override |
 | `config.py` | 117 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
-| `constants.py` | 37 | A | Centralized `AVAILABLE_MODELS` list (with experimental flag), `DEFAULT_MODEL` (Opus 4.6), `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
-| `models.py` | 140 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants; `start_copy`, `has_file_changes`, `wip_limit`, `flame_intensity_multiplier` fields |
+| `constants.py` | 37 | A | Centralized `AVAILABLE_MODELS` list (with experimental flag), `DEFAULT_MODEL` (Opus 4.7), `DEFAULT_OLLAMA_BASE_URL`, `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
+| `models.py` | 140 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants; `start_copy`, `has_file_changes`, `wip_limit`, `flame_intensity_multiplier`, `repo` fields |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
-| `web/app.py` | 133 | A | Proper lifespan management, clean factory pattern, CORS middleware, security headers |
-| `web/routes.py` | 1,454 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations; item detail page; Ollama model discovery; WIP limit config |
-| `web/file_routes.py` | 322 | A | File browser endpoints with path validation, secret hiding, .browserhidden support, binary detection, language mapping, lazy tree scanning |
+| `web/app.py` | 194 | A | Proper lifespan management, clean factory pattern, CORS middleware (localhost-only), security headers; `repos` arg switches the app to multi-repo mode |
+| `web/routes.py` | 1,503 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations; item detail page; Ollama model discovery; WIP limit config; multi-repo `_resolve_item_repo_path()` helper |
+| `web/file_routes.py` | 378 | A | File browser endpoints with path validation, secret hiding, .browserhidden support, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 187 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
-| `agent/orchestrator.py` | 123 | A | Clean facade pattern — delegates all operations to services; backward compatibility preserved |
-| `agent/session.py` | 683 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult`; Ollama env passthrough |
+| `agent/orchestrator.py` | 127 | A | Clean facade pattern — delegates all operations to services; multi-repo aware via `repos` parameter; backward compatibility preserved |
+| `agent/session.py` | 731 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult`; Ollama env passthrough; `workspace_root` + `sibling_repo_paths` injected for multi-repo agents (read-only `add_dirs` + system prompt note) |
 | `agent/clarification.py` | 51 | A | Clean MCP tool definition |
 | `agent/todo.py` | 165 | A | Clean MCP tool definition with epic and dependency support |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
@@ -142,11 +149,11 @@ graph TB
 | `agent/command_filter.py` | 90 | A | PreToolUse hook for bash command filtering with shell operator rejection and shlex parsing |
 | `agent/board_view.py` | 42 | A | Board introspection MCP tool |
 | `agent/tool_access.py` | 42 | A | Runtime tool access request MCP tool |
-| `agent/path_guard.py` | 119 | A | PreToolUse hook preventing agents from editing files outside their worktree |
+| `agent/path_guard.py` | 146 | A | PreToolUse hook preventing agents from editing files outside their worktree; multi-repo aware (avoids parent-root false positives across sibling repos) |
 | `agent/tool_filter.py` | 38 | A | PreToolUse hook for optional built-in tool filtering |
-| `agent/shortcut.py` | 54 | A | Create shortcut MCP tool for agents to add bash command shortcuts to the board |
+| `agent/shortcut.py` | 59 | A | Create shortcut MCP tool for agents to add bash command shortcuts to the board |
 | `git/operations.py` | 354 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
-| `git/worktree.py` | 73 | A | Simple and correct; returns base branch for tracking |
+| `git/worktree.py` | 79 | A | Simple and correct; returns base branch for tracking |
 | `migrations/runner.py` | 198 | A- | Solid migration system; class discovery uses string comparison (justified) |
 | `migrations/migration.py` | 28 | A | Clean base class |
 | `migrations/versions/001_initial_schema.py` | 158 | A | Complete initial schema with all 8 tables |
@@ -167,18 +174,20 @@ graph TB
 | `migrations/versions/016_add_ollama_config.py` | 41 | A | Adds `ollama_enabled` flag and `ollama_base_url` to agent_config for local Ollama provider |
 | `migrations/versions/017_add_wip_limit.py` | ~35 | A | Adds `wip_limit` column to agent_config; caps concurrent running agents with queued auto-start |
 | `migrations/versions/018_update_default_model.py` | ~40 | A | Updates default model from Claude Sonnet 4 to Claude Opus 4.6 across items and agent_config |
+| `migrations/versions/019_update_default_model_to_opus_4_7.py` | 56 | A | Upgrades selectable models: Opus 4.6 → 4.7, Sonnet 4 (dated `claude-sonnet-4-20250514`) → Sonnet 4.6, including `+advisor` variants; applied to both `items.model` and `agent_config.model` |
+| `migrations/versions/020_add_repo_to_items.py` | 32 | A | Multi-repo support: adds nullable `repo TEXT` column to `items` and `idx_items_repo` index; NULL preserves single-repo behavior |
 
 ### Frontend JavaScript
 
 | Module | Lines | Quality | Notes |
 |--------|---------|---------|-------|
 | `app.js` | 493 | A- | Full WebSocket reconnection with exponential backoff, visibility-aware, manual reconnect |
-| `board.js` | 1,031 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive, Start Copy support, has_file_changes display, WIP limit queue indicator |
+| `board.js` | 1,051 | A- | Drag-drop, card rendering, Done column day grouping with collapsible sections and bulk archive, Start Copy support, has_file_changes display, WIP limit queue indicator, multi-repo `repo` badge support |
 | `dialogs.js` | 86 | A | Clean coordinator pattern — delegates to 12 specialized modules |
 | `dialog-core.js` | 82 | A | Core dialog open/close/confirm utilities |
 | `dialog-utils.js` | 114 | A | Shared utilities (markdown rendering, model display names) |
-| `item-dialog.js` | 515 | A- | New/edit item forms with attachment handling, epic assignment, dependency selection, auto-start toggle |
-| `detail-dialog.js` | 260 | A- | Item detail view with tabbed interface, copy-link button |
+| `item-dialog.js` | 535 | A- | New/edit item forms with attachment handling, epic assignment, dependency selection, auto-start toggle, repo selector for multi-repo workspaces |
+| `detail-dialog.js` | 265 | A- | Item detail view with tabbed interface, copy-link button |
 | `review-dialog.js` | 1,026 | A | Review dialog with diff viewer, work log, and tabbed interface |
 | `config-dialog.js` | 347 | A | Agent configuration (system prompt, MCP, plugins, WIP limit, flame intensity) |
 | `clarification-dialog.js` | 208 | A | Clean clarification prompt/response UI |
@@ -190,24 +199,26 @@ graph TB
 | `annotate.js` | 1,150 | A- | Self-contained canvas component with freehand drawing, fill colors, on-image toggle |
 | `file-browser.js` | 894 | A | Full-featured file browser with tree view, tabbed viewer, lazy loading, keyboard navigation, filter, breadcrumbs, markdown/mermaid rendering, refresh |
 | `shortcuts.js` | 429 | A | Quick-launch bash command bar with process management, streaming output, stop (preserves log), reset, auto-reset mode, progress dialog |
-| `api.js` | 102 | A | Clean HTTP helpers |
+| `api.js` | 103 | A | Clean HTTP helpers |
 | `diff.js` | 62 | A- | Functional diff viewer |
-| `theme.js` | 24 | A | Simple, correct theme toggle |
+| `theme.js` | 53 | A | Theme toggle with persistence |
 | `stats.js` | 189 | A- | Good auto-refresh and WebSocket update pattern |
 | `sound.js` | 76 | A | Notification sound effects for agent events |
 | `flame.js` | 328 | A | Animated flame background with activity-driven intensity behind board columns |
+
+**Note**: JavaScript total is ~8,017 lines across 24 modules.
 
 ### Frontend CSS
 
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `style.css` | 1,814 | A- | Main styles with CSS variables |
-| `board.css` | 568 | A | Board layout, card styles, Done day grouping with collapsible sections |
+| `board.css` | 591 | A | Board layout, card styles, Done day grouping with collapsible sections, repo badge styles |
 | `dialog.css` | 454 | A | Dialog component styles |
 | `file-browser.css` | 690 | A | File browser layout, tree, tabs, viewer, code/markdown/image styles, Prism.js light theme overrides, responsive |
 | `theme.css` | 153 | A | Light/dark theme definitions with epic color palette |
 
-**Note**: CSS total is ~3,679 lines across 5 modules.
+**Note**: CSS total is ~3,702 lines across 5 modules.
 
 ---
 
@@ -347,7 +358,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 872 automated tests across 29 test files (including conftest.py with 5 fixture validation tests) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 18 migrations.
+**Current state**: 873 automated tests across 30 test files (including conftest.py) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 20 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -454,8 +465,9 @@ graph LR
 39. **Standalone item detail page**: Each item has a shareable URL via the item detail endpoint — Done detail dialog includes a copy-link button for easy sharing
 40. **Ollama provider (experimental)**: Local model support via Ollama's Anthropic-compatible API, gated behind `--experimental` flag — dynamic model discovery via REST API, connection status indicator, provider badges on cards, per-item model selection from Ollama dropdown; env vars (`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`) injected per-agent subprocess
 41. **WIP limit**: Configurable cap on concurrent running agents (migration 017) — items started beyond the limit are placed in 'doing' with status='queued' and auto-started in position order when a slot opens; prevents resource exhaustion when launching many agents
-42. **Default model progression**: Migration 018 updates the default model from Claude Sonnet 4 to Claude Opus 4.6 across existing items and agent_config — clean data migration pattern
+42. **Default model progression**: Migration 018 then 019 update the default model (Sonnet 4 → Opus 4.6 → Opus 4.7) and migrate the `+advisor` variants in lockstep across existing items and agent_config — clean, repeatable data migration pattern
 43. **Flame intensity multiplier**: `flame_intensity_multiplier` field in agent_config allows fine-tuning the animated flame background intensity beyond the on/off toggle
+44. **Multi-repo workspace mode**: Migration 020 adds a nullable `repo` column on `items` (NULL = single-repo mode preserved). When `target_project` is a folder of sibling git repos, each item names one repo; the worktree is created inside that subrepo, `WorkflowService._multi_repo_session_kwargs` injects `workspace_root` + `sibling_repo_paths` into the session, `AgentSession` adds the siblings to `add_dirs` (read-only) and explains the layout in the system prompt, and `path_guard.py` is multi-repo aware to avoid false positives across siblings. The `idx_items_repo` index keeps repo-scoped queries cheap.
 
 ---
 
@@ -463,12 +475,13 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/, excl. migrations) | 37 | ~7,352 |
-| JavaScript frontend | 24 | ~7,947 |
-| CSS styles | 5 | ~3,679 |
-| HTML templates | 3 | ~867 |
-| Tests | 29 | ~11,300 |
-| **Grand total** | **98** | **~31,145** |
+| Python backend (src/, excl. migrations) | 37 | ~7,669 |
+| Database migrations | 20 | ~750 |
+| JavaScript frontend | 24 | ~8,017 |
+| CSS styles | 5 | ~3,702 |
+| HTML templates (incl. partials) | 3 | ~895 |
+| Tests | 30 | ~11,120 |
+| **Grand total** | **119** | **~32,153** |
 
 ---
 
