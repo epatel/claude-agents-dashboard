@@ -2,14 +2,20 @@ from pathlib import Path
 from .operations import run_git, get_current_branch
 
 
-async def create_worktree(repo: Path, worktree_dir: Path, branch_name: str) -> tuple[Path, str, str]:
+async def create_worktree(repo: Path, worktree_dir: Path, branch_name: str,
+                          worktree_path: Path | None = None) -> tuple[Path, str, str]:
     """Create a git worktree with a new branch off the current branch.
 
     Returns (worktree_path, base_branch, base_commit) so the caller can
     record which branch and exact commit the worktree was created from.
+
+    `worktree_path` lets the caller override the on-disk location. When None
+    (the default), derives from branch_name under worktree_dir — this preserves
+    single-repo behavior; multi-repo mode passes in a prefixed path.
     """
     current = await get_current_branch(repo)
-    worktree_path = worktree_dir / branch_name.replace("/", "-")
+    if worktree_path is None:
+        worktree_path = worktree_dir / branch_name.replace("/", "-")
 
     # Check if the base branch actually exists
     try:

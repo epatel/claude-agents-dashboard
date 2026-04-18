@@ -38,7 +38,10 @@ class SessionService:
                            on_view_board: Optional[Callable] = None,
                            on_delete_todo: Optional[Callable] = None,
                            on_create_epic: Optional[Callable] = None,
-                           on_create_shortcut: Optional[Callable] = None) -> AgentSession:
+                           on_create_shortcut: Optional[Callable] = None,
+                           workspace_root: Optional[Path] = None,
+                           sibling_repo_paths: Optional[List[Path]] = None,
+                           item_repo_name: Optional[str] = None) -> AgentSession:
         """Create a new agent session with all callbacks."""
         # Use provided model or fall back to config model
         raw_model = model or config.get("model")
@@ -120,6 +123,9 @@ class SessionService:
             allowed_builtin_tools=allowed_builtin_tools,
             use_advisor=use_advisor,
             ollama_env=ollama_env,
+            workspace_root=workspace_root,
+            sibling_repo_paths=sibling_repo_paths,
+            item_repo_name=item_repo_name,
         )
 
         self.sessions[item_id] = session

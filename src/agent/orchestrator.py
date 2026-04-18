@@ -26,15 +26,19 @@ class AgentOrchestrator:
         data_dir: Path,
         db: Database,
         ws_manager: ConnectionManager,
+        repos: list[str] | None = None,
     ):
         self.target_project = target_project
         self.data_dir = data_dir
         self.worktree_dir = data_dir / "worktrees"
         self.worktree_dir.mkdir(exist_ok=True)
+        # None = single-repo mode (target_project IS the repo).
+        # list[str] = multi-repo mode (target_project is the parent; repos are subdir names).
+        self.repos = repos
 
         # Initialize services
         self.db_service = DatabaseService(db)
-        self.git_service = GitService(target_project, self.worktree_dir)
+        self.git_service = GitService(target_project, self.worktree_dir, repos=repos)
         self.notification_service = NotificationService(ws_manager)
         self.session_service = SessionService()
         self.workflow_service = WorkflowService(

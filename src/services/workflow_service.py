@@ -41,6 +41,28 @@ class WorkflowService:
         """Count how many agents are currently running (not queued)."""
         return len(self.sessions.sessions)
 
+    def _multi_repo_session_kwargs(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Extra kwargs for SessionService.create_session when in multi-repo mode.
+
+        Empty dict in single-repo mode so callers can splat it either way.
+        Uses getattr so mocks that don't expose `repos` (e.g. MagicMock spec'd
+        against GitService before this attribute existed) behave as single-mode.
+        """
+        repos = getattr(self.git, "repos", None)
+        if not repos:
+            return {}
+        item_repo = item.get("repo") if item else None
+        # Read scope: all known repos except the one the item is actively working on
+        # (the agent's own repo is reached via the worktree, not as a sibling).
+        sibling_paths = [
+            self.git.base_repo_path(r) for r in repos if r != item_repo
+        ]
+        return {
+            "workspace_root": self.git.target_project,
+            "sibling_repo_paths": sibling_paths,
+            "item_repo_name": item_repo,
+        }
+
     async def _is_at_wip_limit(self) -> bool:
         """Check if the number of running agents has reached the WIP limit."""
         config = await self.db.get_agent_config()
@@ -101,7 +123,8 @@ class WorkflowService:
 
         # Setup git worktree
         worktree_path, branch_name, base_branch, base_commit = await self.git.create_or_reuse_worktree(
-            item_id, item.get("worktree_path"), item.get("branch_name")
+            item_id, item.get("worktree_path"), item.get("branch_name"),
+            repo=item.get("repo"),
         )
 
         # Update item state (preserve existing base_commit if reusing worktree)
@@ -151,6 +174,7 @@ class WorkflowService:
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
+            **self._multi_repo_session_kwargs(item),
         )
 
         # Build prompt and fetch attachments
@@ -258,6 +282,7 @@ class WorkflowService:
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
+            **self._multi_repo_session_kwargs(item),
         )
 
         prompt = f"Continue working on your task:\nTask: {item['title']}\n\n{item['description']}"
@@ -278,7 +303,9 @@ class WorkflowService:
         worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
         if not worktree_path or not worktree_path.exists():
             branch_name = item.get("branch_name") or f"agent/{item_id}"
-            worktree_path, _, _, _ = await self.git.create_or_reuse_worktree(item_id, None, branch_name)
+            worktree_path, _, _, _ = await self.git.create_or_reuse_worktree(
+                item_id, None, branch_name, repo=item.get("repo"),
+            )
             await self.db.update_item(
                 item_id,
                 branch_name=branch_name,
@@ -328,6 +355,7 @@ class WorkflowService:
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
+            **self._multi_repo_session_kwargs(item),
         )
 
         prompt = f"Task: {item['title']}\n\n{item['description']}"
@@ -351,7 +379,7 @@ class WorkflowService:
         from ..git.operations import run_git
         try:
             # Get locally modified tracked files (exclude untracked with no '??' prefix)
-            status_output = await run_git(self.git.target_project, "status", "--porcelain")
+            status_output = await run_git(self.git.base_repo_path(item.get("repo")), "status", "--porcelain")
             dirty_files = set()
             for line in status_output.strip().splitlines():
                 if not line or line.startswith("??"):
@@ -423,7 +451,7 @@ class WorkflowService:
             await self._log_and_notify(item_id, "system",
                 "No modified files — skipping merge")
             if worktree_path:
-                await self.git.cleanup_worktree_and_branch(worktree_path, branch)
+                await self.git.cleanup_worktree_and_branch(worktree_path, branch, repo=item.get("repo"))
             item = await self.db.update_item(
                 item_id,
                 column_name="done",
@@ -434,7 +462,7 @@ class WorkflowService:
             return item
 
         success, message = await self.git.merge_agent_work(
-            branch, base_branch, worktree_path, commit_msg
+            branch, base_branch, worktree_path, commit_msg, repo=item.get("repo"),
         )
 
         if success:
@@ -447,7 +475,7 @@ class WorkflowService:
 
             # Clean up worktree
             if worktree_path:
-                await self.git.cleanup_worktree_and_branch(worktree_path, branch)
+                await self.git.cleanup_worktree_and_branch(worktree_path, branch, repo=item.get("repo"))
 
             item = await self.db.update_item(
                 item_id,
@@ -473,7 +501,7 @@ class WorkflowService:
                 except Exception:
                     pass
 
-                base = base_branch or await get_current_branch(self.git.target_project)
+                base = base_branch or await get_current_branch(self.git.base_repo_path(item.get("repo")))
                 rebase_ok, rebase_msg = await self.git.rebase_onto_base(worktree_path, base)
 
                 if rebase_ok:
@@ -482,7 +510,7 @@ class WorkflowService:
 
                     # Retry the merge after successful rebase
                     success2, message2 = await self.git.merge_agent_work(
-                        branch, base_branch, worktree_path, commit_msg
+                        branch, base_branch, worktree_path, commit_msg, repo=item.get("repo"),
                     )
                     if success2:
                         self._merge_retries.pop(item_id, None)
@@ -493,7 +521,7 @@ class WorkflowService:
                             f"Merged {branch} into {target} ({short_sha}) after rebase")
 
                         if worktree_path:
-                            await self.git.cleanup_worktree_and_branch(worktree_path, branch)
+                            await self.git.cleanup_worktree_and_branch(worktree_path, branch, repo=item.get("repo"))
 
                         item = await self.db.update_item(
                             item_id, column_name="done", status=None,
@@ -527,7 +555,7 @@ class WorkflowService:
                 agent_diff = await run_git(worktree_path, "diff", "HEAD~1", "HEAD")
                 if not agent_diff.strip():
                     # Try diff against base
-                    base = base_branch or await get_current_branch(self.git.target_project)
+                    base = base_branch or await get_current_branch(self.git.base_repo_path(item.get("repo")))
                     agent_diff = await run_git(worktree_path, "diff", base, "HEAD")
             except Exception:
                 agent_diff = ""
@@ -535,7 +563,7 @@ class WorkflowService:
             if agent_diff and worktree_path:
                 # Reset worktree to latest base branch
                 try:
-                    base = base_branch or await get_current_branch(self.git.target_project)
+                    base = base_branch or await get_current_branch(self.git.base_repo_path(item.get("repo")))
                     # Worktrees share refs with the parent repo, so just reset
                     # directly to the base branch — no fetch needed (target project
                     # is local, not a remote clone).
@@ -569,6 +597,7 @@ class WorkflowService:
                     on_request_tool=self._create_on_request_tool_callback(item_id),
                     on_view_board=self._create_on_view_board_callback(),
                     on_delete_todo=self._create_on_delete_todo_callback(item_id),
+                    **self._multi_repo_session_kwargs(item),
                 )
 
                 conflict_prompt = (
@@ -664,6 +693,7 @@ class WorkflowService:
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
+            **self._multi_repo_session_kwargs(item),
         )
 
         # Fetch attachments for context
@@ -684,7 +714,9 @@ class WorkflowService:
             raise ValueError(f"Item {item_id} not found")
 
         # Clean up worktree
-        await self.git.cleanup_item_resources(item.get("worktree_path"), item.get("branch_name"))
+        await self.git.cleanup_item_resources(
+            item.get("worktree_path"), item.get("branch_name"), repo=item.get("repo"),
+        )
         await self._log_and_notify(item_id, "user_action", "Review cancelled - work discarded")
 
         # Move item back to todo
@@ -718,7 +750,9 @@ class WorkflowService:
 
         # Clean up git resources
         if item:
-            await self.git.cleanup_item_resources(item.get("worktree_path"), item.get("branch_name"))
+            await self.git.cleanup_item_resources(
+                item.get("worktree_path"), item.get("branch_name"), repo=item.get("repo"),
+            )
 
         # Broadcast deletion
         await self.notifications.broadcast_item_deleted(item_id)
@@ -1176,6 +1210,7 @@ class WorkflowService:
                 on_request_tool=self._create_on_request_tool_callback(item_id),
                 on_view_board=self._create_on_view_board_callback(),
                 on_delete_todo=self._create_on_delete_todo_callback(item_id),
+                **self._multi_repo_session_kwargs(item or {}),
             )
 
             # Include original task so agent knows what to do even without resume
@@ -1197,12 +1232,30 @@ class WorkflowService:
             )
 
     async def find_stale_worktrees(self) -> List[Dict[str, Any]]:
-        """Find worktrees whose items are in a terminal state or missing from DB."""
+        """Find worktrees whose items are in a terminal state or missing from DB.
+
+        In multi-repo mode iterates each subrepo's worktrees; in single-repo
+        mode asks the one target_project for its list.
+        """
         from ..git.worktree import list_worktrees
 
-        worktrees = await list_worktrees(self.git.target_project)
+        # Collect (worktree_record, source_repo) across all repos.
+        worktree_records: List[Dict[str, Any]] = []
+        if self.git.is_multi():
+            for repo_name in (self.git.repos or []):
+                base = self.git.base_repo_path(repo_name)
+                try:
+                    for wt in await list_worktrees(base):
+                        wt["_source_repo"] = repo_name
+                        worktree_records.append(wt)
+                except Exception as e:
+                    logger.warning(f"Failed to list worktrees for repo {repo_name}: {e}")
+        else:
+            for wt in await list_worktrees(self.git.target_project):
+                worktree_records.append(wt)
+
         stale = []
-        for wt in worktrees:
+        for wt in worktree_records:
             path = wt.get("path", "")
             branch = wt.get("branch", "")
             # Only check agent worktrees (refs/heads/agent/...)
@@ -1238,14 +1291,16 @@ class WorkflowService:
         """Clean up a stale worktree and clear git metadata on the item."""
         item = await self.db.get_item(item_id)
         branch_name = f"agent/{item_id}"
-        worktree_path = self.git.worktree_dir / f"agent-{item_id}"
+        # Default worktree path — matches what create_or_reuse_worktree would have built
+        item_repo = item.get("repo") if item else None
+        worktree_path = self.git.worktree_path_for(item_id, branch_name, item_repo)
 
         # Use item's stored values if available
         if item:
             branch_name = item.get("branch_name") or branch_name
             worktree_path = Path(item.get("worktree_path") or str(worktree_path))
 
-        await self.git.cleanup_item_resources(str(worktree_path), branch_name)
+        await self.git.cleanup_item_resources(str(worktree_path), branch_name, repo=item_repo)
 
         # Clear git metadata on the item if it still exists
         if item:

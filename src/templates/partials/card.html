@@ -14,6 +14,11 @@
         {{ item.epic_title }}
     </div>
     {% endif %}
+    {% if item.repo %}
+    <span class="card-repo-badge" data-repo="{{ item.repo }}"
+          style="--repo-hue: {{ item.repo | repo_hue }}"
+          title="Repo: {{ item.repo }}">{{ item.repo }}</span>
+    {% endif %}
     <div class="card-title">{{ item.title }}</div>
     {% if item.is_blocked and item.column_name == 'todo' %}
     <div class="card-blocked-badge" title="Requires: {{ item.blocking_items | map(attribute='title') | join(', ') }}">{% for dep in item.blocking_items %}<span class="blocked-item">🔒 {{ dep.title }}</span>{% endfor %}</div>

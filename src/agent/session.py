@@ -133,6 +133,9 @@ class AgentSession:
         allowed_builtin_tools: list[str] | None = None,
         use_advisor: bool = False,
         ollama_env: dict[str, str] | None = None,
+        workspace_root: Path | None = None,
+        sibling_repo_paths: list[Path] | None = None,
+        item_repo_name: str | None = None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
@@ -141,6 +144,10 @@ class AgentSession:
         self.bash_yolo = bash_yolo
         self.allowed_builtin_tools = allowed_builtin_tools or []
         self.ollama_env = ollama_env
+        # Multi-repo mode fields (all None in single-repo mode).
+        self.workspace_root = workspace_root
+        self.sibling_repo_paths = sibling_repo_paths or []
+        self.item_repo_name = item_repo_name
         self.on_message = on_message        # async callback(text: str)
         self.on_tool_use = on_tool_use      # async callback(tool_name: str, input: dict)
         self.on_thinking = on_thinking      # async callback(thinking: str)
@@ -215,6 +222,36 @@ class AgentSession:
             "Always use relative paths or paths within this worktree — never reference "
             "other worktrees or the main project checkout directly."
         )
+
+        # Multi-repo reference preamble: list sibling repos as read-only refs
+        # and append parent-workspace CLAUDE.md / AGENTS.md contents.
+        multi_repo_note = ""
+        if self.workspace_root and self.sibling_repo_paths:
+            repo_lines = "\n".join(f"- {p}" for p in self.sibling_repo_paths)
+            multi_repo_note = (
+                f"\n\nMULTI-REPO WORKSPACE: You are working on `{self.item_repo_name or 'this repo'}`."
+                f" Your worktree is {self.worktree_path}."
+                f"\nThe workspace root {self.workspace_root} contains sibling repos you MAY READ"
+                f" but MUST NOT edit:\n{repo_lines}\n"
+                "Use Read/Glob/Grep on these paths to consult related code (shared protocols,"
+                " types, conventions) when useful. Do NOT use Edit/Write/Bash to modify them —"
+                " they are owned by other items on the board. If you need a change in a"
+                " sibling repo, call mcp__todo__create_todo to propose a new item targeting"
+                " that repo instead."
+            )
+            # Append parent CLAUDE.md / AGENTS.md (if present) so workspace-wide
+            # conventions reach the agent — the SDK's setting_sources=["project"]
+            # only reads from cwd, which is the worktree.
+            for fname in ("CLAUDE.md", "AGENTS.md"):
+                fpath = self.workspace_root / fname
+                try:
+                    if fpath.is_file():
+                        content = fpath.read_text(errors="replace")
+                        multi_repo_note += (
+                            f"\n\n--- Workspace {fname} ({fpath}) ---\n{content}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Could not read workspace {fname} at {fpath}: {e}")
         clarify_note = (
             "\n\nIMPORTANT: If you need to ask the user a question or need clarification, "
             "you MUST use the ask_user MCP tool (mcp__clarification__ask_user). "
@@ -271,7 +308,7 @@ class AgentSession:
             "4. Form a specific hypothesis, test with the smallest possible change\n"
             "5. If stuck after 3 attempts, use mcp__clarification__ask_user to explain what you tried"
         )
-        full_system_prompt = (self.system_prompt or "") + cwd_note + clarify_note + commit_note + todo_note + brainstorm_note + debug_note + command_note + tool_note
+        full_system_prompt = (self.system_prompt or "") + cwd_note + multi_repo_note + clarify_note + commit_note + todo_note + brainstorm_note + debug_note + command_note + tool_note
 
         # Configure allowed MCP tools
         allowed_tools = []
@@ -348,9 +385,12 @@ class AgentSession:
                 )
             )
 
-        # Add path guard hook to prevent agents from editing main repo
+        # Add path guard hook to prevent agents from editing main repo.
+        # In multi-repo mode, workspace_root unlocks reads to sibling repos.
         from .path_guard import make_path_guard_hook
-        path_guard_hook = make_path_guard_hook(self.worktree_path)
+        path_guard_hook = make_path_guard_hook(
+            self.worktree_path, workspace_root=self.workspace_root,
+        )
         for guarded_tool in ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash']:
             hook_matchers.append(
                 HookMatcher(
@@ -421,7 +461,7 @@ class AgentSession:
                 mcp_servers=mcp_servers if mcp_servers else None,
                 allowed_tools=allowed_tools if allowed_tools else None,
                 can_use_tool=can_use_tool_fn,
-                add_dirs=[str(self.worktree_path)],
+                add_dirs=[str(self.worktree_path), *(str(p) for p in self.sibling_repo_paths)],
                 plugins=plugins if plugins else None,
                 hooks=hooks,
                 env=self.ollama_env,
@@ -436,7 +476,7 @@ class AgentSession:
                 mcp_servers=mcp_servers if mcp_servers else None,
                 allowed_tools=allowed_tools if allowed_tools else None,
                 can_use_tool=can_use_tool_fn,
-                add_dirs=[str(self.worktree_path)],
+                add_dirs=[str(self.worktree_path), *(str(p) for p in self.sibling_repo_paths)],
                 thinking={"type": "enabled", "budget_tokens": 10000},
                 plugins=plugins if plugins else None,
                 hooks=hooks,

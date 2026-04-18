@@ -94,6 +94,27 @@ def get_project_name(target: Path) -> str:
         return target.name
 
 
+def _is_git_repo(path: Path) -> bool:
+    try:
+        subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--git-dir"],
+            capture_output=True, check=True,
+        )
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
+def _discover_subrepos(parent: Path) -> list[str]:
+    """Return sorted names of immediate subdirectories of `parent` that are git repos."""
+    if not parent.is_dir():
+        return []
+    return sorted(
+        p.name for p in parent.iterdir()
+        if p.is_dir() and not p.name.startswith(".") and _is_git_repo(p)
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="Agents Dashboard — scrum board for Claude agents")
     parser.add_argument("target", nargs="?", default=str(Path.cwd()),
@@ -110,46 +131,53 @@ def main():
     target_project = Path(args.target).resolve()
     host = args.host
 
-    # Verify it's a git repo
-    try:
-        subprocess.run(
-            ["git", "-C", str(target_project), "rev-parse", "--git-dir"],
-            capture_output=True, check=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        print(f"Error: {target_project} is not a git repository")
-        sys.exit(1)
+    # Detect mode:
+    #   single — target is itself a git repo (original behavior)
+    #   multi  — target is a folder containing ≥1 git subdirectory (repos live side-by-side)
+    if _is_git_repo(target_project):
+        repos: list[str] | None = None
+    else:
+        subrepos = _discover_subrepos(target_project)
+        if not subrepos:
+            print(
+                f"Error: {target_project} is not a git repository and contains no git subdirectories"
+            )
+            sys.exit(1)
+        repos = subrepos
 
-    # Initialize agents-lab directory
+    # Initialize agents-lab directory (lives at target_project root in both modes)
     data_dir = target_project / DATA_DIR_NAME
     data_dir.mkdir(exist_ok=True)
     (data_dir / "assets").mkdir(exist_ok=True)
 
-    # Ensure agents-lab/ is in .gitignore
-    gitignore = target_project / ".gitignore"
-    ignore_entry = DATA_DIR_NAME + "/"
-    gitignore_changed = False
-    if gitignore.exists():
-        content = gitignore.read_text()
-        if ignore_entry not in content.splitlines():
-            with gitignore.open("a") as f:
-                if not content.endswith("\n"):
-                    f.write("\n")
-                f.write(f"{ignore_entry}\n")
+    # Ensure agents-lab/ is in .gitignore of the target repo (single-mode only —
+    # in multi mode the parent isn't a git repo, and each subrepo's git scope
+    # doesn't include paths outside itself so nothing needs ignoring there).
+    if repos is None:
+        gitignore = target_project / ".gitignore"
+        ignore_entry = DATA_DIR_NAME + "/"
+        gitignore_changed = False
+        if gitignore.exists():
+            content = gitignore.read_text()
+            if ignore_entry not in content.splitlines():
+                with gitignore.open("a") as f:
+                    if not content.endswith("\n"):
+                        f.write("\n")
+                    f.write(f"{ignore_entry}\n")
+                gitignore_changed = True
+        else:
+            gitignore.write_text(f"{ignore_entry}\n")
             gitignore_changed = True
-    else:
-        gitignore.write_text(f"{ignore_entry}\n")
-        gitignore_changed = True
 
-    if gitignore_changed:
-        subprocess.run(
-            ["git", "-C", str(target_project), "add", ".gitignore"],
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(target_project), "commit", "-m", "Add agents-lab/ to .gitignore"],
-            capture_output=True,
-        )
+        if gitignore_changed:
+            subprocess.run(
+                ["git", "-C", str(target_project), "add", ".gitignore"],
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(target_project), "commit", "-m", "Add agents-lab/ to .gitignore"],
+                capture_output=True,
+            )
 
     if args.port is not None:
         port = args.port
@@ -160,6 +188,8 @@ def main():
     display_host = "127.0.0.1" if host == "0.0.0.0" else host
     print(f"Agents Dashboard for: {project_name}")
     print(f"Target project: {target_project}")
+    if repos:
+        print(f"Multi-repo mode — {len(repos)} repo(s): {', '.join(repos)}")
     print(f"Data directory: {data_dir}")
     print(f"Starting on: http://{display_host}:{port}")
     if host == "0.0.0.0":
@@ -187,7 +217,7 @@ def main():
     signal.signal(signal.SIGINT, _signal_handler)
     atexit.register(_kill_child_processes)
 
-    app = create_app(target_project, data_dir, experimental=args.experimental)
+    app = create_app(target_project, data_dir, experimental=args.experimental, repos=repos)
     uvicorn.run(app, host=host, port=port)
 
 

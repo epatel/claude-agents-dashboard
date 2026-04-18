@@ -37,10 +37,21 @@ done
 TARGET_PROJECT="${TARGET_PROJECT:-$(pwd)}"
 TARGET_PROJECT="$(cd "$TARGET_PROJECT" && pwd)"
 
-# Verify target is a git repo
+# Verify target is a git repo, or a folder containing ≥1 git subdir (multi-repo mode).
+# Deeper validation (and friendlier error message) happens in src/main.py.
 if ! git -C "$TARGET_PROJECT" rev-parse --git-dir > /dev/null 2>&1; then
-    echo "Error: $TARGET_PROJECT is not a git repository"
-    exit 1
+    found_subrepo=""
+    for sub in "$TARGET_PROJECT"/*/; do
+        [ -d "$sub" ] || continue
+        if git -C "$sub" rev-parse --git-dir > /dev/null 2>&1; then
+            found_subrepo=1
+            break
+        fi
+    done
+    if [ -z "$found_subrepo" ]; then
+        echo "Error: $TARGET_PROJECT is not a git repository and contains no git subdirectories"
+        exit 1
+    fi
 fi
 
 # Check if the dashboard repo has upstream commits to pull

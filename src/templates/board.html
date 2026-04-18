@@ -67,6 +67,17 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                 <label for="item-form-desc">Description <span class="tooltip" title="Detailed task instructions for the agent. Supports Markdown. Be specific about what files to create/modify and expected outcomes.">?</span></label>
                 <textarea id="item-form-desc" rows="10" placeholder="Describe what the agent should do..."></textarea>
             </div>
+            {% if workspace_mode == "multi" %}
+            <div class="form-group" id="item-form-repo-group">
+                <label for="item-form-repo">Repo <span class="tooltip" title="Which subrepo this task targets. The agent's worktree is created from this repo; sibling repos are read-only references.">?</span></label>
+                <select id="item-form-repo" required>
+                    <option value="">— select a repo —</option>
+                    {% for r in workspace_repos %}
+                    <option value="{{ r }}">{{ r }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div class="form-group">
                 <label for="item-form-model">Model <span class="tooltip" title="The Claude model to use for this specific task. Leave empty to use the global default model. Sonnet is fast and capable, Sonnet + Advisor adds an Opus advisor subagent for complex reasoning, Opus is most powerful, Haiku is cheapest.">?</span></label>
                 <select id="item-form-model">

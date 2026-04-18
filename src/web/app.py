@@ -102,6 +102,7 @@ async def lifespan(app: FastAPI):
         data_dir=app.state.data_dir,
         db=app.state.db,
         ws_manager=app.state.ws_manager,
+        repos=app.state.repos,
     )
 
     # Check for stale worktrees on startup
@@ -140,7 +141,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
-def create_app(target_project: Path, data_dir: Path, *, experimental: bool = False) -> FastAPI:
+def create_app(target_project: Path, data_dir: Path, *, experimental: bool = False,
+               repos: list[str] | None = None) -> FastAPI:
+    """Create the FastAPI app.
+
+    When `repos` is provided, the app runs in multi-repo mode: `target_project`
+    is the parent folder and each item picks which subrepo under it to target.
+    When `repos` is None, single-repo mode: `target_project` is the one repo.
+    """
     app = FastAPI(title="Agents Dashboard", lifespan=lifespan)
 
     # Security headers (X-Content-Type-Options, X-Frame-Options)
@@ -162,7 +170,16 @@ def create_app(target_project: Path, data_dir: Path, *, experimental: bool = Fal
     app.state.db = Database(data_dir / "dashboard.db")
     app.state.ws_manager = ConnectionManager()
     app.state.templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    # Stable hash-to-hue filter so the repo badge gets the same color on
+    # server-rendered cards and JS-rendered cards (see Board.renderCard).
+    def _repo_hue(name: str) -> int:
+        h = 5381
+        for ch in name or "":
+            h = ((h * 33) + ord(ch)) & 0xFFFFFFFF
+        return h % 360
+    app.state.templates.env.filters["repo_hue"] = _repo_hue
     app.state.experimental = experimental
+    app.state.repos = repos or None
 
     # Mount static files
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

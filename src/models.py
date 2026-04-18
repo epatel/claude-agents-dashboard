@@ -18,6 +18,9 @@ class ItemCreate(BaseModel):
     epic_id: Optional[str] = None
     auto_start: bool = False
     start_copy: bool = False
+    # Multi-repo mode: name of the subrepo this item targets. Must be one of the
+    # workspace's known repos. None in single-repo mode.
+    repo: Optional[str] = None
 
 
 class ItemUpdate(BaseModel):
@@ -77,6 +80,7 @@ class Item(BaseModel):
     worktree_path: Optional[str]
     session_id: Optional[str]
     model: Optional[str]
+    repo: Optional[str] = None
     created_at: str
     updated_at: str
 

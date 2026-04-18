@@ -17,10 +17,11 @@ const Api = {
         return this.request('GET', '/api/items');
     },
 
-    createItem(title, description = '', model = null, epic_id = null, auto_start = false, start_copy = false) {
+    createItem(title, description = '', model = null, epic_id = null, auto_start = false, start_copy = false, repo = null) {
         const payload = { title, description, auto_start, start_copy };
         if (model) payload.model = model;
         if (epic_id) payload.epic_id = epic_id;
+        if (repo) payload.repo = repo;
         return this.request('POST', '/api/items', payload);
     },
 

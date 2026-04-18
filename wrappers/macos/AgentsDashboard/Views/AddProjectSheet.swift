@@ -18,7 +18,7 @@ struct AddProjectSheet: View {
                     .font(.title2)
                     .fontWeight(.semibold)
 
-                Text("Select a git repository to manage with Agents Dashboard")
+                Text("Select a git repository — or a folder containing several repos — to manage with Agents Dashboard")
                     .font(.body)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -112,7 +112,7 @@ struct AddProjectSheet: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.message = "Select a git repository"
+        panel.message = "Select a git repository or a folder containing git repos"
         panel.prompt = "Select"
 
         if panel.runModal() == .OK, let url = panel.url {
@@ -130,10 +130,15 @@ struct AddProjectSheet: View {
             return
         }
 
-        // Validate it's a git repo
-        let gitDir = URL(fileURLWithPath: path).appendingPathComponent(".git")
-        guard FileManager.default.fileExists(atPath: gitDir.path) else {
-            errorMessage = "Not a git repository (no .git directory found)"
+        // Validate it's either a git repo itself, or a parent folder that
+        // contains at least one git subdirectory (multi-repo workspace mode,
+        // matches run.sh / src/main.py detection).
+        let url = URL(fileURLWithPath: path)
+        let isGitRepo = FileManager.default.fileExists(
+            atPath: url.appendingPathComponent(".git").path
+        )
+        if !isGitRepo && !AddProjectSheet.containsGitSubdirectory(url) {
+            errorMessage = "Not a git repository, and no git subdirectories found"
             return
         }
 
@@ -145,6 +150,27 @@ struct AddProjectSheet: View {
 
         projectManager.addProject(path: path)
         projectManager.showAddProject = false
+    }
+
+    /// True if `url` contains at least one immediate subdirectory that is a git repo.
+    /// Used to detect multi-repo workspaces (e.g. a `flutter-mss/` folder with
+    /// several sibling repos inside).
+    static func containsGitSubdirectory(_ url: URL) -> Bool {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return false }
+        for item in contents {
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: item.path, isDirectory: &isDir),
+                  isDir.boolValue else { continue }
+            if FileManager.default.fileExists(
+                atPath: item.appendingPathComponent(".git").path
+            ) {
+                return true
+            }
+        }
+        return false
     }
 
     private func loadRecentPaths() {

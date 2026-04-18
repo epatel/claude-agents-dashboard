@@ -202,8 +202,14 @@ async def board_page(request: Request):
         item["is_blocked"] = len(blockers) > 0
         item["blocking_items"] = blockers
 
-    # Get current git branch name
-    current_branch = await get_current_branch(request.app.state.target_project)
+    # Get current git branch name (single-repo mode only — multi-mode has a
+    # different branch per subrepo, so leave it blank and let the frontend
+    # decide how to surface per-repo info).
+    repos = request.app.state.repos
+    if repos:
+        current_branch = ""
+    else:
+        current_branch = await get_current_branch(request.app.state.target_project)
 
     return request.app.state.templates.TemplateResponse(
         request=request,
@@ -217,6 +223,8 @@ async def board_page(request: Request):
             "available_models": AVAILABLE_MODELS,
             "default_model": DEFAULT_MODEL,
             "default_ollama_url": DEFAULT_OLLAMA_BASE_URL,
+            "workspace_repos": sorted(repos) if repos else [],
+            "workspace_mode": "multi" if repos else "single",
         },
     )
 
@@ -253,6 +261,26 @@ async def search_worklog(request: Request, q: str = ""):
 async def create_item(request: Request, body: ItemCreate):
     db = request.app.state.db
     item_id = new_id()
+
+    # Validate repo against the workspace's known repos. In multi-repo mode a
+    # repo is required; in single-repo mode it must be empty/None.
+    known_repos = request.app.state.repos
+    repo = body.repo or None
+    if known_repos:
+        if not repo:
+            raise HTTPException(
+                status_code=400,
+                detail="repo is required in multi-repo mode",
+            )
+        if repo not in known_repos:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown repo '{repo}'. Known: {sorted(known_repos)}",
+            )
+    else:
+        # Silently drop any repo field sent to a single-repo workspace.
+        repo = None
+
     async with db.connect() as conn:
         # Get next position in todo
         cursor = await conn.execute(
@@ -267,8 +295,8 @@ async def create_item(request: Request, body: ItemCreate):
                 raise HTTPException(status_code=400, detail="Epic not found")
 
         await conn.execute(
-            "INSERT INTO items (id, title, description, column_name, position, model, epic_id, auto_start, start_copy) VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?)",
-            (item_id, body.title, body.description, position, body.model, body.epic_id, int(body.auto_start), int(body.start_copy)),
+            "INSERT INTO items (id, title, description, column_name, position, model, epic_id, auto_start, start_copy, repo) VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?)",
+            (item_id, body.title, body.description, position, body.model, body.epic_id, int(body.auto_start), int(body.start_copy), repo),
         )
         await conn.commit()
 
@@ -278,6 +306,17 @@ async def create_item(request: Request, body: ItemCreate):
     await request.app.state.ws_manager.broadcast("item_created", item)
     _invalidate_stats_cache()  # New item affects stats
     return item
+
+
+@router.get("/api/workspace")
+async def get_workspace(request: Request):
+    """Return the workspace mode and repo list for the frontend."""
+    repos = request.app.state.repos
+    return {
+        "mode": "multi" if repos else "single",
+        "repos": sorted(repos) if repos else [],
+        "root": str(request.app.state.target_project),
+    }
 
 
 @router.patch("/api/items/{item_id}")
@@ -658,6 +697,15 @@ async def retry_agent(request: Request, item_id: str):
 
 # --- Review ---
 
+def _resolve_item_repo_path(request: Request, item_repo: Optional[str]) -> Path:
+    """Return the git repo path for an item in either mode."""
+    target = request.app.state.target_project
+    repos = request.app.state.repos
+    if repos and item_repo:
+        return target / item_repo
+    return target
+
+
 @router.get("/api/items/{item_id}/diff")
 async def get_item_diff(request: Request, item_id: str):
     db = request.app.state.db
@@ -668,7 +716,7 @@ async def get_item_diff(request: Request, item_id: str):
     if not item.get("branch_name"):
         return {"diff": "", "files": []}
 
-    repo = request.app.state.target_project
+    repo = _resolve_item_repo_path(request, item.get("repo"))
     wt = Path(item["worktree_path"]) if item.get("worktree_path") else None
     base = item.get("base_branch")
     base_commit = item.get("base_commit")
@@ -681,11 +729,12 @@ async def get_item_diff(request: Request, item_id: str):
 async def get_item_file(request: Request, item_id: str, file_path: str):
     db = request.app.state.db
     async with db.connect() as conn:
-        cursor = await conn.execute("SELECT branch_name FROM items WHERE id = ?", (item_id,))
+        cursor = await conn.execute("SELECT branch_name, repo FROM items WHERE id = ?", (item_id,))
         item = dict(await cursor.fetchone())
 
     try:
-        content = await get_file_content(request.app.state.target_project, item["branch_name"], file_path)
+        repo_path = _resolve_item_repo_path(request, item.get("repo"))
+        content = await get_file_content(repo_path, item["branch_name"], file_path)
         return {"content": content}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid file path: {str(e)}")

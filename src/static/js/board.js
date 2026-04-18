@@ -18,6 +18,17 @@ const Board = {
     // Track items running in YOLO mode
     _yoloItems: new Set(),
 
+    // djb2 hash mapped to a hue; must match Python's _repo_hue in app.py so
+    // server-rendered cards and JS-rendered cards agree on repo color.
+    repoHue(name) {
+        let h = 5381;
+        const s = String(name || '');
+        for (let i = 0; i < s.length; i++) {
+            h = ((h * 33) + s.charCodeAt(i)) >>> 0;
+        }
+        return h % 360;
+    },
+
     async init(initialItems) {
         for (const item of initialItems) {
             this.items[item.id] = item;
@@ -436,6 +447,14 @@ const Board = {
             }
         }
 
+        // Multi-repo badge (matches server-rendered card.html; uses same djb2 hue).
+        let repoBadgeHtml = '';
+        if (item.repo) {
+            const hue = Board.repoHue(item.repo);
+            const repoEsc = this.escapeHtml(item.repo);
+            repoBadgeHtml = `<span class="card-repo-badge" data-repo="${repoEsc}" style="--repo-hue: ${hue}" title="Repo: ${repoEsc}">${repoEsc}</span>`;
+        }
+
         let statusHtml = '';
         if (item.status) {
             const labels = {
@@ -528,6 +547,7 @@ const Board = {
 
         div.innerHTML = `
             ${epicBadgeHtml}
+            ${repoBadgeHtml}
             <div class="card-title">${this.escapeHtml(item.title)}</div>
             ${blockedHtml}
             ${statusHtml}

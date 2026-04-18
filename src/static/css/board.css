@@ -487,6 +487,29 @@
     height: 8px;
 }
 
+/* --- Multi-repo badge on cards --- */
+
+.card-repo-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    background: hsl(var(--repo-hue, 200), 55%, 88%);
+    color: hsl(var(--repo-hue, 200), 55%, 28%);
+    border: 1px solid hsl(var(--repo-hue, 200), 55%, 75%);
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+[data-theme="dark"] .card-repo-badge {
+    background: hsl(var(--repo-hue, 200), 40%, 22%);
+    color: hsl(var(--repo-hue, 200), 70%, 78%);
+    border-color: hsl(var(--repo-hue, 200), 40%, 32%);
+}
+
 /* --- Todo column epic grouping --- */
 
 .todo-epic-group { margin-bottom: 8px; }

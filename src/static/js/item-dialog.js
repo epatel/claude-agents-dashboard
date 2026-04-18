@@ -16,6 +16,8 @@ const ItemDialog = {
         document.getElementById('item-form-desc').value = '';
         document.getElementById('item-form-model').value = '';
         document.getElementById('item-form-epic').value = '';
+        const repoSelect = document.getElementById('item-form-repo');
+        if (repoSelect) repoSelect.value = '';
         this.hideInlineEpicCreate();
         await this._populateEpicDropdown(null);
         this._pendingAttachments = [];
@@ -41,6 +43,12 @@ const ItemDialog = {
         document.getElementById('item-form-desc').value = item.description;
         document.getElementById('item-form-model').value = item.model || '';
         document.getElementById('item-form-epic').value = item.epic_id || '';
+        const repoSelect = document.getElementById('item-form-repo');
+        if (repoSelect) {
+            repoSelect.value = item.repo || '';
+            // Repo is immutable after creation — the worktree is already bound to it.
+            repoSelect.disabled = !!item.id;
+        }
         this.hideInlineEpicCreate();
         await this._populateEpicDropdown(item.epic_id);
         this._pendingAttachments = [];
@@ -172,7 +180,13 @@ const ItemDialog = {
                 updateData.model = model;  // null clears to default
                 await Api.updateItem(id, updateData);
             } else {
-                const item = await Api.createItem(title, description, model, epic_id, auto_start, start_copy);
+                const repoEl = document.getElementById('item-form-repo');
+                const repo = repoEl ? (repoEl.value || null) : null;
+                if (repoEl && !repo) {
+                    alert('Please pick a repo for this item.');
+                    return;
+                }
+                const item = await Api.createItem(title, description, model, epic_id, auto_start, start_copy, repo);
                 itemId = item.id;
             }
 
@@ -224,8 +238,14 @@ const ItemDialog = {
                 if (model !== null) updateData.model = model;
                 await Api.updateItem(id, updateData);
             } else {
+                const repoEl = document.getElementById('item-form-repo');
+                const repo = repoEl ? (repoEl.value || null) : null;
+                if (repoEl && !repo) {
+                    alert('Please pick a repo for this item.');
+                    return;
+                }
                 // For new items, create first
-                const item = await Api.createItem(title, description, model, epic_id, false, start_copy);
+                const item = await Api.createItem(title, description, model, epic_id, false, start_copy, repo);
                 itemId = item.id;
             }
 
