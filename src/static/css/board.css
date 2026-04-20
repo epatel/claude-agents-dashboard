@@ -238,6 +238,18 @@
     color: var(--warning);
 }
 
+.card-status-stopping {
+    color: var(--warning);
+}
+
+/* Optimistic UI state applied on the card when the user has clicked
+   pause/cancel but the backend hasn't yet confirmed the state change.
+   Cleared automatically when the server broadcasts item_updated. */
+.card.is-stopping {
+    opacity: 0.7;
+    transition: opacity 0.15s ease;
+}
+
 .card-bottom {
     display: flex;
     justify-content: space-between;
