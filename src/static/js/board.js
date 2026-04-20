@@ -285,7 +285,26 @@ const Board = {
         }
     },
 
+    // Apply an immediate visual "stopping" state on the card while the
+    // backend processes a pause/cancel. Cleared when the server's
+    // item_updated WebSocket event triggers a full re-render via updateCard().
+    applyStoppingState(itemId, label) {
+        const card = document.querySelector(`.card[data-id="${itemId}"]`);
+        if (!card) return;
+        card.classList.add('is-stopping');
+        const statusEl = card.querySelector('.card-status');
+        if (statusEl) {
+            statusEl.className = 'card-status card-status-stopping';
+            statusEl.innerHTML = `<span class="spinner"></span> ${label}`;
+        }
+        card.querySelectorAll('.card-actions .btn').forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add('btn-disabled');
+        });
+    },
+
     async pauseAgent(itemId) {
+        this.applyStoppingState(itemId, 'Pausing…');
         try {
             await Api.pauseAgent(itemId);
         } catch (err) {
@@ -302,6 +321,7 @@ const Board = {
     },
 
     async cancelAgent(itemId) {
+        this.applyStoppingState(itemId, 'Cancelling…');
         try {
             await Api.cancelAgent(itemId);
         } catch (err) {
