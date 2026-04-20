@@ -25,11 +25,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css">
 </head>
 <body>
-    <header class="top-bar">
-        <h1 class="project-title">{{ project_name }} ({{ current_branch }})</h1>
+    <header class="top-bar" data-map-name="topbar">
+        <h1 class="project-title" data-map-name="topbar.title">{{ project_name }} ({{ current_branch }})</h1>
 
         <!-- Stats Display -->
-        <div class="stats-bar" id="stats-bar">
+        <div class="stats-bar" id="stats-bar" data-map-name="topbar.stats">
             <div class="stat-item">
                 <span class="stat-label">Cost:</span>
                 <span class="stat-value" id="total-cost">$0.00</span>
@@ -56,19 +56,19 @@
             </div>
         </div>
 
-        <div class="top-bar-actions">
-            <button id="search-btn" class="btn btn-icon" onclick="SearchDialog.open()" title="Search items">🔍</button>
-            <button id="files-btn" class="btn btn-secondary btn-sm" onclick="FileBrowser.open()">Files</button>
-            <button id="notifications-btn" class="btn btn-icon" title="System notifications — MCP server errors, agent failures, and warnings">
+        <div class="top-bar-actions" data-map-name="topbar.actions">
+            <button id="search-btn" class="btn btn-icon" onclick="SearchDialog.open()" title="Search items" data-map-name="topbar.btn-search">🔍</button>
+            <button id="files-btn" class="btn btn-secondary btn-sm" onclick="FileBrowser.open()" data-map-name="topbar.btn-files">Files</button>
+            <button id="notifications-btn" class="btn btn-icon" title="System notifications — MCP server errors, agent failures, and warnings" data-map-name="topbar.btn-notifications">
                 <span class="bell-icon">&#x1F514;</span>
                 <span class="notification-badge" id="notification-badge" style="display:none">0</span>
             </button>
-            <button id="config-btn" class="btn btn-icon" title="Settings">⚙</button>
-            <button id="sound-toggle" class="btn btn-icon" title="Sound on (click to mute)">
+            <button id="config-btn" class="btn btn-icon" title="Settings" data-map-name="topbar.btn-config">⚙</button>
+            <button id="sound-toggle" class="btn btn-icon" title="Sound on (click to mute)" data-map-name="topbar.btn-sound">
                 <span class="sound-on">🔊</span>
                 <span class="sound-off" style="display:none">🔇</span>
             </button>
-            <button id="theme-toggle" class="btn btn-icon" title="Theme: System">
+            <button id="theme-toggle" class="btn btn-icon" title="Theme: System" data-map-name="topbar.btn-theme">
                 <span class="theme-icon-auto">🖥</span>
                 <span class="theme-icon-light">☀</span>
                 <span class="theme-icon-dark">☾</span>
@@ -79,16 +79,16 @@
     {% block content %}{% endblock %}
 
     <!-- Shortcuts Bar -->
-    <div class="shortcuts-bar" id="shortcuts-bar" style="display:none">
+    <div class="shortcuts-bar" id="shortcuts-bar" style="display:none" data-map-name="shortcuts.bar">
         <div class="shortcuts-buttons"></div>
         <div class="shortcuts-actions">
-            <button class="shortcut-action-btn" onclick="Shortcuts.showAddDialog()" title="Add shortcut">+</button>
-            <button class="shortcut-action-btn" onclick="Shortcuts.showManageDialog()" title="Manage shortcuts">⚙</button>
+            <button class="shortcut-action-btn" onclick="Shortcuts.showAddDialog()" title="Add shortcut" data-map-name="shortcuts.btn-add">+</button>
+            <button class="shortcut-action-btn" onclick="Shortcuts.showManageDialog()" title="Manage shortcuts" data-map-name="shortcuts.btn-manage">⚙</button>
         </div>
     </div>
 
     <!-- Shortcuts — always-visible add button when bar is hidden -->
-    <button class="shortcuts-add-floating" id="shortcuts-add-floating" onclick="Shortcuts.showAddDialog()" title="Add a shortcut">+ Shortcut</button>
+    <button class="shortcuts-add-floating" id="shortcuts-add-floating" onclick="Shortcuts.showAddDialog()" title="Add a shortcut" data-map-name="shortcuts.btn-add-floating">+ Shortcut</button>
 
     <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -127,5 +127,12 @@
     <script src="/static/js/stats.js"></script>
     <script src="/static/js/board.js"></script>
     <script src="/static/js/app.js"></script>
+
+    {% if ui_map %}
+    <!-- PROJECT_MAP overlays: enabled via server flag --ui-map. Cmd+Shift+M cycles modes. See PROJECT_MAP.md. -->
+    <script src="/static/js/map_overlay.js"></script>
+    <script src="/static/js/spacing_overlay.js"></script>
+    <script src="/static/js/map_coordinator.js"></script>
+    {% endif %}
 </body>
 </html>

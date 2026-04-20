@@ -1,4 +1,4 @@
-<div class="card" data-id="{{ item.id }}" data-column="{{ item.column_name }}"
+<div class="card" data-map-name="card" data-id="{{ item.id }}" data-column="{{ item.column_name }}"
      data-status="{{ item.status or '' }}"
      data-title="{{ item.title }}"
      data-done-at="{{ item.done_at or '' }}"
@@ -9,22 +9,22 @@
      ondragstart="Board.handleDragStart(event)"
      onclick="Dialogs.showDetail('{{ item.id }}')">
     {% if item.epic_title and item.column_name != 'todo' %}
-    <div class="card-epic-badge">
+    <div class="card-epic-badge" data-map-name="card.epic-badge">
         <span class="epic-dot" style="background: var(--epic-{{ item.epic_color or 'blue' }})"></span>
         {{ item.epic_title }}
     </div>
     {% endif %}
     {% if item.repo %}
-    <span class="card-repo-badge" data-repo="{{ item.repo }}"
+    <span class="card-repo-badge" data-map-name="card.repo-badge" data-repo="{{ item.repo }}"
           style="--repo-hue: {{ item.repo | repo_hue }}"
           title="Repo: {{ item.repo }}">{{ item.repo }}</span>
     {% endif %}
-    <div class="card-title">{{ item.title }}</div>
+    <div class="card-title" data-map-name="card.title">{{ item.title }}</div>
     {% if item.is_blocked and item.column_name == 'todo' %}
-    <div class="card-blocked-badge" title="Requires: {{ item.blocking_items | map(attribute='title') | join(', ') }}">{% for dep in item.blocking_items %}<span class="blocked-item">🔒 {{ dep.title }}</span>{% endfor %}</div>
+    <div class="card-blocked-badge" data-map-name="card.blocked-badge" title="Requires: {{ item.blocking_items | map(attribute='title') | join(', ') }}">{% for dep in item.blocking_items %}<span class="blocked-item">🔒 {{ dep.title }}</span>{% endfor %}</div>
     {% endif %}
     {% if item.status %}
-    <div class="card-status card-status-{{ item.status }}">
+    <div class="card-status card-status-{{ item.status }}" data-map-name="card.status">
         {% if item.status == 'running' %}
         <span class="spinner"></span> Running
         {% elif item.status == 'failed' %}
@@ -43,50 +43,50 @@
     </div>
     {% endif %}
     <div class="card-bottom">
-        <div class="card-actions">
+        <div class="card-actions" data-map-name="card.actions">
             {% if item.column_name == 'todo' %}
             {% if item.is_blocked %}
             {% if item.start_copy %}
-            <button class="btn btn-xs btn-primary btn-disabled" onclick="event.stopPropagation();" title="Blocked by: {{ item.blocking_items | map(attribute='title') | join(', ') }}" disabled>▶⧉</button>
+            <button class="btn btn-xs btn-primary btn-disabled" data-map-name="card.btn-start-copy" onclick="event.stopPropagation();" title="Blocked by: {{ item.blocking_items | map(attribute='title') | join(', ') }}" disabled>▶⧉</button>
             {% else %}
-            <button class="btn btn-xs btn-primary btn-disabled" onclick="event.stopPropagation();" title="Blocked by: {{ item.blocking_items | map(attribute='title') | join(', ') }}" disabled>▶</button>
+            <button class="btn btn-xs btn-primary btn-disabled" data-map-name="card.btn-start" onclick="event.stopPropagation();" title="Blocked by: {{ item.blocking_items | map(attribute='title') | join(', ') }}" disabled>▶</button>
             {% endif %}
             {% else %}
             {% if item.start_copy %}
-            <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startCopyAgent('{{ item.id }}')" title="Start Copy (keep original in Todo)">▶⧉</button>
+            <button class="btn btn-xs btn-primary" data-map-name="card.btn-start-copy" onclick="event.stopPropagation(); Board.startCopyAgent('{{ item.id }}')" title="Start Copy (keep original in Todo)">▶⧉</button>
             {% else %}
-            <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.startAgent('{{ item.id }}')" title="Start agent">▶</button>
+            <button class="btn btn-xs btn-primary" data-map-name="card.btn-start" onclick="event.stopPropagation(); Board.startAgent('{{ item.id }}')" title="Start agent">▶</button>
             {% endif %}
             {% endif %}
-            <button class="btn btn-xs btn-delete" onclick="event.stopPropagation(); Board.deleteItem('{{ item.id }}')" title="Delete">✕</button>
+            <button class="btn btn-xs btn-delete" data-map-name="card.btn-delete" onclick="event.stopPropagation(); Board.deleteItem('{{ item.id }}')" title="Delete">✕</button>
             {% elif item.column_name == 'doing' and item.status == 'failed' %}
-            <button class="btn btn-xs" onclick="event.stopPropagation(); Board.retryAgent('{{ item.id }}')" title="Retry">↻ Retry</button>
-            <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>
+            <button class="btn btn-xs" data-map-name="card.btn-retry" onclick="event.stopPropagation(); Board.retryAgent('{{ item.id }}')" title="Retry">↻ Retry</button>
+            <button class="btn btn-xs" data-map-name="card.btn-move-to-todo" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>
             {% elif item.column_name == 'doing' and item.status == 'running' %}
-            <button class="btn btn-xs btn-warning" onclick="event.stopPropagation(); Board.pauseAgent('{{ item.id }}')" title="Pause">⏸</button>
-            <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('{{ item.id }}')" title="Cancel">✕</button>
+            <button class="btn btn-xs btn-warning" data-map-name="card.btn-pause" onclick="event.stopPropagation(); Board.pauseAgent('{{ item.id }}')" title="Pause">⏸</button>
+            <button class="btn btn-xs btn-danger" data-map-name="card.btn-cancel" onclick="event.stopPropagation(); Board.cancelAgent('{{ item.id }}')" title="Cancel">✕</button>
             {% elif item.column_name == 'doing' and item.status == 'paused' %}
-            <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.resumeAgent('{{ item.id }}')" title="Resume">▶</button>
-            <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelAgent('{{ item.id }}')" title="Cancel">✕</button>
+            <button class="btn btn-xs btn-primary" data-map-name="card.btn-resume" onclick="event.stopPropagation(); Board.resumeAgent('{{ item.id }}')" title="Resume">▶</button>
+            <button class="btn btn-xs btn-danger" data-map-name="card.btn-cancel" onclick="event.stopPropagation(); Board.cancelAgent('{{ item.id }}')" title="Cancel">✕</button>
             {% elif item.column_name == 'review' %}
             {% if item.has_file_changes == 0 %}
-            <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'done')" title="Done">✓ Done</button>
+            <button class="btn btn-xs btn-primary" data-map-name="card.btn-done" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'done')" title="Done">✓ Done</button>
             {% else %}
-            <button class="btn btn-xs btn-primary" onclick="event.stopPropagation(); Board.approveItem('{{ item.id }}')" title="Approve & Merge">✓ Approve</button>
+            <button class="btn btn-xs btn-primary" data-map-name="card.btn-approve" onclick="event.stopPropagation(); Board.approveItem('{{ item.id }}')" title="Approve & Merge">✓ Approve</button>
             {% endif %}
-            <button class="btn btn-xs" onclick="event.stopPropagation(); Board.requestChanges('{{ item.id }}')" title="Request changes">↩</button>
-            <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); Board.cancelReview('{{ item.id }}')" title="Cancel review">✕</button>
+            <button class="btn btn-xs" data-map-name="card.btn-request-changes" onclick="event.stopPropagation(); Board.requestChanges('{{ item.id }}')" title="Request changes">↩</button>
+            <button class="btn btn-xs btn-danger" data-map-name="card.btn-cancel-review" onclick="event.stopPropagation(); Board.cancelReview('{{ item.id }}')" title="Cancel review">✕</button>
             {% elif item.column_name == 'questions' %}
-            <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'archive')" title="📦 Archive">📦 Archive</button>
+            <button class="btn btn-xs" data-map-name="card.btn-archive" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'archive')" title="📦 Archive">📦 Archive</button>
             {% elif item.column_name == 'done' %}
-            <button class="btn btn-xs" onclick="event.stopPropagation(); Board.rerunItem('{{ item.id }}')" title="Re-run">↻</button>
-            <button class="btn btn-xs" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'archive')" title="📦 Archive">📦 Archive</button>
+            <button class="btn btn-xs" data-map-name="card.btn-rerun" onclick="event.stopPropagation(); Board.rerunItem('{{ item.id }}')" title="Re-run">↻</button>
+            <button class="btn btn-xs" data-map-name="card.btn-archive" onclick="event.stopPropagation(); Board.moveItem('{{ item.id }}', 'archive')" title="📦 Archive">📦 Archive</button>
             {% elif item.column_name == 'archive' %}
-            <button class="btn btn-xs btn-delete" onclick="event.stopPropagation(); Board.deleteItem('{{ item.id }}')" title="Delete">✕</button>
+            <button class="btn btn-xs btn-delete" data-map-name="card.btn-delete" onclick="event.stopPropagation(); Board.deleteItem('{{ item.id }}')" title="Delete">✕</button>
             {% endif %}
         </div>
         {% if item.column_name == 'doing' and item.log_count is defined and item.log_count > 0 %}
-        <div class="card-log-count" data-log-count="{{ item.id }}">{{ item.log_count }}</div>
+        <div class="card-log-count" data-map-name="card.log-count" data-log-count="{{ item.id }}">{{ item.log_count }}</div>
         {% endif %}
     </div>
 </div>

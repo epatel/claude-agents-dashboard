@@ -220,6 +220,7 @@ async def board_page(request: Request):
             "project_name": request.app.state.target_project.name,
             "current_branch": current_branch,
             "experimental": getattr(request.app.state, "experimental", False),
+            "ui_map": getattr(request.app.state, "ui_map", False),
             "available_models": AVAILABLE_MODELS,
             "default_model": DEFAULT_MODEL,
             "default_ollama_url": DEFAULT_OLLAMA_BASE_URL,

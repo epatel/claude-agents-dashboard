@@ -6,24 +6,24 @@ window.__ANTHROPIC_MODEL_IDS__ = new Set([{% for model_id, _, _ in available_mod
 window.__EXPERIMENTAL__ = {{ 'true' if experimental else 'false' }};
 window.__DEFAULT_MODEL__ = '{{ default_model }}';
 window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
-<div class="epic-panel-toggle" onclick="Board.toggleEpicPanel()">
+<div class="epic-panel-toggle" onclick="Board.toggleEpicPanel()" data-map-name="board.epic-toggle">
     <svg class="epic-panel-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
     Epics
 </div>
-<div class="epic-panel" id="epic-panel"></div>
-<main class="board">
+<div class="epic-panel" id="epic-panel" data-map-name="board.epic-panel"></div>
+<main class="board" data-map-name="board">
     {% for col in columns %}
-    <div class="column" data-column="{{ col.id }}">
-        <div class="column-header">
+    <div class="column" data-column="{{ col.id }}" data-map-name="board.column-{{ col.id }}">
+        <div class="column-header" data-map-name="board.column-{{ col.id }}.header">
             <h2 title="{{ col.tooltip }}">{{ col.label }}</h2>
             <div class="column-header-actions">
                 {% if col.id == 'todo' %}
-                <button class="btn btn-plus" onclick="Dialogs.openNewItem()" title="Add new item">+</button>
+                <button class="btn btn-plus" onclick="Dialogs.openNewItem()" title="Add new item" data-map-name="board.btn-new-item">+</button>
                 {% endif %}
-                <span class="column-count" data-count-for="{{ col.id }}">0</span>
+                <span class="column-count" data-count-for="{{ col.id }}" data-map-name="board.column-{{ col.id }}.count">0</span>
             </div>
         </div>
-        <div class="column-cards" data-column="{{ col.id }}"
+        <div class="column-cards" data-column="{{ col.id }}" data-map-name="board.column-{{ col.id }}.dropzone"
              ondrop="Board.handleDrop(event)" ondragover="Board.handleDragOver(event)">
             {% for item in items if item.column_name == col.id %}
             {% include "partials/card.html" %}
@@ -354,26 +354,26 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
 </dialog>
 
 <!-- Settings Dialog -->
-<dialog id="config-dialog" class="modal modal-large">
+<dialog id="config-dialog" class="modal modal-large" data-map-name="dialog.settings">
     <div class="modal-content">
-        <div class="modal-header">
+        <div class="modal-header" data-map-name="dialog.settings.header">
             <h3>Settings</h3>
-            <button class="btn-close" onclick="Dialogs.close('config-dialog')">&times;</button>
+            <button class="btn-close" data-map-name="dialog.settings.btn-close" onclick="Dialogs.close('config-dialog')">&times;</button>
         </div>
-        <form id="config-form" onsubmit="Dialogs.submitConfig(event)">
-            <div class="review-tabs">
-                <button type="button" class="review-tab active" data-tab="general" onclick="Dialogs.switchConfigTab('general')">General</button>
-                <button type="button" class="review-tab" data-tab="prompts" onclick="Dialogs.switchConfigTab('prompts')">Prompts</button>
-                {% if experimental %}<button type="button" class="review-tab" data-tab="ollama" onclick="Dialogs.switchConfigTab('ollama')">Ollama <span style="font-size:9px;opacity:0.6;font-weight:normal;vertical-align:super;">experimental</span></button>{% endif %}
-                <button type="button" class="review-tab" data-tab="mcp" onclick="Dialogs.switchConfigTab('mcp')">MCP</button>
-                <button type="button" class="review-tab" data-tab="plugins" onclick="Dialogs.switchConfigTab('plugins')">Plugins</button>
-                <button type="button" class="review-tab" data-tab="appearance" onclick="Dialogs.switchConfigTab('appearance')">Appearance</button>
+        <form id="config-form" data-map-name="dialog.settings.form" onsubmit="Dialogs.submitConfig(event)">
+            <div class="review-tabs" data-map-name="dialog.settings.tabs">
+                <button type="button" class="review-tab active" data-map-name="dialog.settings.tab-general" data-tab="general" onclick="Dialogs.switchConfigTab('general')">General</button>
+                <button type="button" class="review-tab" data-map-name="dialog.settings.tab-prompts" data-tab="prompts" onclick="Dialogs.switchConfigTab('prompts')">Prompts</button>
+                {% if experimental %}<button type="button" class="review-tab" data-map-name="dialog.settings.tab-ollama" data-tab="ollama" onclick="Dialogs.switchConfigTab('ollama')">Ollama <span style="font-size:9px;opacity:0.6;font-weight:normal;vertical-align:super;">experimental</span></button>{% endif %}
+                <button type="button" class="review-tab" data-map-name="dialog.settings.tab-mcp" data-tab="mcp" onclick="Dialogs.switchConfigTab('mcp')">MCP</button>
+                <button type="button" class="review-tab" data-map-name="dialog.settings.tab-plugins" data-tab="plugins" onclick="Dialogs.switchConfigTab('plugins')">Plugins</button>
+                <button type="button" class="review-tab" data-map-name="dialog.settings.tab-appearance" data-tab="appearance" onclick="Dialogs.switchConfigTab('appearance')">Appearance</button>
             </div>
             <!-- General tab -->
-            <div class="config-tab-content" data-config-tab="general" style="padding:20px;">
+            <div class="config-tab-content" data-map-name="dialog.settings.panel-general" data-config-tab="general" style="padding:20px;">
                 <div class="form-group">
                     <label for="config-model">Model <span class="tooltip" title="The Claude model used for all agent tasks. Sonnet is fast and capable, Sonnet + Advisor adds an Opus advisor subagent for complex reasoning, Opus is most powerful, Haiku is cheapest.">?</span></label>
-                    <select id="config-model">
+                    <select id="config-model" data-map-name="dialog.settings.field-model">
                         <optgroup label="Anthropic Models">
                         {% for model_id, display_name, is_experimental in available_models %}
                         {% if not is_experimental or experimental %}<option value="{{ model_id }}">{{ display_name }}</option>{% endif %}
@@ -384,7 +384,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                 <div class="form-group" style="margin-top: 16px;">
                     <label for="config-wip-limit">WIP Limit <span class="tooltip" title="Maximum number of agents that can run concurrently. Extra items are queued in the Doing column and auto-started when a slot opens. 0 = unlimited.">?</span></label>
                     <div style="display:flex;align-items:center;gap:8px;">
-                        <input type="number" id="config-wip-limit" min="0" max="50" value="0" style="width:80px;">
+                        <input type="number" id="config-wip-limit" data-map-name="dialog.settings.field-wip-limit" min="0" max="50" value="0" style="width:80px;">
                         <span class="text-muted" style="font-size:12px;">0 = unlimited</span>
                     </div>
                 </div>
@@ -410,7 +410,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                 </div>
             </div>
             <!-- Prompts tab -->
-            <div class="config-tab-content" data-config-tab="prompts" style="padding:20px;display:none;">
+            <div class="config-tab-content" data-map-name="dialog.settings.panel-prompts" data-config-tab="prompts" style="padding:20px;display:none;">
                 <div class="form-group">
                     <label for="config-system-prompt">System Prompt <span class="tooltip" title="Instructions prepended to every agent task. Use this to define coding style, conventions, or constraints that apply to all work in this project.">?</span></label>
                     <textarea id="config-system-prompt" rows="6" placeholder="e.g. Use TypeScript with strict mode. Follow existing patterns in the codebase. Write tests for new features."></textarea>
@@ -421,7 +421,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                 </div>
             </div>
             <!-- Ollama tab -->
-            <div class="config-tab-content" data-config-tab="ollama" style="padding:20px;display:none;">
+            <div class="config-tab-content" data-map-name="dialog.settings.panel-ollama" data-config-tab="ollama" style="padding:20px;display:none;">
                 <div style="padding:8px 12px;margin-bottom:16px;background:var(--warning-bg, rgba(255,180,0,0.1));border:1px solid var(--warning, #e6a700);border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary);">
                     <b>Experimental.</b> Ollama support is early-stage. External MCP servers and plugins are disabled for Ollama agents to keep context size manageable for local models. Cloud-hosted Ollama models (e.g. <code>kimi-k2.5:cloud</code>) tend to work best.
                 </div>
@@ -461,7 +461,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                 </div>
             </div>
             <!-- MCP tab -->
-            <div class="config-tab-content" data-config-tab="mcp" style="padding:20px;display:none;">
+            <div class="config-tab-content" data-map-name="dialog.settings.panel-mcp" data-config-tab="mcp" style="padding:20px;display:none;">
                 <div class="form-group">
                     <label for="config-mcp-enabled">
                         Enable MCP (Model Context Protocol) <span class="tooltip" title="Enable Model Context Protocol to connect external tools and data sources for enhanced agent capabilities.">?</span>
@@ -474,7 +474,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                 </div>
             </div>
             <!-- Plugins tab -->
-            <div class="config-tab-content" data-config-tab="plugins" style="padding:20px;display:none;">
+            <div class="config-tab-content" data-map-name="dialog.settings.panel-plugins" data-config-tab="plugins" style="padding:20px;display:none;">
                 <div class="form-group">
                     <label>Plugins <span class="tooltip" data-tip-html="<b>Local plugin directories</b> that extend agents with custom skills, agents, hooks, and MCP servers.<br><br>Each plugin must contain a <code>.claude-plugin/plugin.json</code> manifest.<br><br><b>Structure:</b><pre style='margin:6px 0;font-size:11px;background:rgba(255,255,255,0.1);padding:6px;border-radius:4px'>my-plugin/<br>  .claude-plugin/plugin.json<br>  skills/<br>  agents/<br>  hooks/</pre>Enter one directory path per line (absolute or relative to the project root).">?</span></label>
                     <div id="config-plugins-list" class="plugins-list"></div>
@@ -485,7 +485,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                 </div>
             </div>
             <!-- Appearance tab -->
-            <div class="config-tab-content" data-config-tab="appearance" style="padding:20px;display:none;">
+            <div class="config-tab-content" data-map-name="dialog.settings.panel-appearance" data-config-tab="appearance" style="padding:20px;display:none;">
                 <div class="form-group">
                     <label for="config-flame-enabled" style="display:flex;align-items:center;gap:8px;">
                         Background Flame Animation
@@ -522,9 +522,9 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                     </p>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn" onclick="Dialogs.close('config-dialog')">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save</button>
+            <div class="modal-footer" data-map-name="dialog.settings.footer">
+                <button type="button" class="btn" data-map-name="dialog.settings.btn-cancel" onclick="Dialogs.close('config-dialog')">Cancel</button>
+                <button type="submit" class="btn btn-primary" data-map-name="dialog.settings.btn-save">Save</button>
             </div>
         </form>
     </div>

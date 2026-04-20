@@ -142,7 +142,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 def create_app(target_project: Path, data_dir: Path, *, experimental: bool = False,
-               repos: list[str] | None = None) -> FastAPI:
+               repos: list[str] | None = None, ui_map: bool = False) -> FastAPI:
     """Create the FastAPI app.
 
     When `repos` is provided, the app runs in multi-repo mode: `target_project`
@@ -179,6 +179,7 @@ def create_app(target_project: Path, data_dir: Path, *, experimental: bool = Fal
         return h % 360
     app.state.templates.env.filters["repo_hue"] = _repo_hue
     app.state.experimental = experimental
+    app.state.ui_map = ui_map
     app.state.repos = repos or None
 
     # Mount static files

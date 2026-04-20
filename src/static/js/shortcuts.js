@@ -31,6 +31,7 @@ const Shortcuts = {
             btn.textContent = sc.name;
             btn.title = sc.command;
             btn.dataset.id = sc.id;
+            btn.dataset.mapName = 'shortcuts.btn-shortcut';
 
             // Reflect current run state
             const state = this._runState[sc.id];

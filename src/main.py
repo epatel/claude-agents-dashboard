@@ -126,6 +126,9 @@ def main():
                         help=f"Port to bind to (default: auto-detect starting from {DEFAULT_PORT})")
     parser.add_argument("--experimental", action="store_true", default=False,
                         help="Enable experimental features (e.g. Ollama provider, Sonnet + Advisor model)")
+    parser.add_argument("--ui-map", action="store_true", default=False,
+                        help="Enable PROJECT_MAP UI overlays (data-map-name discovery + spacing visualizer). "
+                             "See PROJECT_MAP.md.")
     args = parser.parse_args()
 
     target_project = Path(args.target).resolve()
@@ -196,6 +199,8 @@ def main():
         print(f"⚠️  Accepting connections from all network interfaces")
     if args.experimental:
         print(f"🧪 Experimental features enabled")
+    if args.ui_map:
+        print(f"🗺  UI map overlays enabled (PROJECT_MAP.md)")
 
     import logging
     import uvicorn
@@ -217,7 +222,7 @@ def main():
     signal.signal(signal.SIGINT, _signal_handler)
     atexit.register(_kill_child_processes)
 
-    app = create_app(target_project, data_dir, experimental=args.experimental, repos=repos)
+    app = create_app(target_project, data_dir, experimental=args.experimental, repos=repos, ui_map=args.ui_map)
     uvicorn.run(app, host=host, port=port)
 
 
