@@ -2,8 +2,30 @@ import SwiftUI
 
 struct SidebarView: View {
     @EnvironmentObject var projectManager: ProjectManager
+    /// Toggle the richer drag/drop prototype. Persisted in UserDefaults so
+    /// it survives relaunches while we evaluate it.
+    @AppStorage("sidebar_reorder_prototype") private var useReorderPrototype: Bool = true
 
     var body: some View {
+        Group {
+            if useReorderPrototype {
+                SidebarReorderPrototype()
+            } else {
+                nativeSidebar
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Toggle(isOn: $useReorderPrototype) {
+                    Label("Rich Reorder", systemImage: useReorderPrototype ? "rectangle.stack.fill" : "rectangle.stack")
+                }
+                .toggleStyle(.button)
+                .help("Toggle prototype drag/drop reorder (lifted preview, list makes room)")
+            }
+        }
+    }
+
+    private var nativeSidebar: some View {
         List {
             Section("Projects") {
                 ForEach(projectManager.projects) { project in
