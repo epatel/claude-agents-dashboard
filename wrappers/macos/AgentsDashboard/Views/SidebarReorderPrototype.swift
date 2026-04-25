@@ -1,17 +1,22 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
-/// Prototype sidebar with a richer drag-and-drop reorder experience:
-///   • Entire row is draggable (no fragmented hit areas).
-///   • Dragged row scales up slightly with a shadow ("lifted" feel).
-///   • Other rows animate aside to "make room" as you drag.
-///   • Persistence happens through `ProjectManager.moveProjects`.
-///
-/// Toggle live via the toolbar gear in `SidebarView`. Stored in
-/// `UserDefaults` under `sidebar_reorder_prototype`.
+/// Sidebar with a richer drag-and-drop reorder experience:
+///   • Whole row is the hit area.
+///   • A **long-press (~0.35s)** on a row is required before drag-to-reorder
+///     activates — a quick click still selects the dashboard, so reorder
+///     never triggers by accident.
+///   • Once armed, the row lifts (scale + shadow) as the OS drag image, the
+///     original row collapses to an empty placeholder, and other rows
+///     animate aside to "make room" as the pointer moves.
+///   • Persistence happens through `ProjectManager.persistAfterReorder`.
 struct SidebarReorderPrototype: View {
     @EnvironmentObject var projectManager: ProjectManager
     @State private var draggingID: UUID? = nil
+    /// Set by a `LongPressGesture` on a row — until armed, `.onDrag`
+    /// refuses to start a real drag, so a single click just selects.
+    @State private var armedID: UUID? = nil
 
     var body: some View {
         ScrollView {
@@ -19,20 +24,35 @@ struct SidebarReorderPrototype: View {
                 sectionHeader
 
                 ForEach(projectManager.projects) { project in
-                    PrototypeRow(
+                    ReorderableRow(
                         project: project,
-                        isDragging: draggingID == project.id
+                        isDragging: draggingID == project.id,
+                        isArmed: armedID == project.id
                     )
-                    .contentShape(Rectangle()) // entire row hit area
+                    .contentShape(Rectangle())
+                    // Long-press arms this row for drag. Quick clicks still
+                    // fall through to ProjectRow's onTapGesture (select
+                    // dashboard) because LongPressGesture only fires after
+                    // the duration has elapsed without release.
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.35)
+                            .onEnded { _ in
+                                armRow(project.id)
+                            }
+                    )
                     .onDrag {
-                        // Record drag source. The transferable payload is the
-                        // project id so we can locate it on drop.
+                        // Only initiate a real drag once the row was armed
+                        // by a long-press. An empty NSItemProvider keeps
+                        // accidental drags from doing anything visible.
+                        guard armedID == project.id else {
+                            return NSItemProvider()
+                        }
                         draggingID = project.id
                         return NSItemProvider(object: project.id.uuidString as NSString)
                     } preview: {
-                        // Lifted preview — slightly scaled up with a shadow.
-                        PrototypeRow(project: project, isDragging: false)
-                            .padding(.horizontal, 8)
+                        // OS-rendered drag preview — slightly scaled with shadow.
+                        ProjectRow(project: project)
+                            .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                             .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
@@ -44,6 +64,7 @@ struct SidebarReorderPrototype: View {
                             target: project,
                             projects: $projectManager.projects,
                             draggingID: $draggingID,
+                            armedID: $armedID,
                             onCommit: { projectManager.persistAfterReorder() }
                         )
                     )
@@ -78,51 +99,53 @@ struct SidebarReorderPrototype: View {
             .padding(.top, 6)
             .padding(.bottom, 2)
     }
+
+    private func armRow(_ id: UUID) {
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+            armedID = id
+        }
+        // Subtle haptic + cursor cue so the user knows the row is now
+        // grabbable. Closed-hand cursor mirrors macOS Finder convention.
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        NSCursor.closedHand.set()
+        // Auto-disarm if the user holds-then-releases without ever dragging,
+        // so the highlight + cursor don't linger.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if armedID == id && draggingID == nil {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    armedID = nil
+                }
+                NSCursor.arrow.set()
+            }
+        }
+    }
 }
 
 // MARK: - Row
 
-private struct PrototypeRow: View {
-    @EnvironmentObject var projectManager: ProjectManager
-    @State private var showRemoveConfirm = false
+/// Wraps the full-featured `ProjectRow` (play/stop/terminal/remove buttons,
+/// context menu, status indicator) and adds the reorder visual states:
+/// dragging → invisible placeholder; armed → faint highlight so the user
+/// can see the long-press registered before they start moving the pointer.
+private struct ReorderableRow: View {
     let project: Project
     let isDragging: Bool
-
-    private var isAvailable: Bool { projectManager.isProjectAvailable(project) }
-    private var dashboard: DashboardInstance? { projectManager.dashboardFor(project: project) }
+    let isArmed: Bool
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(project.name).font(.headline)
-                    if !isAvailable {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                            .font(.caption)
-                    }
-                }
-                Text(project.path)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .opacity(isAvailable ? 1.0 : 0.5)
-
-            Spacer()
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        // While dragging, keep the row's footprint (so siblings still "make
-        // room" via the LazyVStack reorder) but hide its content — the row
-        // becomes an empty placeholder showing where the drop will land.
-        // The OS-rendered drag preview is the only thing the user sees move.
-        .opacity(isDragging ? 0 : 1.0)
-        .animation(.spring(response: 0.25, dampingFraction: 0.85), value: isDragging)
-        .onTapGesture {
-            if let d = dashboard { projectManager.selectedTab = d.id }
-        }
+        ProjectRow(project: project)
+            .padding(.horizontal, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.accentColor.opacity(isArmed && !isDragging ? 0.12 : 0))
+            )
+            // While dragging, keep the row's footprint (so siblings still
+            // animate to "make room") but hide its content — the OS-rendered
+            // drag image is the only thing the user sees move.
+            .opacity(isDragging ? 0 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.85), value: isDragging)
+            .animation(.easeInOut(duration: 0.15), value: isArmed)
     }
 }
 
@@ -132,6 +155,7 @@ private struct ReorderDropDelegate: DropDelegate {
     let target: Project
     @Binding var projects: [Project]
     @Binding var draggingID: UUID?
+    @Binding var armedID: UUID?
     let onCommit: () -> Void
 
     func dropEntered(info: DropInfo) {
@@ -154,8 +178,16 @@ private struct ReorderDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
             draggingID = nil
+            armedID = nil
         }
+        NSCursor.arrow.set()
         onCommit()
         return true
+    }
+
+    func dropExited(info: DropInfo) {
+        // No-op — `dropEntered` on a sibling will re-shuffle, and a true
+        // cancel is handled by `performDrop` (or by the next interaction
+        // resetting `armedID`/`draggingID`).
     }
 }
