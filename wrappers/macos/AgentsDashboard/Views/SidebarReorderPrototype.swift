@@ -1,73 +1,59 @@
 import SwiftUI
-import UniformTypeIdentifiers
 import AppKit
 
-/// Sidebar with a richer drag-and-drop reorder experience:
-///   • Whole row is the hit area.
-///   • A **long-press (~0.35s)** on a row is required before drag-to-reorder
-///     activates — a quick click still selects the dashboard, so reorder
-///     never triggers by accident.
-///   • Once armed, the row lifts (scale + shadow) as the OS drag image, the
-///     original row collapses to an empty placeholder, and other rows
-///     animate aside to "make room" as the pointer moves.
-///   • Persistence happens through `ProjectManager.persistAfterReorder`.
+/// Sidebar with long-press-armed drag-to-reorder. The gesture is a
+/// `LongPressGesture(0.35s) → DragGesture(minDistance: 0)` chain — until the
+/// press has been held long enough, the chain is inert, so quick clicks fall
+/// through to `ProjectRow`'s tap (select dashboard). Crossing the
+/// LongPressGesture's default ~10-pt slop before 0.35s fails the chain too,
+/// killing accidental drag-from-quick-click.
+///
+/// Why not `.onDrag`? AppKit's drag system and SwiftUI's `LongPressGesture`
+/// share an event channel poorly: the long-press recognizer consumes the
+/// mouseDown, and a subsequent gated `.onDrag` either never fires or sees a
+/// stale armed state. Hand-rolling the reorder via a single `SequenceGesture`
+/// keeps the entire interaction in one recognizer.
 struct SidebarReorderPrototype: View {
     @EnvironmentObject var projectManager: ProjectManager
+
     @State private var draggingID: UUID? = nil
-    /// Set by a `LongPressGesture` on a row — until armed, `.onDrag`
-    /// refuses to start a real drag, so a single click just selects.
-    @State private var armedID: UUID? = nil
+    /// Vertical offset of the dragged row relative to its current LazyVStack
+    /// slot. We always set it so the row's *center* sits exactly under the
+    /// cursor — i.e., the row recenters on the pointer when picked up
+    /// (iOS-style lift), then tracks it.
+    @State private var dragOffset: CGFloat = 0
+    /// Index of the dragged row when the drag began. Slot-target math is
+    /// reckoned from this fixed origin so it stays stable as the array shuffles.
+    @State private var dragStartIndex: Int? = nil
+
+    /// Slot pitch (row frame + LazyVStack spacing). We *pin* the row to a
+    /// known height in `ReorderableRow` so this number is exact — otherwise
+    /// the swap thresholds land mid-row and siblings shuffle when the cursor
+    /// hasn't actually moved that far.
+    private let rowFrameHeight: CGFloat = 40
+    private let rowSpacing: CGFloat = 2
+    private var rowHeight: CGFloat { rowFrameHeight + rowSpacing }
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 2) {
+            // VStack (not LazyVStack): we need `zIndex` to be honored so the
+            // dragged card always paints on top of *all* siblings, not just
+            // ones with a lower array index. LazyVStack doesn't reliably
+            // respect zIndex — that produced the "card disappears behind
+            // rows below it when dragging down" symptom.
+            VStack(alignment: .leading, spacing: rowSpacing) {
                 sectionHeader
 
                 ForEach(projectManager.projects) { project in
                     ReorderableRow(
                         project: project,
                         isDragging: draggingID == project.id,
-                        isArmed: armedID == project.id
+                        offset: draggingID == project.id ? dragOffset : 0,
+                        height: rowFrameHeight
                     )
                     .contentShape(Rectangle())
-                    // Long-press arms this row for drag. Quick clicks still
-                    // fall through to ProjectRow's onTapGesture (select
-                    // dashboard) because LongPressGesture only fires after
-                    // the duration has elapsed without release.
-                    .simultaneousGesture(
-                        LongPressGesture(minimumDuration: 0.35)
-                            .onEnded { _ in
-                                armRow(project.id)
-                            }
-                    )
-                    .onDrag {
-                        // Only initiate a real drag once the row was armed
-                        // by a long-press. An empty NSItemProvider keeps
-                        // accidental drags from doing anything visible.
-                        guard armedID == project.id else {
-                            return NSItemProvider()
-                        }
-                        draggingID = project.id
-                        return NSItemProvider(object: project.id.uuidString as NSString)
-                    } preview: {
-                        // OS-rendered drag preview — slightly scaled with shadow.
-                        ProjectRow(project: project)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                            .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
-                            .frame(width: 260)
-                    }
-                    .onDrop(
-                        of: [.text],
-                        delegate: ReorderDropDelegate(
-                            target: project,
-                            projects: $projectManager.projects,
-                            draggingID: $draggingID,
-                            armedID: $armedID,
-                            onCommit: { projectManager.persistAfterReorder() }
-                        )
-                    )
+                    .simultaneousGesture(rowGesture(for: project))
+                    .zIndex(draggingID == project.id ? 1000 : 0)
                 }
             }
             .padding(.vertical, 4)
@@ -100,94 +86,133 @@ struct SidebarReorderPrototype: View {
             .padding(.bottom, 2)
     }
 
-    private func armRow(_ id: UUID) {
+    private func rowGesture(for project: Project) -> some Gesture {
+        // `coordinateSpace: .global` is critical. With the default `.local`,
+        // the gesture is anchored to the row's frame — and since we move that
+        // frame with `.offset(y:)` to follow the cursor, `translation` ends
+        // up cancelling out the offset and reporting ~0. The row never moves,
+        // no swap threshold is ever crossed, no reorder happens. Global gives
+        // us real screen-pixel motion that's independent of view shifting.
+        LongPressGesture(minimumDuration: 0.35)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
+            .onChanged { value in
+                switch value {
+                case .first:
+                    break
+                case .second(let pressed, let drag):
+                    guard pressed, let drag = drag else { return }
+                    if draggingID != project.id {
+                        beginDrag(for: project)
+                    }
+                    updateDrag(translation: drag.translation.height)
+                }
+            }
+            .onEnded { _ in
+                endDrag()
+            }
+    }
+
+    private func beginDrag(for project: Project) {
+        guard let idx = projectManager.projects.firstIndex(where: { $0.id == project.id }) else { return }
+        dragStartIndex = idx
+        dragOffset = 0
         withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-            armedID = id
+            draggingID = project.id
         }
-        // Subtle haptic + cursor cue so the user knows the row is now
-        // grabbable. Closed-hand cursor mirrors macOS Finder convention.
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         NSCursor.closedHand.set()
-        // Auto-disarm if the user holds-then-releases without ever dragging,
-        // so the highlight + cursor don't linger.
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            if armedID == id && draggingID == nil {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    armedID = nil
-                }
-                NSCursor.arrow.set()
-            }
+    }
+
+    private func updateDrag(translation: CGFloat) {
+        guard let start = dragStartIndex,
+              let currentID = draggingID,
+              let currentIdx = projectManager.projects.firstIndex(where: { $0.id == currentID })
+        else { return }
+
+        // `lookahead` = cursor's vertical distance from the dragged row's
+        // CURRENT slot center, in screen pixels. Equivalent to the dragOffset
+        // we want with no further swap.
+        var lookahead = CGFloat(start - currentIdx) * rowHeight + translation
+
+        // Hysteresis: swap one slot at a time, but only when the cursor has
+        // travelled a full rowHeight past the dragged row's current center.
+        // Each swap moves the slot under the cursor, so `lookahead` drops
+        // back near zero — the next swap requires another full row of travel.
+        var newIdx = currentIdx
+        while lookahead > rowHeight && newIdx < projectManager.projects.count - 1 {
+            newIdx += 1
+            lookahead -= rowHeight
+        }
+        while lookahead < -rowHeight && newIdx > 0 {
+            newIdx -= 1
+            lookahead += rowHeight
+        }
+
+        if newIdx != currentIdx {
+            // Snap the reorder — no `withAnimation`. Animating it caused the
+            // dragged row to drift off-cursor for the 300 ms spring duration
+            // before settling: "position fighting".
+            let item = projectManager.projects.remove(at: currentIdx)
+            projectManager.projects.insert(item, at: newIdx)
+        }
+
+        dragOffset = lookahead
+    }
+
+    private func endDrag() {
+        guard draggingID != nil else { return }
+        let didMove: Bool = {
+            guard let start = dragStartIndex,
+                  let currentID = draggingID,
+                  let endIdx = projectManager.projects.firstIndex(where: { $0.id == currentID })
+            else { return false }
+            return start != endIdx
+        }()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            dragOffset = 0
+            draggingID = nil
+        }
+        dragStartIndex = nil
+        NSCursor.arrow.set()
+        if didMove {
+            projectManager.persistAfterReorder()
         }
     }
 }
 
-// MARK: - Row
-
-/// Wraps the full-featured `ProjectRow` (play/stop/terminal/remove buttons,
-/// context menu, status indicator) and adds the reorder visual states:
-/// dragging → invisible placeholder; armed → faint highlight so the user
-/// can see the long-press registered before they start moving the pointer.
+/// Wraps `ProjectRow` (with all its built-in actions/buttons) and adds the
+/// reorder visual: a "card lift" while dragging, plus a y-offset that the
+/// parent drives directly. Pinned height makes slot math deterministic.
 private struct ReorderableRow: View {
     let project: Project
     let isDragging: Bool
-    let isArmed: Bool
+    let offset: CGFloat
+    let height: CGFloat
 
     var body: some View {
         ProjectRow(project: project)
             .padding(.horizontal, 6)
+            .frame(height: height, alignment: .center)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.accentColor.opacity(isArmed && !isDragging ? 0.12 : 0))
+                // Layered: opaque window-background base hides the row(s)
+                // the card flies over, with an accent tint on top so the
+                // card still reads as "the active one being dragged".
+                // `.regularMaterial` was translucent and let underlying
+                // rows' text bleed through.
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(NSColor.windowBackgroundColor))
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.accentColor.opacity(0.18))
+                }
+                .opacity(isDragging ? 1 : 0)
             )
-            // While dragging, keep the row's footprint (so siblings still
-            // animate to "make room") but hide its content — the OS-rendered
-            // drag image is the only thing the user sees move.
-            .opacity(isDragging ? 0 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.85), value: isDragging)
-            .animation(.easeInOut(duration: 0.15), value: isArmed)
-    }
-}
-
-// MARK: - Drop Delegate
-
-private struct ReorderDropDelegate: DropDelegate {
-    let target: Project
-    @Binding var projects: [Project]
-    @Binding var draggingID: UUID?
-    @Binding var armedID: UUID?
-    let onCommit: () -> Void
-
-    func dropEntered(info: DropInfo) {
-        guard let dragID = draggingID, dragID != target.id else { return }
-        guard let from = projects.firstIndex(where: { $0.id == dragID }),
-              let to = projects.firstIndex(where: { $0.id == target.id })
-        else { return }
-        if projects[to].id != projects[from].id {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                let item = projects.remove(at: from)
-                projects.insert(item, at: to)
-            }
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-            draggingID = nil
-            armedID = nil
-        }
-        NSCursor.arrow.set()
-        onCommit()
-        return true
-    }
-
-    func dropExited(info: DropInfo) {
-        // No-op — `dropEntered` on a sibling will re-shuffle, and a true
-        // cancel is handled by `performDrop` (or by the next interaction
-        // resetting `armedID`/`draggingID`).
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Color.accentColor.opacity(isDragging ? 0.7 : 0), lineWidth: 1.5)
+            )
+            .scaleEffect(isDragging ? 1.03 : 1.0)
+            .shadow(color: .black.opacity(isDragging ? 0.35 : 0), radius: 12, x: 0, y: 6)
+            .offset(y: offset)
     }
 }
