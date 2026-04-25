@@ -1,19 +1,50 @@
 import SwiftUI
 
+/// PreferenceKey used to surface measured row heights so we can convert a
+/// drag-translation in pixels into a row-index delta.
+private struct ProjectRowHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 52
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct SidebarView: View {
     @EnvironmentObject var projectManager: ProjectManager
+
+    /// The project currently being long-press-dragged, if any.
+    @State private var draggingProjectID: UUID?
+    /// Vertical translation (px) applied to the dragging row for visual feedback.
+    @State private var dragOffset: CGFloat = 0
+    /// Measured row height — falls back to 52pt until the first measurement lands.
+    @State private var rowHeight: CGFloat = 52
 
     var body: some View {
         List {
             Section("Projects") {
                 ForEach(projectManager.projects) { project in
                     ProjectRow(project: project)
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(
+                                    key: ProjectRowHeightKey.self,
+                                    value: geo.size.height
+                                )
+                            }
+                        )
+                        .opacity(draggingProjectID == project.id ? 0.5 : 1.0)
+                        .offset(y: draggingProjectID == project.id ? dragOffset : 0)
+                        .zIndex(draggingProjectID == project.id ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.15), value: draggingProjectID)
+                        .simultaneousGesture(longPressDragGesture(for: project))
                 }
-                .onMove { projectManager.moveProjects(from: $0, to: $1) }
             }
         }
         .listStyle(.sidebar)
         .frame(minWidth: 220)
+        .onPreferenceChange(ProjectRowHeightKey.self) { height in
+            if height > 0 { rowHeight = height }
+        }
         .toolbar {
             ToolbarItem {
                 Menu {
@@ -30,6 +61,52 @@ struct SidebarView: View {
             }
         }
         .navigationTitle("Agents Dashboard")
+    }
+
+    /// A LongPress-then-Drag sequence: the row only becomes draggable after a
+    /// ~0.35s hold; once the long-press recognizes, the user can drag the row
+    /// up/down to reorder without releasing. On release we snap to the closest
+    /// row slot and persist via `ProjectManager.moveProjects`.
+    private func longPressDragGesture(for project: Project) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.35)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+            .onChanged { value in
+                switch value {
+                case .first(true):
+                    if draggingProjectID == nil {
+                        draggingProjectID = project.id
+                        dragOffset = 0
+                    }
+                case .second(true, let drag?):
+                    if draggingProjectID == nil {
+                        draggingProjectID = project.id
+                    }
+                    dragOffset = drag.translation.height
+                default:
+                    break
+                }
+            }
+            .onEnded { _ in
+                defer {
+                    draggingProjectID = nil
+                    dragOffset = 0
+                }
+                guard let id = draggingProjectID,
+                      let from = projectManager.projects.firstIndex(where: { $0.id == id })
+                else { return }
+
+                let count = projectManager.projects.count
+                guard count > 1, rowHeight > 0 else { return }
+
+                let movedRows = Int((dragOffset / rowHeight).rounded())
+                let newIndex = max(0, min(from + movedRows, count - 1))
+                guard newIndex != from else { return }
+
+                // `Array.move(fromOffsets:toOffset:)` expects an "insert-before"
+                // offset, so a forward move needs +1 to land *after* the target.
+                let toOffset = newIndex > from ? newIndex + 1 : newIndex
+                projectManager.moveProjects(from: IndexSet(integer: from), to: toOffset)
+            }
     }
 }
 
