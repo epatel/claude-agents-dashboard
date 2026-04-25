@@ -12,7 +12,6 @@ import UniformTypeIdentifiers
 struct SidebarReorderPrototype: View {
     @EnvironmentObject var projectManager: ProjectManager
     @State private var draggingID: UUID? = nil
-    @State private var dropTargetID: UUID? = nil
 
     var body: some View {
         ScrollView {
@@ -22,8 +21,7 @@ struct SidebarReorderPrototype: View {
                 ForEach(projectManager.projects) { project in
                     PrototypeRow(
                         project: project,
-                        isDragging: draggingID == project.id,
-                        isDropTarget: dropTargetID == project.id && draggingID != project.id
+                        isDragging: draggingID == project.id
                     )
                     .contentShape(Rectangle()) // entire row hit area
                     .onDrag {
@@ -33,7 +31,7 @@ struct SidebarReorderPrototype: View {
                         return NSItemProvider(object: project.id.uuidString as NSString)
                     } preview: {
                         // Lifted preview — slightly scaled up with a shadow.
-                        PrototypeRow(project: project, isDragging: false, isDropTarget: false)
+                        PrototypeRow(project: project, isDragging: false)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 6)
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -46,7 +44,6 @@ struct SidebarReorderPrototype: View {
                             target: project,
                             projects: $projectManager.projects,
                             draggingID: $draggingID,
-                            dropTargetID: $dropTargetID,
                             onCommit: { projectManager.persistAfterReorder() }
                         )
                     )
@@ -90,56 +87,41 @@ private struct PrototypeRow: View {
     @State private var showRemoveConfirm = false
     let project: Project
     let isDragging: Bool
-    let isDropTarget: Bool
 
     private var isAvailable: Bool { projectManager.isProjectAvailable(project) }
     private var dashboard: DashboardInstance? { projectManager.dashboardFor(project: project) }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Insertion gap appears above the targeted row.
-            if isDropTarget {
-                Capsule()
-                    .fill(Color.accentColor)
-                    .frame(height: 3)
-                    .padding(.horizontal, 10)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text(project.name).font(.headline)
-                        if !isAvailable {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                                .font(.caption)
-                        }
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(project.name).font(.headline)
+                    if !isAvailable {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                            .font(.caption)
                     }
-                    Text(project.path)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
                 }
-                .opacity(isAvailable ? 1.0 : 0.5)
+                Text(project.path)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .opacity(isAvailable ? 1.0 : 0.5)
 
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isDragging ? Color.accentColor.opacity(0.12) : Color.clear)
-            )
-            .scaleEffect(isDragging ? 1.02 : 1.0)
-            .opacity(isDragging ? 0.6 : 1.0)
-            .shadow(color: isDragging ? .black.opacity(0.15) : .clear, radius: 6, y: 2)
-            .animation(.spring(response: 0.25, dampingFraction: 0.85), value: isDragging)
-            .animation(.spring(response: 0.25, dampingFraction: 0.85), value: isDropTarget)
-            .onTapGesture {
-                if let d = dashboard { projectManager.selectedTab = d.id }
-            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        // While dragging, keep the row's footprint (so siblings still "make
+        // room" via the LazyVStack reorder) but hide its content — the row
+        // becomes an empty placeholder showing where the drop will land.
+        // The OS-rendered drag preview is the only thing the user sees move.
+        .opacity(isDragging ? 0 : 1.0)
+        .animation(.spring(response: 0.25, dampingFraction: 0.85), value: isDragging)
+        .onTapGesture {
+            if let d = dashboard { projectManager.selectedTab = d.id }
         }
     }
 }
@@ -150,7 +132,6 @@ private struct ReorderDropDelegate: DropDelegate {
     let target: Project
     @Binding var projects: [Project]
     @Binding var draggingID: UUID?
-    @Binding var dropTargetID: UUID?
     let onCommit: () -> Void
 
     func dropEntered(info: DropInfo) {
@@ -162,7 +143,6 @@ private struct ReorderDropDelegate: DropDelegate {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 let item = projects.remove(at: from)
                 projects.insert(item, at: to)
-                dropTargetID = target.id
             }
         }
     }
@@ -174,7 +154,6 @@ private struct ReorderDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
             draggingID = nil
-            dropTargetID = nil
         }
         onCommit()
         return true
