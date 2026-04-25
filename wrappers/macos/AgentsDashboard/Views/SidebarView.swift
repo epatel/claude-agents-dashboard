@@ -1,59 +1,13 @@
 import SwiftUI
 
+/// The sidebar always uses the rich reorder experience defined in
+/// `SidebarReorderPrototype` — a long-press on a project arms it for
+/// drag-to-reorder, and other rows animate aside to make room. The old
+/// native `.onMove` sidebar (with the blue insertion line) has been
+/// retired.
 struct SidebarView: View {
-    @EnvironmentObject var projectManager: ProjectManager
-    /// Toggle the richer drag/drop prototype. Persisted in UserDefaults so
-    /// it survives relaunches while we evaluate it.
-    @AppStorage("sidebar_reorder_prototype") private var useReorderPrototype: Bool = true
-
     var body: some View {
-        Group {
-            if useReorderPrototype {
-                SidebarReorderPrototype()
-            } else {
-                nativeSidebar
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Toggle(isOn: $useReorderPrototype) {
-                    Label("Rich Reorder", systemImage: useReorderPrototype ? "rectangle.stack.fill" : "rectangle.stack")
-                }
-                .toggleStyle(.button)
-                .help("Toggle prototype drag/drop reorder (lifted preview, list makes room)")
-            }
-        }
-    }
-
-    private var nativeSidebar: some View {
-        List {
-            Section("Projects") {
-                ForEach(projectManager.projects) { project in
-                    ProjectRow(project: project)
-                }
-                .onMove { source, destination in
-                    projectManager.moveProjects(from: source, to: destination)
-                }
-            }
-        }
-        .listStyle(.sidebar)
-        .frame(minWidth: 220)
-        .toolbar {
-            ToolbarItem {
-                Menu {
-                    Button(action: { projectManager.showCreateProject = true }) {
-                        Label("New Project...", systemImage: "plus.rectangle.on.folder")
-                    }
-                    Button(action: { projectManager.showAddProject = true }) {
-                        Label("Add Existing Project...", systemImage: "folder.badge.plus")
-                    }
-                } label: {
-                    Label("Add", systemImage: "plus")
-                }
-                .help("Add or create a project")
-            }
-        }
-        .navigationTitle("Agents Dashboard")
+        SidebarReorderPrototype()
     }
 }
 
