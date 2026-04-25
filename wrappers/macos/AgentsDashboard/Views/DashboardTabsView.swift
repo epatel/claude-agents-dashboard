@@ -32,15 +32,26 @@ struct DashboardTabsView: View {
                 .multilineTextAlignment(.center)
 
             if let first = projectManager.projects.first {
+                // `.id(...)` rebuilds the button when the target project
+                // changes (e.g. after a sidebar reorder) instead of animating
+                // the size between two different labels — the latter showed
+                // visible artifacts as the bordered-prominent background
+                // resized. Wrapping in a `.transaction` with no animation
+                // also suppresses implicit width animation when the same
+                // project is renamed.
                 Button("Start \(first.name)") {
                     projectManager.startDashboard(for: first)
                 }
                 .buttonStyle(.borderedProminent)
+                .id(first.id)
+                .transaction { $0.animation = nil }
+                .fixedSize()
             } else {
                 Button("Add a Project") {
                     projectManager.showAddProject = true
                 }
                 .buttonStyle(.borderedProminent)
+                .fixedSize()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
