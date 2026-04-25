@@ -81,6 +81,12 @@ class ProjectManager: ObservableObject {
         saveProjects()
     }
 
+    /// Called by the prototype reorder view after it mutates `projects`
+    /// directly via a binding. Persists the new order without changing it.
+    func persistAfterReorder() {
+        saveProjects()
+    }
+
     func removeProject(_ project: Project) {
         // Remove dashboard (stops process and removes tab)
         if let dashboard = dashboards.first(where: { $0.project.id == project.id }) {
