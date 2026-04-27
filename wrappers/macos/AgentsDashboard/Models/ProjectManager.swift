@@ -356,7 +356,14 @@ class ProjectManager: ObservableObject {
         let handleOutput: (Pipe) -> Void = { pipe in
             pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
                 let data = handle.availableData
-                guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return }
+                // EOF: child process closed the pipe. Detach so dispatch stops
+                // re-firing on a perpetually-readable dead fd (otherwise the
+                // wrapper pegs ~400% CPU after the server exits).
+                if data.isEmpty {
+                    handle.readabilityHandler = nil
+                    return
+                }
+                guard let output = String(data: data, encoding: .utf8) else { return }
 
                 DispatchQueue.main.async {
                     guard let self = self,
@@ -381,6 +388,12 @@ class ProjectManager: ObservableObject {
         handleOutput(errorPipe)
 
         process.terminationHandler = { [weak self] proc in
+            // Detach pipe readers immediately on exit — the readabilityHandler
+            // EOF guard already handles this, but cleaning up here too means
+            // we don't rely on dispatch firing one more time to notice.
+            outputPipe.fileHandleForReading.readabilityHandler = nil
+            errorPipe.fileHandleForReading.readabilityHandler = nil
+
             DispatchQueue.main.async {
                 guard let self = self,
                       let index = self.dashboards.firstIndex(where: { $0.id == instance.id }) else { return }
