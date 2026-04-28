@@ -381,7 +381,8 @@ const App = {
                 Dialogs.showClarification(
                     data.item_id,
                     data.prompt,
-                    data.choices ? JSON.parse(data.choices) : []
+                    data.choices ? JSON.parse(data.choices) : [],
+                    data.context
                 );
                 break;
             case 'permission_requested':

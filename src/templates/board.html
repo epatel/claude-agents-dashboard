@@ -315,6 +315,10 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
         </div>
         <form id="clarify-form" onsubmit="Dialogs.submitClarification(event)">
             <input type="hidden" id="clarify-item-id" value="">
+            <div id="clarify-context-group" class="form-group" style="display:none;">
+                <label>Context</label>
+                <div id="clarify-context" class="clarify-context"></div>
+            </div>
             <div class="form-group">
                 <label>Question from agent:</label>
                 <div id="clarify-prompt" class="clarify-prompt"></div>

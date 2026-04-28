@@ -44,7 +44,7 @@ const ClarificationDialog = {
                     this.showToolPermissionRequest(itemId, toolName, reason);
                 } else {
                     const choices = data.choices ? JSON.parse(data.choices) : [];
-                    this.showClarification(itemId, data.prompt || '(Agent is waiting for your response)', choices);
+                    this.showClarification(itemId, data.prompt || '(Agent is waiting for your response)', choices, data.context);
                 }
             } else {
                 // No pending clarification, show regular detail
@@ -55,11 +55,24 @@ const ClarificationDialog = {
         }
     },
 
-    showClarification(itemId, prompt, choices) {
+    showClarification(itemId, prompt, choices, context) {
         this._restoreFormHTML();
         document.getElementById('clarify-item-id').value = itemId;
         document.getElementById('clarify-prompt').innerHTML = DialogUtils.renderMarkdown(prompt);
         document.getElementById('clarify-response').value = '';
+
+        const contextGroup = document.getElementById('clarify-context-group');
+        const contextEl = document.getElementById('clarify-context');
+        if (contextGroup && contextEl) {
+            const ctxStr = (context == null) ? '' : String(context).trim();
+            if (ctxStr) {
+                contextEl.innerHTML = DialogUtils.renderMarkdown(ctxStr);
+                contextGroup.style.display = '';
+            } else {
+                contextEl.innerHTML = '';
+                contextGroup.style.display = 'none';
+            }
+        }
 
         const choicesEl = document.getElementById('clarify-choices');
         if (choices && choices.length > 0) {

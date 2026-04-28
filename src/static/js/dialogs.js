@@ -33,7 +33,7 @@ const Dialogs = {
 
     // Questions dialog - delegate to ClarificationDialog
     reopenClarification: (itemId) => ClarificationDialog.reopenClarification(itemId),
-    showClarification: (itemId, prompt, choices) => ClarificationDialog.showClarification(itemId, prompt, choices),
+    showClarification: (itemId, prompt, choices, context) => ClarificationDialog.showClarification(itemId, prompt, choices, context),
     submitClarification: (event) => ClarificationDialog.submitClarification(event),
 
     // Request changes dialog - delegate to RequestChangesDialog
