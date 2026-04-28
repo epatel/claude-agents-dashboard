@@ -879,13 +879,16 @@ class WorkflowService:
             # Move item to questions
             item = await self.db.update_item(item_id, column_name="questions", status=None)
             await self.notifications.broadcast_item_updated(item, source="agent")
-            await self._log_and_notify(item_id, "system", f"Agent has a question: {prompt}")
+            log_message = f"Agent has a question: {prompt}"
+            if context:
+                log_message = f"{log_message}\n\n{context}"
+            await self._log_and_notify(item_id, "system", log_message)
 
             # Store clarification
-            await self.db.store_clarification(item_id, prompt, choices)
+            await self.db.store_clarification(item_id, prompt, choices, context)
 
             # Broadcast to frontend
-            await self.notifications.broadcast_clarification_requested(item_id, prompt, choices)
+            await self.notifications.broadcast_clarification_requested(item_id, prompt, choices, context)
 
             # Wait for user response
             event = asyncio.Event()

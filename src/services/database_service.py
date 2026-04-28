@@ -204,12 +204,23 @@ class DatabaseService:
 
         return new_item
 
-    async def store_clarification(self, item_id: str, prompt: str, choices: Optional[List[str]]):
+    async def store_clarification(
+        self,
+        item_id: str,
+        prompt: str,
+        choices: Optional[List[str]],
+        context: Optional[str] = None,
+    ):
         """Store a question request in the database."""
         async with self.db.connect() as conn:
             await conn.execute(
-                "INSERT INTO clarifications (item_id, prompt, choices) VALUES (?, ?, ?)",
-                (item_id, prompt, json.dumps(choices) if choices else None),
+                "INSERT INTO clarifications (item_id, prompt, choices, context) VALUES (?, ?, ?, ?)",
+                (
+                    item_id,
+                    prompt,
+                    json.dumps(choices) if choices else None,
+                    context,
+                ),
             )
             await conn.commit()
 

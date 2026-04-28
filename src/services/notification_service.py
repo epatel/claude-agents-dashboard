@@ -42,12 +42,19 @@ class NotificationService:
             "content": content,
         })
 
-    async def broadcast_clarification_requested(self, item_id: str, prompt: str, choices: Optional[List[str]]):
+    async def broadcast_clarification_requested(
+        self,
+        item_id: str,
+        prompt: str,
+        choices: Optional[List[str]],
+        context: Optional[str] = None,
+    ):
         """Broadcast question request event."""
         await self.ws_manager.broadcast("clarification_requested", {
             "item_id": item_id,
             "prompt": prompt,
             "choices": json.dumps(choices) if choices else None,
+            "context": context,
         })
 
     async def broadcast_epic_created(self, epic: Dict[str, Any]):
