@@ -263,7 +263,7 @@ class TestClarificationServer:
 
         result = await tool.handler({"question": "Which approach?", "choices": ["A", "B", "C"]})
 
-        cb.assert_awaited_once_with("Which approach?", ["A", "B", "C"])
+        cb.assert_awaited_once_with("Which approach?", ["A", "B", "C"], None)
         assert result["content"][0]["type"] == "text"
         assert result["content"][0]["text"] == "Option B"
 
@@ -275,7 +275,7 @@ class TestClarificationServer:
 
         result = await tool.handler({"question": "Should I continue?"})
 
-        cb.assert_awaited_once_with("Should I continue?", None)
+        cb.assert_awaited_once_with("Should I continue?", None, None)
         assert result["content"][0]["text"] == "Yes, proceed"
 
     @pytest.mark.asyncio
@@ -285,7 +285,30 @@ class TestClarificationServer:
         tool = get_tool(cap["tools"], "ask_user")
 
         await tool.handler({})
-        cb.assert_awaited_once_with("", None)
+        cb.assert_awaited_once_with("", None, None)
+
+    @pytest.mark.asyncio
+    async def test_ask_user_passes_context(self):
+        cb = AsyncMock(return_value="Approved")
+        cap = self._make(cb)
+        tool = get_tool(cap["tools"], "ask_user")
+
+        await tool.handler({
+            "question": "Approve plan?",
+            "choices": ["Yes", "No"],
+            "context": "Considered options A and B; chose A.",
+        })
+
+        cb.assert_awaited_once_with(
+            "Approve plan?", ["Yes", "No"], "Considered options A and B; chose A."
+        )
+
+    def test_schema_includes_context(self):
+        from src.agent.clarification import ASK_USER_SCHEMA
+        assert "context" in ASK_USER_SCHEMA["properties"]
+        assert ASK_USER_SCHEMA["properties"]["context"]["type"] == "string"
+        # context is optional
+        assert "context" not in ASK_USER_SCHEMA.get("required", [])
 
     def test_schema_requires_question(self):
         from src.agent.clarification import ASK_USER_SCHEMA

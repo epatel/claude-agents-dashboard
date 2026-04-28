@@ -875,7 +875,7 @@ class WorkflowService:
             pass
 
     def _create_on_clarify_callback(self, item_id: str):
-        async def on_clarify(prompt: str, choices: Optional[List[str]]) -> str:
+        async def on_clarify(prompt: str, choices: Optional[List[str]], context: Optional[str] = None) -> str:
             # Move item to questions
             item = await self.db.update_item(item_id, column_name="questions", status=None)
             await self.notifications.broadcast_item_updated(item, source="agent")
