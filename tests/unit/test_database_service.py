@@ -90,6 +90,44 @@ class TestClarification:
             row = await cursor.fetchone()
         assert row[0] is None
 
+    async def test_store_clarification_with_context(self, db_service, item):
+        await db_service.store_clarification(
+            item["id"],
+            "Which approach?",
+            ["A", "B"],
+            "Considered options A and B; need user input.",
+        )
+        async with db_service.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT prompt, choices, context FROM clarifications WHERE item_id = ?",
+                (item["id"],),
+            )
+            row = await cursor.fetchone()
+        assert row is not None
+        assert row[0] == "Which approach?"
+        assert json.loads(row[1]) == ["A", "B"]
+        assert row[2] == "Considered options A and B; need user input."
+
+    async def test_store_clarification_without_context_defaults_to_null(self, db_service, item):
+        # Omitting the context kwarg should leave the column NULL.
+        await db_service.store_clarification(item["id"], "What now?", None)
+        async with db_service.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT context FROM clarifications WHERE item_id = ?", (item["id"],)
+            )
+            row = await cursor.fetchone()
+        assert row[0] is None
+
+    async def test_store_clarification_explicit_none_context(self, db_service, item):
+        # Passing context=None explicitly should also store NULL.
+        await db_service.store_clarification(item["id"], "Q?", ["yes", "no"], None)
+        async with db_service.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT context FROM clarifications WHERE item_id = ?", (item["id"],)
+            )
+            row = await cursor.fetchone()
+        assert row[0] is None
+
     async def test_update_clarification_response(self, db_service, item):
         await db_service.store_clarification(item["id"], "Q?", None)
         await db_service.update_clarification_response(item["id"], "User answer")

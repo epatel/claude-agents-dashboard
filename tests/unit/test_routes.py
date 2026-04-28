@@ -423,7 +423,32 @@ class TestClarification:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             resp = await c.get("/api/items/item003/clarification")
         assert resp.status_code == 200
-        assert resp.json()["prompt"] == "What should I do?"
+        body = resp.json()
+        assert body["prompt"] == "What should I do?"
+        # The endpoint returns the full row, so the new `context` key must
+        # be present (even when no context was stored).
+        assert "context" in body
+        assert body["context"] is None
+
+    @pytest.mark.asyncio
+    async def test_get_pending_clarification_returns_context(self, app_and_db):
+        app, db = app_and_db
+        async with db.connect() as conn:
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, ?, ?)",
+                ("item004", "Item 4", "", "questions", 0),
+            )
+            await conn.execute(
+                "INSERT INTO clarifications (item_id, prompt, context) VALUES (?, ?, ?)",
+                ("item004", "Approve plan?", "Considered options A and B; chose A."),
+            )
+            await conn.commit()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.get("/api/items/item004/clarification")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["prompt"] == "Approve plan?"
+        assert body["context"] == "Considered options A and B; chose A."
 
 
 # ---------------------------------------------------------------------------

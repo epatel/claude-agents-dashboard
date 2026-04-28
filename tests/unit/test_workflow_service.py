@@ -497,6 +497,78 @@ class TestOnClarifyCallback:
             await cb("Continue?", ["yes", "no"])
         workflow.notifications.broadcast_clarification_requested.assert_awaited()
 
+    async def test_persists_context_in_clarifications_table(self, workflow, db_service, item):
+        cb = workflow._create_on_clarify_callback(item["id"])
+
+        workflow._clarify_responses[item["id"]] = "ok"
+        pre_set_event = asyncio.Event()
+        pre_set_event.set()
+        with patch("asyncio.Event", return_value=pre_set_event):
+            await cb(
+                "Approve plan?",
+                ["yes", "no"],
+                "Weighed options A and B; chose A.",
+            )
+
+        async with db_service.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT prompt, context FROM clarifications WHERE item_id = ?",
+                (item["id"],),
+            )
+            row = await cursor.fetchone()
+        assert row is not None
+        assert row[0] == "Approve plan?"
+        assert row[1] == "Weighed options A and B; chose A."
+
+    async def test_broadcast_payload_includes_context(self, workflow, item):
+        cb = workflow._create_on_clarify_callback(item["id"])
+
+        workflow._clarify_responses[item["id"]] = "ok"
+        pre_set_event = asyncio.Event()
+        pre_set_event.set()
+        with patch("asyncio.Event", return_value=pre_set_event):
+            await cb("Approve plan?", ["yes", "no"], "Reasoning here.")
+
+        broadcast = workflow.notifications.broadcast_clarification_requested
+        broadcast.assert_awaited()
+        args, kwargs = broadcast.call_args
+        # Resolve regardless of positional vs keyword call style.
+        if "context" in kwargs:
+            ctx_value = kwargs["context"]
+        else:
+            assert len(args) >= 4, f"expected context arg, got args={args}"
+            ctx_value = args[3]
+        assert ctx_value == "Reasoning here."
+
+    async def test_context_omitted_persists_null_and_broadcasts_none(
+        self, workflow, db_service, item
+    ):
+        cb = workflow._create_on_clarify_callback(item["id"])
+
+        workflow._clarify_responses[item["id"]] = "ok"
+        pre_set_event = asyncio.Event()
+        pre_set_event.set()
+        with patch("asyncio.Event", return_value=pre_set_event):
+            await cb("Question?", None)
+
+        async with db_service.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT context FROM clarifications WHERE item_id = ?",
+                (item["id"],),
+            )
+            row = await cursor.fetchone()
+        assert row[0] is None
+
+        broadcast = workflow.notifications.broadcast_clarification_requested
+        args, kwargs = broadcast.call_args
+        if "context" in kwargs:
+            ctx_value = kwargs["context"]
+        elif len(args) >= 4:
+            ctx_value = args[3]
+        else:
+            ctx_value = None
+        assert ctx_value is None
+
 
 # ---------------------------------------------------------------------------
 # Callback: _create_on_create_todo_callback
