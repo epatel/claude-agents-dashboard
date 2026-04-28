@@ -590,7 +590,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
             <h3 id="shortcut-progress-title">Shortcut</h3>
             <button class="btn-close" onclick="Shortcuts.closeProgress()">&times;</button>
         </div>
-        <div style="padding: 16px;">
+        <div style="padding: 16px; flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column;">
             <div id="shortcut-progress-command" class="shortcut-cmd-display"></div>
             <div id="shortcut-progress-status" class="shortcut-status"></div>
             <pre id="shortcut-progress-output" class="shortcut-output">(waiting for output...)</pre>
@@ -637,7 +637,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
             <h3>Manage Shortcuts</h3>
             <button class="btn-close" onclick="Shortcuts.closeManageDialog()">&times;</button>
         </div>
-        <div id="shortcut-manage-list" style="padding: 16px; max-height: 400px; overflow-y: auto;"></div>
+        <div id="shortcut-manage-list" style="padding: 16px; flex: 1 1 auto; min-height: 0; max-height: 400px; overflow-y: auto;"></div>
         <div class="modal-footer">
             <button type="button" class="btn" onclick="Shortcuts.closeManageDialog()">Close</button>
         </div>
