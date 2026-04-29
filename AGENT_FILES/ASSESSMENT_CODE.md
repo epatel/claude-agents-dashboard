@@ -1,21 +1,21 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-04-18
+**Date**: 2026-04-29
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 37 — Maintenance reassessment. Added default model upgrade to **Claude Opus 4.7** + Sonnet 4.6 selectable (migration 019), and **multi-repo workspace support** via a new nullable `repo` column on items with index (migration 020). The dashboard now accepts either a single git repo or a parent folder containing several sibling git repos as `target_project`. Python backend ~7,669 lines across 37 source files (excluding migrations). JavaScript frontend ~8,017 lines across 24 files. CSS ~3,702 lines across 5 files. **20 migrations**. **873 tests across 30 test files** (including conftest.py).
+**Revision**: 38 — Maintenance reassessment. Added **clarification context** capability via migration 021: the `ask_user` MCP tool now accepts an optional `context` field, plumbed through `WorkflowService` and `DatabaseService` and surfaced as a panel above the prompt in the Question dialog. The clarification row is created **before** the `item_updated` broadcast so the dialog has full context on first open. Python backend ~7,700 lines across 37 source files (excluding migrations). JavaScript frontend ~8,400 lines across 24 files. CSS ~3,700 lines across 5 files. **21 migrations**. **883 tests across 30 test files** (including conftest.py and a new smoke `test_multi_repo.py`).
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment, the project has added two new migrations and one major capability:
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment:
 
-- **Migration 019 — Selectable model upgrade**: shifts existing rows from `claude-opus-4-6` → `claude-opus-4-7` and from the dated `claude-sonnet-4-20250514` (and its `+advisor` variant) → `claude-sonnet-4-6`. `DEFAULT_MODEL` is now `claude-opus-4-7`. `AVAILABLE_MODELS` exposes Sonnet 4.6, Sonnet 4.6 + Advisor (experimental), Opus 4.7, and Haiku 4.5.
-- **Migration 020 — Multi-repo workspace support**: adds a nullable `repo TEXT` column to `items` with an index on `repo`. NULL means single-repo mode; in multi-repo mode each item names one of the sibling git repos under the workspace root. Worktrees are created inside the chosen subrepo, and agents get read-only access to the other sibling repos through `add_dirs` on the SDK options.
+- **Migration 021 — Clarification context**: adds a nullable `context TEXT` column to the `clarifications` table. The `ask_user` MCP tool exposes an optional `context` parameter; agents pass relevant background and the Question dialog renders it as a panel above the prompt. Tests cover the field's plumbing through `mcp_tool_servers`, `database_service`, `workflow_service`, and `routes`. The clarification row is now stored **before** the `item_updated` broadcast so the dialog has full context on first open (regression fix).
+- **Multi-repo support hardening**: a new smoke test file `tests/smoke/test_multi_repo.py` (8 tests) validates sibling repo detection, repo path resolution, and workspace mode wiring.
 
-Earlier features still in place include **annotation summary** (009), **epic grouping** (010), **annotation prompt formatting**, **item dependencies** (011), **auto-start pipelines** (012), **shortcuts bar** with **create_shortcut MCP tool**, **worktree file browsing**, **retry merge**, **bulk operations**, **animated flame background** (013) with intensity multiplier, **start_copy** (014), **has_file_changes detection** (015), **Ollama provider** (016) gated behind `--experimental`, **WIP limit** (017) with queued auto-start, and **default model update** (018, now superseded by 019).
+Earlier capabilities still in place include **default model = Claude Opus 4.7** with Sonnet 4.6 selectable (migrations 018, 019), **multi-repo workspace support** (migration 020) with nullable `repo` column and `idx_items_repo` index, **annotation summary** (009), **epic grouping** (010), **item dependencies** (011), **auto-start pipelines** (012), **shortcuts bar** with **create_shortcut MCP tool**, **worktree file browsing**, **retry merge**, **bulk operations**, **animated flame background** (013) with intensity multiplier, **start_copy** (014), **has_file_changes detection** (015), **Ollama provider** (016) gated behind `--experimental`, and **WIP limit** (017) with queued auto-start.
 
-The test suite includes **873 automated tests across 30 test files** plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, Ollama provider configuration, and orchestrator lifecycle.
+The test suite includes **883 automated tests across 30 test files** plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, Ollama provider configuration, multi-repo workspace mode, clarification context flow, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -120,8 +120,8 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | 14 | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | 1,342 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, has_file_changes detection, auto-start of dependent items, WIP limit queue management, and `_multi_repo_session_kwargs` for multi-repo session wiring |
-| `services/database_service.py` | 514 | A | All DB operations extracted; parameterized queries throughout; item dependency management; `repo` column included in start-copy insert |
+| `services/workflow_service.py` | ~1,360 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, has_file_changes detection, auto-start of dependent items, WIP limit queue management, `_multi_repo_session_kwargs` for multi-repo session wiring, and clarification context plumbing (stores row before broadcasting `item_updated`) |
+| `services/database_service.py` | ~525 | A | All DB operations extracted; parameterized queries throughout; item dependency management; `repo` column included in start-copy insert; clarification CRUD now persists/retrieves the optional `context` field |
 | `services/notification_service.py` | 118 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 140 | A | Git worktree and merge operations with proper error handling; repo path resolution helpers for multi-repo mode |
 | `services/session_service.py` | 285 | A | Session lifecycle, commit messages, plugin parsing, Ollama config; passes `workspace_root` and `sibling_repo_paths` for multi-repo agents |
@@ -142,7 +142,7 @@ graph TB
 | `web/websocket.py` | 187 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 127 | A | Clean facade pattern — delegates all operations to services; multi-repo aware via `repos` parameter; backward compatibility preserved |
 | `agent/session.py` | 731 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult`; Ollama env passthrough; `workspace_root` + `sibling_repo_paths` injected for multi-repo agents (read-only `add_dirs` + system prompt note) |
-| `agent/clarification.py` | 51 | A | Clean MCP tool definition |
+| `agent/clarification.py` | ~60 | A | Clean MCP tool definition; accepts optional `context` field passed through to the clarification row |
 | `agent/todo.py` | 165 | A | Clean MCP tool definition with epic and dependency support |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
 | `agent/command_access.py` | 42 | A | Clean MCP tool for runtime command approval |
@@ -176,6 +176,7 @@ graph TB
 | `migrations/versions/018_update_default_model.py` | ~40 | A | Updates default model from Claude Sonnet 4 to Claude Opus 4.6 across items and agent_config |
 | `migrations/versions/019_update_default_model_to_opus_4_7.py` | 56 | A | Upgrades selectable models: Opus 4.6 → 4.7, Sonnet 4 (dated `claude-sonnet-4-20250514`) → Sonnet 4.6, including `+advisor` variants; applied to both `items.model` and `agent_config.model` |
 | `migrations/versions/020_add_repo_to_items.py` | 32 | A | Multi-repo support: adds nullable `repo TEXT` column to `items` and `idx_items_repo` index; NULL preserves single-repo behavior |
+| `migrations/versions/021_add_context_to_clarifications.py` | ~30 | A | Clarification context: adds nullable `context TEXT` column to `clarifications` so the `ask_user` MCP tool can attach background information for the user to read alongside the prompt |
 
 ### Frontend JavaScript
 
@@ -190,7 +191,7 @@ graph TB
 | `detail-dialog.js` | 265 | A- | Item detail view with tabbed interface, copy-link button |
 | `review-dialog.js` | 1,026 | A | Review dialog with diff viewer, work log, and tabbed interface |
 | `config-dialog.js` | 347 | A | Agent configuration (system prompt, MCP, plugins, WIP limit, flame intensity) |
-| `clarification-dialog.js` | 208 | A | Clean clarification prompt/response UI |
+| `clarification-dialog.js` | ~225 | A | Clean clarification prompt/response UI; renders a context panel above the prompt when the agent attaches background context to `ask_user` |
 | `notification-dialog.js` | 116 | A | System notification display, bell icon, badge counter |
 | `search-dialog.js` | 246 | A | Spotlight-style search across items and work logs |
 | `request-changes-dialog.js` | 24 | A | Focused request-changes form |
@@ -358,19 +359,20 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 873 automated tests across 30 test files (including conftest.py) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 20 migrations.
+**Current state**: 883 automated tests across 30 test files (including conftest.py) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 21 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
 | `tests/smoke/test_basic_functionality.py` | Smoke | 12 | Imports, DB basics, config |
-| `tests/unit/test_workflow_service.py` | Unit | 70 | State transitions, lifecycle, conflict resolution, auto-start |
-| `tests/unit/test_routes.py` | Unit | 84 | HTTP endpoints for items, review, epics, config, stats, item detail, WIP limit |
+| `tests/smoke/test_multi_repo.py` | Smoke | 8 | Multi-repo workspace detection, sibling repo wiring |
+| `tests/unit/test_workflow_service.py` | Unit | 74 | State transitions, lifecycle, conflict resolution, auto-start, clarification context plumbing |
+| `tests/unit/test_routes.py` | Unit | 85 | HTTP endpoints for items, review, epics, config, stats, item detail, WIP limit, clarification context retrieval |
 | `tests/unit/test_git_operations.py` | Unit | 67 | Diff generation, merge, commit, path validation |
 | `tests/unit/test_file_routes.py` | Unit | 66 | File browser path validation, secret detection, .browserhidden |
 | `tests/unit/test_session.py` | Unit | 69 | AgentSession SDK wrapper, token extraction, events, Ollama provider |
 | `tests/unit/test_session_service.py` | Unit | 54 | SessionService lifecycle, commit messages, plugins, Ollama config |
-| `tests/unit/test_mcp_tool_servers.py` | Unit | 50 | MCP tool server creation, invocation, request flow |
-| `tests/unit/test_database_service.py` | Unit | 55 | DatabaseService CRUD, dependencies, column whitelist |
+| `tests/unit/test_mcp_tool_servers.py` | Unit | 52 | MCP tool server creation, invocation, request flow, `ask_user` context field |
+| `tests/unit/test_database_service.py` | Unit | 58 | DatabaseService CRUD, dependencies, column whitelist, clarification context column |
 | `tests/unit/test_websocket.py` | Unit | 45 | WebSocket connection, rate limiting, cleanup |
 | `tests/unit/test_notification_service.py` | Unit | 41 | WebSocket broadcasting, tool formatting |
 | `tests/unit/test_main.py` | Unit | 34 | Server startup, port discovery, git validation |
@@ -468,6 +470,7 @@ graph LR
 42. **Default model progression**: Migration 018 then 019 update the default model (Sonnet 4 → Opus 4.6 → Opus 4.7) and migrate the `+advisor` variants in lockstep across existing items and agent_config — clean, repeatable data migration pattern
 43. **Flame intensity multiplier**: `flame_intensity_multiplier` field in agent_config allows fine-tuning the animated flame background intensity beyond the on/off toggle
 44. **Multi-repo workspace mode**: Migration 020 adds a nullable `repo` column on `items` (NULL = single-repo mode preserved). When `target_project` is a folder of sibling git repos, each item names one repo; the worktree is created inside that subrepo, `WorkflowService._multi_repo_session_kwargs` injects `workspace_root` + `sibling_repo_paths` into the session, `AgentSession` adds the siblings to `add_dirs` (read-only) and explains the layout in the system prompt, and `path_guard.py` is multi-repo aware to avoid false positives across siblings. The `idx_items_repo` index keeps repo-scoped queries cheap.
+45. **Clarification context**: Migration 021 adds a nullable `context TEXT` column to `clarifications`. The `ask_user` MCP tool exposes a matching optional `context` field; agents pass relevant background and the Question dialog renders it as a panel above the prompt. The clarification row is created **before** the `item_updated` WebSocket broadcast, so the dialog has full context on first open (closing a regression where context was missing on the initial event).
 
 ---
 
@@ -475,13 +478,13 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/, excl. migrations) | 37 | ~7,669 |
-| Database migrations | 20 | ~750 |
-| JavaScript frontend | 24 | ~8,017 |
-| CSS styles | 5 | ~3,702 |
+| Python backend (src/, excl. migrations) | 37 | ~7,700 |
+| Database migrations | 21 | ~785 |
+| JavaScript frontend | 24 | ~8,400 |
+| CSS styles | 5 | ~3,700 |
 | HTML templates (incl. partials) | 3 | ~895 |
-| Tests | 30 | ~11,120 |
-| **Grand total** | **119** | **~32,153** |
+| Tests | 30 | ~11,300 |
+| **Grand total** | **120** | **~32,780** |
 
 ---
 

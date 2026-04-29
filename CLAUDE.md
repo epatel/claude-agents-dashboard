@@ -8,7 +8,7 @@ Standalone scrum board that orchestrates Claude agents working on a **separate t
 ./run.sh /path/to/target-project    # Single-repo mode — creates venv, installs deps, starts server (Python 3.12+)
 ./run.sh /path/to/workspace-folder  # Multi-repo mode — workspace must contain ≥1 sibling git repos
 ./run.sh /path/to/project --experimental  # Enable experimental features (Ollama provider, Sonnet 4.6 + Advisor)
-./run-tests.sh                      # All tests (873)
+./run-tests.sh                      # All tests (883)
 ./run-tests.sh tests/smoke/         # Smoke tests only
 ./run-tests.sh -k "test_cancel"     # Filter by name
 ```
@@ -26,14 +26,14 @@ Server binds to `127.0.0.1:8000` (auto-increments if busy, up to 8019). E2E test
 
 **Frontend**: Vanilla JS, no build step. Jinja2 server-renders initial board (`base.html`, `board.html`, `partials/card.html`); JS handles updates via WebSocket + fetch. `dialogs.js` coordinates 12 specialized dialog modules.
 
-**Database**: SQLite with 20 versioned migrations (001–020) in `src/migrations/versions/`. Auto-migrates on startup. CLI: `python -m src.manage [status|migrate|rollback]`.
+**Database**: SQLite with 21 versioned migrations (001–021) in `src/migrations/versions/`. Auto-migrates on startup. CLI: `python -m src.manage [status|migrate|rollback]`.
 
 **Models**: Default is **Claude Opus 4.7**. Other selectable models: Claude Sonnet 4.6, Claude Haiku 4.5, and Claude Sonnet 4.6 + Advisor (experimental). Optional Ollama provider gated behind `--experimental`.
 
 ### Key flows
 
 - **Agent start**: non-blocking via `asyncio.create_task()`. Each item gets its own git worktree (`agents-lab/worktrees/agent-{item_id}`). In multi-repo mode the worktree is rooted in the item's chosen sibling repo and `add_dirs` includes the other sibling repos read-only.
-- **Clarification**: `ask_user` MCP tool moves item to "Clarify", `await`s `asyncio.Event`, HTTP endpoint sets the event.
+- **Clarification**: `ask_user` MCP tool moves item to "Clarify", `await`s `asyncio.Event`, HTTP endpoint sets the event. Optional `context` field on the tool is stored alongside `prompt`/`choices` (migration 021) and rendered as a panel above the prompt in the Question dialog so the user has background before answering. The clarification row is created **before** the `item_updated` broadcast so the dialog has full context on first open.
 - **Merge**: commits uncommitted worktree changes first, then merges. On conflict, captures diff, resets worktree to latest base, restarts agent with conflict prompt.
 - **Pause/resume**: captures `session_id`, kills process, later resumes via `ClaudeAgentOptions(resume=session_id, continue_conversation=True)`.
 - **Stale worktree detection**: on startup + every 5min, scans worktrees against DB state, emits cleanup notifications.

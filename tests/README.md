@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (873 tests) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (20 migrations), security, git operations, services, routes, WebSocket, sessions, and agent tools.
+This directory contains the automated test suite (883 tests across 29 test files plus `conftest.py`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (21 migrations), security, git operations, services, routes, WebSocket, sessions, agent tools, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -17,7 +17,7 @@ tests/
 │   ├── test_annotation_summary.py               # Annotation summary generation (2 tests)
 │   ├── test_app.py                              # FastAPI app creation and middleware (23 tests)
 │   ├── test_create_todo_autostart.py            # Todo creation with auto-start (13 tests)
-│   ├── test_database_service.py                 # DatabaseService CRUD operations (55 tests)
+│   ├── test_database_service.py                 # DatabaseService CRUD operations (58 tests)
 │   ├── test_diff_mixing.py                      # Diff isolation between items (6 tests)
 │   ├── test_epics.py                            # Epic CRUD, progress, item assignment (19 tests)
 │   ├── test_file_routes.py                      # File browser routes (66 tests)
@@ -26,32 +26,33 @@ tests/
 │   ├── test_git_worktree.py                     # Git worktree create/cleanup (15 tests)
 │   ├── test_main.py                             # Server startup and port discovery (34 tests)
 │   ├── test_manage.py                           # Migration CLI commands (24 tests)
-│   ├── test_mcp_tool_servers.py                 # MCP tool server creation and invocation (50 tests)
+│   ├── test_mcp_tool_servers.py                 # MCP tool server creation and invocation (52 tests)
 │   ├── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
 │   ├── test_notification_service.py             # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
-│   ├── test_routes.py                           # HTTP endpoint tests (84 tests)
+│   ├── test_routes.py                           # HTTP endpoint tests (85 tests)
 │   ├── test_session.py                          # AgentSession SDK wrapper (69 tests)
 │   ├── test_session_service.py                  # SessionService lifecycle (54 tests)
 │   ├── test_websocket.py                        # WebSocket connection and rate limiting (45 tests)
-│   └── test_workflow_service.py                 # WorkflowService state transitions (70 tests)
+│   └── test_workflow_service.py                 # WorkflowService state transitions (74 tests)
 ├── integration/                                  # Integration tests (slower, multi-component)
 │   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (14 tests)
 ├── smoke/                                        # Smoke tests (basic functionality)
-│   └── test_basic_functionality.py              # Quick regression checks (12 tests)
+│   ├── test_basic_functionality.py              # Quick regression checks (12 tests)
+│   └── test_multi_repo.py                       # Multi-repo workspace detection and routing (8 tests)
 └── README.md                                     # This file
 ```
 
 ## Test Coverage by Area
 
-### 1. Service Layer (220 tests)
-- **WorkflowService** (70 tests) — State transitions, agent lifecycle, merge conflict resolution, dependency auto-start, callback factories
-- **DatabaseService** (55 tests) — CRUD operations, item dependencies, column whitelist validation
+### 1. Service Layer (227 tests)
+- **WorkflowService** (74 tests) — State transitions, agent lifecycle, merge conflict resolution, dependency auto-start, callback factories, clarification context plumbing
+- **DatabaseService** (58 tests) — CRUD operations, item dependencies, column whitelist validation, clarification context column
 - **SessionService** (54 tests) — Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests) — WebSocket broadcasting, tool formatting, event types
 
-### 2. Web Layer (218 tests)
-- **Routes** (84 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail
+### 2. Web Layer (219 tests)
+- **Routes** (85 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval
 - **File Routes** (66 tests) — File browser path validation, secret detection, .browserhidden, language mapping, directory scanning
 - **WebSocket** (45 tests) — Connection management, rate limiting, dead-connection cleanup
 - **App** (23 tests) — FastAPI factory, middleware, CORS, security headers, lifespan
@@ -61,8 +62,8 @@ tests/
 - **Git Worktree** (15 tests) — Worktree create/cleanup, base branch tracking
 - **Git Timeout** (5 tests) — Timeout configuration and recovery
 
-### 4. Agent Tools (158 tests)
-- **MCP Tool Servers** (50 tests) — Tool server creation, invocation, request/response flow
+### 4. Agent Tools (160 tests)
+- **MCP Tool Servers** (52 tests) — Tool server creation, invocation, request/response flow, `ask_user` context field passthrough
 - **Allowed Commands** (26 tests) — Command filter hook, shell operator rejection, YOLO mode bypass
 - **Advisor** (13 tests) — Agent advisor logic
 - **Session** (69 tests) — AgentSession SDK wrapper, token extraction, event handling, Ollama provider
@@ -80,7 +81,8 @@ tests/
 - **Main** (34 tests) — Server startup, port discovery, git validation
 - **Manage** (24 tests) — Migration CLI commands
 - **Path Validation** (14 tests) — Traversal prevention, null bytes, symlinks
-- **Smoke** (12 tests) — Imports, DB basics, config validation
+- **Smoke — Basic** (12 tests) — Imports, DB basics, config validation
+- **Smoke — Multi-repo** (8 tests) — Sibling repo detection, repo path resolution, workspace mode wiring
 
 ### 7. Orchestrator Lifecycle (Integration, 14 tests)
 Tests the complete agent workflow end-to-end:
@@ -109,7 +111,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 873 tests
+# Run all 883 tests
 ./run-tests.sh
 
 # Run specific test categories

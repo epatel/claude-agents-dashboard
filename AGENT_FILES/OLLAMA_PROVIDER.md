@@ -1,6 +1,7 @@
 # Ollama as a Provider for the Claude Agent SDK
 
 **Date tested**: 2026-04-12
+**Last reviewed**: 2026-04-29 (no functional changes since last test)
 **Status**: Working ✓
 
 ## Overview

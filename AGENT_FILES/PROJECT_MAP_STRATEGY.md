@@ -1,5 +1,7 @@
 # PROJECT_MAP Strategy
 
+**Status**: Strategy doc — `PROJECT_MAP.md` exists at repo root; the live overlay (`?map=1`) and auto-gen script remain on the roadmap below.
+
 Plan for building a shared shorthand vocabulary so the user can reference parts of the project unambiguously and Claude can resolve those references to the right files/symbols without round-trips.
 
 ## Goal

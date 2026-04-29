@@ -4,6 +4,8 @@
 
 **Do not commit annotated images when approving and merging tasks.**
 
+The dashboard exports annotation attachments as two PNGs per source image — `_original.png` (clean) and `_annotations.png` (overlay) — into `agents-lab/assets/`. The `agents-lab/` directory is itself excluded from each target project's `.gitignore` (auto-added by the dashboard on first run), so this policy is mostly a safety net for any annotation files an agent accidentally writes inside a worktree.
+
 ### Rules:
 1. All annotation images matching the pattern `annotation_*.*` are excluded via `.gitignore`
 2. Before approving or merging any task, verify that no annotation images are included in the commit

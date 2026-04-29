@@ -3,13 +3,13 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 873 tests
+./run-tests.sh              # Run all 883 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 20 migrations.
+The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 21 migrations.
 
 ## Test Structure
 
@@ -17,7 +17,8 @@ The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio
 tests/
 ├── conftest.py                         # Shared fixtures
 ├── smoke/
-│   └── test_basic_functionality.py     # Imports, DB, config checks (12 tests)
+│   ├── test_basic_functionality.py     # Imports, DB, config checks (12 tests)
+│   └── test_multi_repo.py              # Multi-repo workspace detection (8 tests)
 ├── unit/
 │   ├── migrations/
 │   │   ├── test_migration_runner.py    # Migration up/down/status (14 tests)
@@ -28,7 +29,7 @@ tests/
 │   ├── test_annotation_summary.py     # Annotation summary generation (2 tests)
 │   ├── test_app.py                    # FastAPI app and middleware (23 tests)
 │   ├── test_create_todo_autostart.py  # Todo creation with auto-start (13 tests)
-│   ├── test_database_service.py       # DatabaseService CRUD (55 tests)
+│   ├── test_database_service.py       # DatabaseService CRUD (58 tests)
 │   ├── test_diff_mixing.py           # Diff isolation between items (6 tests)
 │   ├── test_epics.py                 # Epic CRUD, progress, assignment (19 tests)
 │   ├── test_file_routes.py           # File browser routes (66 tests)
@@ -37,15 +38,15 @@ tests/
 │   ├── test_git_worktree.py          # Worktree create/cleanup (15 tests)
 │   ├── test_main.py                  # Server startup, port discovery (34 tests)
 │   ├── test_manage.py                # Migration CLI commands (24 tests)
-│   ├── test_mcp_tool_servers.py      # MCP tool server tests (50 tests)
+│   ├── test_mcp_tool_servers.py      # MCP tool server tests (52 tests)
 │   ├── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
 │   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
-│   ├── test_routes.py               # HTTP endpoint tests (84 tests)
+│   ├── test_routes.py               # HTTP endpoint tests (85 tests)
 │   ├── test_session.py              # AgentSession SDK wrapper (69 tests)
 │   ├── test_session_service.py      # SessionService lifecycle (54 tests)
 │   ├── test_websocket.py            # WebSocket rate limiting (45 tests)
-│   └── test_workflow_service.py     # WorkflowService transitions (70 tests)
+│   └── test_workflow_service.py     # WorkflowService transitions (74 tests)
 ├── integration/
 │   └── test_orchestrator_lifecycle.py  # Full agent workflow (14 tests)
 └── README.md
@@ -53,21 +54,22 @@ tests/
 
 ## Test Categories
 
-### Smoke Tests (12 tests)
+### Smoke Tests (20 tests)
 Quick checks that core components work:
 - Database connection and CRUD
 - Module imports (core, web, git)
 - Migration runner initialization
 - Requirements and config validation
+- Multi-repo workspace detection and sibling repo wiring
 
-### Unit Tests — Service Layer (220 tests)
-- **WorkflowService** (70 tests): State transitions, agent lifecycle, merge conflict resolution, dependency auto-start, callback factories
-- **DatabaseService** (55 tests): CRUD operations, item dependencies, column whitelist validation
+### Unit Tests — Service Layer (227 tests)
+- **WorkflowService** (74 tests): State transitions, agent lifecycle, merge conflict resolution, dependency auto-start, callback factories, clarification context plumbing
+- **DatabaseService** (58 tests): CRUD operations, item dependencies, column whitelist validation, clarification context column
 - **SessionService** (54 tests): Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests): WebSocket broadcasting, tool formatting, event types
 
-### Unit Tests — Web Layer (218 tests)
-- **Routes** (84 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail
+### Unit Tests — Web Layer (219 tests)
+- **Routes** (85 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval
 - **File Routes** (66 tests): Path validation, secret detection, .browserhidden, language mapping, directory scanning, file content
 - **WebSocket** (45 tests): Connection management, rate limiting, dead-connection cleanup
 - **App** (23 tests): FastAPI factory, middleware, CORS, security headers, lifespan
@@ -77,8 +79,8 @@ Quick checks that core components work:
 - **Git Worktree** (15 tests): Worktree create/cleanup, base branch tracking
 - **Git Timeout** (5 tests): Timeout configuration and recovery
 
-### Unit Tests — Agent Tools (89 tests)
-- **MCP Tool Servers** (50 tests): Tool server creation, invocation, request/response flow
+### Unit Tests — Agent Tools (91 tests)
+- **MCP Tool Servers** (52 tests): Tool server creation, invocation, request/response flow, `ask_user` context field passthrough
 - **Allowed Commands** (26 tests): Command filter hook, shell operator rejection, YOLO mode bypass, runtime approval persistence
 - **Advisor** (13 tests): Agent advisor logic
 
