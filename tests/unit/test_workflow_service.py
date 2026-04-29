@@ -569,6 +569,56 @@ class TestOnClarifyCallback:
             ctx_value = None
         assert ctx_value is None
 
+    async def test_clarification_stored_before_item_updated_broadcast(
+        self, workflow, db_service, item
+    ):
+        """Regression: question dialog opened on first auto-transition was
+        missing context because store_clarification ran AFTER the item_updated
+        broadcast, so a client GET racing the broadcast could miss the row.
+        The callback must persist the clarification before broadcasting the
+        column move so reopen-via-API always finds the latest context."""
+        cb = workflow._create_on_clarify_callback(item["id"])
+
+        events: list[str] = []
+
+        # Wrap store_clarification to record when it runs.
+        real_store = db_service.store_clarification
+
+        async def tracked_store(*args, **kwargs):
+            events.append("store_clarification")
+            return await real_store(*args, **kwargs)
+
+        db_service.store_clarification = tracked_store
+
+        async def tracked_broadcast_item_updated(*args, **kwargs):
+            events.append("broadcast_item_updated")
+
+        workflow.notifications.broadcast_item_updated.side_effect = (
+            tracked_broadcast_item_updated
+        )
+
+        async def tracked_broadcast_clar(*args, **kwargs):
+            events.append("broadcast_clarification_requested")
+
+        workflow.notifications.broadcast_clarification_requested.side_effect = (
+            tracked_broadcast_clar
+        )
+
+        workflow._clarify_responses[item["id"]] = "ok"
+        pre_set_event = asyncio.Event()
+        pre_set_event.set()
+        with patch("asyncio.Event", return_value=pre_set_event):
+            await cb("Approve?", ["yes", "no"], "Reasoning here.")
+
+        # Filter to the events we care about (broadcast_item_updated may be
+        # called again for the move-back-to-doing transition).
+        first_store_idx = events.index("store_clarification")
+        first_broadcast_idx = events.index("broadcast_item_updated")
+        assert first_store_idx < first_broadcast_idx, (
+            f"store_clarification must run before broadcast_item_updated, "
+            f"but events were: {events}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Callback: _create_on_create_todo_callback
