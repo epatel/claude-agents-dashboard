@@ -42,7 +42,7 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 873 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 883 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -86,7 +86,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Git worktrees** — each agent works in isolation, branched off main
 - **Live work log** — streaming agent output via WebSocket (messages, thinking, tool use)
 - **Review & merge** — tabbed dialog with description, diff viewer, and work log; approve or request changes
-- **Clarification flow** — agents can ask the user questions mid-task via custom MCP tool
+- **Clarification flow** — agents can ask the user questions mid-task via custom MCP tool; the optional `context` field on `ask_user` is rendered as a panel above the prompt so the user sees relevant background before answering
 - **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items; supports `requires` parameter to declare dependencies between items and `auto_start` to automatically launch agents when dependencies are resolved
 - **Custom commit messages** — agents set meaningful commit messages via MCP tool, used when merging
 - **Board introspection** — agents can view the current board state (all items by column) via the `view_board` MCP tool to understand project context
@@ -196,10 +196,10 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~7,669 lines across 37 source files (excluding migrations)
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~8,017 lines JS + ~3,702 lines CSS
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~7,700 lines across 37 source files (excluding migrations)
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~8,400 lines JS + ~3,700 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Opus 4.7 (default), Claude Sonnet 4.6, Claude Haiku 4.5, 7 built-in MCP tools; experimental Sonnet 4.6 + Advisor variant; optional Ollama provider (experimental)
-- **Database**: SQLite with 20 versioned migrations
+- **Database**: SQLite with 21 versioned migrations
 - **Security**: Localhost only, no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
 
 ### Item lifecycle
@@ -239,7 +239,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–020) adding columns and tables incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–021) adding columns and tables incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -335,6 +335,7 @@ erDiagram
         text item_id FK
         text prompt
         text choices
+        text context
         text response
         text created_at
         text answered_at
@@ -536,7 +537,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 - `AUDIT.md` — Security audit report with 14 findings (9 of 9 actionable remediated), threat model, and remediation tracking
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
 - `OLLAMA_PROVIDER.md` — Documentation for using Ollama as a local model provider via Claude Agent SDK
-- `TESTING.md` — Detailed testing guide with test inventory (873 unit/integration tests + E2E tests), writing guidelines, and 20 database migrations
+- `TESTING.md` — Detailed testing guide with test inventory (883 unit/integration tests + E2E tests), writing guidelines, and 21 database migrations
 
 ## License
 

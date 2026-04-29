@@ -1,7 +1,7 @@
 # Security Audit Report
 
 **Date**: 2026-04-10
-**Last updated**: 2026-04-18 (rev 7 — re-confirmed against multi-repo support and Opus 4.7 model upgrade; no new findings)
+**Last updated**: 2026-04-29 (rev 8 — re-confirmed against migration 021 / clarification context field; no new findings. The `context TEXT` column on `clarifications` carries the same trust level as the existing `prompt` column — agent-supplied free-form text rendered through the standard Jinja2/marked.js pipeline. No new attack surface.)
 **Scope**: Full codebase review of Claude Agents Dashboard
 **Threat model**: Localhost single-user developer tool. The server binds to `127.0.0.1` only, is operated by the local developer, and is not designed for network exposure or multi-user access. In multi-repo workspace mode the same threat model applies — agents work in a worktree inside one chosen sibling repo and have read-only access to the other siblings via `add_dirs`, with the path guard hook (`path_guard.py`) preventing writes outside the assigned worktree.
 
