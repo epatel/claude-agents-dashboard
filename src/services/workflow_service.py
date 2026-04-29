@@ -876,6 +876,13 @@ class WorkflowService:
 
     def _create_on_clarify_callback(self, item_id: str):
         async def on_clarify(prompt: str, choices: Optional[List[str]], context: Optional[str] = None) -> str:
+            # Store clarification FIRST so that any client-side auto-transition
+            # triggered by the upcoming item_updated broadcast (which fetches
+            # /api/items/{id}/clarification) finds the row with context.
+            # Otherwise the GET races the INSERT and the question dialog can
+            # open without the context until the user closes and reopens it.
+            await self.db.store_clarification(item_id, prompt, choices, context)
+
             # Move item to questions
             item = await self.db.update_item(item_id, column_name="questions", status=None)
             await self.notifications.broadcast_item_updated(item, source="agent")
@@ -884,10 +891,8 @@ class WorkflowService:
                 log_message = f"{log_message}\n\n{context}"
             await self._log_and_notify(item_id, "system", log_message)
 
-            # Store clarification
-            await self.db.store_clarification(item_id, prompt, choices, context)
-
-            # Broadcast to frontend
+            # Broadcast to frontend (carries context directly so listeners that
+            # don't auto-transition still get the panel populated immediately).
             await self.notifications.broadcast_clarification_requested(item_id, prompt, choices, context)
 
             # Wait for user response
@@ -909,6 +914,12 @@ class WorkflowService:
 
     def _create_on_request_command_callback(self, item_id: str):
         async def on_request_command(command: str, reason: str) -> str:
+            # Store as clarification FIRST so that any client-side auto-transition
+            # triggered by the item_updated broadcast (which fetches
+            # /api/items/{id}/clarification) finds the row immediately.
+            prompt = f"__permission_request__|{command}|{reason}"
+            await self.db.store_clarification(item_id, prompt, None)
+
             item = await self.db.update_item(
                 item_id, column_name="questions", status=None
             )
@@ -917,10 +928,6 @@ class WorkflowService:
                 item_id, "system",
                 f"Agent requests permission to run '{command}': {reason}"
             )
-
-            # Store as clarification so it persists and can be retrieved on card click
-            prompt = f"__permission_request__|{command}|{reason}"
-            await self.db.store_clarification(item_id, prompt, None)
 
             await self.notifications.ws_manager.broadcast(
                 "permission_requested",
@@ -980,6 +987,12 @@ class WorkflowService:
 
     def _create_on_request_tool_callback(self, item_id: str):
         async def on_request_tool(tool_name: str, reason: str) -> str:
+            # Store as clarification FIRST so that any client-side auto-transition
+            # triggered by the item_updated broadcast (which fetches
+            # /api/items/{id}/clarification) finds the row immediately.
+            prompt = f"__tool_request__|{tool_name}|{reason}"
+            await self.db.store_clarification(item_id, prompt, None)
+
             item = await self.db.update_item(
                 item_id, column_name="questions", status=None
             )
@@ -988,10 +1001,6 @@ class WorkflowService:
                 item_id, "system",
                 f"Agent requests permission to use '{tool_name}': {reason}"
             )
-
-            # Store as clarification so it persists and can be retrieved on card click
-            prompt = f"__tool_request__|{tool_name}|{reason}"
-            await self.db.store_clarification(item_id, prompt, None)
 
             await self.notifications.ws_manager.broadcast(
                 "tool_permission_requested",
