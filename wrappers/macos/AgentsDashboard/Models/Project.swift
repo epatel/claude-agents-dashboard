@@ -28,6 +28,11 @@ struct DashboardInstance: Identifiable {
     var process: Process?
     var outputLog: String = ""
     var errorMessage: String?
+    /// Number of items currently in the "questions" column (awaiting user input).
+    /// Polled from /api/items while the dashboard is running.
+    var questionsCount: Int = 0
+    /// Number of items currently in the "review" column (awaiting approval).
+    var reviewsCount: Int = 0
 
     var url: URL? {
         guard let port = port else { return nil }

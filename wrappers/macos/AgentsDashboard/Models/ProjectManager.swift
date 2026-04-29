@@ -17,6 +17,9 @@ class ProjectManager: ObservableObject {
     private let storageKey = "saved_projects"
     private var outputPipes: [UUID: Pipe] = [:]
     private var errorPipes: [UUID: Pipe] = [:]
+    /// Poll timer that periodically refreshes the per-tab questions/reviews counts.
+    /// Started lazily when the first dashboard begins running.
+    private var badgePollTimer: Timer?
     /// The user's full login-shell PATH, resolved once on first access.
     /// Exposed so that views (InstallSheet, ContentView) can pass it to checkClaudeCLI.
     lazy var resolvedUserPATH: String? = {
@@ -44,6 +47,59 @@ class ProjectManager: ObservableObject {
     init() {
         loadProjects()
         checkProjectAvailability()
+        startBadgePollTimer()
+    }
+
+    deinit {
+        badgePollTimer?.invalidate()
+    }
+
+    // MARK: - Tab Badge Polling
+
+    /// Start (or restart) the timer that refreshes per-tab badge counts.
+    /// Polling is light: a single GET /api/items per running dashboard every
+    /// 3 seconds. We only fetch column_name client-side and count locally.
+    private func startBadgePollTimer() {
+        badgePollTimer?.invalidate()
+        let timer = Timer(timeInterval: 3.0, repeats: true) { [weak self] _ in
+            self?.refreshBadgeCounts()
+        }
+        // Keep firing while menus / modal panels are up.
+        RunLoop.main.add(timer, forMode: .common)
+        badgePollTimer = timer
+        // Also kick off an immediate refresh so tabs don't sit at 0 for 3s.
+        refreshBadgeCounts()
+    }
+
+    private func refreshBadgeCounts() {
+        for dashboard in dashboards where dashboard.status == .running {
+            guard let port = dashboard.port,
+                  let url = URL(string: "http://127.0.0.1:\(port)/api/items") else { continue }
+            let dashboardId = dashboard.id
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 4
+            URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+                guard let self = self,
+                      let data = data,
+                      let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+                var questions = 0
+                var reviews = 0
+                for item in items {
+                    guard let column = item["column_name"] as? String else { continue }
+                    if column == "questions" { questions += 1 }
+                    else if column == "review" { reviews += 1 }
+                }
+                DispatchQueue.main.async {
+                    guard let index = self.dashboards.firstIndex(where: { $0.id == dashboardId }) else { return }
+                    if self.dashboards[index].questionsCount != questions {
+                        self.dashboards[index].questionsCount = questions
+                    }
+                    if self.dashboards[index].reviewsCount != reviews {
+                        self.dashboards[index].reviewsCount = reviews
+                    }
+                }
+            }.resume()
+        }
     }
 
     // MARK: - Availability
@@ -116,6 +172,8 @@ class ProjectManager: ObservableObject {
             dashboards[existingIndex].port = nil
             dashboards[existingIndex].errorMessage = nil
             dashboards[existingIndex].outputLog = ""
+            dashboards[existingIndex].questionsCount = 0
+            dashboards[existingIndex].reviewsCount = 0
             selectedTab = dashboards[existingIndex].id
             launchServer(for: dashboards[existingIndex])
             return
