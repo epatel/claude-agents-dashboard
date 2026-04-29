@@ -228,10 +228,26 @@ struct TabButton: View {
                 .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
                 .lineLimit(1)
 
-            if dashboard.status == .running, let port = dashboard.port {
-                Text(":\(port)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.secondary)
+            // Badges for tabs that need attention. The green status dot
+            // already conveys "running", so the port suffix that used to
+            // live here was redundant — we use the freed space for these.
+            if dashboard.status == .running {
+                if dashboard.questionsCount > 0 {
+                    badge(
+                        count: dashboard.questionsCount,
+                        color: .orange,
+                        systemImage: "questionmark",
+                        help: "\(dashboard.questionsCount) item\(dashboard.questionsCount == 1 ? "" : "s") awaiting your answer"
+                    )
+                }
+                if dashboard.reviewsCount > 0 {
+                    badge(
+                        count: dashboard.reviewsCount,
+                        color: .blue,
+                        systemImage: "eye",
+                        help: "\(dashboard.reviewsCount) item\(dashboard.reviewsCount == 1 ? "" : "s") in review"
+                    )
+                }
             }
 
             Button(action: {
@@ -265,6 +281,25 @@ struct TabButton: View {
                 NSCursor.pop()
             }
         }
+    }
+
+    /// Compact pill showing an SF Symbol + count, e.g. ❓ 2 or 👁 1.
+    /// Tinted so a glance across many tabs surfaces the ones that need attention.
+    private func badge(count: Int, color: Color, systemImage: String, help: String) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: systemImage)
+                .font(.system(size: 8, weight: .bold))
+            Text("\(count)")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 1)
+        .background(
+            Capsule().fill(color)
+        )
+        .help(help)
     }
 
     @ViewBuilder
