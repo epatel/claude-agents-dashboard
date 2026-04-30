@@ -109,8 +109,13 @@ After: callers never see column names. They call intent-named methods. The white
   - Wired into orchestrator + WorkflowService. Migrated 6 call sites: 4 in `routes.py` (get/create/update/delete + `delete_by_epic`), 2 in `workflow_service.py` (`_create_on_create_epic_callback`, view-board's epic listing).
   - Dropped the `ALLOWED_EPIC_COLUMNS` whitelist + validation from `database_service.update_epic`. Acceptance check: `grep ALLOWED_EPIC_COLUMNS src/` returns only doc-comment breadcrumbs.
   - 13 new tests in `test_epic_repository.py`. Suite 976 passing.
-- [ ] **2.7** Decide fate of `database_service.py`
+- [x] **2.7** Decide fate of `database_service.py`
   - Becomes the connection / migration owner only, or absorbs into repos? Choose at the end of phase based on what's left.
+  - **Decision: keep it as a multi-table SQL helper.** After 2.1–2.6 the file is 530 LOC, split roughly:
+    - **Wrapped by repos**: items SQL primitives (8 methods, behind `ItemRepository`), epics primitives (5 methods, behind `EpicRepository`).
+    - **Still direct**: clarifications, reviews, attachments, tokens, dependencies, logs, config, allowed-commands/tools — none of these has a dedicated repo, and nothing in Phase 2's encapsulation goal required one.
+  - The Phase 2 promise (kill the `ALLOWED_*_COLUMNS` whitelists, single writer per entity) is met. Splitting further now would be churn against a hypothetical future need. Documented contract: `database_service.py` is the home for cross-table queries (joins, aggregates) and operations on tables that don't yet have a repo. New repos get added when a concrete pressure surfaces (a third writer of the same table, a typing pain point, an import cycle).
+  - No code change for this step — purely a decision artifact captured here so future contributors don't keep re-litigating it.
 
 **Acceptance:** `grep -r "ALLOWED_.*_COLUMNS"` returns nothing. No code outside `repositories/` references item table column names by string.
 

@@ -1,4 +1,22 @@
-"""Database service for handling all database operations."""
+"""Database service: multi-table SQL helper for the dashboard.
+
+After Phase 2 (REFACTOR_PLAN.md) the items and epics writes go through
+`src/repositories/`. This module is *not* deprecated — it remains the
+home for:
+
+- SQL primitives used by the item and epic repositories (the repos call
+  through here for the actual database access; field validation lives
+  in the repo).
+- Cross-table queries that don't fit a single entity (joins, aggregates,
+  blocked-status walks, epic progress).
+- Tables that don't yet have a dedicated repository: clarifications,
+  reviews, attachments, tokens, item dependencies, work-log entries,
+  agent config, allowed-commands/tools.
+
+When a third writer of one of those tables shows up, or a typing pain
+point makes the boundary clear, that table can graduate to its own repo
+under the same convention as ItemRepository / EpicRepository.
+"""
 
 import json
 import logging
