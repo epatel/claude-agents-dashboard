@@ -17,12 +17,13 @@ Today: state is `(column_name: str, status: Optional[str])`, ~10 valid combinati
 
 After: a single `ItemState` enum + a `TRANSITIONS` table. Illegal moves raise. DB columns unchanged.
 
-- [ ] **1.1** Create `src/domain/__init__.py` and `src/domain/item_state.py`
+- [x] **1.1** Create `src/domain/__init__.py` and `src/domain/item_state.py`
   - `class ItemState(StrEnum)` — enumerate every reachable state (BACKLOG, QUEUED, RUNNING, PAUSED, CLARIFY, MERGE_CONFLICT, REVIEW, DONE, CANCELED, …)
   - `class Event(StrEnum)` — START, PAUSE, RESUME, ASK, ANSWER, REQUEST_MERGE, CONFLICT, COMPLETE, CANCEL, REQUEUE
   - `TRANSITIONS: dict[tuple[ItemState, Event], ItemState]`
   - `transition(state, event) -> ItemState` raising `InvalidTransition`
   - Helpers: `from_columns(column_name, status) -> ItemState` and `to_columns(state) -> tuple[str, Optional[str]]`
+  - **Landed:** 13 states grounded in audit of `workflow_service.py` writes; smoke-tested roundtrip + illegal-transition raise.
 - [ ] **1.2** Audit & document current state combos
   - Grep `column_name` and `status` writes in `workflow_service.py`; list every `(col, status)` pair actually written
   - Save the audit in `docs/item-states.md` (one-time artifact — fine to delete after Phase 1 lands)
