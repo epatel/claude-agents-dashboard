@@ -24,14 +24,16 @@ After: a single `ItemState` enum + a `TRANSITIONS` table. Illegal moves raise. D
   - `transition(state, event) -> ItemState` raising `InvalidTransition`
   - Helpers: `from_columns(column_name, status) -> ItemState` and `to_columns(state) -> tuple[str, Optional[str]]`
   - **Landed:** 13 states grounded in audit of `workflow_service.py` writes; smoke-tested roundtrip + illegal-transition raise.
-- [ ] **1.2** Audit & document current state combos
+- [x] **1.2** Audit & document current state combos
   - Grep `column_name` and `status` writes in `workflow_service.py`; list every `(col, status)` pair actually written
   - Save the audit in `docs/item-states.md` (one-time artifact — fine to delete after Phase 1 lands)
   - Render `TRANSITIONS` as a Mermaid state diagram in the same doc
-- [ ] **1.3** Unit tests for the state machine
+  - **Landed:** `docs/item-states.md` with encoding table, Mermaid diagram, and audit table mapping every `workflow_service.py` write to a state.
+- [x] **1.3** Unit tests for the state machine
   - Every legal transition has a test
   - Every `(state, event)` not in the table raises
   - `from_columns` ↔ `to_columns` roundtrip for all known DB rows
+  - **Landed:** `tests/unit/test_item_state.py` — 53 tests; full suite 936 passed.
 - [ ] **1.4** Route the **start/pause/resume/cancel** call sites through `transition(...)`
   - These are the most-traveled paths; smallest blast radius for the first migration
   - Keep DB writes as-is (`column_name` / `status` strings)
