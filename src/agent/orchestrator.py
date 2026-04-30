@@ -106,8 +106,16 @@ class AgentOrchestrator:
 
     # Legacy compatibility methods - delegate to services
     async def _update_item(self, item_id: str, **kwargs):
-        """Legacy method for backward compatibility."""
-        item = await self.db_service.update_item(item_id, **kwargs)
+        """Legacy direct-update path retained for integration tests that
+        bypass the SM to seed item state. Routes through the repo so the
+        column allowlist is still enforced. Tests that use this should
+        gradually migrate to item_repository.transition / update_fields."""
+        if "column_name" in kwargs or "status" in kwargs:
+            # Direct state writes used by integration test setup. Bypass
+            # the SM here on purpose — the test seeds an arbitrary state.
+            item = await self.db_service.update_item(item_id, **kwargs)
+        else:
+            item = await self.item_repository.update_fields(item_id, **kwargs)
         await self.notification_service.broadcast_item_updated(item)
         return item
 

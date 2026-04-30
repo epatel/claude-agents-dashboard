@@ -26,6 +26,20 @@ if TYPE_CHECKING:
     from ..services.database_service import DatabaseService
 
 
+# Whitelist of `items` columns the repo will accept on writes. Replaces
+# the old ALLOWED_ITEM_COLUMNS in database_service.py — moved here as
+# part of Phase 2.5: the repo is now the only writer of items, so the
+# defense-in-depth check belongs at this boundary. Anything else that
+# gets passed in is a programming error and should raise loudly.
+_WRITABLE_ITEM_COLUMNS = {
+    "title", "description", "column_name", "status", "position",
+    "branch_name", "worktree_path", "session_id", "model",
+    "base_branch", "base_commit", "done_at", "epic_id",
+    "merge_commit", "auto_start", "commit_message",
+    "has_file_changes",
+}
+
+
 class ItemNotFound(ValueError):
     """Raised by ItemRepository.get_or_raise when no row matches the id.
 
@@ -98,6 +112,9 @@ class ItemRepository:
             InvalidTransition:      `event` is not legal from the current
                                     state.
         """
+        invalid = set(extra_fields) - _WRITABLE_ITEM_COLUMNS
+        if invalid:
+            raise ValueError(f"unknown item field(s): {sorted(invalid)}")
         item = await self.get_or_raise(item_id)
         current_state = from_columns(item["column_name"], item.get("status"))
         new_state = _apply_event(current_state, event)
@@ -118,4 +135,7 @@ class ItemRepository:
                 "use ItemRepository.transition() to change column_name/status; "
                 "update_fields is for non-state field writes only"
             )
+        invalid = set(fields) - _WRITABLE_ITEM_COLUMNS
+        if invalid:
+            raise ValueError(f"unknown item field(s): {sorted(invalid)}")
         return await self.db.update_item(item_id, **fields)

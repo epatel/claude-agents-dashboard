@@ -90,8 +90,15 @@ After: callers never see column names. They call intent-named methods. The white
   - **Landed (combined with 2.2):** all 14 transition call sites in `workflow_service.py` now use `self.items.transition(...)` — 4-line patterns collapse to 1 line each. Dropped `to_columns` and `transition` (function) from the file's imports; `from_columns` retained for `find_stale_worktrees`.
 - [x] **2.4** Migrate writes in `web/routes.py` (1504 LOC) to repo methods
   - **Landed:** the one transition call (`retry_merge` endpoint) now uses `orchestrator.item_repository.transition(item_id, Event.RETRY_MERGE)`. Imports trimmed from `Event, from_columns, to_columns, transition` to just `Event`. The DnD `move_item` endpoint and the bulk archive endpoint still write column_name directly via raw SQL — those are deliberate exceptions (the DnD followup is tracked separately; bulk archive is a multi-row optimization). Suite 967 passing.
-- [ ] **2.5** Delete `ALLOWED_ITEM_COLUMNS` whitelist in `database_service.py`
+- [x] **2.5** Delete `ALLOWED_ITEM_COLUMNS` whitelist in `database_service.py`
   - This is the proof the encapsulation closed
+  - **Landed:** 4 changes:
+    1. The 2 remaining direct `db.update_item` calls in `workflow_service.py` (in `retry_agent` and `cleanup_stale_worktree`) now go through `repo.update_fields`.
+    2. `orchestrator._update_item` (legacy compat for integration tests) routes through the repo when no state fields are passed; falls through to `db_service.update_item` when callers explicitly seed `column_name`/`status` for test setup.
+    3. `_WRITABLE_ITEM_COLUMNS` moved into `ItemRepository`; both `transition()` and `update_fields()` validate `extra_fields` / `**fields` against it.
+    4. Dropped the whitelist + validation block from `database_service.update_item`; it's now a SQL executor that trusts its caller (the repo).
+  - Verification: `grep "ALLOWED_ITEM_COLUMNS" src/` returns only doc-comment references explaining the move. The symbol itself is gone.
+  - Suite 968 passing.
 - [ ] **2.6** Same treatment for `EpicRepository` (smaller, faster — do after items as practice)
 - [ ] **2.7** Decide fate of `database_service.py`
   - Becomes the connection / migration owner only, or absorbs into repos? Choose at the end of phase based on what's left.

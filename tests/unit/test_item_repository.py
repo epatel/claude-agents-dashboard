@@ -139,3 +139,22 @@ class TestUpdateFields:
         item = await db_service.create_todo_item("X", "")
         with pytest.raises(ValueError, match="transition"):
             await repo.update_fields(item["id"], status="running")
+
+    async def test_rejects_unknown_field(self, repo, db_service):
+        item = await db_service.create_todo_item("X", "")
+        with pytest.raises(ValueError, match="unknown item field"):
+            await repo.update_fields(item["id"], not_a_real_column="bad")
+
+    async def test_rejects_start_copy(self, repo, db_service):
+        # `start_copy` is on the items table but is intentionally not in
+        # the writable set — it's an init-only flag set at create time.
+        item = await db_service.create_todo_item("X", "")
+        with pytest.raises(ValueError, match="unknown item field"):
+            await repo.update_fields(item["id"], start_copy=1)
+
+
+class TestTransitionFieldValidation:
+    async def test_rejects_unknown_extra_field(self, repo, db_service):
+        item = await db_service.create_todo_item("X", "")
+        with pytest.raises(ValueError, match="unknown item field"):
+            await repo.transition(item["id"], Event.START, not_a_real_column="bad")

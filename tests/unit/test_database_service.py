@@ -507,21 +507,18 @@ class TestStartCopyColumn:
         fetched = await db_service.get_item("item-sc")
         assert fetched["start_copy"] == 1
 
-    async def test_start_copy_not_in_update_allowed_columns(self, db_service, item):
-        """start_copy is not updatable via update_item."""
-        with pytest.raises(ValueError, match="Invalid item column"):
-            await db_service.update_item(item["id"], start_copy=1)
+    # NOTE: validation that `start_copy` and other unknown columns can't be
+    # written via update_item() moved to ItemRepository in Phase 2.5 (see
+    # tests/unit/test_item_repository.py). DatabaseService.update_item is
+    # now a SQL executor that trusts its caller — only the repo writes to
+    # it in production.
 
 
 # ---------------------------------------------------------------------------
-# update_item invalid column guard
+# update_item: derived-field behavior (column-validation moved to repo)
 # ---------------------------------------------------------------------------
 
 class TestUpdateItemValidation:
-    async def test_invalid_column_raises(self, db_service, item):
-        with pytest.raises(ValueError, match="Invalid item column"):
-            await db_service.update_item(item["id"], not_a_real_column="bad")
-
     async def test_done_at_auto_set_on_done(self, db_service, item):
         updated = await db_service.update_item(item["id"], column_name="done")
         assert updated["done_at"] is not None

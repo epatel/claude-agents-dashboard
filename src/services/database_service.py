@@ -12,16 +12,12 @@ from ..models import new_id
 
 logger = logging.getLogger(__name__)
 
-# Whitelist of columns that may be set via update_item()
-ALLOWED_ITEM_COLUMNS = {
-    "title", "description", "column_name", "status", "position",
-    "branch_name", "worktree_path", "session_id", "model",
-    "base_branch", "base_commit", "done_at", "epic_id",
-    "merge_commit", "auto_start", "commit_message",
-    "has_file_changes",
-}
-
-# Whitelist of columns that may be set via update_epic()
+# Whitelist of columns that may be set via update_epic(). The
+# corresponding ALLOWED_ITEM_COLUMNS was moved into ItemRepository in
+# Phase 2.5 — the repo is now the only writer of items, so the
+# defense-in-depth check lives at that boundary instead. EpicRepository
+# is the next step (Phase 2.6); until then update_epic keeps its own
+# whitelist.
 ALLOWED_EPIC_COLUMNS = {
     "title", "color", "position",
 }
@@ -62,11 +58,9 @@ class DatabaseService:
             return dict(row) if row else None
 
     async def update_item(self, item_id: str, **kwargs) -> Dict[str, Any]:
-        """Update an item with the given fields."""
-        invalid_keys = set(kwargs) - ALLOWED_ITEM_COLUMNS
-        if invalid_keys:
-            raise ValueError(f"Invalid item column(s): {invalid_keys}")
-
+        """Update an item with the given fields. Field validation is the
+        ItemRepository's job (Phase 2.5); this is a SQL executor only.
+        Outside callers should not invoke this directly."""
         async with self.db.connect() as conn:
             # If column_name is being changed, assign next position in target column
             if "column_name" in kwargs and "position" not in kwargs:

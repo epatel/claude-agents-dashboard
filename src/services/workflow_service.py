@@ -303,7 +303,7 @@ class WorkflowService:
             worktree_path, _, _, _ = await self.git.create_or_reuse_worktree(
                 item_id, None, branch_name, repo=item.get("repo"),
             )
-            await self.db.update_item(
+            await self.items.update_fields(
                 item_id,
                 branch_name=branch_name,
                 worktree_path=str(worktree_path),
@@ -1290,7 +1290,7 @@ class WorkflowService:
 
         # Clear git metadata on the item if it still exists
         if item:
-            updated = await self.db.update_item(
+            updated = await self.items.update_fields(
                 item_id, worktree_path=None, branch_name=None, base_branch=None, base_commit=None
             )
             await self.notifications.broadcast_item_updated(updated)
