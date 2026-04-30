@@ -73,6 +73,21 @@ _COLUMNS_TO_STATE: dict[tuple[str, Optional[str]], ItemState] = {
     cols: state for state, cols in _STATE_TO_COLUMNS.items()
 }
 
+# Off-canon encodings the drag-and-drop "move item" endpoint can produce by
+# changing column_name without touching status. These rows are treated as the
+# nearest functional equivalent so the SM stays usable in production until
+# Phase 2 routes DnD writes through transition() too.
+#
+# We don't add these as primary mappings because to_columns() must remain
+# canonical — we only relax inputs, never outputs.
+_COLUMNS_TO_STATE_FALLBACKS: dict[tuple[str, Optional[str]], ItemState] = {
+    # Item dragged to doing column with no active agent — same situation as
+    # BACKLOG (waiting to start). transition(BACKLOG, START) -> RUNNING then
+    # writes ("doing", "running"), so the column the user dragged to is
+    # preserved in practice.
+    ("doing", None): ItemState.BACKLOG,
+}
+
 
 TRANSITIONS: dict[tuple[ItemState, Event], ItemState] = {
     (ItemState.BACKLOG, Event.START): ItemState.RUNNING,
@@ -161,7 +176,8 @@ def to_columns(state: ItemState) -> tuple[str, Optional[str]]:
 
 
 def from_columns(column_name: str, status: Optional[str]) -> ItemState:
-    try:
-        return _COLUMNS_TO_STATE[(column_name, status)]
-    except KeyError:
-        raise UnknownStateEncoding(column_name, status) from None
+    key = (column_name, status)
+    state = _COLUMNS_TO_STATE.get(key) or _COLUMNS_TO_STATE_FALLBACKS.get(key)
+    if state is not None:
+        return state
+    raise UnknownStateEncoding(column_name, status)

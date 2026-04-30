@@ -44,6 +44,28 @@ class TestColumnEncoding:
         for cols, expected in cases.items():
             assert from_columns(*cols) is expected, f"{cols} should map to {expected}"
 
+    def test_doing_with_no_status_falls_back_to_backlog(self):
+        # The drag-and-drop "move item" endpoint changes column_name without
+        # setting status, so dragging a todo card into the doing column lands
+        # at ("doing", None). Until DnD is SM-aware (Phase 2), treat this as
+        # BACKLOG so Start still works.
+        assert from_columns("doing", None) is ItemState.BACKLOG
+
+    def test_to_columns_stays_canonical_for_backlog(self):
+        # to_columns must never emit the off-canon ("doing", None) form —
+        # writes are always canonical. The DnD encoding is tolerated on read,
+        # not produced on write.
+        assert to_columns(ItemState.BACKLOG) == ("todo", None)
+
+    def test_dnd_then_start_lands_in_running(self):
+        # End-to-end: a user drags a todo to the doing column, then clicks
+        # Start. The SM should land on RUNNING (not raise).
+        state = from_columns("doing", None)
+        assert state is ItemState.BACKLOG
+        next_state = transition(state, Event.START)
+        assert next_state is ItemState.RUNNING
+        assert to_columns(next_state) == ("doing", "running")
+
     def test_unknown_encoding_raises(self):
         with pytest.raises(UnknownStateEncoding) as exc:
             from_columns("doing", "totally_made_up")

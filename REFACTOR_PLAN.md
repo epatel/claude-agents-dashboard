@@ -64,6 +64,10 @@ After: a single `ItemState` enum + a `TRANSITIONS` table. Illegal moves raise. D
 
 ---
 
+### Phase 1 followups (discovered post-Phase 1)
+
+- [ ] **DnD endpoint bypass.** The drag-and-drop `move_item` endpoint (`routes.py:506`) updates `column_name` without touching `status`, producing off-canon encodings like `("doing", None)`. Phase 1.10 added a tolerant fallback in `from_columns`, but the right fix is to route DnD writes through the SM too. Fold this into Phase 2 when `ItemRepository.move(...)` is introduced.
+
 ### Phase 2 — Repository ADT for items (encapsulation)
 
 Today: `database_service.py` (525 LOC) takes `dict[str, Any]` and uses `ALLOWED_ITEM_COLUMNS` / `ALLOWED_EPIC_COLUMNS` whitelists to filter — symptomatic of leaking column names to callers.
