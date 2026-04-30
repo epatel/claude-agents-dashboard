@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..agent.session import AgentResult
-from ..domain.item_state import Event, from_columns, to_columns, transition
+from ..domain.item_state import Event, ItemState, UnknownStateEncoding, from_columns, to_columns, transition
 from .database_service import DatabaseService
 from .git_service import GitService
 from .notification_service import NotificationService
@@ -1347,14 +1347,17 @@ class WorkflowService:
                 continue
 
             # Check if item is in a terminal/inactive state with no running session
-            status = item.get("status", "")
-            column = item.get("column_name", "")
             has_session = item_id in self.sessions.sessions
+            try:
+                state = from_columns(item.get("column_name", ""), item.get("status"))
+            except UnknownStateEncoding:
+                continue  # unknown legacy encoding — leave alone, audit logs it on startup
 
-            if status == "cancelled" or (column in ("done", "archive") and not has_session):
+            terminal_states = {ItemState.CANCELLED, ItemState.DONE, ItemState.ARCHIVED}
+            if state in terminal_states and not has_session:
                 title = item.get("title", item_id[:8])
-                stale.append({"item_id": item_id, "title": title, "branch_name": branch_name, "worktree_path": path, "reason": f"Item is {status or column}"})
-            elif column == "todo" and not has_session and status not in ("running", "paused"):
+                stale.append({"item_id": item_id, "title": title, "branch_name": branch_name, "worktree_path": path, "reason": f"Item is {state.value}"})
+            elif state is ItemState.BACKLOG and not has_session:
                 title = item.get("title", item_id[:8])
                 stale.append({"item_id": item_id, "title": title, "branch_name": branch_name, "worktree_path": path, "reason": "Item is in todo with no active agent"})
 

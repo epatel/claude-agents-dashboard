@@ -53,8 +53,10 @@ After: a single `ItemState` enum + a `TRANSITIONS` table. Illegal moves raise. D
   - Pruned the speculative `(MERGE_BLOCKED, ANSWER) → REVIEW` transition introduced in 1.1 — never used in production code (merge-blocked exit is the retry-merge route, not the clarify dialog).
   - Verification: `grep 'update_item.*column_name="\|update_item.*status="'` over the entire codebase returns zero matches. Bulk SQL archive in `routes.py:archive_items_by_date` left as-is (state machine targets `update_item` writes; bulk operations are a Phase 2 repository concern).
   - Suite 946 passing.
-- [ ] **1.8** Add a startup invariant check: load every item, assert `from_columns(...)` succeeds. Log + skip on bad rows; do not crash.
-- [ ] **1.9** Delete dead code revealed by 1.4–1.7 (defensive checks now redundant)
+- [x] **1.8** Add a startup invariant check: load every item, assert `from_columns(...)` succeeds. Log + skip on bad rows; do not crash.
+  - **Landed:** `_audit_item_state_encodings(db)` runs in `lifespan` after `db.initialize()`. Walks every row through `from_columns`, collects unknown encodings, logs a single warning with sample rows. Does not raise. Tested on clean / dirty / empty DBs.
+- [x] **1.9** Delete dead code revealed by 1.4–1.7 (defensive checks now redundant)
+  - **Landed:** scope was smaller than expected — the migrations routed writes through the SM but didn't orphan many call sites. The substantive cleanup was `find_stale_worktrees`: replaced its `status == "cancelled" or column in ("done", "archive")` string-juggling with a single `state in {CANCELLED, DONE, ARCHIVED}` check, and the `column == "todo" and status not in ("running", "paused")` condition with `state is BACKLOG`. The earlier (MERGE_BLOCKED, ANSWER) speculative transition was already pruned in 1.7.
 
 **Acceptance:** every write to `items.column_name` / `items.status` in production code goes through `transition(...)`. Grep should find no direct assignments outside the state-machine module and migrations.
 

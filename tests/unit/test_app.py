@@ -6,12 +6,14 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch, call
 
 from src.web.app import (
+    _audit_item_state_encodings,
     _build_cors_origins,
     _check_stale_worktrees,
     SecurityHeadersMiddleware,
     create_app,
 )
 from src.config import DEFAULT_HOST, DEFAULT_PORT, MAX_PORT_TRIES
+from src.database import Database
 
 
 # ---------------------------------------------------------------------------
@@ -255,3 +257,55 @@ class TestCreateApp:
         app = create_app(target, data)
         route_paths = [getattr(r, "path", None) for r in app.routes]
         assert "/static" in route_paths
+
+
+# ---------------------------------------------------------------------------
+# _audit_item_state_encodings
+# ---------------------------------------------------------------------------
+
+class TestAuditItemStateEncodings:
+    @pytest.mark.asyncio
+    async def test_clean_db_logs_nothing(self, tmp_path, caplog):
+        db = Database(tmp_path / "clean.db")
+        await db.initialize()
+        async with db.connect() as conn:
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, status, position) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("a", "Ok item", "", "todo", None, 0),
+            )
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, status, position) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("b", "Running item", "", "doing", "running", 0),
+            )
+            await conn.commit()
+        with caplog.at_level("WARNING"):
+            await _audit_item_state_encodings(db)
+        # No warning should mention unrecognized encodings
+        assert not any("unrecognized" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_bad_row_is_logged_not_raised(self, tmp_path, caplog):
+        db = Database(tmp_path / "dirty.db")
+        await db.initialize()
+        async with db.connect() as conn:
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, status, position) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("bad", "Bad item", "", "doing", "totally_made_up", 0),
+            )
+            await conn.commit()
+        with caplog.at_level("WARNING"):
+            await _audit_item_state_encodings(db)
+        warnings = [r.message for r in caplog.records if "unrecognized" in r.message]
+        assert len(warnings) == 1
+        assert "bad" in warnings[0]
+
+    @pytest.mark.asyncio
+    async def test_empty_db_is_silent(self, tmp_path, caplog):
+        db = Database(tmp_path / "empty.db")
+        await db.initialize()
+        with caplog.at_level("WARNING"):
+            await _audit_item_state_encodings(db)
+        assert not any("unrecognized" in r.message for r in caplog.records)

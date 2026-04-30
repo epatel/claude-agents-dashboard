@@ -11,6 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..config import TEMPLATES_DIR, STATIC_DIR, DEFAULT_HOST, DEFAULT_PORT, MAX_PORT_TRIES
 from ..database import Database
+from ..domain.item_state import UnknownStateEncoding, from_columns
 from ..agent.orchestrator import AgentOrchestrator
 from .websocket import ConnectionManager
 
@@ -60,6 +61,28 @@ async def _check_claude_cli_version() -> None:
         )
 
 
+async def _audit_item_state_encodings(db: Database) -> None:
+    """Walk every item row through from_columns to detect drift between the
+    database and the ItemState model. Logs but does not raise — user data
+    in the wild may include rows from older code paths or external SQL
+    edits, and we don't want startup to crash on stale rows."""
+    bad: list[tuple[str, str, str | None]] = []
+    async with db.connect() as conn:
+        cursor = await conn.execute("SELECT id, column_name, status FROM items")
+        rows = await cursor.fetchall()
+    for row in rows:
+        try:
+            from_columns(row[1], row[2])
+        except UnknownStateEncoding:
+            bad.append((row[0], row[1], row[2]))
+    if bad:
+        logger.warning(
+            f"Found {len(bad)} item(s) with unrecognized (column_name, status) "
+            f"encoding — code paths involving these items may raise InvalidTransition. "
+            f"Sample: {bad[:5]}"
+        )
+
+
 async def _check_stale_worktrees(orchestrator: AgentOrchestrator):
     """Check for stale worktrees and emit notifications."""
     from .routes import add_notification
@@ -97,6 +120,7 @@ async def lifespan(app: FastAPI):
 
     # Startup: initialize database and orchestrator
     await app.state.db.initialize()
+    await _audit_item_state_encodings(app.state.db)
     app.state.orchestrator = AgentOrchestrator(
         target_project=app.state.target_project,
         data_dir=app.state.data_dir,
