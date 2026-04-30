@@ -7,7 +7,8 @@ import pytest
 import pytest_asyncio
 
 from src.database import Database
-from src.domain.item_state import ItemState
+from src.domain.item_state import Event, ItemState
+from src.domain.item_state import InvalidTransition
 from src.repositories.item_repository import ItemNotFound, ItemRepository
 from src.services.database_service import DatabaseService
 
@@ -90,3 +91,51 @@ class TestListQueued:
             it = await db_service.create_todo_item(f"x{i}", "")
             await db_service.update_item(it["id"], column_name="doing", status="queued")
         assert len(await repo.list_queued(limit=2)) == 2
+
+
+class TestTransition:
+    async def test_basic_transition_writes_canonical_encoding(self, repo, db_service):
+        item = await db_service.create_todo_item("X", "")
+        result = await repo.transition(item["id"], Event.START)
+        assert result["column_name"] == "doing"
+        assert result["status"] == "running"
+
+    async def test_extra_fields_are_persisted(self, repo, db_service):
+        item = await db_service.create_todo_item("X", "")
+        result = await repo.transition(
+            item["id"], Event.START,
+            session_id="sess-1", branch_name="agent/x",
+        )
+        assert result["session_id"] == "sess-1"
+        assert result["branch_name"] == "agent/x"
+        assert result["column_name"] == "doing"
+        assert result["status"] == "running"
+
+    async def test_illegal_transition_raises(self, repo, db_service):
+        item = await db_service.create_todo_item("X", "")
+        await db_service.update_item(item["id"], column_name="done", status=None)
+        with pytest.raises(InvalidTransition):
+            await repo.transition(item["id"], Event.PAUSE)
+
+    async def test_missing_item_raises(self, repo):
+        with pytest.raises(ItemNotFound):
+            await repo.transition("nope", Event.START)
+
+
+class TestUpdateFields:
+    async def test_writes_non_state_fields(self, repo, db_service):
+        item = await db_service.create_todo_item("X", "")
+        result = await repo.update_fields(item["id"], session_id="sess-x")
+        assert result["session_id"] == "sess-x"
+        # State unchanged
+        assert result["column_name"] == "todo"
+
+    async def test_rejects_column_name(self, repo, db_service):
+        item = await db_service.create_todo_item("X", "")
+        with pytest.raises(ValueError, match="transition"):
+            await repo.update_fields(item["id"], column_name="doing")
+
+    async def test_rejects_status(self, repo, db_service):
+        item = await db_service.create_todo_item("X", "")
+        with pytest.raises(ValueError, match="transition"):
+            await repo.update_fields(item["id"], status="running")

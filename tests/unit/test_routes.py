@@ -42,6 +42,12 @@ def _make_mock_orchestrator():
     mock_orch.db_service.delete_epic = AsyncMock(return_value={"id": "epic1"})
     mock_orch.db_service.update_item = AsyncMock(return_value={"id": "item1", "column_name": "review", "status": None})
 
+    # item_repository (Phase 2.1+ — read/write facade over db_service)
+    mock_orch.item_repository = MagicMock()
+    mock_orch.item_repository.transition = AsyncMock(
+        return_value={"id": "item1", "column_name": "review", "status": None}
+    )
+
     # notification_service
     mock_orch.notification_service = MagicMock()
     mock_orch.notification_service.broadcast_epic_created = AsyncMock()
@@ -985,15 +991,13 @@ class TestRetryMerge:
     @pytest.mark.asyncio
     async def test_retry_merge(self, client_with_item):
         client, app = client_with_item
-        # Retry-merge fires from MERGE_BLOCKED or CONFLICT — set the route's
-        # state read so the SM transition resolves to REVIEW.
-        app.state.orchestrator.db_service.get_item = AsyncMock(
-            return_value={"id": "item001", "column_name": "questions", "status": "merge_blocked"}
-        )
+        from src.domain.item_state import Event
         resp = await client.post("/api/items/item001/retry-merge")
         assert resp.status_code == 200
-        app.state.orchestrator.db_service.update_item.assert_awaited_once_with(
-            "item001", column_name="review", status=None
+        # The route delegates the state transition to the repo; the repo
+        # owns the from_columns / to_columns / write trio internally.
+        app.state.orchestrator.item_repository.transition.assert_awaited_once_with(
+            "item001", Event.RETRY_MERGE
         )
         app.state.orchestrator.approve_item.assert_awaited_once_with("item001")
 

@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
-from ..domain.item_state import ItemState, to_columns
+from ..domain.item_state import Event, ItemState, from_columns, to_columns
+from ..domain.item_state import transition as _apply_event
 
 if TYPE_CHECKING:
     # Avoid runtime import of DatabaseService — that import path triggers
@@ -74,3 +75,47 @@ class ItemRepository:
         Wraps DatabaseService.get_queued_items because that one query is
         position-ordered and we don't want to re-implement the ordering here."""
         return await self.db.get_queued_items(limit=limit)
+
+    # ---- writes -------------------------------------------------------------
+
+    async def transition(
+        self, item_id: str, event: Event, **extra_fields: Any
+    ) -> dict[str, Any]:
+        """Apply a state-machine transition to the item and persist it.
+
+        Reads the current encoding, runs it through the SM with `event`,
+        and writes back the canonical (column_name, status) for the new
+        state. Any non-state fields (session_id, worktree_path, branch_name,
+        merge_commit, commit_message, has_file_changes, base_branch,
+        base_commit) can be passed as extra_fields and are written in the
+        same UPDATE.
+
+        Raises:
+            ItemNotFound:           item_id does not exist.
+            UnknownStateEncoding:   item's current row has an unknown
+                                    (column_name, status) — should be rare
+                                    and is logged at startup by the audit.
+            InvalidTransition:      `event` is not legal from the current
+                                    state.
+        """
+        item = await self.get_or_raise(item_id)
+        current_state = from_columns(item["column_name"], item.get("status"))
+        new_state = _apply_event(current_state, event)
+        col, status = to_columns(new_state)
+        return await self.db.update_item(
+            item_id, column_name=col, status=status, **extra_fields
+        )
+
+    async def update_fields(self, item_id: str, **fields: Any) -> dict[str, Any]:
+        """Update non-state fields on an item without firing a transition.
+
+        Use this for pure field writes (assigning a session_id mid-flight,
+        attaching a worktree path before the state is moved, etc.). Passing
+        column_name or status is forbidden — go through transition() instead.
+        """
+        if "column_name" in fields or "status" in fields:
+            raise ValueError(
+                "use ItemRepository.transition() to change column_name/status; "
+                "update_fields is for non-state field writes only"
+            )
+        return await self.db.update_item(item_id, **fields)

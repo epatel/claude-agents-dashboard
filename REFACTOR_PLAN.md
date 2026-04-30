@@ -81,12 +81,15 @@ After: callers never see column names. They call intent-named methods. The white
   - `ItemNotFound` subclasses `ValueError` for backwards compatibility.
   - Hit a circular import (`repositories.item_repository` ↔ `services.workflow_service`); fixed via `TYPE_CHECKING` for the `DatabaseService` type hint and dropping the package-level re-export. Callers import from `repositories.item_repository` directly.
   - Suite 960 passing.
-- [ ] **2.2** Add **state-changing** methods on `ItemRepository`
+- [x] **2.2** Add **state-changing** methods on `ItemRepository`
   - `async def transition(id, event) -> Item` — single source of truth for state writes; uses Phase 1 SM internally
   - `async def assign_session(id, session_id)`, `attach_worktree(id, path, branch)`, `record_merge_commit(id, sha)`, `set_commit_message(id, msg)`
   - One method per **intent**, not per column
-- [ ] **2.3** Migrate writes in `workflow_service.py` to repo methods
-- [ ] **2.4** Migrate writes in `web/routes.py` (1504 LOC) to repo methods
+  - **Landed:** added `repo.transition(id, event, **extra_fields)` (does the get_or_raise + from_columns + transition + to_columns + update_item trio in one call) and `repo.update_fields(id, **fields)` for non-state field writes (rejects column_name/status). Skipped the `assign_session` / `attach_worktree` / `record_merge_commit` specializations — most call sites already pass these as part of a state transition (e.g., `transition(id, START, branch_name=…, worktree_path=…)`); single-purpose helpers can be added later if a clear pattern emerges.
+- [x] **2.3** Migrate writes in `workflow_service.py` to repo methods
+  - **Landed (combined with 2.2):** all 14 transition call sites in `workflow_service.py` now use `self.items.transition(...)` — 4-line patterns collapse to 1 line each. Dropped `to_columns` and `transition` (function) from the file's imports; `from_columns` retained for `find_stale_worktrees`.
+- [x] **2.4** Migrate writes in `web/routes.py` (1504 LOC) to repo methods
+  - **Landed:** the one transition call (`retry_merge` endpoint) now uses `orchestrator.item_repository.transition(item_id, Event.RETRY_MERGE)`. Imports trimmed from `Event, from_columns, to_columns, transition` to just `Event`. The DnD `move_item` endpoint and the bulk archive endpoint still write column_name directly via raw SQL — those are deliberate exceptions (the DnD followup is tracked separately; bulk archive is a multi-row optimization). Suite 967 passing.
 - [ ] **2.5** Delete `ALLOWED_ITEM_COLUMNS` whitelist in `database_service.py`
   - This is the proof the encapsulation closed
 - [ ] **2.6** Same treatment for `EpicRepository` (smaller, faster — do after items as practice)
