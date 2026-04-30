@@ -39,7 +39,8 @@ After: a single `ItemState` enum + a `TRANSITIONS` table. Illegal moves raise. D
   - Keep DB writes as-is (`column_name` / `status` strings)
   - No behavior change — just funnel mutations through the SM
   - **Landed:** migrated `_enqueue_item`, `_start_agent_internal`, `cancel_agent`, `pause_agent`, `resume_agent`. Discovered `(CANCELLED, START)` and `(FAILED, START)` are real production paths and added them. Caught a hidden bug where `pause_agent` could leave items in `(todo, paused)` (impossible state) — now raises `InvalidTransition`. Suite 940 passing.
-- [ ] **1.5** Route **clarify (ask/answer)** through `transition(...)`
+- [x] **1.5** Route **clarify (ask/answer)** through `transition(...)`
+  - **Landed:** 7 call sites migrated — `_create_on_clarify_callback` (ASK + ANSWER), `_create_on_request_command_callback` (ASK + ANSWER on deny), `_create_on_request_tool_callback` (ASK + ANSWER on deny), `_restart_session_with_new_permissions` (ANSWER on approve). Same fixture-shape bug surfaced in `TestOnClarifyCallback` (7 tests called `on_clarify` on a BACKLOG item — meaningless in production, agent only calls it while RUNNING). Suite 940 passing.
 - [ ] **1.6** Route **merge / merge-conflict / complete** through `transition(...)`
 - [ ] **1.7** Route **WIP-limit queueing / dequeue** through `transition(...)`
 - [ ] **1.8** Add a startup invariant check: load every item, assert `from_columns(...)` succeeds. Log + skip on bad rows; do not crash.

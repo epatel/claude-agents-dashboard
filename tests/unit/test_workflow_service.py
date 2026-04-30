@@ -468,46 +468,53 @@ class TestOnErrorCallback:
 # ---------------------------------------------------------------------------
 
 class TestOnClarifyCallback:
-    async def test_moves_item_to_questions(self, workflow, item):
-        cb = workflow._create_on_clarify_callback(item["id"])
+    @pytest_asyncio.fixture
+    async def running_item(self, db_service, item):
+        # on_clarify is only invoked by an active agent — i.e. on a RUNNING item.
+        # Move the freshly-created todo item into the RUNNING state so the
+        # ASK transition (RUNNING -> CLARIFY) is valid.
+        await db_service.update_item(item["id"], column_name="doing", status="running")
+        return item
+
+    async def test_moves_item_to_questions(self, workflow, running_item):
+        cb = workflow._create_on_clarify_callback(running_item["id"])
 
         # Pre-set the response so event.wait() returns immediately
-        workflow._clarify_responses[item["id"]] = "answer"
+        workflow._clarify_responses[running_item["id"]] = "answer"
         pre_set_event = asyncio.Event()
         pre_set_event.set()
 
-        original_event = asyncio.Event
         def make_pre_set_event():
             return pre_set_event
         with patch("asyncio.Event", side_effect=make_pre_set_event):
-            response = await cb("What color?", None)
-        updated = await workflow.db.get_item(item["id"])
+            await cb("What color?", None)
+        updated = await workflow.db.get_item(running_item["id"])
         assert updated["column_name"] == "doing"  # moved back after response
 
-    async def test_returns_user_response(self, workflow, item):
-        cb = workflow._create_on_clarify_callback(item["id"])
+    async def test_returns_user_response(self, workflow, running_item):
+        cb = workflow._create_on_clarify_callback(running_item["id"])
 
-        workflow._clarify_responses[item["id"]] = "blue"
+        workflow._clarify_responses[running_item["id"]] = "blue"
         pre_set_event = asyncio.Event()
         pre_set_event.set()
         with patch("asyncio.Event", return_value=pre_set_event):
             response = await cb("What color?", ["red", "blue"])
         assert response == "blue"
 
-    async def test_broadcasts_clarification_requested(self, workflow, item):
-        cb = workflow._create_on_clarify_callback(item["id"])
+    async def test_broadcasts_clarification_requested(self, workflow, running_item):
+        cb = workflow._create_on_clarify_callback(running_item["id"])
 
-        workflow._clarify_responses[item["id"]] = "yes"
+        workflow._clarify_responses[running_item["id"]] = "yes"
         pre_set_event = asyncio.Event()
         pre_set_event.set()
         with patch("asyncio.Event", return_value=pre_set_event):
             await cb("Continue?", ["yes", "no"])
         workflow.notifications.broadcast_clarification_requested.assert_awaited()
 
-    async def test_persists_context_in_clarifications_table(self, workflow, db_service, item):
-        cb = workflow._create_on_clarify_callback(item["id"])
+    async def test_persists_context_in_clarifications_table(self, workflow, db_service, running_item):
+        cb = workflow._create_on_clarify_callback(running_item["id"])
 
-        workflow._clarify_responses[item["id"]] = "ok"
+        workflow._clarify_responses[running_item["id"]] = "ok"
         pre_set_event = asyncio.Event()
         pre_set_event.set()
         with patch("asyncio.Event", return_value=pre_set_event):
@@ -520,17 +527,17 @@ class TestOnClarifyCallback:
         async with db_service.db.connect() as conn:
             cursor = await conn.execute(
                 "SELECT prompt, context FROM clarifications WHERE item_id = ?",
-                (item["id"],),
+                (running_item["id"],),
             )
             row = await cursor.fetchone()
         assert row is not None
         assert row[0] == "Approve plan?"
         assert row[1] == "Weighed options A and B; chose A."
 
-    async def test_broadcast_payload_includes_context(self, workflow, item):
-        cb = workflow._create_on_clarify_callback(item["id"])
+    async def test_broadcast_payload_includes_context(self, workflow, running_item):
+        cb = workflow._create_on_clarify_callback(running_item["id"])
 
-        workflow._clarify_responses[item["id"]] = "ok"
+        workflow._clarify_responses[running_item["id"]] = "ok"
         pre_set_event = asyncio.Event()
         pre_set_event.set()
         with patch("asyncio.Event", return_value=pre_set_event):
@@ -548,11 +555,11 @@ class TestOnClarifyCallback:
         assert ctx_value == "Reasoning here."
 
     async def test_context_omitted_persists_null_and_broadcasts_none(
-        self, workflow, db_service, item
+        self, workflow, db_service, running_item
     ):
-        cb = workflow._create_on_clarify_callback(item["id"])
+        cb = workflow._create_on_clarify_callback(running_item["id"])
 
-        workflow._clarify_responses[item["id"]] = "ok"
+        workflow._clarify_responses[running_item["id"]] = "ok"
         pre_set_event = asyncio.Event()
         pre_set_event.set()
         with patch("asyncio.Event", return_value=pre_set_event):
@@ -561,7 +568,7 @@ class TestOnClarifyCallback:
         async with db_service.db.connect() as conn:
             cursor = await conn.execute(
                 "SELECT context FROM clarifications WHERE item_id = ?",
-                (item["id"],),
+                (running_item["id"],),
             )
             row = await cursor.fetchone()
         assert row[0] is None
@@ -577,14 +584,14 @@ class TestOnClarifyCallback:
         assert ctx_value is None
 
     async def test_clarification_stored_before_item_updated_broadcast(
-        self, workflow, db_service, item
+        self, workflow, db_service, running_item
     ):
         """Regression: question dialog opened on first auto-transition was
         missing context because store_clarification ran AFTER the item_updated
         broadcast, so a client GET racing the broadcast could miss the row.
         The callback must persist the clarification before broadcasting the
         column move so reopen-via-API always finds the latest context."""
-        cb = workflow._create_on_clarify_callback(item["id"])
+        cb = workflow._create_on_clarify_callback(running_item["id"])
 
         events: list[str] = []
 
@@ -611,7 +618,7 @@ class TestOnClarifyCallback:
             tracked_broadcast_clar
         )
 
-        workflow._clarify_responses[item["id"]] = "ok"
+        workflow._clarify_responses[running_item["id"]] = "ok"
         pre_set_event = asyncio.Event()
         pre_set_event.set()
         with patch("asyncio.Event", return_value=pre_set_event):

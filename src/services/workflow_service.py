@@ -898,7 +898,10 @@ class WorkflowService:
             await self.db.store_clarification(item_id, prompt, choices, context)
 
             # Move item to questions
-            item = await self.db.update_item(item_id, column_name="questions", status=None)
+            current = await self.db.get_item(item_id)
+            ask_state = from_columns(current["column_name"], current.get("status"))
+            ask_col, ask_status = to_columns(transition(ask_state, Event.ASK))
+            item = await self.db.update_item(item_id, column_name=ask_col, status=ask_status)
             await self.notifications.broadcast_item_updated(item, source="agent")
             log_message = f"Agent has a question: {prompt}"
             if context:
@@ -918,7 +921,9 @@ class WorkflowService:
             self._clarify_events.pop(item_id, None)
 
             # Move back to doing
-            item = await self.db.update_item(item_id, column_name="doing", status="running")
+            ans_state = from_columns(item["column_name"], item.get("status"))
+            ans_col, ans_status = to_columns(transition(ans_state, Event.ANSWER))
+            item = await self.db.update_item(item_id, column_name=ans_col, status=ans_status)
             await self.notifications.broadcast_item_updated(item)
             await self._log_and_notify(item_id, "system", f"User responded: {response}")
 
@@ -934,8 +939,11 @@ class WorkflowService:
             prompt = f"__permission_request__|{command}|{reason}"
             await self.db.store_clarification(item_id, prompt, None)
 
+            current = await self.db.get_item(item_id)
+            ask_state = from_columns(current["column_name"], current.get("status"))
+            ask_col, ask_status = to_columns(transition(ask_state, Event.ASK))
             item = await self.db.update_item(
-                item_id, column_name="questions", status=None
+                item_id, column_name=ask_col, status=ask_status
             )
             await self.notifications.broadcast_item_updated(item, source="agent")
             await self._log_and_notify(
@@ -990,8 +998,11 @@ class WorkflowService:
                     f"Command '{command}' access denied"
                 )
 
+            current = await self.db.get_item(item_id)
+            ans_state = from_columns(current["column_name"], current.get("status"))
+            ans_col, ans_status = to_columns(transition(ans_state, Event.ANSWER))
             item = await self.db.update_item(
-                item_id, column_name="doing", status="running"
+                item_id, column_name=ans_col, status=ans_status
             )
             await self.notifications.broadcast_item_updated(item)
 
@@ -1007,8 +1018,11 @@ class WorkflowService:
             prompt = f"__tool_request__|{tool_name}|{reason}"
             await self.db.store_clarification(item_id, prompt, None)
 
+            current = await self.db.get_item(item_id)
+            ask_state = from_columns(current["column_name"], current.get("status"))
+            ask_col, ask_status = to_columns(transition(ask_state, Event.ASK))
             item = await self.db.update_item(
-                item_id, column_name="questions", status=None
+                item_id, column_name=ask_col, status=ask_status
             )
             await self.notifications.broadcast_item_updated(item, source="agent")
             await self._log_and_notify(
@@ -1058,8 +1072,11 @@ class WorkflowService:
                     f"Tool '{tool_name}' access denied"
                 )
 
+            current = await self.db.get_item(item_id)
+            ans_state = from_columns(current["column_name"], current.get("status"))
+            ans_col, ans_status = to_columns(transition(ans_state, Event.ANSWER))
             item = await self.db.update_item(
-                item_id, column_name="doing", status="running"
+                item_id, column_name=ans_col, status=ans_status
             )
             await self.notifications.broadcast_item_updated(item)
 
@@ -1213,8 +1230,10 @@ class WorkflowService:
             if not item:
                 return
 
+            state = from_columns(item["column_name"], item.get("status"))
+            col, status = to_columns(transition(state, Event.ANSWER))
             item = await self.db.update_item(
-                item_id, column_name="doing", status="running"
+                item_id, column_name=col, status=status
             )
             await self.notifications.broadcast_item_updated(item)
 
