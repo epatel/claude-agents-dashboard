@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from ..agent.session import AgentResult
 from ..domain.item_state import Event, ItemState, UnknownStateEncoding, from_columns, to_columns, transition
+from ..repositories.item_repository import ItemRepository
 from .database_service import DatabaseService
 from .git_service import GitService
 from .notification_service import NotificationService
@@ -21,12 +22,16 @@ class WorkflowService:
 
     def __init__(self, db_service: DatabaseService, git_service: GitService,
                  notification_service: NotificationService, session_service: SessionService,
-                 data_dir: Path | None = None):
+                 data_dir: Path | None = None,
+                 item_repository: ItemRepository | None = None):
         self.db = db_service
         self.git = git_service
         self.notifications = notification_service
         self.sessions = session_service
         self.data_dir = data_dir
+        # Read-only repo facade. Defaulted to one wrapping db_service so
+        # existing constructors keep working; orchestrator passes its own.
+        self.items = item_repository or ItemRepository(db_service)
 
         # State for question/response handling
         self._clarify_events: Dict[str, asyncio.Event] = {}
@@ -97,7 +102,7 @@ class WorkflowService:
             return
 
         # Get queued items ordered by position (top of column = first)
-        queued_items = await self.db.get_queued_items(limit=available_slots)
+        queued_items = await self.items.list_queued(limit=available_slots)
         for item in queued_items:
             try:
                 await self._start_agent_internal(item["id"])
@@ -119,9 +124,7 @@ class WorkflowService:
         await self.sessions.cleanup_session(item_id)
 
         # Get item and config
-        item = await self.db.get_item(item_id)
-        if not item:
-            raise ValueError(f"Item {item_id} not found")
+        item = await self.items.get_or_raise(item_id)
 
         config = await self.db.get_agent_config()
 
@@ -251,9 +254,7 @@ class WorkflowService:
 
     async def resume_agent(self, item_id: str) -> Dict[str, Any]:
         """Resume a paused agent using its saved session."""
-        item = await self.db.get_item(item_id)
-        if not item:
-            raise ValueError(f"Item {item_id} not found")
+        item = await self.items.get_or_raise(item_id)
 
         resume_id = item.get("session_id")
         if resume_id:
@@ -309,9 +310,7 @@ class WorkflowService:
         """Retry a failed agent — resume previous session if available."""
         await self.sessions.cleanup_session(item_id)
 
-        item = await self.db.get_item(item_id)
-        if not item:
-            raise ValueError(f"Item {item_id} not found")
+        item = await self.items.get_or_raise(item_id)
 
         # Ensure worktree exists
         worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
@@ -382,9 +381,7 @@ class WorkflowService:
 
     async def approve_item(self, item_id: str) -> Dict[str, Any]:
         """Approve a reviewed item — merge back into the base branch."""
-        item = await self.db.get_item(item_id)
-        if not item:
-            raise ValueError(f"Item {item_id} not found")
+        item = await self.items.get_or_raise(item_id)
 
         branch = item["branch_name"]
         base_branch = item.get("base_branch")

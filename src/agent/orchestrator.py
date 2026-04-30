@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..database import Database
+from ..repositories.item_repository import ItemRepository
 from ..web.websocket import ConnectionManager
 from ..services import (
     DatabaseService,
@@ -38,6 +39,7 @@ class AgentOrchestrator:
 
         # Initialize services
         self.db_service = DatabaseService(db)
+        self.item_repository = ItemRepository(self.db_service)
         self.git_service = GitService(target_project, self.worktree_dir, repos=repos)
         self.notification_service = NotificationService(ws_manager)
         self.session_service = SessionService()
@@ -47,6 +49,7 @@ class AgentOrchestrator:
             self.notification_service,
             self.session_service,
             data_dir=data_dir,
+            item_repository=self.item_repository,
         )
 
         # Keep references for backward compatibility

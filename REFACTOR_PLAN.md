@@ -74,9 +74,13 @@ Today: `database_service.py` (525 LOC) takes `dict[str, Any]` and uses `ALLOWED_
 
 After: callers never see column names. They call intent-named methods. The whitelist disappears.
 
-- [ ] **2.1** Create `src/repositories/item_repository.py` with the **read** API first
+- [x] **2.1** Create `src/repositories/item_repository.py` with the **read** API first
   - `async def get(id) -> Item`, `list_by_column(col) -> list[Item]`, `list_running() -> list[Item]`, etc.
   - Migrate `workflow_service.py` reads to use it. No write methods yet.
+  - **Landed:** `ItemRepository` with `get`, `get_or_raise`, `list_all`, `list_in_state(state)`, `list_running`, `list_queued`. Uses `to_columns()` so callers don't repeat the encoding. Wired into orchestrator + WorkflowService. Migrated 5 read sites: `_start_agent_internal`, `resume_agent`, `retry_agent`, `approve_item` (all to `get_or_raise`), and `process_queue` (to `list_queued`). Saved 8 lines of `if not item: raise ValueError` boilerplate.
+  - `ItemNotFound` subclasses `ValueError` for backwards compatibility.
+  - Hit a circular import (`repositories.item_repository` ↔ `services.workflow_service`); fixed via `TYPE_CHECKING` for the `DatabaseService` type hint and dropping the package-level re-export. Callers import from `repositories.item_repository` directly.
+  - Suite 960 passing.
 - [ ] **2.2** Add **state-changing** methods on `ItemRepository`
   - `async def transition(id, event) -> Item` — single source of truth for state writes; uses Phase 1 SM internally
   - `async def assign_session(id, session_id)`, `attach_worktree(id, path, branch)`, `record_merge_commit(id, sha)`, `set_commit_message(id, msg)`
