@@ -27,18 +27,33 @@ if ! node -e "require('playwright')" 2>/dev/null; then
     npm install --prefix "$SCRIPT_DIR" --no-save playwright
 fi
 
-# Set up or reset the test repo
+# Set up or reset the test repo. Honor $E2E_RESET (yes/no/ask) so the script
+# is usable in CI / `make` / piped contexts where there's no TTY for `read`.
 if [ -d "$REPO_DIR" ]; then
-    read -p "Test repo $REPO_DIR already exists. Reset it? [y/N] " answer
+    answer="${E2E_RESET:-ask}"
+    if [ "$answer" = "ask" ]; then
+        if [ -t 0 ]; then
+            read -p "Test repo $REPO_DIR already exists. Reset it? [y/N] " answer
+        else
+            echo "stdin is not a TTY — defaulting to KEEP. Set E2E_RESET=yes to force reset."
+            answer="no"
+        fi
+    fi
     case "$answer" in
-        [yY]|[yY][eE][sS])
+        [yY]|[yY][eE][sS]|yes)
             echo "Resetting test repo..."
             cd "$REPO_DIR"
             git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
-            # Remove all worktrees
-            git worktree list --porcelain | grep "^worktree " | grep -v "$(pwd)" | while read -r _ wt; do
-                git worktree remove --force "$wt" 2>/dev/null || true
-            done
+            # Remove all worktrees other than the main one. The pipeline must
+            # not abort when grep finds no matches (common case: fresh repo);
+            # `|| true` swallows grep's exit-1 under `pipefail`.
+            (git worktree list --porcelain \
+                | grep "^worktree " \
+                | grep -v "$(pwd)" \
+                || true) \
+                | while read -r _ wt; do
+                    git worktree remove --force "$wt" 2>/dev/null || true
+                done
             # Prune stale worktree references
             git worktree prune
             # Reset to initial commit with empty README
