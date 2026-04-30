@@ -144,9 +144,16 @@ class TestRealWorldFlows:
     def test_merge_blocked_then_unblocked(self):
         path = self._walk(
             ItemState.BACKLOG,
-            [Event.START, Event.COMPLETE, Event.MERGE_BLOCKED, Event.ANSWER, Event.REQUEST_MERGE],
+            [Event.START, Event.COMPLETE, Event.MERGE_BLOCKED, Event.RETRY_MERGE, Event.REQUEST_MERGE],
         )
         assert path[-1] is ItemState.DONE
+
+    def test_conflict_retry_merge_returns_to_review(self):
+        path = self._walk(
+            ItemState.BACKLOG,
+            [Event.START, Event.COMPLETE, Event.CONFLICT_DETECTED, Event.RETRY_MERGE],
+        )
+        assert path[-1] is ItemState.REVIEW
 
     def test_failed_can_be_requeued(self):
         path = self._walk(

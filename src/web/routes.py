@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from ..config import COLUMNS
 from ..constants import AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_OLLAMA_BASE_URL, EPIC_COLORS
+from ..domain.item_state import Event, from_columns, to_columns, transition
 from ..models import ItemCreate, ItemUpdate, ItemMove, ClarificationResponse, AgentConfig, EpicCreate, EpicUpdate, new_id
 from ..git.operations import get_diff, get_changed_files, get_file_content, get_current_branch
 
@@ -873,7 +874,10 @@ async def retry_merge(request: Request, item_id: str):
     """Move item back to review and re-trigger approve."""
     orchestrator = request.app.state.orchestrator
     # Move back to review first
-    item = await orchestrator.db_service.update_item(item_id, column_name="review", status=None)
+    current = await orchestrator.db_service.get_item(item_id)
+    state = from_columns(current["column_name"], current.get("status"))
+    col, status = to_columns(transition(state, Event.RETRY_MERGE))
+    item = await orchestrator.db_service.update_item(item_id, column_name=col, status=status)
     await orchestrator.ws_manager.broadcast("item_moved", item)
     # Re-trigger approve
     return await orchestrator.approve_item(item_id)

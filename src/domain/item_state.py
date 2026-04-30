@@ -47,6 +47,7 @@ class Event(StrEnum):
     COMPLETE = "complete"
     REQUEST_MERGE = "request_merge"
     MERGE_BLOCKED = "merge_blocked"
+    RETRY_MERGE = "retry_merge"
     REQUEST_CHANGES = "request_changes"
     FAIL = "fail"
     ARCHIVE = "archive"
@@ -95,6 +96,7 @@ TRANSITIONS: dict[tuple[ItemState, Event], ItemState] = {
     (ItemState.CLARIFY, Event.ANSWER): ItemState.RUNNING,
     (ItemState.CLARIFY, Event.CANCEL): ItemState.CANCELLED,
 
+    (ItemState.CONFLICT, Event.RETRY_MERGE): ItemState.REVIEW,
     (ItemState.CONFLICT, Event.REQUEUE): ItemState.BACKLOG,
     (ItemState.CONFLICT, Event.CANCEL): ItemState.CANCELLED,
 
@@ -115,7 +117,7 @@ TRANSITIONS: dict[tuple[ItemState, Event], ItemState] = {
     (ItemState.REVIEW, Event.REQUEUE): ItemState.BACKLOG,
     (ItemState.REVIEW, Event.CANCEL): ItemState.CANCELLED,
 
-    (ItemState.MERGE_BLOCKED, Event.ANSWER): ItemState.REVIEW,
+    (ItemState.MERGE_BLOCKED, Event.RETRY_MERGE): ItemState.REVIEW,
     (ItemState.MERGE_BLOCKED, Event.CANCEL): ItemState.CANCELLED,
 
     (ItemState.DONE, Event.ARCHIVE): ItemState.ARCHIVED,

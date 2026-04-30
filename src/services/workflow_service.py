@@ -348,7 +348,9 @@ class WorkflowService:
             self._yolo_items.discard(item_id)
 
         # Update item state
-        item = await self.db.update_item(item_id, column_name="doing", status="running")
+        state = from_columns(item["column_name"], item.get("status"))
+        col, status = to_columns(transition(state, Event.START))
+        item = await self.db.update_item(item_id, column_name=col, status=status)
         await self.notifications.broadcast_item_updated(item)
 
         # Create session and start with resume

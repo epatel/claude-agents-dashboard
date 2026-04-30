@@ -985,6 +985,11 @@ class TestRetryMerge:
     @pytest.mark.asyncio
     async def test_retry_merge(self, client_with_item):
         client, app = client_with_item
+        # Retry-merge fires from MERGE_BLOCKED or CONFLICT — set the route's
+        # state read so the SM transition resolves to REVIEW.
+        app.state.orchestrator.db_service.get_item = AsyncMock(
+            return_value={"id": "item001", "column_name": "questions", "status": "merge_blocked"}
+        )
         resp = await client.post("/api/items/item001/retry-merge")
         assert resp.status_code == 200
         app.state.orchestrator.db_service.update_item.assert_awaited_once_with(

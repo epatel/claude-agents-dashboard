@@ -47,7 +47,12 @@ After: a single `ItemState` enum + a `TRANSITIONS` table. Illegal moves raise. D
   - Added `REQUEST_CHANGES` event (REVIEW → RUNNING) for the user-driven feedback loop.
   - Caught a real bug: `_create_on_complete_callback` referenced `current_item` in the failure branch where it was never defined. Fix: fetch in both branches.
   - Suite 944 passing.
-- [ ] **1.7** Route **WIP-limit queueing / dequeue** through `transition(...)`
+- [x] **1.7** Route **WIP-limit queueing / dequeue** through `transition(...)`
+  - **Landed:** WIP queue/dequeue itself was already routed in 1.4 (via `_enqueue_item` / `_start_agent_internal`). This phase mopped up the two remaining literal-string sites: `retry_agent` (FAILED → START → RUNNING) and `routes.py:retry_merge` (MERGE_BLOCKED/CONFLICT → RETRY_MERGE → REVIEW).
+  - Added `RETRY_MERGE` event with edges from MERGE_BLOCKED and CONFLICT.
+  - Pruned the speculative `(MERGE_BLOCKED, ANSWER) → REVIEW` transition introduced in 1.1 — never used in production code (merge-blocked exit is the retry-merge route, not the clarify dialog).
+  - Verification: `grep 'update_item.*column_name="\|update_item.*status="'` over the entire codebase returns zero matches. Bulk SQL archive in `routes.py:archive_items_by_date` left as-is (state machine targets `update_item` writes; bulk operations are a Phase 2 repository concern).
+  - Suite 946 passing.
 - [ ] **1.8** Add a startup invariant check: load every item, assert `from_columns(...)` succeeds. Log + skip on bad rows; do not crash.
 - [ ] **1.9** Delete dead code revealed by 1.4–1.7 (defensive checks now redundant)
 
