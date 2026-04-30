@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from ..agent.session import AgentResult
 from ..domain.item_state import Event, ItemState, UnknownStateEncoding, from_columns
+from ..repositories.epic_repository import EpicRepository
 from ..repositories.item_repository import ItemRepository
 from .database_service import DatabaseService
 from .git_service import GitService
@@ -23,15 +24,17 @@ class WorkflowService:
     def __init__(self, db_service: DatabaseService, git_service: GitService,
                  notification_service: NotificationService, session_service: SessionService,
                  data_dir: Path | None = None,
-                 item_repository: ItemRepository | None = None):
+                 item_repository: ItemRepository | None = None,
+                 epic_repository: EpicRepository | None = None):
         self.db = db_service
         self.git = git_service
         self.notifications = notification_service
         self.sessions = session_service
         self.data_dir = data_dir
-        # Read-only repo facade. Defaulted to one wrapping db_service so
-        # existing constructors keep working; orchestrator passes its own.
+        # Repo facades. Defaulted so existing constructors keep working;
+        # orchestrator passes its own instances.
         self.items = item_repository or ItemRepository(db_service)
+        self.epics = epic_repository or EpicRepository(db_service)
 
         # State for question/response handling
         self._clarify_events: Dict[str, asyncio.Event] = {}
@@ -1055,7 +1058,7 @@ class WorkflowService:
 
     def _create_on_create_epic_callback(self, item_id: str):
         async def on_create_epic(title: str, color: str) -> Dict[str, Any]:
-            epic = await self.db.create_epic(title, color)
+            epic = await self.epics.create(title, color)
             await self._log_and_notify(item_id, "system", f"Created epic: {title}")
             await self.notifications.broadcast_epic_created(epic)
             return epic
@@ -1113,7 +1116,7 @@ class WorkflowService:
         async def on_view_board() -> str:
             from ..config import COLUMNS
             items = await self.db.get_all_items()
-            epics = await self.db.get_epics()
+            epics = await self.epics.list_all()
             epic_map = {e["id"]: e["title"] for e in epics}
 
             # Build dependency map: item_id -> list of required item IDs

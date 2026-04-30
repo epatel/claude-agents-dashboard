@@ -533,8 +533,7 @@ class TestUpdateItemValidation:
 # update_epic invalid column guard
 # ---------------------------------------------------------------------------
 
-class TestUpdateEpicValidation:
-    async def test_invalid_epic_column_raises(self, db_service):
-        epic = await db_service.create_epic("Test", "red")
-        with pytest.raises(ValueError, match="Invalid epic column"):
-            await db_service.update_epic(epic["id"], invalid_field="nope")
+# NOTE: epic field-validation moved to EpicRepository in Phase 2.6
+# (see tests/unit/test_epic_repository.py::TestUpdate). DatabaseService.
+# update_epic is now a SQL executor that trusts its caller — only the
+# repo writes to it in production.

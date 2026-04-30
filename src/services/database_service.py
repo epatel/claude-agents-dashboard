@@ -12,15 +12,10 @@ from ..models import new_id
 
 logger = logging.getLogger(__name__)
 
-# Whitelist of columns that may be set via update_epic(). The
-# corresponding ALLOWED_ITEM_COLUMNS was moved into ItemRepository in
-# Phase 2.5 — the repo is now the only writer of items, so the
-# defense-in-depth check lives at that boundary instead. EpicRepository
-# is the next step (Phase 2.6); until then update_epic keeps its own
-# whitelist.
-ALLOWED_EPIC_COLUMNS = {
-    "title", "color", "position",
-}
+# Field allowlists for items and epics moved into their respective
+# repositories in Phase 2.5 / 2.6 (src/repositories/). DatabaseService is
+# now a SQL executor that trusts its callers — the repos are the only
+# writers in production.
 
 
 class DatabaseService:
@@ -361,11 +356,9 @@ class DatabaseService:
             return dict(await cursor.fetchone())
 
     async def update_epic(self, epic_id: str, **kwargs) -> Optional[Dict[str, Any]]:
-        """Update an epic's fields."""
-        invalid_keys = set(kwargs) - ALLOWED_EPIC_COLUMNS
-        if invalid_keys:
-            raise ValueError(f"Invalid epic column(s): {invalid_keys}")
-
+        """Update an epic's fields. Field validation is the EpicRepository's
+        job (Phase 2.6); this is a SQL executor only. Outside callers should
+        not invoke this directly."""
         async with self.db.connect() as conn:
             updates = []
             values = []

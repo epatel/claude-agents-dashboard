@@ -99,7 +99,11 @@ After: callers never see column names. They call intent-named methods. The white
     4. Dropped the whitelist + validation block from `database_service.update_item`; it's now a SQL executor that trusts its caller (the repo).
   - Verification: `grep "ALLOWED_ITEM_COLUMNS" src/` returns only doc-comment references explaining the move. The symbol itself is gone.
   - Suite 968 passing.
-- [ ] **2.6** Same treatment for `EpicRepository` (smaller, faster — do after items as practice)
+- [x] **2.6** Same treatment for `EpicRepository` (smaller, faster — do after items as practice)
+  - **Landed:** new `src/repositories/epic_repository.py` mirrors the item repo shape — `list_all`, `get`, `create`, `update`, `delete`, with `_WRITABLE_EPIC_COLUMNS` enforced inside. `EpicNotFound` (subclasses `ValueError`) replaces the old None-return-on-missing pattern, so route handlers translate to clean 404s via `try/except`.
+  - Wired into orchestrator + WorkflowService. Migrated 6 call sites: 4 in `routes.py` (get/create/update/delete + `delete_by_epic`), 2 in `workflow_service.py` (`_create_on_create_epic_callback`, view-board's epic listing).
+  - Dropped the `ALLOWED_EPIC_COLUMNS` whitelist + validation from `database_service.update_epic`. Acceptance check: `grep ALLOWED_EPIC_COLUMNS src/` returns only doc-comment breadcrumbs.
+  - 13 new tests in `test_epic_repository.py`. Suite 976 passing.
 - [ ] **2.7** Decide fate of `database_service.py`
   - Becomes the connection / migration owner only, or absorbs into repos? Choose at the end of phase based on what's left.
 

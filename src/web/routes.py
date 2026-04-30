@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from ..config import COLUMNS
 from ..constants import AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_OLLAMA_BASE_URL, EPIC_COLORS
 from ..domain.item_state import Event
+from ..repositories.epic_repository import EpicNotFound
 from ..models import ItemCreate, ItemUpdate, ItemMove, ClarificationResponse, AgentConfig, EpicCreate, EpicUpdate, new_id
 from ..git.operations import get_diff, get_changed_files, get_file_content, get_current_branch
 
@@ -455,9 +456,9 @@ async def delete_items_by_epic(request: Request, body: DeleteByEpicRequest):
     # If no items remain in other columns, delete the epic
     deleted_epic = False
     if remaining == 0:
-        db_service = request.app.state.orchestrator.db_service
+        epic_repo = request.app.state.orchestrator.epic_repository
         ns = request.app.state.orchestrator.notification_service
-        await db_service.delete_epic(body.epic_id)
+        await epic_repo.delete(body.epic_id)
         await ns.broadcast_epic_deleted(body.epic_id)
         deleted_epic = True
 
@@ -1224,9 +1225,12 @@ async def get_websocket_stats(request: Request):
 @router.get("/api/epics")
 async def get_epics(request: Request):
     """Get all epics with progress stats."""
-    db_service = request.app.state.orchestrator.db_service
-    epics = await db_service.get_epics()
-    progress = await db_service.get_epic_progress()
+    orchestrator = request.app.state.orchestrator
+    epics = await orchestrator.epic_repository.list_all()
+    # Progress aggregation still lives on db_service — it's a join across
+    # items, not really an epic-CRUD concern. Could move to a dedicated
+    # stats service later.
+    progress = await orchestrator.db_service.get_epic_progress()
     for epic in epics:
         epic["progress"] = progress.get(epic["id"], {
             "todo": 0, "doing": 0, "questions": 0, "review": 0, "done": 0, "archive": 0, "total": 0
@@ -1243,10 +1247,9 @@ async def get_epic_colors():
 @router.post("/api/epics")
 async def create_epic(request: Request, body: EpicCreate):
     """Create a new epic."""
-    db_service = request.app.state.orchestrator.db_service
-    ns = request.app.state.orchestrator.notification_service
-    epic = await db_service.create_epic(body.title, body.color)
-    await ns.broadcast_epic_created(epic)
+    orchestrator = request.app.state.orchestrator
+    epic = await orchestrator.epic_repository.create(body.title, body.color)
+    await orchestrator.notification_service.broadcast_epic_created(epic)
     _invalidate_stats_cache()
     return epic
 
@@ -1254,25 +1257,25 @@ async def create_epic(request: Request, body: EpicCreate):
 @router.put("/api/epics/{epic_id}")
 async def update_epic(request: Request, epic_id: str, body: EpicUpdate):
     """Update an epic."""
-    db_service = request.app.state.orchestrator.db_service
-    ns = request.app.state.orchestrator.notification_service
-    kwargs = body.model_dump(exclude_unset=True)
-    epic = await db_service.update_epic(epic_id, **kwargs)
-    if not epic:
+    orchestrator = request.app.state.orchestrator
+    fields = body.model_dump(exclude_unset=True)
+    try:
+        epic = await orchestrator.epic_repository.update(epic_id, **fields)
+    except EpicNotFound:
         raise HTTPException(status_code=404, detail="Epic not found")
-    await ns.broadcast_epic_updated(epic)
+    await orchestrator.notification_service.broadcast_epic_updated(epic)
     return epic
 
 
 @router.delete("/api/epics/{epic_id}")
 async def delete_epic(request: Request, epic_id: str):
     """Delete an epic (nullifies epic_id on related items)."""
-    db_service = request.app.state.orchestrator.db_service
-    ns = request.app.state.orchestrator.notification_service
-    epic = await db_service.delete_epic(epic_id)
-    if not epic:
+    orchestrator = request.app.state.orchestrator
+    try:
+        await orchestrator.epic_repository.delete(epic_id)
+    except EpicNotFound:
         raise HTTPException(status_code=404, detail="Epic not found")
-    await ns.broadcast_epic_deleted(epic_id)
+    await orchestrator.notification_service.broadcast_epic_deleted(epic_id)
     _invalidate_stats_cache()
     return {"success": True}
 

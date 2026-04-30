@@ -48,6 +48,19 @@ def _make_mock_orchestrator():
         return_value={"id": "item1", "column_name": "review", "status": None}
     )
 
+    # epic_repository (Phase 2.6 — CRUD facade over db_service)
+    mock_orch.epic_repository = MagicMock()
+    mock_orch.epic_repository.list_all = AsyncMock(return_value=[])
+    mock_orch.epic_repository.create = AsyncMock(
+        return_value={"id": "epic1", "title": "My Epic", "color": "blue"}
+    )
+    mock_orch.epic_repository.update = AsyncMock(
+        return_value={"id": "epic1", "title": "Updated", "color": "blue"}
+    )
+    mock_orch.epic_repository.delete = AsyncMock(
+        return_value={"id": "epic1", "title": "Deleted", "color": "blue"}
+    )
+
     # notification_service
     mock_orch.notification_service = MagicMock()
     mock_orch.notification_service.broadcast_epic_created = AsyncMock()
@@ -600,8 +613,11 @@ class TestEpics:
 
     @pytest.mark.asyncio
     async def test_update_epic_not_found(self, client_with_item):
+        from src.repositories.epic_repository import EpicNotFound
         client, app = client_with_item
-        app.state.orchestrator.db_service.update_epic = AsyncMock(return_value=None)
+        app.state.orchestrator.epic_repository.update = AsyncMock(
+            side_effect=EpicNotFound("missing")
+        )
         resp = await client.put("/api/epics/missing", json={"title": "X"})
         assert resp.status_code == 404
 
@@ -613,8 +629,11 @@ class TestEpics:
 
     @pytest.mark.asyncio
     async def test_delete_epic_not_found(self, client_with_item):
+        from src.repositories.epic_repository import EpicNotFound
         client, app = client_with_item
-        app.state.orchestrator.db_service.delete_epic = AsyncMock(return_value=None)
+        app.state.orchestrator.epic_repository.delete = AsyncMock(
+            side_effect=EpicNotFound("missing")
+        )
         resp = await client.delete("/api/epics/missing")
         assert resp.status_code == 404
 
