@@ -66,7 +66,12 @@ After: a single `ItemState` enum + a `TRANSITIONS` table. Illegal moves raise. D
 
 ### Phase 1 followups (discovered post-Phase 1)
 
-- [ ] **DnD endpoint bypass.** The drag-and-drop `move_item` endpoint (`routes.py:506`) updates `column_name` without touching `status`, producing off-canon encodings like `("doing", None)`. Phase 1.10 added a tolerant fallback in `from_columns`, but the right fix is to route DnD writes through the SM too. Fold this into Phase 2 when `ItemRepository.move(...)` is introduced.
+- [x] **DnD endpoint bypass.** The drag-and-drop `move_item` endpoint (`routes.py:506`) updates `column_name` without touching `status`, producing off-canon encodings like `("doing", None)`. Phase 1.10 added a tolerant fallback in `from_columns`, but the right fix is to route DnD writes through the SM too. Fold this into Phase 2 when `ItemRepository.move(...)` is introduced.
+  - **Landed:** `repo.move_to_column(item_id, target_column, position)` and `repo.shift_positions(...)`. Cross-column DnD clears status to land at canonical encoding (kills future off-canon productions like `(doing, cancelled)`); within-column reorders preserve status. Done/archive moves clear `worktree_path`; archive moves preserve `done_at` (matches the prior `COALESCE` semantics).
+  - DnD does **not** route through `transition()` — the user is explicitly overriding the SM, not following a workflow event. The repo just produces canonical encodings. The `("doing", None) → BACKLOG` fallback from Phase 1.10 stays useful as the gateway from "DnD-staged" back into the SM when the user clicks Start.
+  - `move_item` route in `routes.py` collapsed from ~50 lines of raw SQL + datetime juggling to ~25 lines of repo calls. External cleanup (sessions, worktrees) stays in the route since those are non-data concerns.
+  - Latent bug fixed: `database_service.update_item` was clobbering `done_at = None` on any move-out-of-done, even when the caller explicitly passed `done_at`. Now respects an explicit `done_at` kwarg.
+  - 7 new repo tests + mock factory upgrade. Suite 983 passing.
 
 ### Phase 2 — Repository ADT for items (encapsulation)
 

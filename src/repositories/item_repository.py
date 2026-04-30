@@ -123,6 +123,53 @@ class ItemRepository:
             item_id, column_name=col, status=status, **extra_fields
         )
 
+    async def move_to_column(
+        self, item_id: str, target_column: str, position: int
+    ) -> dict[str, Any]:
+        """User-driven drag-and-drop move to a target column.
+
+        DnD is a deliberate user override — we don't route it through the
+        SM (the user is asserting the target, not following a workflow
+        event). But we DO normalize the encoding so the SM can read the
+        result later without hitting an off-canon (column, status) pair:
+
+        - Cross-column move: status is cleared so the result is the
+          column's "neutral" encoding (canonical for every column except
+          'doing', which lands at the ('doing', None) staging encoding —
+          handled by the SM's fallback as BACKLOG).
+        - Same-column move (just reorder): status preserved.
+
+        Done/archive moves additionally clear worktree_path. position
+        shifting in the target column is the caller's responsibility
+        (use shift_positions before the move).
+        """
+        item = await self.get_or_raise(item_id)
+        cross_column = item.get("column_name") != target_column
+        fields: dict[str, Any] = {"column_name": target_column, "position": position}
+        if cross_column:
+            fields["status"] = None
+        if target_column in ("done", "archive"):
+            fields["worktree_path"] = None
+        # Preserve done_at when moving to archive — DatabaseService.update_item
+        # only auto-sets done_at for the "done" column; for archive we want to
+        # keep whatever timestamp the item had (matching the prior raw-SQL
+        # COALESCE behavior). If the item never had a done_at, treat the move
+        # as a "completion" event for archive too.
+        if target_column == "archive":
+            from datetime import datetime, timezone
+            fields["done_at"] = item.get("done_at") or datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%S"
+            )
+        return await self.db.update_item(item_id, **fields)
+
+    async def shift_positions(
+        self, column_name: str, from_position: int, exclude_id: str
+    ) -> None:
+        """Shift positions in a column to make room for an inserted item.
+        Items at or after `from_position` (excluding `exclude_id`) move
+        down by 1. Used by move_to_column callers to keep position dense."""
+        await self.db.shift_positions_in_column(column_name, from_position, exclude_id)
+
     async def update_fields(self, item_id: str, **fields: Any) -> dict[str, Any]:
         """Update non-state fields on an item without firing a transition.
 

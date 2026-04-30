@@ -468,57 +468,36 @@ async def delete_items_by_epic(request: Request, body: DeleteByEpicRequest):
 
 @router.post("/api/items/{item_id}/move")
 async def move_item(request: Request, item_id: str, body: ItemMove):
-    db = request.app.state.db
     orchestrator = request.app.state.orchestrator
 
-    # Clean up agent resources when moving to done or archive
+    # Clean up agent resources when moving to done or archive (external state
+    # — sessions and git worktrees — kept in the route since the repo only
+    # owns the data row).
     if body.column_name in ("done", "archive"):
-        async with db.connect() as conn:
-            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-            old_item = dict(await cursor.fetchone())
-        # Stop any running session
+        old_item = await orchestrator.item_repository.get(item_id)
         await orchestrator.session_service.cleanup_session(item_id)
-        # Clean up worktree and branch
-        if old_item.get("worktree_path") and old_item.get("branch_name"):
+        if old_item and old_item.get("worktree_path") and old_item.get("branch_name"):
             from pathlib import Path
             await orchestrator.git_service.cleanup_worktree_and_branch(
                 Path(old_item["worktree_path"]), old_item["branch_name"])
 
-    async with db.connect() as conn:
-        # Shift positions in target column
-        await conn.execute(
-            "UPDATE items SET position = position + 1 WHERE column_name = ? AND position >= ? AND id != ?",
-            (body.column_name, body.position, item_id),
-        )
-        # Set done_at when moving to done/archive (if not already set), clear when leaving
-        from datetime import datetime, timezone
-        done_at_clause = ""
-        extra_clauses = ""
-        params = [body.column_name, body.position]
-        if body.column_name in ("done", "archive"):
-            done_at_clause = ", done_at = COALESCE(done_at, ?)"
-            params.append(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"))
-        else:
-            done_at_clause = ", done_at = NULL"
-        # Clear git metadata when moving to done or archive
-        if body.column_name in ("done", "archive"):
-            extra_clauses = ", status = NULL, worktree_path = NULL"
-        params.append(item_id)
-        await conn.execute(
-            f"UPDATE items SET column_name = ?, position = ?{done_at_clause}{extra_clauses}, updated_at = datetime('now') WHERE id = ?",
-            params,
-        )
-        await conn.commit()
-
-        cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-        item = dict(await cursor.fetchone())
+    # Make room in target column, then perform the move via the repo. The
+    # repo normalizes status on cross-column moves, preserves it on
+    # within-column reorders, clears worktree_path on done/archive, and
+    # carries done_at forward to archive.
+    await orchestrator.item_repository.shift_positions(
+        body.column_name, body.position, item_id
+    )
+    item = await orchestrator.item_repository.move_to_column(
+        item_id, body.column_name, body.position
+    )
 
     await request.app.state.ws_manager.broadcast("item_moved", item)
     _invalidate_stats_cache()  # Item status change affects stats
 
     # When an item moves to done/archive, its dependents may become unblocked
     if body.column_name in ("done", "archive"):
-        db_service = request.app.state.orchestrator.db_service
+        db_service = orchestrator.db_service
         dependent_ids = await db_service.get_dependent_items(item_id)
         if dependent_ids:
             blocked_status = await db_service.get_all_blocked_status()

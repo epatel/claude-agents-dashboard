@@ -47,6 +47,27 @@ def _make_mock_orchestrator():
     mock_orch.item_repository.transition = AsyncMock(
         return_value={"id": "item1", "column_name": "review", "status": None}
     )
+    mock_orch.item_repository.get = AsyncMock(
+        return_value={
+            "id": "item1", "column_name": "todo", "status": None,
+            "worktree_path": "/some/path", "branch_name": "feature",
+        }
+    )
+
+    # move_to_column needs to reflect inputs so route tests can assert
+    # against realistic response shapes (column_name == requested,
+    # worktree cleared on done/archive, etc.).
+    async def _mock_move_to_column(item_id, target_column, position):
+        return {
+            "id": item_id,
+            "column_name": target_column,
+            "status": None,
+            "position": position,
+            "worktree_path": None if target_column in ("done", "archive") else "/some/path",
+            "branch_name": None if target_column in ("done", "archive") else "feature",
+        }
+    mock_orch.item_repository.move_to_column = AsyncMock(side_effect=_mock_move_to_column)
+    mock_orch.item_repository.shift_positions = AsyncMock()
 
     # epic_repository (Phase 2.6 — CRUD facade over db_service)
     mock_orch.epic_repository = MagicMock()

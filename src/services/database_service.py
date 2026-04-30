@@ -52,6 +52,20 @@ class DatabaseService:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
+    async def shift_positions_in_column(
+        self, column_name: str, from_position: int, exclude_id: str
+    ) -> None:
+        """Shift positions >= from_position in a column down by 1, except
+        for exclude_id. Used by ItemRepository.shift_positions to make
+        room for a DnD insert."""
+        async with self.db.connect() as conn:
+            await conn.execute(
+                "UPDATE items SET position = position + 1 "
+                "WHERE column_name = ? AND position >= ? AND id != ?",
+                (column_name, from_position, exclude_id),
+            )
+            await conn.commit()
+
     async def update_item(self, item_id: str, **kwargs) -> Dict[str, Any]:
         """Update an item with the given fields. Field validation is the
         ItemRepository's job (Phase 2.5); this is a SQL executor only.
@@ -67,11 +81,15 @@ class DatabaseService:
                 row = await cursor.fetchone()
                 kwargs["position"] = row[0]
 
-            # Auto-set done_at when moving to done, clear when leaving
-            if "column_name" in kwargs:
-                if kwargs["column_name"] == "done" and "done_at" not in kwargs:
+            # Auto-set done_at when moving to done, clear when leaving — but
+            # only when the caller hasn't explicitly passed done_at. The
+            # ItemRepository.move_to_column path passes done_at to preserve
+            # it across done -> archive moves; clobbering it here would
+            # discard the original completion timestamp.
+            if "column_name" in kwargs and "done_at" not in kwargs:
+                if kwargs["column_name"] == "done":
                     kwargs["done_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-                elif kwargs["column_name"] != "done":
+                else:
                     kwargs["done_at"] = None
 
             sets = ", ".join(f"{k} = ?" for k in kwargs)
