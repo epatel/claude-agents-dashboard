@@ -33,7 +33,7 @@ class TestColumnEncoding:
             ("doing", "running"): ItemState.RUNNING,
             ("doing", "paused"): ItemState.PAUSED,
             ("doing", "failed"): ItemState.FAILED,
-            ("doing", "conflict"): ItemState.CONFLICT,
+            ("review", "conflict"): ItemState.CONFLICT,
             ("doing", "resolving_conflicts"): ItemState.RESOLVING_CONFLICTS,
             ("questions", None): ItemState.CLARIFY,
             ("questions", "merge_blocked"): ItemState.MERGE_BLOCKED,
@@ -119,11 +119,27 @@ class TestRealWorldFlows:
         assert path == [ItemState.BACKLOG, ItemState.QUEUED, ItemState.RUNNING]
 
     def test_merge_conflict_recovery(self):
+        # Conflicts are detected during merge, which is invoked from REVIEW.
+        # Auto-recovery restarts the agent (RESOLVING_CONFLICTS) and finishes
+        # back at REVIEW for re-approval.
         path = self._walk(
             ItemState.BACKLOG,
-            [Event.START, Event.CONFLICT_DETECTED, Event.RESOLVE_CONFLICTS, Event.COMPLETE],
+            [Event.START, Event.COMPLETE, Event.RESOLVE_CONFLICTS, Event.COMPLETE],
         )
         assert path[-1] is ItemState.REVIEW
+
+    def test_request_changes_returns_to_running(self):
+        path = self._walk(
+            ItemState.BACKLOG, [Event.START, Event.COMPLETE, Event.REQUEST_CHANGES]
+        )
+        assert path[-1] is ItemState.RUNNING
+
+    def test_unrecoverable_conflict_can_be_requeued(self):
+        path = self._walk(
+            ItemState.BACKLOG,
+            [Event.START, Event.COMPLETE, Event.CONFLICT_DETECTED, Event.REQUEUE],
+        )
+        assert path[-1] is ItemState.BACKLOG
 
     def test_merge_blocked_then_unblocked(self):
         path = self._walk(

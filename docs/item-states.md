@@ -16,7 +16,7 @@ In storage, state lives in two columns: `items.column_name` and `items.status`. 
 | `RUNNING`             | `doing`       | `running`             | Agent process active                                 |
 | `PAUSED`              | `doing`       | `paused`              | User paused; SDK session captured for resume         |
 | `FAILED`              | `doing`       | `failed`              | Agent crashed                                        |
-| `CONFLICT`            | `doing`       | `conflict`            | Merge conflict detected, awaiting auto-recovery     |
+| `CONFLICT`            | `review`      | `conflict`            | Merge conflict, retries exhausted; manual fix needed |
 | `RESOLVING_CONFLICTS` | `doing`       | `resolving_conflicts` | Agent restarted with conflict-resolution prompt      |
 | `CLARIFY`             | `questions`   | `null`                | Agent called `ask_user`; waiting on user answer      |
 | `MERGE_BLOCKED`       | `questions`   | `merge_blocked`       | Merge blocked, asking user how to proceed            |
@@ -41,7 +41,6 @@ stateDiagram-v2
     RUNNING --> PAUSED: PAUSE
     RUNNING --> CLARIFY: ASK
     RUNNING --> REVIEW: COMPLETE
-    RUNNING --> CONFLICT: CONFLICT_DETECTED
     RUNNING --> FAILED: FAIL
     RUNNING --> CANCELLED: CANCEL
 
@@ -52,7 +51,7 @@ stateDiagram-v2
     CLARIFY --> RUNNING: ANSWER
     CLARIFY --> CANCELLED: CANCEL
 
-    CONFLICT --> RESOLVING_CONFLICTS: RESOLVE_CONFLICTS
+    CONFLICT --> BACKLOG: REQUEUE
     CONFLICT --> CANCELLED: CANCEL
 
     RESOLVING_CONFLICTS --> REVIEW: COMPLETE
@@ -66,6 +65,9 @@ stateDiagram-v2
 
     REVIEW --> DONE: REQUEST_MERGE
     REVIEW --> MERGE_BLOCKED: MERGE_BLOCKED
+    REVIEW --> RUNNING: REQUEST_CHANGES
+    REVIEW --> RESOLVING_CONFLICTS: RESOLVE_CONFLICTS
+    REVIEW --> CONFLICT: CONFLICT_DETECTED
     REVIEW --> BACKLOG: REQUEUE
     REVIEW --> CANCELLED: CANCEL
 

@@ -41,7 +41,12 @@ After: a single `ItemState` enum + a `TRANSITIONS` table. Illegal moves raise. D
   - **Landed:** migrated `_enqueue_item`, `_start_agent_internal`, `cancel_agent`, `pause_agent`, `resume_agent`. Discovered `(CANCELLED, START)` and `(FAILED, START)` are real production paths and added them. Caught a hidden bug where `pause_agent` could leave items in `(todo, paused)` (impossible state) — now raises `InvalidTransition`. Suite 940 passing.
 - [x] **1.5** Route **clarify (ask/answer)** through `transition(...)`
   - **Landed:** 7 call sites migrated — `_create_on_clarify_callback` (ASK + ANSWER), `_create_on_request_command_callback` (ASK + ANSWER on deny), `_create_on_request_tool_callback` (ASK + ANSWER on deny), `_restart_session_with_new_permissions` (ANSWER on approve). Same fixture-shape bug surfaced in `TestOnClarifyCallback` (7 tests called `on_clarify` on a BACKLOG item — meaningless in production, agent only calls it while RUNNING). Suite 940 passing.
-- [ ] **1.6** Route **merge / merge-conflict / complete** through `transition(...)`
+- [x] **1.6** Route **merge / merge-conflict / complete** through `transition(...)`
+  - **Landed:** 11 call sites in `_create_on_complete_callback`, `_create_on_error_callback`, `request_changes`, `cancel_review`, and `approve_item` (3× REQUEST_MERGE, 1× MERGE_BLOCKED, 2× CONFLICT_DETECTED, 1× RESOLVE_CONFLICTS).
+  - Surfaced a Phase 1.1 modeling error: `CONFLICT` is `("review", "conflict")`, not `("doing", "conflict")` — the original audit missed that `update_item(item_id, status="conflict")` (no column_name) inherits the current column, which is `review` during `approve_item`. Conflict detection and resolve-retry both transition from `REVIEW`, not `RUNNING`. Fixed mapping + transitions; CONFLICT is terminal pending manual `REQUEUE`/`CANCEL`.
+  - Added `REQUEST_CHANGES` event (REVIEW → RUNNING) for the user-driven feedback loop.
+  - Caught a real bug: `_create_on_complete_callback` referenced `current_item` in the failure branch where it was never defined. Fix: fetch in both branches.
+  - Suite 944 passing.
 - [ ] **1.7** Route **WIP-limit queueing / dequeue** through `transition(...)`
 - [ ] **1.8** Add a startup invariant check: load every item, assert `from_columns(...)` succeeds. Log + skip on bad rows; do not crash.
 - [ ] **1.9** Delete dead code revealed by 1.4–1.7 (defensive checks now redundant)

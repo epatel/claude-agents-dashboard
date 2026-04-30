@@ -433,8 +433,10 @@ class WorkflowService:
                         file_list += f" (+{len(overlap) - 5} more)"
                     await self._log_and_notify(item_id, "system",
                         f"Cannot merge — conflicting uncommitted changes in: {file_list}")
+                    state = from_columns(item["column_name"], item.get("status"))
+                    col, status = to_columns(transition(state, Event.MERGE_BLOCKED))
                     item = await self.db.update_item(item_id,
-                        column_name="questions", status="merge_blocked")
+                        column_name=col, status=status)
                     await self.notifications.broadcast_item_updated(item)
                     await self.notifications.ws_manager.broadcast("merge_blocked", {
                         "item_id": item_id,
@@ -466,10 +468,12 @@ class WorkflowService:
                 "No modified files — skipping merge")
             if worktree_path:
                 await self.git.cleanup_worktree_and_branch(worktree_path, branch, repo=item.get("repo"))
+            state = from_columns(item["column_name"], item.get("status"))
+            col, status = to_columns(transition(state, Event.REQUEST_MERGE))
             item = await self.db.update_item(
                 item_id,
-                column_name="done",
-                status=None,
+                column_name=col,
+                status=status,
                 worktree_path=None,
             )
             await self._notify_and_auto_start_dependents(item_id)
@@ -491,10 +495,12 @@ class WorkflowService:
             if worktree_path:
                 await self.git.cleanup_worktree_and_branch(worktree_path, branch, repo=item.get("repo"))
 
+            state = from_columns(item["column_name"], item.get("status"))
+            col, status = to_columns(transition(state, Event.REQUEST_MERGE))
             item = await self.db.update_item(
                 item_id,
-                column_name="done",
-                status=None,
+                column_name=col,
+                status=status,
                 worktree_path=None,
                 merge_commit=merge_sha,
             )
@@ -537,8 +543,10 @@ class WorkflowService:
                         if worktree_path:
                             await self.git.cleanup_worktree_and_branch(worktree_path, branch, repo=item.get("repo"))
 
+                        state = from_columns(item["column_name"], item.get("status"))
+                        col, status = to_columns(transition(state, Event.REQUEST_MERGE))
                         item = await self.db.update_item(
-                            item_id, column_name="done", status=None,
+                            item_id, column_name=col, status=status,
                             worktree_path=None, merge_commit=merge_sha,
                         )
 
@@ -559,7 +567,9 @@ class WorkflowService:
             if merge_retries >= MAX_MERGE_RETRIES:
                 await self._log_and_notify(item_id, "system",
                     f"Conflict resolution failed after {merge_retries} retries. Manual intervention needed.")
-                item = await self.db.update_item(item_id, status="conflict")
+                state = from_columns(item["column_name"], item.get("status"))
+                col, status = to_columns(transition(state, Event.CONFLICT_DETECTED))
+                item = await self.db.update_item(item_id, column_name=col, status=status)
                 await self.notifications.broadcast_item_updated(item)
                 return item
 
@@ -590,8 +600,10 @@ class WorkflowService:
 
                 # Increment retry counter and restart agent with the diff as context
                 self._merge_retries[item_id] = merge_retries + 1
+                state = from_columns(item["column_name"], item.get("status"))
+                col, status = to_columns(transition(state, Event.RESOLVE_CONFLICTS))
                 item = await self.db.update_item(
-                    item_id, column_name="doing", status="resolving_conflicts")
+                    item_id, column_name=col, status=status)
                 await self.notifications.broadcast_item_updated(item)
 
                 config = await self.db.get_agent_config()
@@ -624,7 +636,9 @@ class WorkflowService:
                 return item
 
             # Fallback: no diff captured, show conflict status
-            item = await self.db.update_item(item_id, status="conflict")
+            state = from_columns(item["column_name"], item.get("status"))
+            col, status = to_columns(transition(state, Event.CONFLICT_DETECTED))
+            item = await self.db.update_item(item_id, column_name=col, status=status)
 
         await self.notifications.broadcast_item_updated(item)
         return item
@@ -674,7 +688,9 @@ class WorkflowService:
         await self._log_and_notify(item_id, "user_action", f"Review changes requested: {'; '.join(comments)}")
 
         # Update item to doing
-        item = await self.db.update_item(item_id, column_name="doing", status="running")
+        state = from_columns(item["column_name"], item.get("status"))
+        col, status = to_columns(transition(state, Event.REQUEST_CHANGES))
+        item = await self.db.update_item(item_id, column_name=col, status=status)
         await self.notifications.broadcast_item_updated(item)
 
         # Start new agent session with feedback
@@ -734,10 +750,12 @@ class WorkflowService:
         await self._log_and_notify(item_id, "user_action", "Review cancelled - work discarded")
 
         # Move item back to todo
+        state = from_columns(item["column_name"], item.get("status"))
+        col, status = to_columns(transition(state, Event.REQUEUE))
         item = await self.db.update_item(
             item_id,
-            column_name="todo",
-            status=None,
+            column_name=col,
+            status=status,
             worktree_path=None,
         )
         await self.notifications.broadcast_item_updated(item)
@@ -829,9 +847,11 @@ class WorkflowService:
                     except Exception as e:
                         logger.warning(f"Failed to check changed files for review: {e}")
 
+                state = from_columns(current_item["column_name"], current_item.get("status"))
+                col, status = to_columns(transition(state, Event.COMPLETE))
                 update_kwargs = dict(
-                    column_name="review",
-                    status=None,
+                    column_name=col,
+                    status=status,
                     session_id=result.session_id,
                     has_file_changes=has_file_changes,
                 )
@@ -842,7 +862,10 @@ class WorkflowService:
                 await self.notifications.broadcast_item_updated(item, source="agent")
             else:
                 await self._log_and_notify(item_id, "error", f"Agent failed: {result.error}")
-                item = await self.db.update_item(item_id, status="failed", session_id=result.session_id)
+                current_item = await self.db.get_item(item_id)
+                state = from_columns(current_item["column_name"], current_item.get("status"))
+                col, status = to_columns(transition(state, Event.FAIL))
+                item = await self.db.update_item(item_id, column_name=col, status=status, session_id=result.session_id)
                 await self.notifications.broadcast_item_updated(item, source="agent")
                 self._add_failure_notification(item_id, result.error)
 
@@ -863,7 +886,10 @@ class WorkflowService:
     def _create_on_error_callback(self, item_id: str):
         async def on_error(error: str):
             await self._log_and_notify(item_id, "error", f"Agent error: {error}")
-            item = await self.db.update_item(item_id, status="failed")
+            current = await self.db.get_item(item_id)
+            state = from_columns(current["column_name"], current.get("status"))
+            col, status = to_columns(transition(state, Event.FAIL))
+            item = await self.db.update_item(item_id, column_name=col, status=status)
             await self.notifications.broadcast_item_updated(item, source="agent")
             self._add_failure_notification(item_id, error)
             # Remove finished session from tracking so it no longer counts as active

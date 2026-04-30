@@ -47,6 +47,7 @@ class Event(StrEnum):
     COMPLETE = "complete"
     REQUEST_MERGE = "request_merge"
     MERGE_BLOCKED = "merge_blocked"
+    REQUEST_CHANGES = "request_changes"
     FAIL = "fail"
     ARCHIVE = "archive"
 
@@ -58,7 +59,7 @@ _STATE_TO_COLUMNS: dict[ItemState, tuple[str, Optional[str]]] = {
     ItemState.RUNNING: ("doing", "running"),
     ItemState.PAUSED: ("doing", "paused"),
     ItemState.FAILED: ("doing", "failed"),
-    ItemState.CONFLICT: ("doing", "conflict"),
+    ItemState.CONFLICT: ("review", "conflict"),
     ItemState.RESOLVING_CONFLICTS: ("doing", "resolving_conflicts"),
     ItemState.CLARIFY: ("questions", None),
     ItemState.MERGE_BLOCKED: ("questions", "merge_blocked"),
@@ -84,7 +85,6 @@ TRANSITIONS: dict[tuple[ItemState, Event], ItemState] = {
     (ItemState.RUNNING, Event.PAUSE): ItemState.PAUSED,
     (ItemState.RUNNING, Event.ASK): ItemState.CLARIFY,
     (ItemState.RUNNING, Event.COMPLETE): ItemState.REVIEW,
-    (ItemState.RUNNING, Event.CONFLICT_DETECTED): ItemState.CONFLICT,
     (ItemState.RUNNING, Event.FAIL): ItemState.FAILED,
     (ItemState.RUNNING, Event.CANCEL): ItemState.CANCELLED,
 
@@ -95,7 +95,7 @@ TRANSITIONS: dict[tuple[ItemState, Event], ItemState] = {
     (ItemState.CLARIFY, Event.ANSWER): ItemState.RUNNING,
     (ItemState.CLARIFY, Event.CANCEL): ItemState.CANCELLED,
 
-    (ItemState.CONFLICT, Event.RESOLVE_CONFLICTS): ItemState.RESOLVING_CONFLICTS,
+    (ItemState.CONFLICT, Event.REQUEUE): ItemState.BACKLOG,
     (ItemState.CONFLICT, Event.CANCEL): ItemState.CANCELLED,
 
     (ItemState.RESOLVING_CONFLICTS, Event.COMPLETE): ItemState.REVIEW,
@@ -109,6 +109,9 @@ TRANSITIONS: dict[tuple[ItemState, Event], ItemState] = {
 
     (ItemState.REVIEW, Event.REQUEST_MERGE): ItemState.DONE,
     (ItemState.REVIEW, Event.MERGE_BLOCKED): ItemState.MERGE_BLOCKED,
+    (ItemState.REVIEW, Event.REQUEST_CHANGES): ItemState.RUNNING,
+    (ItemState.REVIEW, Event.RESOLVE_CONFLICTS): ItemState.RESOLVING_CONFLICTS,
+    (ItemState.REVIEW, Event.CONFLICT_DETECTED): ItemState.CONFLICT,
     (ItemState.REVIEW, Event.REQUEUE): ItemState.BACKLOG,
     (ItemState.REVIEW, Event.CANCEL): ItemState.CANCELLED,
 

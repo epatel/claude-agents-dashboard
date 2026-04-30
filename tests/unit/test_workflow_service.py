@@ -393,44 +393,51 @@ class TestOnToolUseCallback:
 # ---------------------------------------------------------------------------
 
 class TestOnCompleteCallback:
-    async def test_success_moves_to_review(self, workflow, item):
+    @pytest_asyncio.fixture
+    async def running_item(self, db_service, item):
+        # on_complete fires when an active agent's session ends — i.e. while
+        # the item is RUNNING (or RESOLVING_CONFLICTS). Mirror production.
+        await db_service.update_item(item["id"], column_name="doing", status="running")
+        return item
+
+    async def test_success_moves_to_review(self, workflow, running_item):
         result = AgentResult(success=True, session_id="sess-abc")
-        cb = workflow._create_on_complete_callback(item["id"])
+        cb = workflow._create_on_complete_callback(running_item["id"])
         await cb(result)
-        updated = await workflow.db.get_item(item["id"])
+        updated = await workflow.db.get_item(running_item["id"])
         assert updated["column_name"] == "review"
 
-    async def test_failure_sets_failed_status(self, workflow, item):
+    async def test_failure_sets_failed_status(self, workflow, running_item):
         result = AgentResult(success=False, error="something went wrong", session_id="sess-fail")
-        cb = workflow._create_on_complete_callback(item["id"])
+        cb = workflow._create_on_complete_callback(running_item["id"])
         await cb(result)
-        updated = await workflow.db.get_item(item["id"])
+        updated = await workflow.db.get_item(running_item["id"])
         assert updated["status"] == "failed"
 
-    async def test_success_stores_commit_message(self, workflow, item):
+    async def test_success_stores_commit_message(self, workflow, running_item):
         workflow.sessions.get_commit_message = MagicMock(return_value="feat: my commit")
         result = AgentResult(success=True, session_id="sess-abc")
-        cb = workflow._create_on_complete_callback(item["id"])
+        cb = workflow._create_on_complete_callback(running_item["id"])
         await cb(result)
-        updated = await workflow.db.get_item(item["id"])
+        updated = await workflow.db.get_item(running_item["id"])
         assert updated["commit_message"] == "feat: my commit"
 
-    async def test_removes_session_on_complete(self, workflow, item):
+    async def test_removes_session_on_complete(self, workflow, running_item):
         result = AgentResult(success=True, session_id="sess-abc")
-        cb = workflow._create_on_complete_callback(item["id"])
+        cb = workflow._create_on_complete_callback(running_item["id"])
         await cb(result)
-        workflow.sessions.remove_session.assert_called_with(item["id"])
+        workflow.sessions.remove_session.assert_called_with(running_item["id"])
 
-    async def test_clears_yolo_tracking_on_complete(self, workflow, item):
-        workflow._yolo_items.add(item["id"])
+    async def test_clears_yolo_tracking_on_complete(self, workflow, running_item):
+        workflow._yolo_items.add(running_item["id"])
         result = AgentResult(success=True, session_id="sess-abc")
-        cb = workflow._create_on_complete_callback(item["id"])
+        cb = workflow._create_on_complete_callback(running_item["id"])
         await cb(result)
-        assert item["id"] not in workflow._yolo_items
+        assert running_item["id"] not in workflow._yolo_items
 
-    async def test_broadcasts_item_updated_on_success(self, workflow, item):
+    async def test_broadcasts_item_updated_on_success(self, workflow, running_item):
         result = AgentResult(success=True, session_id="sess-abc")
-        cb = workflow._create_on_complete_callback(item["id"])
+        cb = workflow._create_on_complete_callback(running_item["id"])
         await cb(result)
         workflow.notifications.broadcast_item_updated.assert_awaited()
 
@@ -440,27 +447,34 @@ class TestOnCompleteCallback:
 # ---------------------------------------------------------------------------
 
 class TestOnErrorCallback:
-    async def test_sets_failed_status(self, workflow, item):
-        cb = workflow._create_on_error_callback(item["id"])
+    @pytest_asyncio.fixture
+    async def running_item(self, db_service, item):
+        # on_error fires from an active agent — same RUNNING-state setup
+        # as on_complete; FAIL is only valid from RUNNING/RESOLVING_CONFLICTS.
+        await db_service.update_item(item["id"], column_name="doing", status="running")
+        return item
+
+    async def test_sets_failed_status(self, workflow, running_item):
+        cb = workflow._create_on_error_callback(running_item["id"])
         await cb("some error")
-        updated = await workflow.db.get_item(item["id"])
+        updated = await workflow.db.get_item(running_item["id"])
         assert updated["status"] == "failed"
 
-    async def test_removes_session(self, workflow, item):
-        cb = workflow._create_on_error_callback(item["id"])
+    async def test_removes_session(self, workflow, running_item):
+        cb = workflow._create_on_error_callback(running_item["id"])
         await cb("error")
-        workflow.sessions.remove_session.assert_called_with(item["id"])
+        workflow.sessions.remove_session.assert_called_with(running_item["id"])
 
-    async def test_broadcasts_item_updated(self, workflow, item):
-        cb = workflow._create_on_error_callback(item["id"])
+    async def test_broadcasts_item_updated(self, workflow, running_item):
+        cb = workflow._create_on_error_callback(running_item["id"])
         await cb("error")
         workflow.notifications.broadcast_item_updated.assert_awaited()
 
-    async def test_clears_yolo_on_error(self, workflow, item):
-        workflow._yolo_items.add(item["id"])
-        cb = workflow._create_on_error_callback(item["id"])
+    async def test_clears_yolo_on_error(self, workflow, running_item):
+        workflow._yolo_items.add(running_item["id"])
+        cb = workflow._create_on_error_callback(running_item["id"])
         await cb("error")
-        assert item["id"] not in workflow._yolo_items
+        assert running_item["id"] not in workflow._yolo_items
 
 
 # ---------------------------------------------------------------------------
