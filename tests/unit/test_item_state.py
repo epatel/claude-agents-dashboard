@@ -139,6 +139,15 @@ class TestRealWorldFlows:
         )
         assert path[-1] is ItemState.RUNNING
 
+    def test_cancelled_can_be_restarted_directly(self):
+        # User can click Start on a cancelled card without an explicit Requeue.
+        path = self._walk(ItemState.BACKLOG, [Event.START, Event.CANCEL, Event.START])
+        assert path[-1] is ItemState.RUNNING
+
+    def test_failed_can_be_restarted_directly(self):
+        path = self._walk(ItemState.BACKLOG, [Event.START, Event.FAIL, Event.START])
+        assert path[-1] is ItemState.RUNNING
+
 
 # --- structural invariants of the state graph ---------------------------------
 

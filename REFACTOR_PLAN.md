@@ -34,10 +34,11 @@ After: a single `ItemState` enum + a `TRANSITIONS` table. Illegal moves raise. D
   - Every `(state, event)` not in the table raises
   - `from_columns` ↔ `to_columns` roundtrip for all known DB rows
   - **Landed:** `tests/unit/test_item_state.py` — 53 tests; full suite 936 passed.
-- [ ] **1.4** Route the **start/pause/resume/cancel** call sites through `transition(...)`
+- [x] **1.4** Route the **start/pause/resume/cancel** call sites through `transition(...)`
   - These are the most-traveled paths; smallest blast radius for the first migration
   - Keep DB writes as-is (`column_name` / `status` strings)
   - No behavior change — just funnel mutations through the SM
+  - **Landed:** migrated `_enqueue_item`, `_start_agent_internal`, `cancel_agent`, `pause_agent`, `resume_agent`. Discovered `(CANCELLED, START)` and `(FAILED, START)` are real production paths and added them. Caught a hidden bug where `pause_agent` could leave items in `(todo, paused)` (impossible state) — now raises `InvalidTransition`. Suite 940 passing.
 - [ ] **1.5** Route **clarify (ask/answer)** through `transition(...)`
 - [ ] **1.6** Route **merge / merge-conflict / complete** through `transition(...)`
 - [ ] **1.7** Route **WIP-limit queueing / dequeue** through `transition(...)`

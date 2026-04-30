@@ -146,21 +146,28 @@ class TestCancelAgent:
 # ---------------------------------------------------------------------------
 
 class TestPauseAgent:
-    async def test_pause_sets_paused_status(self, workflow, item):
-        result = await workflow.pause_agent(item["id"])
+    @pytest_asyncio.fixture
+    async def running_item(self, db_service, item):
+        # Pause is only valid from RUNNING; production never exposes a Pause
+        # button on a backlog item. Move the item there before each test.
+        await db_service.update_item(item["id"], column_name="doing", status="running")
+        return item
+
+    async def test_pause_sets_paused_status(self, workflow, running_item):
+        result = await workflow.pause_agent(running_item["id"])
         assert result["status"] == "paused"
 
-    async def test_pause_stores_session_id(self, workflow, item):
-        result = await workflow.pause_agent(item["id"])
+    async def test_pause_stores_session_id(self, workflow, running_item):
+        result = await workflow.pause_agent(running_item["id"])
         assert result["session_id"] == "sess-paused-id"
 
-    async def test_pause_broadcasts_update(self, workflow, item):
-        await workflow.pause_agent(item["id"])
+    async def test_pause_broadcasts_update(self, workflow, running_item):
+        await workflow.pause_agent(running_item["id"])
         workflow.notifications.broadcast_item_updated.assert_awaited()
 
-    async def test_pause_no_session_id_still_pauses(self, workflow, item):
+    async def test_pause_no_session_id_still_pauses(self, workflow, running_item):
         workflow.sessions.pause_session = AsyncMock(return_value=None)
-        result = await workflow.pause_agent(item["id"])
+        result = await workflow.pause_agent(running_item["id"])
         assert result["status"] == "paused"
 
 

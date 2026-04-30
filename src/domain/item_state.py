@@ -104,6 +104,7 @@ TRANSITIONS: dict[tuple[ItemState, Event], ItemState] = {
     (ItemState.RESOLVING_CONFLICTS, Event.CANCEL): ItemState.CANCELLED,
 
     (ItemState.FAILED, Event.REQUEUE): ItemState.BACKLOG,
+    (ItemState.FAILED, Event.START): ItemState.RUNNING,
     (ItemState.FAILED, Event.CANCEL): ItemState.CANCELLED,
 
     (ItemState.REVIEW, Event.REQUEST_MERGE): ItemState.DONE,
@@ -118,6 +119,7 @@ TRANSITIONS: dict[tuple[ItemState, Event], ItemState] = {
     (ItemState.DONE, Event.REQUEUE): ItemState.BACKLOG,
 
     (ItemState.CANCELLED, Event.REQUEUE): ItemState.BACKLOG,
+    (ItemState.CANCELLED, Event.START): ItemState.RUNNING,
     (ItemState.ARCHIVED, Event.REQUEUE): ItemState.BACKLOG,
 }
 

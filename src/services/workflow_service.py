@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..agent.session import AgentResult
+from ..domain.item_state import Event, from_columns, to_columns, transition
 from .database_service import DatabaseService
 from .git_service import GitService
 from .notification_service import NotificationService
@@ -74,7 +75,10 @@ class WorkflowService:
 
     async def _enqueue_item(self, item_id: str) -> Dict[str, Any]:
         """Place an item in the doing column with queued status."""
-        item = await self.db.update_item(item_id, column_name="doing", status="queued")
+        current = await self.db.get_item(item_id)
+        state = from_columns(current["column_name"], current.get("status"))
+        col, status = to_columns(transition(state, Event.ENQUEUE))
+        item = await self.db.update_item(item_id, column_name=col, status=status)
         await self.notifications.broadcast_item_updated(item)
         await self._log_and_notify(item_id, "system",
             "WIP limit reached — item queued, will auto-start when a slot opens")
@@ -128,9 +132,11 @@ class WorkflowService:
         )
 
         # Update item state (preserve existing base_commit if reusing worktree)
+        state = from_columns(item["column_name"], item.get("status"))
+        col, status = to_columns(transition(state, Event.START))
         update_kwargs = dict(
-            column_name="doing",
-            status="running",
+            column_name=col,
+            status=status,
             branch_name=branch_name,
             worktree_path=str(worktree_path),
             base_branch=base_branch,
@@ -216,7 +222,10 @@ class WorkflowService:
             })
 
         await self._log_and_notify(item_id, "system", "Agent cancelled by user")
-        item = await self.db.update_item(item_id, column_name="todo", status="cancelled")
+        current = await self.db.get_item(item_id)
+        state = from_columns(current["column_name"], current.get("status"))
+        col, status = to_columns(transition(state, Event.CANCEL))
+        item = await self.db.update_item(item_id, column_name=col, status=status)
         await self.notifications.broadcast_item_updated(item)
 
         # A slot may have opened — process the queue
@@ -228,7 +237,10 @@ class WorkflowService:
         """Pause a running agent — save session for later resumption."""
         session_id = await self.sessions.pause_session(item_id)
 
-        update_kwargs: Dict[str, Any] = dict(status="paused")
+        current = await self.db.get_item(item_id)
+        state = from_columns(current["column_name"], current.get("status"))
+        col, status = to_columns(transition(state, Event.PAUSE))
+        update_kwargs: Dict[str, Any] = dict(column_name=col, status=status)
         if session_id:
             update_kwargs["session_id"] = session_id
 
@@ -262,7 +274,9 @@ class WorkflowService:
         else:
             self._yolo_items.discard(item_id)
 
-        item = await self.db.update_item(item_id, status="running")
+        state = from_columns(item["column_name"], item.get("status"))
+        col, status = to_columns(transition(state, Event.RESUME))
+        item = await self.db.update_item(item_id, column_name=col, status=status)
         await self.notifications.broadcast_item_updated(item)
 
         model = item.get("model") or config.get("model")
