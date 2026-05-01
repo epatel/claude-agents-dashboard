@@ -129,16 +129,19 @@ Today: 5 fields typed as `str` that hold JSON (`tools: str = "[]"`, `mcp_servers
 
 After: real Pydantic types; one parse at the DB boundary.
 
-- [ ] **3.1** Define typed sub-models: `McpServerSpec`, `PluginSpec`, `BuiltinToolSpec`
-- [ ] **3.2** Change `AgentConfig` field types to `list[McpServerSpec]` etc.
-- [ ] **3.3** Add `field_validator(mode="before")` that calls `json.loads` if the input is a `str`
-- [ ] **3.4** Add `model_serializer` (or equivalent) that re-emits JSON strings on the way to SQLite
-- [ ] **3.5** Remove every `json.loads(config.tools)` / `json.loads(config.mcp_servers)` etc. from callers — they now get real lists/dicts
-- [ ] **3.6** Tests: round-trip a config through DB; assert types are preserved on read
+- [x] **3.1** Define typed sub-models: `McpServerSpec`, `PluginSpec`, `BuiltinToolSpec`
+  - **Decided against** the typed sub-models. `mcp_servers` and `plugins` are externally-defined schemas (Claude SDK's MCP server config, third-party plugin specs); modeling them locally would couple us to upstream churn for no payoff. Kept `dict[str, Any]` and `list[Any]` for those, with `list[str]` for the homogeneous string lists. Phase 3 still delivers its real payoff: callers see Python types, never JSON strings.
+- [x] **3.2** Change `AgentConfig` field types to real Python types (`list[str]`, `dict[str, Any]`, `list[Any]`)
+- [x] **3.3** Add `field_validator(mode="before")` that calls `json.loads` if the input is a `str`
+  - **Landed:** two `mode="before"` validators on `AgentConfig` — one for the four list-of-anything fields, one for `mcp_servers`. JSON-string input is parsed; bad JSON falls back to default empty.
+- [x] **3.4** Add the boundary serializer
+  - **Landed differently:** the route's PUT handler `json.dumps(...)` each list/dict field at the DB-write boundary (single explicit site). `db.get_agent_config()` does the symmetric parse on read. No `model_serializer` indirection — the I/O is honest about what hits SQLite.
+- [x] **3.5** Remove every `json.loads(config.tools)` / `json.loads(config.mcp_servers)` etc. from callers
+  - **Landed:** dropped the parse loops in `session_service.create_session` (4 lines → 1 each), simplified `_parse_plugins` to expect a list, simplified `db.save_allowed_command` / `save_allowed_builtin_tool`, simplified `agent/session.py:_setup_mcp_servers`. Two defensive `isinstance(x, str)` fallbacks remain for legacy-shape tolerance — those are gates, not load-bearing.
+- [x] **3.6** Tests
+  - **Landed:** `test_database_service.TestGetAgentConfig` (3 cases): list fields parse, dict fields parse, invalid JSON → empty default. Existing `TestSaveAllowedCommand` / `TestSaveAllowedBuiltinTool` updated to assert against parsed lists, not JSON strings. The 4 stale `session_service` tests that asserted parsing-was-its-job got deleted with a breadcrumb comment.
 
-**Acceptance:** `grep -rn "json.loads(.*\.tools)" src/` returns nothing. Same for the other four fields.
-
-**Est size:** 1 PR, ~150 LOC.
+**Acceptance check:** `grep -rn "json.loads(.*\b\(tools\|mcp_servers\|plugins\|allowed_commands\|allowed_builtin_tools\)\b" src/` returns nothing outside defensive `isinstance` fallbacks. Suite 983 passing.
 
 ---
 

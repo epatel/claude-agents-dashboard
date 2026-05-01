@@ -148,13 +148,31 @@ class DatabaseService:
             return [dict(row) for row in rows]
 
     async def get_agent_config(self) -> Dict[str, Any]:
-        """Get the agent configuration."""
+        """Get the agent configuration with JSON-text fields decoded to
+        Python types. Phase 3 of REFACTOR_PLAN.md: callers no longer need
+        to `json.loads(...)` the list/dict fields themselves."""
         async with self.db.connect() as conn:
             cursor = await conn.execute("SELECT * FROM agent_config WHERE id = 1")
             row = await cursor.fetchone()
-            if row:
-                return dict(row)
-            return {}
+            if not row:
+                return {}
+            d = dict(row)
+            for key, default in (
+                ("tools", []),
+                ("plugins", []),
+                ("allowed_commands", []),
+                ("allowed_builtin_tools", []),
+                ("mcp_servers", {}),
+            ):
+                raw = d.get(key)
+                if isinstance(raw, str):
+                    try:
+                        d[key] = json.loads(raw) if raw else default
+                    except (json.JSONDecodeError, TypeError):
+                        d[key] = default
+                elif raw is None:
+                    d[key] = default
+            return d
 
     async def create_todo_item(self, title: str, description: str, epic_id: str = None, auto_start: bool = False, start_copy: bool = False) -> Dict[str, Any]:
         """Create a new todo item and return it."""
@@ -303,11 +321,7 @@ class DatabaseService:
     async def save_allowed_command(self, command: str):
         """Add a command to the allowed_commands list in agent_config."""
         config = await self.get_agent_config()
-        raw = config.get("allowed_commands", "[]")
-        try:
-            commands = json.loads(raw) if isinstance(raw, str) else (raw or [])
-        except (json.JSONDecodeError, TypeError):
-            commands = []
+        commands = list(config.get("allowed_commands") or [])
         if command not in commands:
             commands.append(command)
             async with self.db.connect() as conn:
@@ -321,11 +335,7 @@ class DatabaseService:
     async def save_allowed_builtin_tool(self, tool_name: str):
         """Add a tool to the allowed_builtin_tools list in agent_config."""
         config = await self.get_agent_config()
-        raw = config.get("allowed_builtin_tools", "[]")
-        try:
-            tools = json.loads(raw) if isinstance(raw, str) else (raw or [])
-        except (json.JSONDecodeError, TypeError):
-            tools = []
+        tools = list(config.get("allowed_builtin_tools") or [])
         if tool_name not in tools:
             tools.append(tool_name)
             async with self.db.connect() as conn:

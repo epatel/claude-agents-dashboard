@@ -67,22 +67,11 @@ class SessionService:
 
             on_message = default_on_message
 
-        # Parse plugins from config
+        # config has already been parsed by db.get_agent_config (Phase 3),
+        # so list/dict fields arrive as real Python types.
         plugins = self._parse_plugins(config.get("plugins"))
-
-        # Parse allowed commands from config
-        allowed_commands_raw = config.get("allowed_commands", "[]")
-        try:
-            allowed_commands = json.loads(allowed_commands_raw) if isinstance(allowed_commands_raw, str) else (allowed_commands_raw or [])
-        except (json.JSONDecodeError, TypeError):
-            allowed_commands = []
-
-        # Parse allowed built-in tools from config
-        allowed_builtin_tools_raw = config.get("allowed_builtin_tools", "[]")
-        try:
-            allowed_builtin_tools = json.loads(allowed_builtin_tools_raw) if isinstance(allowed_builtin_tools_raw, str) else (allowed_builtin_tools_raw or [])
-        except (json.JSONDecodeError, TypeError):
-            allowed_builtin_tools = []
+        allowed_commands = list(config.get("allowed_commands") or [])
+        allowed_builtin_tools = list(config.get("allowed_builtin_tools") or [])
 
         # Build Ollama env only if enabled AND the model is actually an Ollama model
         # (Anthropic/Claude models start with "claude-" and must not be routed to Ollama)
@@ -247,11 +236,13 @@ class SessionService:
             self._caffeinate_proc = None
             logger.info("caffeinate stopped — idle sleep re-enabled")
 
-    def _parse_plugins(self, plugins_json: Optional[str]) -> Optional[List[Dict[str, Any]]]:
-        """Parse plugins JSON string from config into a list of plugin configs.
+    def _parse_plugins(self, plugins: Optional[Any]) -> Optional[List[Dict[str, Any]]]:
+        """Merge auto-discovered plugins (from the dashboard's plugins/
+        directory) with user-configured ones from agent config.
 
-        Also auto-discovers plugins in the dashboard's plugins/ directory.
-        """
+        After Phase 3, `plugins` arrives as a real list (db.get_agent_config
+        decodes JSON before handing it back). A string is still tolerated
+        for legacy callers."""
         result = []
 
         # Auto-discover plugins from the dashboard's plugins/ directory
@@ -263,23 +254,24 @@ class SessionService:
                     logger.info(f"Auto-discovered plugin: {entry.name} ({entry.resolve()})")
                     result.append({"type": "local", "path": str(entry.resolve())})
 
-        # Parse user-configured plugins from agent config
-        if plugins_json:
+        # Tolerate a JSON string for callers that haven't migrated yet.
+        if isinstance(plugins, str):
             try:
-                plugins = json.loads(plugins_json) if isinstance(plugins_json, str) else plugins_json
-                if isinstance(plugins, list):
-                    seen = {p["path"] for p in result}
-                    for entry in plugins:
-                        path = None
-                        if isinstance(entry, str) and entry.strip():
-                            path = entry.strip()
-                        elif isinstance(entry, dict) and entry.get("path"):
-                            path = entry["path"]
-                        if path and path not in seen:
-                            result.append({"type": "local", "path": path})
-                            seen.add(path)
-            except Exception as e:
-                logger.warning(f"Failed to parse plugins config: {e}")
+                plugins = json.loads(plugins) if plugins else []
+            except (json.JSONDecodeError, TypeError):
+                plugins = []
+
+        if isinstance(plugins, list) and plugins:
+            seen = {p["path"] for p in result}
+            for entry in plugins:
+                path = None
+                if isinstance(entry, str) and entry.strip():
+                    path = entry.strip()
+                elif isinstance(entry, dict) and entry.get("path"):
+                    path = entry["path"]
+                if path and path not in seen:
+                    result.append({"type": "local", "path": path})
+                    seen.add(path)
 
         if result:
             logger.info(f"Loaded {len(result)} plugin(s): {', '.join(p['path'].rsplit('/', 1)[-1] for p in result)}")

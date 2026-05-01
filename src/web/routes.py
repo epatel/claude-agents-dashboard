@@ -883,24 +883,43 @@ async def approve_command(item_id: str, request: Request):
 
 @router.get("/api/config")
 async def get_config(request: Request):
-    db = request.app.state.db
-    async with db.connect() as conn:
-        cursor = await conn.execute("SELECT * FROM agent_config WHERE id = 1")
-        row = await cursor.fetchone()
-        return dict(row) if row else {}
+    # Phase 3: parse JSON-text fields here (matches db.get_agent_config) so
+    # the API returns Python types. Builds a thin DatabaseService rather
+    # than going through the orchestrator, so tests with a real db_state +
+    # mocked orchestrator still work.
+    from ..services.database_service import DatabaseService
+    return await DatabaseService(request.app.state.db).get_agent_config()
 
 
 @router.put("/api/config")
 async def update_config(request: Request, body: AgentConfig):
+    """Persist agent config. The five list/dict fields on AgentConfig are
+    typed Python collections (Phase 3); SQLite stores them as JSON text."""
+    from ..services.database_service import DatabaseService
     db = request.app.state.db
     async with db.connect() as conn:
         await conn.execute(
             "UPDATE agent_config SET system_prompt = ?, tools = ?, model = ?, project_context = ?, mcp_servers = ?, mcp_enabled = ?, plugins = ?, allowed_commands = ?, bash_yolo = ?, allowed_builtin_tools = ?, flame_enabled = ?, flame_intensity_multiplier = ?, ollama_enabled = ?, ollama_base_url = ?, wip_limit = ?, updated_at = datetime('now') WHERE id = 1",
-            (body.system_prompt, body.tools, body.model, body.project_context, body.mcp_servers, body.mcp_enabled, body.plugins, body.allowed_commands, body.bash_yolo, body.allowed_builtin_tools, body.flame_enabled, body.flame_intensity_multiplier, body.ollama_enabled, body.ollama_base_url, body.wip_limit),
+            (
+                body.system_prompt,
+                json.dumps(body.tools),
+                body.model,
+                body.project_context,
+                json.dumps(body.mcp_servers),
+                body.mcp_enabled,
+                json.dumps(body.plugins),
+                json.dumps(body.allowed_commands),
+                body.bash_yolo,
+                json.dumps(body.allowed_builtin_tools),
+                body.flame_enabled,
+                body.flame_intensity_multiplier,
+                body.ollama_enabled,
+                body.ollama_base_url,
+                body.wip_limit,
+            ),
         )
         await conn.commit()
-        cursor = await conn.execute("SELECT * FROM agent_config WHERE id = 1")
-        return dict(await cursor.fetchone())
+    return await DatabaseService(db).get_agent_config()
 
 
 @router.get("/api/config/available-tools")

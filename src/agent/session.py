@@ -203,12 +203,18 @@ class AgentSession:
         # context window and overwhelm small local models.
         is_ollama = bool(self.ollama_env)
         if self.mcp_enabled and self.mcp_servers and not is_ollama:
-            try:
-                agent_mcp_servers = json.loads(self.mcp_servers)
+            # Phase 3 of REFACTOR_PLAN.md: mcp_servers arrives as a parsed
+            # dict; tolerate a JSON string for legacy callers.
+            agent_mcp_servers = self.mcp_servers
+            if isinstance(agent_mcp_servers, str):
+                try:
+                    agent_mcp_servers = json.loads(agent_mcp_servers)
+                except Exception as e:
+                    logger.warning(f"Failed to parse MCP servers from agent config: {e}")
+                    agent_mcp_servers = {}
+            if isinstance(agent_mcp_servers, dict) and agent_mcp_servers:
                 mcp_servers.update(agent_mcp_servers)
                 logger.info(f"Loaded {len(agent_mcp_servers)} MCP servers from agent configuration")
-            except Exception as e:
-                logger.warning(f"Failed to parse MCP servers from agent config: {e}")
         elif is_ollama and self.mcp_enabled and self.mcp_servers:
             logger.info("Ollama mode: skipping external MCP servers to reduce context size")
 

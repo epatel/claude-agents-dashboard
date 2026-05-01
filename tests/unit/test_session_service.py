@@ -137,27 +137,11 @@ class TestCreateSession:
 
         assert on_message is custom_cb
 
-    @pytest.mark.asyncio
-    async def test_allowed_commands_parsed_from_json_string(self, temp_dir):
-        service = make_service()
-        mock_session = make_mock_session()
-        config = {"allowed_commands": '["git", "npm"]'}
-
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
-            await service.create_session("item-1", temp_dir, config=config)
-            kwargs = MockAS.call_args.kwargs
-        assert kwargs["allowed_commands"] == ["git", "npm"]
-
-    @pytest.mark.asyncio
-    async def test_allowed_commands_invalid_json_defaults_empty(self, temp_dir):
-        service = make_service()
-        mock_session = make_mock_session()
-        config = {"allowed_commands": "not-json"}
-
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
-            await service.create_session("item-1", temp_dir, config=config)
-            kwargs = MockAS.call_args.kwargs
-        assert kwargs["allowed_commands"] == []
+    # NOTE: JSON-string parsing of allowed_commands / allowed_builtin_tools
+    # moved to db.get_agent_config in Phase 3 of REFACTOR_PLAN.md. This
+    # service expects config dicts to arrive with already-parsed Python
+    # types — the equivalent boundary tests live in
+    # test_database_service.py::TestGetAgentConfig.
 
     @pytest.mark.asyncio
     async def test_allowed_commands_list_passed_directly(self, temp_dir):
@@ -171,26 +155,15 @@ class TestCreateSession:
         assert kwargs["allowed_commands"] == ["git", "make"]
 
     @pytest.mark.asyncio
-    async def test_allowed_builtin_tools_parsed(self, temp_dir):
+    async def test_allowed_builtin_tools_list_passed_directly(self, temp_dir):
         service = make_service()
         mock_session = make_mock_session()
-        config = {"allowed_builtin_tools": '["WebSearch"]'}
+        config = {"allowed_builtin_tools": ["WebSearch"]}
 
         with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
             await service.create_session("item-1", temp_dir, config=config)
             kwargs = MockAS.call_args.kwargs
         assert kwargs["allowed_builtin_tools"] == ["WebSearch"]
-
-    @pytest.mark.asyncio
-    async def test_allowed_builtin_tools_invalid_json_defaults_empty(self, temp_dir):
-        service = make_service()
-        mock_session = make_mock_session()
-        config = {"allowed_builtin_tools": "{bad"}
-
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
-            await service.create_session("item-1", temp_dir, config=config)
-            kwargs = MockAS.call_args.kwargs
-        assert kwargs["allowed_builtin_tools"] == []
 
     @pytest.mark.asyncio
     async def test_bash_yolo_passed_to_session(self, temp_dir):

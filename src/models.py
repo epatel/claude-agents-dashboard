@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Any, Optional
 from datetime import datetime
+import json
 import uuid
 from .constants import DEFAULT_MODEL, DEFAULT_OLLAMA_BASE_URL, EPIC_COLORS
 
@@ -130,18 +131,49 @@ class TokenUsage(BaseModel):
 
 
 class AgentConfig(BaseModel):
+    """Agent configuration. The five list/dict fields below were previously
+    typed as `Optional[str]` holding JSON — Phase 3 of REFACTOR_PLAN.md
+    promoted them to real Python types. Validators tolerate JSON strings
+    on input (DB rows arrive as TEXT) so this model is safe to construct
+    from either an HTTP body (already parsed) or a SQLite row (raw JSON
+    strings)."""
+
     system_prompt: Optional[str] = ""
-    tools: Optional[str] = "[]"
+    tools: list[str] = Field(default_factory=list)
     model: str = DEFAULT_MODEL
     project_context: Optional[str] = ""
-    mcp_servers: Optional[str] = "{}"
+    mcp_servers: dict[str, Any] = Field(default_factory=dict)
     mcp_enabled: bool = False
-    plugins: Optional[str] = "[]"
-    allowed_commands: Optional[str] = "[]"
+    plugins: list[Any] = Field(default_factory=list)
+    allowed_commands: list[str] = Field(default_factory=list)
     bash_yolo: bool = False
-    allowed_builtin_tools: Optional[str] = "[]"
+    allowed_builtin_tools: list[str] = Field(default_factory=list)
     flame_enabled: bool = True
     flame_intensity_multiplier: float = 1.0
     ollama_enabled: bool = False
     ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
     wip_limit: int = 0
+
+    @field_validator("tools", "plugins", "allowed_commands", "allowed_builtin_tools", mode="before")
+    @classmethod
+    def _parse_json_list(cls, v: Any) -> Any:
+        if v is None or v == "":
+            return []
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return []
+        return v
+
+    @field_validator("mcp_servers", mode="before")
+    @classmethod
+    def _parse_json_dict(cls, v: Any) -> Any:
+        if v is None or v == "":
+            return {}
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+        return v

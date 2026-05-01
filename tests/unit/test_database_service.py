@@ -259,8 +259,8 @@ class TestSaveAllowedCommand:
     async def test_persists_to_db(self, db_service):
         await db_service.save_allowed_command("make")
         config = await db_service.get_agent_config()
-        commands = json.loads(config["allowed_commands"])
-        assert "make" in commands
+        # Phase 3: get_agent_config returns parsed lists, not JSON strings.
+        assert "make" in config["allowed_commands"]
 
 
 # ---------------------------------------------------------------------------
@@ -285,8 +285,54 @@ class TestSaveAllowedBuiltinTool:
     async def test_persists_to_db(self, db_service):
         await db_service.save_allowed_builtin_tool("WebFetch")
         config = await db_service.get_agent_config()
-        tools = json.loads(config["allowed_builtin_tools"])
-        assert "WebFetch" in tools
+        # Phase 3: get_agent_config returns parsed lists.
+        assert "WebFetch" in config["allowed_builtin_tools"]
+
+
+# ---------------------------------------------------------------------------
+# get_agent_config — Phase 3 JSON parsing
+# ---------------------------------------------------------------------------
+
+class TestGetAgentConfig:
+    async def test_list_fields_arrive_parsed(self, db_service):
+        async with db_service.db.connect() as conn:
+            await conn.execute(
+                "UPDATE agent_config SET allowed_commands = ?, allowed_builtin_tools = ?, "
+                "tools = ?, plugins = ? WHERE id = 1",
+                (
+                    '["git", "npm"]',
+                    '["WebSearch"]',
+                    '["a"]',
+                    '[{"path": "/p"}]',
+                ),
+            )
+            await conn.commit()
+        config = await db_service.get_agent_config()
+        assert config["allowed_commands"] == ["git", "npm"]
+        assert config["allowed_builtin_tools"] == ["WebSearch"]
+        assert config["tools"] == ["a"]
+        assert config["plugins"] == [{"path": "/p"}]
+
+    async def test_dict_fields_arrive_parsed(self, db_service):
+        async with db_service.db.connect() as conn:
+            await conn.execute(
+                "UPDATE agent_config SET mcp_servers = ? WHERE id = 1",
+                ('{"my_server": {"command": "x"}}',),
+            )
+            await conn.commit()
+        config = await db_service.get_agent_config()
+        assert config["mcp_servers"] == {"my_server": {"command": "x"}}
+
+    async def test_invalid_json_falls_back_to_default(self, db_service):
+        async with db_service.db.connect() as conn:
+            await conn.execute(
+                "UPDATE agent_config SET allowed_commands = ?, mcp_servers = ? WHERE id = 1",
+                ("not-json", "{bad"),
+            )
+            await conn.commit()
+        config = await db_service.get_agent_config()
+        assert config["allowed_commands"] == []
+        assert config["mcp_servers"] == {}
 
 
 # ---------------------------------------------------------------------------
