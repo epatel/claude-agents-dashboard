@@ -3,7 +3,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 883 tests
+./run-tests.sh              # Run all 983 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -27,15 +27,18 @@ tests/
 │   ├── test_allowed_commands.py       # Command filter + access MCP (26 tests)
 │   ├── test_annotation_prompt.py      # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py     # Annotation summary generation (2 tests)
-│   ├── test_app.py                    # FastAPI app and middleware (23 tests)
+│   ├── test_app.py                    # FastAPI app and middleware (26 tests)
 │   ├── test_create_todo_autostart.py  # Todo creation with auto-start (13 tests)
 │   ├── test_database_service.py       # DatabaseService CRUD (58 tests)
 │   ├── test_diff_mixing.py           # Diff isolation between items (6 tests)
+│   ├── test_epic_repository.py       # EpicRepository facade (9 tests)
 │   ├── test_epics.py                 # Epic CRUD, progress, assignment (19 tests)
 │   ├── test_file_routes.py           # File browser routes (66 tests)
 │   ├── test_git_operations.py        # Git diff, merge, commit (67 tests)
 │   ├── test_git_timeout.py           # Git timeout handling (5 tests)
 │   ├── test_git_worktree.py          # Worktree create/cleanup (15 tests)
+│   ├── test_item_repository.py       # ItemRepository facade + transitions (25 tests)
+│   ├── test_item_state.py            # ItemState FSM: states, events, encoding (27 tests)
 │   ├── test_main.py                  # Server startup, port discovery (34 tests)
 │   ├── test_manage.py                # Migration CLI commands (24 tests)
 │   ├── test_mcp_tool_servers.py      # MCP tool server tests (52 tests)
@@ -44,7 +47,7 @@ tests/
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
 │   ├── test_routes.py               # HTTP endpoint tests (85 tests)
 │   ├── test_session.py              # AgentSession SDK wrapper (69 tests)
-│   ├── test_session_service.py      # SessionService lifecycle (54 tests)
+│   ├── test_session_service.py      # SessionService lifecycle (51 tests)
 │   ├── test_websocket.py            # WebSocket rate limiting (45 tests)
 │   └── test_workflow_service.py     # WorkflowService transitions (74 tests)
 ├── integration/
@@ -62,17 +65,22 @@ Quick checks that core components work:
 - Requirements and config validation
 - Multi-repo workspace detection and sibling repo wiring
 
-### Unit Tests — Service Layer (227 tests)
-- **WorkflowService** (74 tests): State transitions, agent lifecycle, merge conflict resolution, dependency auto-start, callback factories, clarification context plumbing
-- **DatabaseService** (58 tests): CRUD operations, item dependencies, column whitelist validation, clarification context column
-- **SessionService** (54 tests): Session lifecycle, commit messages, plugin parsing, SDK wrapper
+### Unit Tests — Domain & Repository Layer (61 tests)
+- **ItemState FSM** (27 tests): The 13 reachable item states, events, transition rules, and `(column_name, status)` encoding round-trips
+- **ItemRepository** (25 tests): Read APIs, `transition()`, `update_fields()`, `move_item`, `ALLOWED_ITEM_COLUMNS` enforcement
+- **EpicRepository** (9 tests): CRUD facade and column whitelist enforcement (replaces the old `ALLOWED_EPIC_COLUMNS` whitelist in `database_service.py`)
+
+### Unit Tests — Service Layer (224 tests)
+- **WorkflowService** (74 tests): State transitions (driven through the `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, callback factories, clarification context plumbing
+- **DatabaseService** (58 tests): CRUD operations, item dependencies, clarification context column (column whitelisting moved into the repositories)
+- **SessionService** (51 tests): Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests): WebSocket broadcasting, tool formatting, event types
 
-### Unit Tests — Web Layer (219 tests)
+### Unit Tests — Web Layer (222 tests)
 - **Routes** (85 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval
 - **File Routes** (66 tests): Path validation, secret detection, .browserhidden, language mapping, directory scanning, file content
 - **WebSocket** (45 tests): Connection management, rate limiting, dead-connection cleanup
-- **App** (23 tests): FastAPI factory, middleware, CORS, security headers, lifespan
+- **App** (26 tests): FastAPI factory, middleware, CORS, security headers, lifespan
 
 ### Unit Tests — Git Layer (87 tests)
 - **Git Operations** (67 tests): Diff generation, merge, commit, path validation, timeout handling

@@ -42,7 +42,7 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 883 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 983 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -196,7 +196,7 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session), ~7,700 lines across 37 source files (excluding migrations)
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~8,000 lines across 40 source files (excluding migrations)
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~8,400 lines JS + ~3,700 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Opus 4.7 (default), Claude Sonnet 4.6, Claude Haiku 4.5, 7 built-in MCP tools; experimental Sonnet 4.6 + Advisor variant; optional Ollama provider (experimental)
 - **Database**: SQLite with 21 versioned migrations
@@ -537,7 +537,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 - `AUDIT.md` — Security audit report with 14 findings (9 of 9 actionable remediated), threat model, and remediation tracking
 - `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
 - `OLLAMA_PROVIDER.md` — Documentation for using Ollama as a local model provider via Claude Agent SDK
-- `TESTING.md` — Detailed testing guide with test inventory (883 unit/integration tests + E2E tests), writing guidelines, and 21 database migrations
+- `TESTING.md` — Detailed testing guide with test inventory (983 unit/integration tests + E2E tests), writing guidelines, and 21 database migrations
 
 ## License
 

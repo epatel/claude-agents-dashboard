@@ -1,21 +1,22 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-04-29
+**Date**: 2026-05-01
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 38 — Maintenance reassessment. Added **clarification context** capability via migration 021: the `ask_user` MCP tool now accepts an optional `context` field, plumbed through `WorkflowService` and `DatabaseService` and surfaced as a panel above the prompt in the Question dialog. The clarification row is created **before** the `item_updated` broadcast so the dialog has full context on first open. Python backend ~7,700 lines across 37 source files (excluding migrations). JavaScript frontend ~8,400 lines across 24 files. CSS ~3,700 lines across 5 files. **21 migrations**. **883 tests across 30 test files** (including conftest.py and a new smoke `test_multi_repo.py`).
+**Revision**: 39 — Maintenance reassessment. Captures the in-flight refactor (`REFACTOR_PLAN.md` Phases 1–3): a new **`ItemState` finite state machine** in `src/domain/item_state.py` is now the source of truth for the 13 reachable item states (encoded in DB as the existing `(column_name, status)` pair). `WorkflowService` routes start/pause/resume/cancel, clarify ask/answer, merge/conflict/complete, retry agent/merge through this FSM. New **`ItemRepository`** (`src/repositories/item_repository.py`) and **`EpicRepository`** (`src/repositories/epic_repository.py`) facade `DatabaseService`, own the column whitelists (`ALLOWED_ITEM_COLUMNS` was moved out of `database_service.py`; `ALLOWED_EPIC_COLUMNS` was deleted), and provide intent-named methods (`transition()`, `update_fields()`, `move_item`). Phase 3 promoted `AgentConfig`'s JSON-string fields (`tools`, `mcp_servers`, `plugins`, `allowed_commands`, `allowed_builtin_tools`) to real Python types. Python backend ~8,000 lines across 40 source files (excluding migrations). JavaScript frontend ~8,400 lines across 24 files. CSS ~3,700 lines across 5 files. **21 migrations**. **983 tests across 32 test files** (including conftest.py, plus new `test_item_state.py`, `test_item_repository.py`, `test_epic_repository.py`).
 
 ---
 
 ## Executive Summary
 
-Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend and 12 specialized dialog modules on the frontend. Since the previous assessment:
+Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend, a new domain/repository layer underneath them, and 12 specialized dialog modules on the frontend. Since the previous assessment:
 
-- **Migration 021 — Clarification context**: adds a nullable `context TEXT` column to the `clarifications` table. The `ask_user` MCP tool exposes an optional `context` parameter; agents pass relevant background and the Question dialog renders it as a panel above the prompt. Tests cover the field's plumbing through `mcp_tool_servers`, `database_service`, `workflow_service`, and `routes`. The clarification row is now stored **before** the `item_updated` broadcast so the dialog has full context on first open (regression fix).
-- **Multi-repo support hardening**: a new smoke test file `tests/smoke/test_multi_repo.py` (8 tests) validates sibling repo detection, repo path resolution, and workspace mode wiring.
+- **`ItemState` finite state machine (`src/domain/item_state.py`)**: the 13 reachable item states (BACKLOG, QUEUED, RUNNING, PAUSED, FAILED, CONFLICT, RESOLVING_CONFLICTS, CLARIFY, MERGE_BLOCKED, REVIEW, DONE, ARCHIVED, CANCELLED) and their transitions are now an explicit FSM. Storage encoding stays unchanged (`(column_name, status)` pair) via `from_columns` / `to_columns`. `WorkflowService` routes start/pause/resume/cancel, clarify ask/answer, merge/conflict/complete, retry agent/merge, and DnD-produced encodings through `transition(state, event)`. A startup state-encoding audit + stale-worktree cleanup uses the FSM to validate persisted state.
+- **Repository layer (`src/repositories/`)**: `ItemRepository` provides read APIs (`get_or_raise`, `list_running`, `list_in_state`) plus state-changing operations (`transition()`, `update_fields()`, `move_item`); it owns `ALLOWED_ITEM_COLUMNS`. `EpicRepository` provides the same shape for epics; the old `ALLOWED_EPIC_COLUMNS` whitelist was deleted from `database_service.py`. The repos are thin facades over `DatabaseService` for now.
+- **AgentConfig Phase 3**: `tools`, `mcp_servers`, `plugins`, `allowed_commands`, `allowed_builtin_tools` are real Python types in the Pydantic model; validators tolerate JSON strings on input so DB rows still load.
 
 Earlier capabilities still in place include **default model = Claude Opus 4.7** with Sonnet 4.6 selectable (migrations 018, 019), **multi-repo workspace support** (migration 020) with nullable `repo` column and `idx_items_repo` index, **annotation summary** (009), **epic grouping** (010), **item dependencies** (011), **auto-start pipelines** (012), **shortcuts bar** with **create_shortcut MCP tool**, **worktree file browsing**, **retry merge**, **bulk operations**, **animated flame background** (013) with intensity multiplier, **start_copy** (014), **has_file_changes detection** (015), **Ollama provider** (016) gated behind `--experimental`, and **WIP limit** (017) with queued auto-start.
 
-The test suite includes **883 automated tests across 30 test files** plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, Ollama provider configuration, multi-repo workspace mode, clarification context flow, and orchestrator lifecycle.
+The test suite includes **983 automated tests across 32 test files** plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, Ollama provider configuration, multi-repo workspace mode, clarification context flow, and orchestrator lifecycle.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -120,8 +121,11 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | 14 | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | ~1,360 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, has_file_changes detection, auto-start of dependent items, WIP limit queue management, `_multi_repo_session_kwargs` for multi-repo session wiring, and clarification context plumbing (stores row before broadcasting `item_updated`) |
-| `services/database_service.py` | ~525 | A | All DB operations extracted; parameterized queries throughout; item dependency management; `repo` column included in start-copy insert; clarification CRUD now persists/retrieves the optional `context` field |
+| `services/workflow_service.py` | ~1,330 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, has_file_changes detection, auto-start of dependent items, WIP limit queue management, `_multi_repo_session_kwargs` for multi-repo session wiring, and clarification context plumbing. All state transitions are now routed through the `ItemState` FSM via `ItemRepository.transition()` |
+| `services/database_service.py` | ~558 | A | All DB operations; parameterized queries throughout; item dependency management; `repo` column included in start-copy insert; clarification CRUD persists/retrieves the optional `context` field. Column whitelisting moved out into the repositories (`ALLOWED_ITEM_COLUMNS` lives in `item_repository.py`; the old `ALLOWED_EPIC_COLUMNS` is deleted) |
+| `domain/item_state.py` | 183 | A | New — explicit finite state machine over the 13 reachable item states with `Event` enum, `transition(state, event)`, and `from_columns`/`to_columns` translators that keep the existing two-string DB encoding unchanged |
+| `repositories/item_repository.py` | 188 | A | New — read-only + state-changing facade over `DatabaseService` for items; owns `ALLOWED_ITEM_COLUMNS`; provides `get_or_raise`, `list_running`, `list_in_state`, `transition()`, `update_fields()`, `move_item` |
+| `repositories/epic_repository.py` | 69 | A | New — facade for epic CRUD; owns the epic column whitelist |
 | `services/notification_service.py` | 118 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 140 | A | Git worktree and merge operations with proper error handling; repo path resolution helpers for multi-repo mode |
 | `services/session_service.py` | 285 | A | Session lifecycle, commit messages, plugin parsing, Ollama config; passes `workspace_root` and `sibling_repo_paths` for multi-repo agents |
@@ -134,14 +138,14 @@ graph TB
 | `manage.py` | 166 | A | Migration CLI (status, migrate, rollback, init) with argument parsing and DB path override |
 | `config.py` | 117 | A | Well-organized constants; timeouts, WS rate limiting, defaults, and file browser configuration |
 | `constants.py` | 37 | A | Centralized `AVAILABLE_MODELS` list (with experimental flag), `DEFAULT_MODEL` (Opus 4.7), `DEFAULT_OLLAMA_BASE_URL`, `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
-| `models.py` | 140 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants; `start_copy`, `has_file_changes`, `wip_limit`, `flame_intensity_multiplier`, `repo` fields |
+| `models.py` | 140 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants; `start_copy`, `has_file_changes`, `wip_limit`, `flame_intensity_multiplier`, `repo` fields. **Phase 3**: `AgentConfig.tools`, `mcp_servers`, `plugins`, `allowed_commands`, `allowed_builtin_tools` are now real Python types (`list`/`dict`) with validators that tolerate JSON strings on input from SQLite TEXT columns |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
 | `web/app.py` | 194 | A | Proper lifespan management, clean factory pattern, CORS middleware (localhost-only), security headers; `repos` arg switches the app to multi-repo mode |
 | `web/routes.py` | 1,503 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations; item detail page; Ollama model discovery; WIP limit config; multi-repo `_resolve_item_repo_path()` helper |
 | `web/file_routes.py` | 378 | A | File browser endpoints with path validation, secret hiding, .browserhidden support, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 187 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
 | `agent/orchestrator.py` | 127 | A | Clean facade pattern — delegates all operations to services; multi-repo aware via `repos` parameter; backward compatibility preserved |
-| `agent/session.py` | 731 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult`; Ollama env passthrough; `workspace_root` + `sibling_repo_paths` injected for multi-repo agents (read-only `add_dirs` + system prompt note) |
+| `agent/session.py` | 737 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult`; Ollama env passthrough; `workspace_root` + `sibling_repo_paths` injected for multi-repo agents (read-only `add_dirs` + system prompt note) |
 | `agent/clarification.py` | ~60 | A | Clean MCP tool definition; accepts optional `context` field passed through to the clarification row |
 | `agent/todo.py` | 165 | A | Clean MCP tool definition with epic and dependency support |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
@@ -359,18 +363,21 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 883 automated tests across 30 test files (including conftest.py) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 21 migrations.
+**Current state**: 983 automated tests across 32 test files (including conftest.py) via `./run-tests.sh`, plus 5 E2E tests via `./run-e2e-tests.sh`. Database has 21 migrations.
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
 | `tests/smoke/test_basic_functionality.py` | Smoke | 12 | Imports, DB basics, config |
 | `tests/smoke/test_multi_repo.py` | Smoke | 8 | Multi-repo workspace detection, sibling repo wiring |
-| `tests/unit/test_workflow_service.py` | Unit | 74 | State transitions, lifecycle, conflict resolution, auto-start, clarification context plumbing |
+| `tests/unit/test_item_state.py` | Unit | 27 | `ItemState` FSM: states, events, transitions, encoding round-trips |
+| `tests/unit/test_item_repository.py` | Unit | 25 | `ItemRepository` reads, `transition()`, `update_fields()`, `move_item`, column whitelist |
+| `tests/unit/test_epic_repository.py` | Unit | 9 | `EpicRepository` CRUD facade and column whitelist |
+| `tests/unit/test_workflow_service.py` | Unit | 74 | State transitions (via FSM), lifecycle, conflict resolution, auto-start, clarification context plumbing |
 | `tests/unit/test_routes.py` | Unit | 85 | HTTP endpoints for items, review, epics, config, stats, item detail, WIP limit, clarification context retrieval |
 | `tests/unit/test_git_operations.py` | Unit | 67 | Diff generation, merge, commit, path validation |
 | `tests/unit/test_file_routes.py` | Unit | 66 | File browser path validation, secret detection, .browserhidden |
 | `tests/unit/test_session.py` | Unit | 69 | AgentSession SDK wrapper, token extraction, events, Ollama provider |
-| `tests/unit/test_session_service.py` | Unit | 54 | SessionService lifecycle, commit messages, plugins, Ollama config |
+| `tests/unit/test_session_service.py` | Unit | 51 | SessionService lifecycle, commit messages, plugins, Ollama config |
 | `tests/unit/test_mcp_tool_servers.py` | Unit | 52 | MCP tool server creation, invocation, request flow, `ask_user` context field |
 | `tests/unit/test_database_service.py` | Unit | 58 | DatabaseService CRUD, dependencies, column whitelist, clarification context column |
 | `tests/unit/test_websocket.py` | Unit | 45 | WebSocket connection, rate limiting, cleanup |
@@ -378,7 +385,7 @@ stateDiagram-v2
 | `tests/unit/test_main.py` | Unit | 34 | Server startup, port discovery, git validation |
 | `tests/unit/test_allowed_commands.py` | Unit | 26 | Command filter, shell operators, YOLO mode |
 | `tests/unit/test_manage.py` | Unit | 24 | Migration CLI commands |
-| `tests/unit/test_app.py` | Unit | 23 | FastAPI factory, middleware, CORS, security headers |
+| `tests/unit/test_app.py` | Unit | 26 | FastAPI factory, middleware, CORS, security headers |
 | `tests/unit/test_epics.py` | Unit | 19 | Epic CRUD, progress, assignment, filtering |
 | `tests/unit/test_git_worktree.py` | Unit | 15 | Worktree create/cleanup, base branch tracking |
 | `tests/unit/test_path_validation.py` | Unit | 14 | Path traversal prevention |
@@ -471,6 +478,9 @@ graph LR
 43. **Flame intensity multiplier**: `flame_intensity_multiplier` field in agent_config allows fine-tuning the animated flame background intensity beyond the on/off toggle
 44. **Multi-repo workspace mode**: Migration 020 adds a nullable `repo` column on `items` (NULL = single-repo mode preserved). When `target_project` is a folder of sibling git repos, each item names one repo; the worktree is created inside that subrepo, `WorkflowService._multi_repo_session_kwargs` injects `workspace_root` + `sibling_repo_paths` into the session, `AgentSession` adds the siblings to `add_dirs` (read-only) and explains the layout in the system prompt, and `path_guard.py` is multi-repo aware to avoid false positives across siblings. The `idx_items_repo` index keeps repo-scoped queries cheap.
 45. **Clarification context**: Migration 021 adds a nullable `context TEXT` column to `clarifications`. The `ask_user` MCP tool exposes a matching optional `context` field; agents pass relevant background and the Question dialog renders it as a panel above the prompt. The clarification row is created **before** the `item_updated` WebSocket broadcast, so the dialog has full context on first open (closing a regression where context was missing on the initial event).
+46. **Explicit `ItemState` finite state machine** (`src/domain/item_state.py`): the 13 reachable item states and their transitions are now an enum-based FSM with a centralized `transition(state, event)` function. Storage encoding stays as the existing `(column_name, status)` pair via `from_columns`/`to_columns`, so no migration was needed. `WorkflowService` routes start/pause/resume/cancel, clarify ask/answer, merge/conflict/complete, retry agent/merge, and DnD-produced encodings through the FSM. Startup runs a state-encoding audit + stale-worktree cleanup using the same FSM. New tests cover the FSM directly (`test_item_state.py`, 27 tests).
+47. **Repository layer for items and epics** (`src/repositories/`): `ItemRepository` and `EpicRepository` are facade classes over `DatabaseService` that own column whitelists and expose intent-named methods (`get_or_raise`, `list_running`, `list_in_state`, `transition()`, `update_fields()`, `move_item`). The old `ALLOWED_ITEM_COLUMNS` was moved here and `ALLOWED_EPIC_COLUMNS` was deleted entirely. New tests cover both repos (`test_item_repository.py` 25 tests, `test_epic_repository.py` 9 tests).
+48. **Typed `AgentConfig`** (Phase 3 of REFACTOR_PLAN): the `tools`, `mcp_servers`, `plugins`, `allowed_commands`, and `allowed_builtin_tools` fields are now real Python types (`list`/`dict`) on the Pydantic model. Pre-validators tolerate JSON strings on input so DB rows stored as TEXT still load through the model unchanged.
 
 ---
 
@@ -478,13 +488,13 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/, excl. migrations) | 37 | ~7,700 |
+| Python backend (src/, excl. migrations) | 40 | ~8,000 |
 | Database migrations | 21 | ~785 |
 | JavaScript frontend | 24 | ~8,400 |
 | CSS styles | 5 | ~3,700 |
 | HTML templates (incl. partials) | 3 | ~895 |
-| Tests | 30 | ~11,300 |
-| **Grand total** | **120** | **~32,780** |
+| Tests | 32 | ~12,000 |
+| **Grand total** | **125** | **~33,780** |
 
 ---
 

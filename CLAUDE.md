@@ -8,7 +8,7 @@ Standalone scrum board that orchestrates Claude agents working on a **separate t
 ./run.sh /path/to/target-project    # Single-repo mode — creates venv, installs deps, starts server (Python 3.12+)
 ./run.sh /path/to/workspace-folder  # Multi-repo mode — workspace must contain ≥1 sibling git repos
 ./run.sh /path/to/project --experimental  # Enable experimental features (Ollama provider, Sonnet 4.6 + Advisor)
-./run-tests.sh                      # All tests (883)
+./run-tests.sh                      # All tests (983)
 ./run-tests.sh tests/smoke/         # Smoke tests only
 ./run-tests.sh -k "test_cancel"     # Filter by name
 ```
@@ -18,11 +18,17 @@ Server binds to `127.0.0.1:8000` (auto-increments if busy, up to 8019). E2E test
 ## Architecture
 
 **Backend**: FastAPI + aiosqlite. `AgentOrchestrator` is a thin facade delegating to 5 services:
-- `WorkflowService` — agent lifecycle, state transitions, merge conflict auto-resolution, dependency auto-start, WIP limit queueing, multi-repo session kwargs
-- `DatabaseService` — all DB operations (parameterized, with column whitelists)
+- `WorkflowService` — agent lifecycle, state transitions (driven by `ItemState` FSM in `src/domain/item_state.py`), merge conflict auto-resolution, dependency auto-start, WIP limit queueing, multi-repo session kwargs
+- `DatabaseService` — all DB operations (parameterized; column whitelists now live in the repositories)
 - `NotificationService` — WebSocket broadcasting + tool formatting
 - `GitService` — worktree management, merge operations, repo path resolution
 - `SessionService` — Claude SDK session lifecycle, commit messages, plugin parsing, Ollama config
+
+**Domain & repositories** (refactor in flight, see `REFACTOR_PLAN.md`):
+- `src/domain/item_state.py` — explicit `ItemState` finite state machine over the 13 reachable states (encoded in DB as the `(column_name, status)` pair). All workflow transitions go through `transition(state, event)`; storage encoding stays unchanged via `from_columns` / `to_columns`.
+- `src/repositories/item_repository.py` — facade over `DatabaseService` for items; owns `ALLOWED_ITEM_COLUMNS` and exposes intent-named operations (`get_or_raise`, `transition()`, `update_fields()`, `move_item`).
+- `src/repositories/epic_repository.py` — equivalent facade for epics; the old `ALLOWED_EPIC_COLUMNS` whitelist now lives here.
+- `src/models.py::AgentConfig` — JSON-string fields (`tools`, `mcp_servers`, `plugins`, `allowed_commands`, `allowed_builtin_tools`) were promoted to real Python types (Phase 3); validators tolerate raw JSON strings on input so DB rows still load.
 
 **Frontend**: Vanilla JS, no build step. Jinja2 server-renders initial board (`base.html`, `board.html`, `partials/card.html`); JS handles updates via WebSocket + fetch. `dialogs.js` coordinates 12 specialized dialog modules.
 
@@ -68,7 +74,7 @@ Server binds to `127.0.0.1:8000` (auto-increments if busy, up to 8019). E2E test
 
 1. **Backend**: models.py -> migration in `src/migrations/versions/` -> service logic (workflow/database/git/session) -> routes.py endpoint
 2. **Frontend**: templates + dialog module + WebSocket event handling in `app.js` + broadcast from `NotificationService`
-3. **DB migration**: copy `000_template.py.example`, implement `up()`/`down()`, test with `python -m src.manage migrate`. Whitelist any new `items`/`epics` columns in `database_service.py` (`ALLOWED_ITEM_COLUMNS` / `ALLOWED_EPIC_COLUMNS`).
+3. **DB migration**: copy `000_template.py.example`, implement `up()`/`down()`, test with `python -m src.manage migrate`. Whitelist any new `items` columns in `repositories/item_repository.py` (`ALLOWED_ITEM_COLUMNS`) and any new `epics` columns in `repositories/epic_repository.py`.
 4. **Card rendering**: keep JS card builder in `board.js` and the Jinja2 `partials/card.html` partial in sync.
 
 ### Debugging

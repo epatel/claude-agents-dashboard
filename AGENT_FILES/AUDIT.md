@@ -1,7 +1,7 @@
 # Security Audit Report
 
 **Date**: 2026-04-10
-**Last updated**: 2026-04-29 (rev 8 — re-confirmed against migration 021 / clarification context field; no new findings. The `context TEXT` column on `clarifications` carries the same trust level as the existing `prompt` column — agent-supplied free-form text rendered through the standard Jinja2/marked.js pipeline. No new attack surface.)
+**Last updated**: 2026-05-01 (rev 9 — re-confirmed against the in-flight `ItemState` FSM (`src/domain/item_state.py`) and the new item/epic repository layer (`src/repositories/`). No new findings. Finding #5 (dynamic SQL column names) remains remediated: the `ALLOWED_ITEM_COLUMNS` whitelist is now enforced inside `ItemRepository`, and `ALLOWED_EPIC_COLUMNS` is enforced inside `EpicRepository` (the old whitelist in `database_service.py` was removed since callers now go through the repos). The `AgentConfig` Phase 3 refactor (real Python types for `tools`/`mcp_servers`/`plugins`/`allowed_commands`/`allowed_builtin_tools`, with JSON-string-tolerant validators) is a defense-in-depth improvement: parsing happens through Pydantic instead of ad-hoc `json.loads` at call sites.)
 **Scope**: Full codebase review of Claude Agents Dashboard
 **Threat model**: Localhost single-user developer tool. The server binds to `127.0.0.1` only, is operated by the local developer, and is not designed for network exposure or multi-user access. In multi-repo workspace mode the same threat model applies — agents work in a worktree inside one chosen sibling repo and have read-only access to the other siblings via `add_dirs`, with the path guard hook (`path_guard.py`) preventing writes outside the assigned worktree.
 
@@ -66,7 +66,7 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 - **Status**: ✅ **REMEDIATED**
 - **File**: `src/services/database_service.py`
 - **Original issue**: `update_item()` built SQL with f-string column names from dict keys without validation.
-- **Fix implemented**: `ALLOWED_ITEM_COLUMNS` whitelist is defined at module level containing all valid columns (title, description, column_name, status, position, branch_name, worktree_path, session_id, model, base_branch, base_commit, done_at, epic_id, merge_commit, auto_start, commit_message, start_copy, has_file_changes). `update_item()` validates `set(kwargs) - ALLOWED_ITEM_COLUMNS` and raises `ValueError` for invalid keys. A similar `ALLOWED_EPIC_COLUMNS` whitelist is enforced for epic updates.
+- **Fix implemented**: An `ALLOWED_ITEM_COLUMNS` whitelist is enforced on every item write. As of rev 9 the whitelist lives in `repositories/item_repository.py` (moved out of `database_service.py`) and is checked in `update_fields()` / `transition()` before any SQL is built — invalid keys raise `ValueError`. The equivalent epic whitelist is enforced in `repositories/epic_repository.py` (the old `ALLOWED_EPIC_COLUMNS` constant in `database_service.py` was deleted because all writes now route through the repo).
 
 ### 6. No CORS Middleware
 
