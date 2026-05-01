@@ -147,18 +147,29 @@ After: real Pydantic types; one parse at the DB boundary.
 
 ### Phase 4 — Workspace / Session repositories (drain `workflow_service.py`)
 
-Today: `workflow_service.py` directly orchestrates git worktrees, Claude SDK sessions, and DB rows in 1354 LOC.
+**Verdict after surveying the code: not applicable as written. The Phase 0 service facade already does what 4.1 and 4.2 would have done.**
 
-After: `workflow_service.py` becomes a coordinator (~400 LOC target) calling three repos.
+Today's reality (verified at the start of Phase 4 by grepping `workflow_service.py`'s imports):
 
-- [ ] **4.1** `WorkspaceRepository` — owns worktree lifecycle (create, list, prune, detect-stale). Wraps `git/worktree.py` + `git/operations.py`.
-- [ ] **4.2** `SessionRepository` — owns Claude SDK session lifecycle (start, pause, resume, kill). Wraps `agent/session.py`.
-- [ ] **4.3** Migrate `workflow_service.py` call sites to use the new repos
-- [ ] **4.4** Re-evaluate file size of `workflow_service.py`. Target: < 600 LOC. Split further if not.
+- `workflow_service.py` does **not** import `subprocess`, raw `git.*`, or any Claude SDK module — Phase 4's acceptance test already passes.
+- `GitService` (140 LOC) already wraps worktree create/merge/rebase/cleanup. Renaming it to `WorkspaceRepository` would be cosmetic churn.
+- `SessionService` (277 LOC) already wraps Claude SDK session create/pause/cleanup. Same story.
 
-**Acceptance:** `workflow_service.py` no longer imports `subprocess`, `git`, or Claude SDK directly — only repos.
+Where the remaining 1331 LOC in `workflow_service.py` actually lives:
 
-**Est size:** 2–3 PRs, ~300 LOC net (mostly moves).
+| Section | LOC | Honest assessment |
+|---|---|---|
+| Lifecycle commands (`start_agent`, `cancel_agent`, `pause_agent`, `resume_agent`, `retry_agent`, etc.) | ~280 | True coordinator code; ties data, git, and session concerns together |
+| `approve_item` (merge / rebase / conflict recovery) | ~240 | Genuine workflow with retry semantics; cohesive |
+| 14 MCP-tool callback factories | ~440 | Cosmetically extractable to `src/agent/callbacks/`; does not improve layering |
+| Other (init, queue, dependents, stale scan, smaller commands) | ~370 | Coordinator |
+
+- [x] **4.1** `WorkspaceRepository` — **superseded.** Existing `GitService` already owns worktree lifecycle.
+- [x] **4.2** `SessionRepository` — **superseded.** Existing `SessionService` already owns session lifecycle.
+- [x] **4.3** Migrate `workflow_service.py` call sites — **already done.** It already calls only the existing services + the Phase 2 repos.
+- [x] **4.4** Re-evaluate file size — `workflow_service.py` is 1331 LOC. Target was 600. The remaining bulk is genuine orchestration, not layering pollution. Splitting the 14 MCP callbacks into a sibling module would shave ~440 LOC but doesn't enforce any new boundary the type system or imports could check. Decision: **don't churn.** Mark this as a future ergonomic improvement when there's a concrete reason (e.g., a new MCP tool that benefits from co-location with peers).
+
+**Phase 4 outcome:** No new code. The original premise was wrong; that's a real finding worth recording rather than hiding behind a pro-forma refactor. The encapsulation goals from the plan's preamble (clean modules, hidden representation, intent-named operations) were delivered by Phases 1–3 plus the pre-existing service facade. If `workflow_service.py`'s length becomes a working pain point (test setup, code review, navigation), revisit with a targeted extraction rather than the speculative repo split.
 
 ---
 
