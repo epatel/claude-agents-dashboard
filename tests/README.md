@@ -100,12 +100,14 @@ Tests the complete agent workflow end-to-end:
 - ✅ Concurrency (3 parallel agents), rapid cancel/restart, shutdown
 
 ### 9. E2E Tests
-**Directory: `tests/e2e/`** — Real agent sessions against a test project:
-- ✅ **Append README**: Agent creates/modifies a file end-to-end
-- ✅ **Clarification**: Agent asks a question, receives user response, continues
-- ✅ **Merge conflict**: Agent handles merge conflict auto-resolution
-- ✅ **Allowed tools**: Agent requests and uses optional built-in tools
-- ✅ **Mini-MCP**: External MCP server integration via stdio
+**Directory: `tests/e2e/`** — 7 `.mjs` test files. The first five exercise real agent sessions; the last two are pure-HTTP (no Claude session, no spend):
+- ✅ **Append README** (`test_append_readme.mjs`): Agent creates/modifies a file end-to-end
+- ✅ **Clarification** (`test_clarification.mjs`): Agent asks a question, receives user response, continues
+- ✅ **Merge conflict** (`test_merge_conflict.mjs`): Agent handles merge conflict auto-resolution
+- ✅ **Allowed tools** (`test_allowed_tools.mjs`): Agent requests and uses optional built-in tools
+- ✅ **Mini-MCP** (`test_mini_mcp.mjs`): External MCP server integration via stdio
+- ✅ **DnD canonicalization** (`test_state_machine_dnd.mjs`, 5 cases): Drag-and-drop produces SM-canonical `(column, status)` encoding (e.g. todo→doing yields `("doing", null)`, never the off-canon family that crashed Start before Phase 2's `move_to_column` normalization); reorder preserves status; move-to-done clears `worktree_path` and stamps `done_at`. Pure HTTP — no agent spawn.
+- ✅ **AgentConfig round-trip** (`test_config_roundtrip.mjs`, 4 steps): Phase 3 boundary contract — `GET /api/config` returns typed lists/dicts (never JSON strings); arrays/objects round-trip across SQLite TEXT storage; legacy JSON-string input on `PUT` is parsed by the `field_validator(mode="before")`. Pure HTTP.
 
 Run with: `./run-e2e-tests.sh` (supports `--verbose` flag for colored output)
 
@@ -119,7 +121,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 883 tests
+# Run all 983 tests
 ./run-tests.sh
 
 # Run specific test categories
