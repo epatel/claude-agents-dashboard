@@ -193,13 +193,15 @@ End-to-end tests live in `tests/e2e/` as `.mjs` files and run via `./run-e2e-tes
 ./run-e2e-tests.sh --verbose # Verbose with colored output
 ```
 
-| Test File | Focus |
-|-----------|-------|
-| `test_append_readme.mjs` | Agent creates/modifies a file end-to-end |
-| `test_clarification.mjs` | Agent asks question, user responds, agent continues |
-| `test_merge_conflict.mjs` | Merge conflict detection and auto-resolution |
-| `test_allowed_tools.mjs` | Optional built-in tool access request flow |
-| `test_mini_mcp.mjs` | External MCP server integration via stdio |
-| `helpers.mjs` | Shared test utilities |
+| Test File | Focus | Spawns agent? |
+|-----------|-------|---------------|
+| `test_append_readme.mjs` | Agent creates/modifies a file end-to-end | yes |
+| `test_clarification.mjs` | Agent asks question, user responds, agent continues | yes |
+| `test_merge_conflict.mjs` | Merge conflict detection and auto-resolution | yes |
+| `test_allowed_tools.mjs` | Optional built-in tool access request flow | yes |
+| `test_mini_mcp.mjs` | External MCP server integration via stdio | yes |
+| `test_state_machine_dnd.mjs` | DnD produces SM-canonical `(column, status)` encoding (5 cases: todo→doing yields `("doing", null)`; cancelled-in-todo→doing also yields `("doing", null)`; post-DnD encoding is SM-readable; move-to-done clears `worktree_path` and stamps `done_at`; reorder preserves status) | no (pure HTTP) |
+| `test_config_roundtrip.mjs` | Phase 3 `AgentConfig` boundary contract — GET returns typed lists/dicts; PUT arrays/objects round-trip across SQLite TEXT; legacy JSON-string input is parsed by the pre-validator (4 steps) | no (pure HTTP) |
+| `helpers.mjs` | Shared test utilities (`startServer`, `stopServer`, `page.evaluate` for `fetch`) | — |
 
-E2E tests run real agent sessions against a temporary test project and require a running server instance.
+The first five tests run real agent sessions against a temporary test project and consume Claude tokens. The last two are pure-HTTP regression coverage — they exercise the SM/DnD encoding and the config boundary without spawning an agent, so they're free to run.
