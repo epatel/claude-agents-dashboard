@@ -399,6 +399,49 @@ async def archive_items_by_date(request: Request, body: ArchiveByDateRequest):
     return {"archived": len(item_ids)}
 
 
+class ArchiveByEpicRequest(BaseModel):
+    epic_id: str
+
+
+@router.post("/api/items/archive-by-epic")
+async def archive_items_by_epic(request: Request, body: ArchiveByEpicRequest):
+    """Archive all done items belonging to an epic.
+
+    Intended to be invoked from the sidebar's epic card when the epic has
+    reached 100% completion (all items done). Items in 'todo', 'doing',
+    'questions', or 'review' are left untouched so an in-flight task is never
+    yanked away mid-flight.
+    """
+    db = request.app.state.db
+    async with db.connect() as conn:
+        cursor = await conn.execute(
+            "SELECT id FROM items WHERE epic_id = ? AND column_name = 'done'",
+            (body.epic_id,),
+        )
+        rows = await cursor.fetchall()
+        item_ids = [row[0] for row in rows]
+
+        if not item_ids:
+            return {"archived": 0}
+
+        placeholders = ",".join("?" for _ in item_ids)
+        await conn.execute(
+            f"UPDATE items SET column_name = 'archive', updated_at = datetime('now') WHERE id IN ({placeholders})",
+            item_ids,
+        )
+        await conn.commit()
+
+    # Broadcast move for each archived item so the UI updates
+    async with db.connect() as conn:
+        for item_id in item_ids:
+            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            item = dict(await cursor.fetchone())
+            await request.app.state.ws_manager.broadcast("item_moved", item)
+
+    _invalidate_stats_cache()
+    return {"archived": len(item_ids)}
+
+
 class DeleteByDateRequest(BaseModel):
     date: str  # YYYY-MM-DD
     column_name: str  # e.g. 'archive'
