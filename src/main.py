@@ -128,7 +128,7 @@ def main():
                         help="Enable experimental features (e.g. Ollama provider, Sonnet + Advisor model)")
     parser.add_argument("--ui-map", action="store_true", default=False,
                         help="Enable PROJECT_MAP UI overlays (data-map-name discovery + spacing visualizer). "
-                             "See PROJECT_MAP.md.")
+                             "See AGENT_FILES/PROJECT_MAP.md.")
     args = parser.parse_args()
 
     target_project = Path(args.target).resolve()
@@ -200,7 +200,7 @@ def main():
     if args.experimental:
         print(f"🧪 Experimental features enabled")
     if args.ui_map:
-        print(f"🗺  UI map overlays enabled (PROJECT_MAP.md)")
+        print(f"🗺  UI map overlays enabled (AGENT_FILES/PROJECT_MAP.md)")
 
     import logging
     import uvicorn

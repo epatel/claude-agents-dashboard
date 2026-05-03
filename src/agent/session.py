@@ -203,8 +203,8 @@ class AgentSession:
         # context window and overwhelm small local models.
         is_ollama = bool(self.ollama_env)
         if self.mcp_enabled and self.mcp_servers and not is_ollama:
-            # Phase 3 of REFACTOR_PLAN.md: mcp_servers arrives as a parsed
-            # dict; tolerate a JSON string for legacy callers.
+            # mcp_servers arrives as a parsed dict; tolerate a JSON
+            # string for legacy callers.
             agent_mcp_servers = self.mcp_servers
             if isinstance(agent_mcp_servers, str):
                 try:

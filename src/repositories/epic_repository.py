@@ -1,8 +1,8 @@
 """Repository for epics.
 
-Phase 2.6 of REFACTOR_PLAN.md. Mirrors ItemRepository but simpler —
-epics have no state machine, just CRUD with a small column allowlist
-that lives here at the boundary instead of in DatabaseService.
+Mirrors ItemRepository but simpler — epics have no state machine,
+just CRUD with a small column allowlist that lives here at the
+boundary instead of in DatabaseService.
 
 Returns plain dicts to match existing call sites; Pydantic conversion
 is a separate concern.

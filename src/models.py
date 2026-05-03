@@ -132,11 +132,10 @@ class TokenUsage(BaseModel):
 
 class AgentConfig(BaseModel):
     """Agent configuration. The five list/dict fields below were previously
-    typed as `Optional[str]` holding JSON — Phase 3 of REFACTOR_PLAN.md
-    promoted them to real Python types. Validators tolerate JSON strings
-    on input (DB rows arrive as TEXT) so this model is safe to construct
-    from either an HTTP body (already parsed) or a SQLite row (raw JSON
-    strings)."""
+    typed as `Optional[str]` holding JSON — they were promoted to real
+    Python types. Validators tolerate JSON strings on input (DB rows
+    arrive as TEXT) so this model is safe to construct from either an
+    HTTP body (already parsed) or a SQLite row (raw JSON strings)."""
 
     system_prompt: Optional[str] = ""
     tools: list[str] = Field(default_factory=list)

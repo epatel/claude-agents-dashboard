@@ -1,8 +1,7 @@
 """Database service: multi-table SQL helper for the dashboard.
 
-After Phase 2 (REFACTOR_PLAN.md) the items and epics writes go through
-`src/repositories/`. This module is *not* deprecated — it remains the
-home for:
+Items and epics writes go through `src/repositories/`. This module is
+*not* deprecated — it remains the home for:
 
 - SQL primitives used by the item and epic repositories (the repos call
   through here for the actual database access; field validation lives
@@ -149,8 +148,8 @@ class DatabaseService:
 
     async def get_agent_config(self) -> Dict[str, Any]:
         """Get the agent configuration with JSON-text fields decoded to
-        Python types. Phase 3 of REFACTOR_PLAN.md: callers no longer need
-        to `json.loads(...)` the list/dict fields themselves."""
+        Python types. Callers no longer need to `json.loads(...)` the
+        list/dict fields themselves."""
         async with self.db.connect() as conn:
             cursor = await conn.execute("SELECT * FROM agent_config WHERE id = 1")
             row = await cursor.fetchone()
