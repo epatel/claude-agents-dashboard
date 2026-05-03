@@ -9,9 +9,11 @@ const AnnotationCanvas = {
         Dialogs._annotateTarget = null;
         DialogCore.open('annotate-dialog');
 
-        // Focus canvas after a brief delay to ensure dialog is fully open
+        // Focus the hidden paste shim after the dialog is fully open so that
+        // Cmd/Ctrl+V is dispatched against an editable target — this prevents
+        // Safari/Chrome on macOS from showing the "Paste" permission overlay.
         setTimeout(() => {
-            canvas.focus();
+            Annotate.focusPasteTarget();
         }, 100);
     },
 

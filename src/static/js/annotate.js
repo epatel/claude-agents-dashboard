@@ -31,12 +31,70 @@ const Annotate = {
         this.drawOnImage = false;
         const drawOnImageCb = document.getElementById('annotate-draw-on-image');
         if (drawOnImageCb) drawOnImageCb.checked = false;
+        this._ensurePasteShim();
         this._setupEvents();
         this.render();
+        // Move focus to the paste shim so Cmd/Ctrl+V is dispatched against an
+        // editable target — that suppresses Safari/Chrome's "Paste" permission
+        // overlay that otherwise appears over the canvas on macOS.
+        this.focusPasteTarget();
 
         // Enable debugging by default to help troubleshoot paste issues
         window.ANNOTATE_DEBUG = true;
         if (window.ANNOTATE_DEBUG) console.log('Annotate canvas initialized, debugging enabled');
+    },
+
+    // Hidden contenteditable element that owns keyboard focus while the
+    // annotate dialog is open. Browsers only fire paste events silently when
+    // the target is editable; an unfocused or non-editable focus target
+    // (a <canvas>) triggers the macOS "Paste" permission button overlay.
+    _ensurePasteShim() {
+        if (this._pasteShim && document.contains(this._pasteShim)) return;
+        const wrap = this.canvas.closest('.annotate-canvas-wrap') || this.canvas.parentElement;
+        if (!wrap) return;
+        wrap.style.position = wrap.style.position || 'relative';
+        const shim = document.createElement('div');
+        shim.id = 'annotate-paste-shim';
+        shim.contentEditable = 'true';
+        shim.setAttribute('aria-hidden', 'true');
+        shim.setAttribute('spellcheck', 'false');
+        shim.style.cssText = [
+            'position:absolute',
+            'left:0', 'top:0',
+            'width:1px', 'height:1px',
+            'opacity:0',
+            'pointer-events:none',
+            'outline:none',
+            'overflow:hidden',
+            'white-space:nowrap',
+            'caret-color:transparent',
+            'user-select:none',
+            '-webkit-user-select:none',
+        ].join(';');
+        wrap.appendChild(shim);
+
+        // Delete/Backspace removes selected images/annotations.
+        shim.addEventListener('keydown', (e) => {
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                this._deleteSelected && this._deleteSelected();
+                e.preventDefault();
+            }
+        });
+        // Stop the contenteditable from accumulating any pasted/typed content.
+        const sweep = () => { if (shim.firstChild) shim.textContent = ''; };
+        shim.addEventListener('input', sweep);
+        shim.addEventListener('paste', () => setTimeout(sweep, 0));
+        this._pasteShim = shim;
+    },
+
+    // Public: focus the shim so a subsequent Cmd/Ctrl+V is treated as a
+    // regular paste on an editable element (no permission overlay).
+    focusPasteTarget() {
+        if (!this._pasteShim) this._ensurePasteShim();
+        if (this._pasteShim) {
+            this._pasteShim.textContent = '';
+            try { this._pasteShim.focus({ preventScroll: true }); } catch (_) { this._pasteShim.focus(); }
+        }
     },
 
     clear() {
@@ -53,6 +111,11 @@ const Annotate = {
             document.removeEventListener('paste', this._pasteHandler);
             this._pasteHandler = null;
         }
+        // Remove the paste shim (recreated on next init).
+        if (this._pasteShim && this._pasteShim.parentNode) {
+            this._pasteShim.parentNode.removeChild(this._pasteShim);
+        }
+        this._pasteShim = null;
         this._eventsAttached = false;
     },
 
@@ -118,8 +181,9 @@ const Annotate = {
             // Fall back to instructing user to use Ctrl+V
             this._showPasteMessage('Click here and press Ctrl+V (or Cmd+V) to paste image');
 
-            // Focus the canvas to receive keyboard events
-            this.canvas.focus();
+            // Focus the editable paste shim so the next Cmd/Ctrl+V is treated
+            // as a regular paste (no permission overlay).
+            this.focusPasteTarget();
             return false;
         }
 
@@ -236,9 +300,14 @@ const Annotate = {
             }
         });
 
-        // Focus canvas when clicked to enable keyboard shortcuts
+        // Focus the hidden paste shim (not the canvas) so Cmd/Ctrl+V targets
+        // an editable element and the browser does NOT show the "Paste"
+        // permission button overlay over the canvas.
+        c.addEventListener('mousedown', () => {
+            if (!this._activeTextEditor) this.focusPasteTarget();
+        });
         c.addEventListener('click', () => {
-            if (!this._activeTextEditor) c.focus();
+            if (!this._activeTextEditor) this.focusPasteTarget();
         });
     },
 
@@ -387,9 +456,11 @@ const Annotate = {
         this._startX = p.x;
         this._startY = p.y;
 
-        // Don't focus canvas when about to open text editor (it steals textarea focus)
+        // Don't focus paste shim when about to open text editor (it steals textarea focus).
+        // Use the editable shim — not the canvas — so Cmd/Ctrl+V doesn't trigger
+        // the browser's "Paste" permission overlay over the canvas.
         if (this.tool !== 'text') {
-            this.canvas.focus();
+            this.focusPasteTarget();
         }
 
         if (this.tool === 'select') {
@@ -716,7 +787,9 @@ const Annotate = {
         // Cleanup
         textarea.remove();
         this._activeTextEditor = null;
-        this.canvas.focus();
+        // Return focus to the paste shim (not canvas) to keep Cmd/Ctrl+V working
+        // without showing the browser's "Paste" permission overlay.
+        this.focusPasteTarget();
     },
 
     // --- Hit testing ---
