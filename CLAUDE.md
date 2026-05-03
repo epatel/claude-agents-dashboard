@@ -28,7 +28,7 @@ Server binds to `127.0.0.1:8000` (auto-increments if busy, up to 8019). E2E test
 
 **Agent runtime** (`src/agent/`): the Claude SDK integration plus built-in MCP tool servers and PreToolUse hooks. One file per concern — MCP tools: `clarification.py` (ask_user), `todo.py` (create_todo / create_epic / delete_todo), `board_view.py`, `commit_message.py`, `command_access.py`, `tool_access.py`, `shortcut.py`. Hooks: `command_filter.py`, `tool_filter.py`, `path_guard.py`. Plus `session.py` (system prompt + tool wiring) and `orchestrator.py` (the public facade).
 
-**Domain & repositories** (refactor in flight, see `REFACTOR_PLAN.md`):
+**Domain & repositories**:
 - `src/domain/item_state.py` — explicit `ItemState` finite state machine over the 13 reachable states (encoded in DB as the `(column_name, status)` pair). All workflow transitions go through `transition(state, event)`; storage encoding stays unchanged via `from_columns` / `to_columns`.
 - `src/repositories/item_repository.py` — facade over `DatabaseService` for items; owns `_WRITABLE_ITEM_COLUMNS` and exposes intent-named operations (`get_or_raise`, `transition()`, `update_fields()`, `move_item`).
 - `src/repositories/epic_repository.py` — equivalent facade for epics; the `_WRITABLE_EPIC_COLUMNS` whitelist lives here.
@@ -42,7 +42,7 @@ Server binds to `127.0.0.1:8000` (auto-increments if busy, up to 8019). E2E test
 
 **Tests** (`tests/`): split into `unit/` (Python unit, plus `unit/migrations/` for migration tests), `integration/` (orchestrator lifecycle), `smoke/` (basic functionality + multi-repo), and `e2e/` (Node `.mjs` Playwright/HTTP scripts driven by `run-e2e-tests.sh`). Total: 983 tests.
 
-**Naming reference**: `PROJECT_MAP.md` defines a shared shorthand vocabulary (`flow.agent-start`, `flow.merge`, `flow.command-gate`, …) — use these names in conversation; both sides resolve them to the same code paths.
+**Naming reference**: `AGENT_FILES/PROJECT_MAP.md` defines a shared shorthand vocabulary (`flow.agent-start`, `flow.merge`, `flow.command-gate`, …) — use these names in conversation; both sides resolve them to the same code paths.
 
 ### Key flows
 

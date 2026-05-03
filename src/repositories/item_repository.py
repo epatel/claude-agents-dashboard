@@ -1,14 +1,12 @@
 """Read-only repository for items.
 
-Phase 2.1 of REFACTOR_PLAN.md. The goal of this class is to give callers
-intent-named methods like `get_or_raise`, `list_running`, `list_in_state`
-instead of column-string queries scattered across services. The store
-implementation still lives in DatabaseService for now — this is a thin
-facade. Phase 2.2 adds state-changing methods; Phase 2.5 deletes the
-ALLOWED_ITEM_COLUMNS whitelist that callers no longer need.
+The goal of this class is to give callers intent-named methods like
+`get_or_raise`, `list_running`, `list_in_state` instead of column-string
+queries scattered across services. The store implementation still lives
+in DatabaseService for now — this is a thin facade.
 
 Items are returned as plain dicts to match the existing call sites.
-Pydantic conversion is a separate concern (Phase 3 / typed AgentConfig).
+Pydantic conversion is a separate concern (typed AgentConfig).
 """
 
 from __future__ import annotations

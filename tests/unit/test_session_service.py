@@ -138,10 +138,9 @@ class TestCreateSession:
         assert on_message is custom_cb
 
     # NOTE: JSON-string parsing of allowed_commands / allowed_builtin_tools
-    # moved to db.get_agent_config in Phase 3 of REFACTOR_PLAN.md. This
-    # service expects config dicts to arrive with already-parsed Python
-    # types — the equivalent boundary tests live in
-    # test_database_service.py::TestGetAgentConfig.
+    # is handled by db.get_agent_config. This service expects config dicts
+    # to arrive with already-parsed Python types — the equivalent boundary
+    # tests live in test_database_service.py::TestGetAgentConfig.
 
     @pytest.mark.asyncio
     async def test_allowed_commands_list_passed_directly(self, temp_dir):

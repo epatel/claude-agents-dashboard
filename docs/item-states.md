@@ -85,7 +85,7 @@ stateDiagram-v2
 
 ## Source-of-truth audit (state writes in `workflow_service.py`)
 
-These are the writes the state machine was built to model. They will be migrated through `transition()` in steps 1.4 – 1.7 of `REFACTOR_PLAN.md`.
+These are the writes the state machine was built to model. They are migrated through `transition()`.
 
 | File:line                          | `column_name`            | `status`                | Mapped state             |
 | ---------------------------------- | ------------------------ | ----------------------- | ------------------------ |

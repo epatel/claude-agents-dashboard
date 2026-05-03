@@ -99,7 +99,7 @@ Workflow state changes go through `ItemState.transition(state, event)` in `src/d
 - Module docstring on every non-trivial file, explaining the file's role in one short paragraph.
 - Class docstring: one line.
 - Inline comments lean toward "why," not "what." If a piece of code references a refactor decision (e.g. "moved here as part of Phase 2.5"), keep that reference — it explains the shape.
-- Cite `REFACTOR_PLAN.md` phases or specific migrations when documenting a non-obvious choice.
+- Cite specific migrations when documenting a non-obvious choice.
 
 ### Security / hardening
 

@@ -1,6 +1,6 @@
 # PROJECT_MAP Strategy
 
-**Status**: Strategy doc — `PROJECT_MAP.md` exists at repo root; the live overlay (`?map=1`) and auto-gen script remain on the roadmap below.
+**Status**: Strategy doc — `PROJECT_MAP.md` lives in `AGENT_FILES/`; the live overlay (`?map=1`) and auto-gen script remain on the roadmap below.
 
 Plan for building a shared shorthand vocabulary so the user can reference parts of the project unambiguously and Claude can resolve those references to the right files/symbols without round-trips.
 
@@ -10,7 +10,7 @@ Replace phrases like "the merge-conflict auto-resolution path in WorkflowService
 
 ## Filename
 
-`PROJECT_MAP.md` (lives at repo root). "Map" suggests navigation; "dictionary" would suggest definitions only.
+`PROJECT_MAP.md` (lives in `AGENT_FILES/`). "Map" suggests navigation; "dictionary" would suggest definitions only.
 
 ## Naming convention
 
