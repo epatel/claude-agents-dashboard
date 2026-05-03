@@ -222,11 +222,11 @@ const Annotate = {
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 this._deleteSelected();
                 e.preventDefault();
-            } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-                // Handle Ctrl+V / Cmd+V directly on canvas
-                e.preventDefault();
-                this.pasteFromClipboard();
             }
+            // Don't intercept Ctrl+V / Cmd+V — let the browser dispatch a native
+            // paste event so the document `paste` listener (above) reads
+            // clipboardData directly. Calling navigator.clipboard.read() here
+            // triggers the browser's "Paste" permission button overlay.
         });
 
         // Also listen for paste events directly on the canvas
