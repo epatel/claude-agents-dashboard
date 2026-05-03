@@ -7,6 +7,12 @@ struct DashboardWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        // Suppress the macOS Sonoma+ "Paste" permission pill that WKWebView
+        // otherwise renders over the page on Cmd+V or navigator.clipboard.read().
+        // These are private SPI keys but stable and widely used; safe for
+        // non-App-Store distribution.
+        config.preferences.setValue(true, forKey: "javaScriptCanAccessClipboard")
+        config.preferences.setValue(true, forKey: "DOMPasteAllowed")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
