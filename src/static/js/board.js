@@ -625,8 +625,25 @@ const Board = {
         this._renderEpicPanel();
     },
 
+    // Compute epic progress live from Board.items so the archive button
+    // reflects the current state on every WS event without waiting for a
+    // debounced /api/epics refresh. Falls back to epic.progress (server-side
+    // count) only when items haven't loaded yet.
+    _computeEpicProgress(epicId, fallback) {
+        const items = Object.values(this.items).filter(i => i.epic_id === epicId);
+        if (items.length === 0 && fallback) return fallback;
+        const p = { todo: 0, doing: 0, questions: 0, review: 0, done: 0, archive: 0, total: 0 };
+        for (const it of items) {
+            if (Object.prototype.hasOwnProperty.call(p, it.column_name)) {
+                p[it.column_name] += 1;
+            }
+            if (it.column_name !== 'archive') p.total += 1;
+        }
+        return p;
+    },
+
     _isEpicFullyArchived(epic) {
-        const p = epic.progress || {};
+        const p = this._computeEpicProgress(epic.id, epic.progress) || {};
         const archived = (p.archive || 0);
         // Epic has items and all are archived (total excludes archive, so check it's 0)
         return archived > 0 && (p.total || 0) === 0;
@@ -649,7 +666,7 @@ const Board = {
         let html = '';
         for (const epic of this._epics) {
             if (this._isEpicFullyArchived(epic)) continue;
-            const p = epic.progress || {};
+            const p = this._computeEpicProgress(epic.id, epic.progress) || {};
             const done = (p.done || 0);
             const total = (p.total || 0);
             const pct = total > 0 ? Math.round((done / total) * 100) : 0;
