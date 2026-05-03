@@ -172,7 +172,11 @@ const Shortcuts = {
 
         // Update output — auto-scroll if at bottom
         const isAtBottom = outputEl.scrollHeight - outputEl.scrollTop - outputEl.clientHeight < 30;
-        outputEl.textContent = state.output || '(waiting for output...)';
+        if (state.output) {
+            outputEl.innerHTML = this._ansiToHtml(state.output);
+        } else {
+            outputEl.textContent = '(waiting for output...)';
+        }
         if (isAtBottom) {
             outputEl.scrollTop = outputEl.scrollHeight;
         }
@@ -426,5 +430,152 @@ const Shortcuts = {
         const d = document.createElement('div');
         d.textContent = str;
         return d.innerHTML;
+    },
+
+    // Convert ANSI SGR escape sequences in `text` to HTML <span> tags.
+    // Handles standard 16 colors, bright variants, 256-color and truecolor
+    // foreground/background, plus bold/dim/italic/underline. Other escape
+    // sequences (cursor moves, erase, etc.) are stripped. The output is
+    // safe to assign to .innerHTML — non-SGR text is HTML-escaped.
+    _ansiToHtml(text) {
+        if (!text) return '';
+
+        // Collapse \r\n → \n and handle bare \r (rewrite current line) by
+        // dropping everything before it on the same line, which mirrors
+        // how a terminal would render carriage-returned progress bars.
+        text = text.replace(/\r\n/g, '\n').replace(/^[^\n]*\r(?!\n)/gm, '');
+
+        // SGR colors — standard 16
+        const FG = {
+            30: '#000000', 31: '#cd3131', 32: '#0dbc79', 33: '#e5e510',
+            34: '#2472c8', 35: '#bc3fbc', 36: '#11a8cd', 37: '#e5e5e5',
+            90: '#666666', 91: '#f14c4c', 92: '#23d18b', 93: '#f5f543',
+            94: '#3b8eea', 95: '#d670d6', 96: '#29b8db', 97: '#ffffff',
+        };
+        const BG = {
+            40: '#000000', 41: '#cd3131', 42: '#0dbc79', 43: '#e5e510',
+            44: '#2472c8', 45: '#bc3fbc', 46: '#11a8cd', 47: '#e5e5e5',
+            100: '#666666', 101: '#f14c4c', 102: '#23d18b', 103: '#f5f543',
+            104: '#3b8eea', 105: '#d670d6', 106: '#29b8db', 107: '#ffffff',
+        };
+        // xterm 256-color palette: 0-15 (system) + 16-231 (216 cube) + 232-255 (grayscale)
+        const sys256 = [
+            '#000000', '#cd3131', '#0dbc79', '#e5e510', '#2472c8', '#bc3fbc', '#11a8cd', '#e5e5e5',
+            '#666666', '#f14c4c', '#23d18b', '#f5f543', '#3b8eea', '#d670d6', '#29b8db', '#ffffff',
+        ];
+        const palette256 = (n) => {
+            if (n < 16) return sys256[n];
+            if (n < 232) {
+                n -= 16;
+                const r = Math.floor(n / 36), g = Math.floor((n % 36) / 6), b = n % 6;
+                const c = (v) => v === 0 ? 0 : 55 + v * 40;
+                return `rgb(${c(r)},${c(g)},${c(b)})`;
+            }
+            const v = 8 + (n - 232) * 10;
+            return `rgb(${v},${v},${v})`;
+        };
+
+        // State: a stack of style attributes the current span carries.
+        let style = { fg: null, bg: null, bold: false, dim: false, italic: false, underline: false };
+        const styleStr = (s) => {
+            const parts = [];
+            if (s.fg) parts.push(`color:${s.fg}`);
+            if (s.bg) parts.push(`background-color:${s.bg}`);
+            if (s.bold) parts.push('font-weight:bold');
+            if (s.dim) parts.push('opacity:0.7');
+            if (s.italic) parts.push('font-style:italic');
+            if (s.underline) parts.push('text-decoration:underline');
+            return parts.join(';');
+        };
+        const isActive = (s) => s.fg || s.bg || s.bold || s.dim || s.italic || s.underline;
+
+        // Apply one SGR parameter list (e.g. "1;31" or "38;5;202") to `style`.
+        const applySGR = (params) => {
+            const codes = params === '' ? [0] : params.split(';').map(Number);
+            for (let i = 0; i < codes.length; i++) {
+                const c = codes[i];
+                if (c === 0 || Number.isNaN(c)) {
+                    style = { fg: null, bg: null, bold: false, dim: false, italic: false, underline: false };
+                } else if (c === 1) style.bold = true;
+                else if (c === 2) style.dim = true;
+                else if (c === 3) style.italic = true;
+                else if (c === 4) style.underline = true;
+                else if (c === 22) { style.bold = false; style.dim = false; }
+                else if (c === 23) style.italic = false;
+                else if (c === 24) style.underline = false;
+                else if (c === 39) style.fg = null;
+                else if (c === 49) style.bg = null;
+                else if (FG[c] !== undefined) style.fg = FG[c];
+                else if (BG[c] !== undefined) style.bg = BG[c];
+                else if (c === 38 || c === 48) {
+                    // Extended color: 38;5;N (256-color) or 38;2;R;G;B (truecolor)
+                    const target = c === 38 ? 'fg' : 'bg';
+                    const mode = codes[i + 1];
+                    if (mode === 5 && codes[i + 2] !== undefined) {
+                        style[target] = palette256(codes[i + 2]);
+                        i += 2;
+                    } else if (mode === 2 && codes[i + 4] !== undefined) {
+                        style[target] = `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`;
+                        i += 4;
+                    }
+                }
+            }
+        };
+
+        // Walk the text. Match SGR (CSI ... m) and strip other CSI / OSC sequences.
+        // \x1b[ ... letter is CSI; \x1b] ... \x07|\x1b\\ is OSC.
+        const ESC = '\u001b';
+        let out = '';
+        let openSpan = false;
+        const pushText = (chunk) => {
+            if (!chunk) return;
+            const escaped = this._esc(chunk);
+            if (isActive(style)) {
+                if (!openSpan) {
+                    out += `<span style="${styleStr(style)}">`;
+                    openSpan = true;
+                }
+                out += escaped;
+            } else {
+                if (openSpan) { out += '</span>'; openSpan = false; }
+                out += escaped;
+            }
+        };
+        const reopenSpan = () => {
+            if (openSpan) { out += '</span>'; openSpan = false; }
+        };
+
+        let i = 0;
+        while (i < text.length) {
+            const ch = text[i];
+            if (ch !== ESC) {
+                // Find next ESC and emit the chunk in one go.
+                const next = text.indexOf(ESC, i);
+                const end = next === -1 ? text.length : next;
+                pushText(text.slice(i, end));
+                i = end;
+                continue;
+            }
+            // ESC sequence — try CSI first.
+            const csi = /^\u001b\[([0-9;?]*)([@-~])/.exec(text.slice(i));
+            if (csi) {
+                const [match, params, final] = csi;
+                if (final === 'm') {
+                    reopenSpan();
+                    applySGR(params);
+                }
+                // All other CSI sequences (cursor moves, erase, etc.) are stripped.
+                i += match.length;
+                continue;
+            }
+            // OSC: ESC ] ... BEL or ESC \
+            const osc = /^\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/.exec(text.slice(i));
+            if (osc) { i += osc[0].length; continue; }
+            // Two-char escape (e.g. ESC =).
+            if (i + 1 < text.length) { i += 2; continue; }
+            i += 1;
+        }
+        if (openSpan) out += '</span>';
+        return out;
     }
 };
