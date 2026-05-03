@@ -208,9 +208,8 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                 <label class="annotate-layer-toggle" title="Draw on main image instead of as annotation overlay">
                     <input type="checkbox" id="annotate-draw-on-image" onchange="Annotate.drawOnImage = this.checked"> On image
                 </label>
-                <button class="btn btn-sm" onclick="Annotate.pasteFromClipboard()" title="Paste image from clipboard">📋 Paste</button>
             </div>
-            <div class="annotate-hint">Drop images onto the canvas, paste from clipboard, or use the Paste button</div>
+            <div class="annotate-hint">Drop images onto the canvas or paste from clipboard (Ctrl/Cmd+V)</div>
         </div>
         <div class="annotate-canvas-wrap">
             <canvas id="annotate-canvas" width="850" height="500"></canvas>
