@@ -10,6 +10,8 @@ htmlcov/
 agents-lab/
 node_modules/
 docs/superpowers/
+.claude/
+graphify-out/
 
 # Exclude annotation images
 annotation_*.png
