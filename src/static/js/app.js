@@ -344,7 +344,12 @@ const App = {
             case 'item_updated':
             case 'item_moved':
                 Board.updateCard(data);
-                // Refresh epic progress — column changes affect done/total counts
+                // Re-render epic sidebar immediately — progress is computed live
+                // from Board.items, so the archive button on a freshly-completed
+                // epic appears without waiting for the debounced API refresh.
+                Board._renderEpicPanel();
+                // Still refresh epic progress from server (debounced) — covers
+                // any case where the items cache lags behind (e.g. WS gaps).
                 this._refreshEpicsDebounced();
 
                 // Play notification sound only when an agent moves an item (not user actions)
@@ -371,6 +376,7 @@ const App = {
                 break;
             case 'item_deleted':
                 Board.removeCard(data.id);
+                Board._renderEpicPanel();
                 this._refreshEpicsDebounced();
                 break;
             case 'agent_log':
