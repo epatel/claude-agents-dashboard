@@ -431,6 +431,7 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `GET` | `/api/items/{id}/is-blocked` | Check if item is blocked |
 | `GET` | `/api/items/blocked-status` | Blocked status for all items |
 | `POST` | `/api/items/archive-by-date` | Bulk archive items by date |
+| `POST` | `/api/items/archive-by-epic` | Bulk archive done items by epic |
 | `POST` | `/api/items/delete-by-date` | Bulk delete items by date |
 | `POST` | `/api/items/delete-by-epic` | Bulk delete items by epic |
 | `GET` | `/api/items/{id}/worktree/tree` | Browse worktree directory tree |

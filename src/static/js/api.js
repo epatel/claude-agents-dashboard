@@ -93,6 +93,10 @@ const Api = {
         return this.request('POST', '/api/items/archive-by-date', { date });
     },
 
+    archiveByEpic(epicId) {
+        return this.request('POST', '/api/items/archive-by-epic', { epic_id: epicId });
+    },
+
     deleteByDate(date, columnName) {
         return this.request('POST', '/api/items/delete-by-date', { date, column_name: columnName });
     },

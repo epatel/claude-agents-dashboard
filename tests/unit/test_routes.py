@@ -265,6 +265,45 @@ class TestArchiveByDate:
         assert resp.json()["archived"] == 1
 
 
+class TestArchiveByEpic:
+    @pytest.mark.asyncio
+    async def test_archive_by_epic_no_items(self, client):
+        resp = await client.post("/api/items/archive-by-epic", json={"epic_id": "missing"})
+        assert resp.status_code == 200
+        assert resp.json() == {"archived": 0}
+
+    @pytest.mark.asyncio
+    async def test_archive_by_epic_archives_only_done(self, app_and_db):
+        app, db = app_and_db
+        async with db.connect() as conn:
+            await conn.execute(
+                "INSERT INTO epics (id, title, color, position) VALUES (?, ?, ?, ?)",
+                ("epicA", "Epic A", "blue", 0),
+            )
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?, ?)",
+                ("d1", "Done 1", "", "done", 0, "epicA"),
+            )
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?, ?)",
+                ("d2", "Done 2", "", "done", 1, "epicA"),
+            )
+            await conn.execute(
+                "INSERT INTO items (id, title, description, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?, ?)",
+                ("t1", "Todo", "", "todo", 0, "epicA"),
+            )
+            await conn.commit()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/items/archive-by-epic", json={"epic_id": "epicA"})
+        assert resp.status_code == 200
+        assert resp.json()["archived"] == 2
+        async with db.connect() as conn:
+            cursor = await conn.execute("SELECT id, column_name FROM items WHERE epic_id = 'epicA' ORDER BY id")
+            rows = await cursor.fetchall()
+        cols = {r[0]: r[1] for r in rows}
+        assert cols == {"d1": "archive", "d2": "archive", "t1": "todo"}
+
+
 class TestDeleteByDate:
     @pytest.mark.asyncio
     async def test_delete_by_date_no_items(self, client):

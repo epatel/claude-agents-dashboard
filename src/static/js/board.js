@@ -654,14 +654,19 @@ const Board = {
             const total = (p.total || 0);
             const pct = total > 0 ? Math.round((done / total) * 100) : 0;
             const isActive = this._epicFilter === epic.id;
+            const isComplete = total > 0 && done === total;
+            const archiveBtn = isComplete
+                ? `<button class="epic-archive-btn" title="Archive all items in this epic" data-epic-id="${epic.id}" data-epic-title="${Board.escapeHtml(epic.title)}">Archive</button>`
+                : '';
             html += `
-                <div class="epic-card${isActive ? ' active' : ''}" onclick="Board.filterByEpic('${epic.id}')">
+                <div class="epic-card${isActive ? ' active' : ''}${isComplete ? ' complete' : ''}" data-epic-id="${epic.id}">
                     <span class="epic-dot" style="background: var(--epic-${epic.color})"></span>
                     <span class="epic-card-title">${Board.escapeHtml(epic.title)}</span>
                     <div class="epic-progress-bar">
                         <div class="epic-progress-fill" style="width: ${pct}%; background: var(--epic-${epic.color})"></div>
                     </div>
                     <span class="epic-progress-count">${done}/${total}</span>
+                    ${archiveBtn}
                 </div>
             `;
         }
@@ -671,6 +676,34 @@ const Board = {
         }
 
         panel.innerHTML = html;
+
+        // Wire up handlers — using delegation on the cards so the archive
+        // button can stop propagation and not trigger the filter-by-epic click.
+        panel.querySelectorAll('.epic-card').forEach(card => {
+            const epicId = card.dataset.epicId;
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.epic-archive-btn')) return;
+                Board.filterByEpic(epicId);
+            });
+        });
+        panel.querySelectorAll('.epic-archive-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                Board.archiveEpic(btn.dataset.epicId, btn.dataset.epicTitle);
+            });
+        });
+    },
+
+    async archiveEpic(epicId, epicTitle) {
+        if (!await Dialogs.confirm(`Archive all items in "${epicTitle}"?`, 'Confirm', 'Archive')) return;
+        try {
+            const res = await Api.request('POST', '/api/items/archive-by-epic', { epic_id: epicId });
+            if (this._epicFilter === epicId) this.clearEpicFilter();
+            await this.loadEpics();
+        } catch (err) {
+            console.error('Failed to archive epic:', err);
+            await Dialogs.alert('Failed to archive epic items.');
+        }
     },
 
     filterByEpic(epicId) {
