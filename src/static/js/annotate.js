@@ -39,8 +39,7 @@ const Annotate = {
         // overlay that otherwise appears over the canvas on macOS.
         this.focusPasteTarget();
 
-        // Enable debugging by default to help troubleshoot paste issues
-        window.ANNOTATE_DEBUG = true;
+        // Opt-in debugging: set window.ANNOTATE_DEBUG = true in the console.
         if (window.ANNOTATE_DEBUG) console.log('Annotate canvas initialized, debugging enabled');
     },
 
