@@ -894,8 +894,11 @@ const ReviewDialog = {
         const descEl = document.getElementById('review-description');
         descEl.innerHTML = DialogUtils.renderMarkdown(item.description || '(no description)');
 
-        // Populate work log tab
+        // Populate work log tab + capture last agent_message for the Result tab
         const logEl = document.getElementById('review-log');
+        const resultEl = document.getElementById('review-result');
+        const resultTabBtn = document.getElementById('review-tab-btn-result');
+        let lastAgentMessage = null;
         try {
             const log = await Api.getWorkLog(itemId);
             if (log.length > 0) {
@@ -904,11 +907,31 @@ const ReviewDialog = {
                 ).join('');
                 // Scroll to end after initial load
                 DialogCore.forceAutoScroll(logEl);
+                // Find most recent agent_message for the Result tab
+                for (let i = log.length - 1; i >= 0; i--) {
+                    if (log[i].entry_type === 'agent_message' && log[i].content) {
+                        lastAgentMessage = log[i];
+                        break;
+                    }
+                }
             } else {
                 logEl.innerHTML = '<div class="log-entry">No work log entries</div>';
             }
         } catch {
             logEl.innerHTML = '';
+        }
+
+        // Populate Result tab if we have a final agent message
+        if (resultEl && resultTabBtn) {
+            if (lastAgentMessage) {
+                resultEl.innerHTML =
+                    `<div class="result-meta" style="opacity:0.7;font-size:12px;margin-bottom:8px">Final agent message — ${lastAgentMessage.timestamp}</div>` +
+                    `<div class="result-body">${DialogUtils.renderMarkdown(lastAgentMessage.content)}</div>`;
+                resultTabBtn.style.display = '';
+            } else {
+                resultEl.innerHTML = '';
+                resultTabBtn.style.display = 'none';
+            }
         }
 
         // Load diff tab
@@ -972,8 +995,14 @@ const ReviewDialog = {
         const hasChanges = diffData?.files?.length > 0;
         approveBtn.textContent = hasChanges ? '✓ Approve & Merge' : '✓ Done';
 
-        // Preselect Work Log tab for review
-        this.switchReviewTab('log');
+        // Preselect tab: when there are no file changes and the agent left a
+        // closing message, surface it on the Result tab so it isn't lost when
+        // pressing Done; otherwise fall back to the Work Log tab.
+        if (!hasChanges && lastAgentMessage) {
+            this.switchReviewTab('result');
+        } else {
+            this.switchReviewTab('log');
+        }
 
         // Wire up buttons
         approveBtn.onclick = async () => {

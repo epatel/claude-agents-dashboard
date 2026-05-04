@@ -533,9 +533,12 @@ const Board = {
             const approveLabel = hasChanges ? '✓ Approve' : '✓ Done';
             const approveTitle = hasChanges ? 'Approve & Merge' : 'Done';
             const approveName = hasChanges ? 'card.btn-approve' : 'card.btn-done';
+            // Even when there are no file changes, route through the review
+            // dialog so the agent's closing message is surfaced on the Result
+            // tab instead of being lost when pressing Done from the card.
             const approveAction = hasChanges
                 ? `Board.approveItem('${item.id}')`
-                : `Board.moveItem('${item.id}', 'done')`;
+                : `ReviewDialog.showReview('${item.id}')`;
             actionsHtml = `<button class="btn btn-xs btn-primary" data-map-name="${approveName}" onclick="event.stopPropagation(); ${approveAction}" title="${approveTitle}">${approveLabel}</button>
                 <button class="btn btn-xs" data-map-name="card.btn-request-changes" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')" title="Request changes">↩</button>
                 <button class="btn btn-xs btn-danger" data-map-name="card.btn-cancel-review" onclick="event.stopPropagation(); Board.cancelReview('${item.id}')" title="Cancel review">✕</button>`;
