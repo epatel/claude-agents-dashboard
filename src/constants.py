@@ -8,6 +8,8 @@ AVAILABLE_MODELS = [
     ("claude-sonnet-4-6", "Claude Sonnet 4.6", False),
     ("claude-sonnet-4-6+advisor", "Claude Sonnet 4.6 + Advisor", True),
     ("claude-opus-4-7", "Claude Opus 4.7", False),
+    ("claude-opus-4-6", "Claude Opus 4.6", False),
+    ("claude-opus-4-5-20251101", "Claude Opus 4.5", False),
     ("claude-haiku-4-5-20251001", "Claude Haiku 4.5", False),
 ]
 
