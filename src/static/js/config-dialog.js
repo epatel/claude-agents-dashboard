@@ -33,7 +33,8 @@ const ConfigDialog = {
             document.getElementById('config-system-prompt').value = config.system_prompt || '';
             document.getElementById('config-project-context').value = config.project_context || '';
             document.getElementById('config-mcp-enabled').checked = config.mcp_enabled || false;
-            document.getElementById('config-mcp-servers').value = config.mcp_servers || '{}';
+            const mcpServers = config.mcp_servers || '{}';
+            document.getElementById('config-mcp-servers').value = typeof mcpServers === 'object' ? JSON.stringify(mcpServers, null, 2) : mcpServers;
 
             // Load Ollama settings
             document.getElementById('config-ollama-enabled').checked = config.ollama_enabled || false;
