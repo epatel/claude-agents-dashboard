@@ -15,4 +15,4 @@ Standalone scrum board that orchestrates Claude agents working on a **separate t
 
 Server binds to `127.0.0.1:8000` (auto-increments if busy, up to 8019). E2E tests: `./run-e2e-tests.sh`.
 
-**Naming reference**: `AGENT_FILES/PROJECT_MAP.md` defines a shared shorthand vocabulary (`flow.agent-start`, `flow.merge`, `flow.command-gate`, …) — use these names in conversation; both sides resolve them to the same code paths.
+**Naming reference**: [`PROJECT_MAP.md`](PROJECT_MAP.md) defines a shared shorthand vocabulary (`flow.agent-start`, `flow.merge`, `flow.command-gate`, …) — use these names in conversation; both sides resolve them to the same code paths.

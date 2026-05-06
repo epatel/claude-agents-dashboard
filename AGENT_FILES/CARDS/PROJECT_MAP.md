@@ -6,9 +6,9 @@ Naming convention: `subsystem.element[-modifier]`, dotted, lowercase, kebab-case
 
 Two sections: **Flows** (hand-curated) and **UI** (auto-generated from `data-map-name` attributes — coming in a later step).
 
-Strategy doc: `AGENT_FILES/PROJECT_MAP_STRATEGY.md`.
+Strategy doc: [`PROJECT_MAP_STRATEGY.md`](PROJECT_MAP_STRATEGY.md).
 
-For broader project context (architecture, patterns, dev workflows), see the per-domain cards in [`AGENT_FILES/CARDS/`](CARDS/README.md). Cross-references in the flow entries below link to the relevant card.
+For broader project context (architecture, patterns, dev workflows), see the [card index](README.md). Cross-references in the flow entries below link to the relevant card.
 
 ---
 
@@ -16,7 +16,7 @@ For broader project context (architecture, patterns, dev workflows), see the per
 
 Backend processes and lifecycle paths. Each entry: purpose · entry-point · WS events broadcast · DB tables touched.
 
-> Most flows below have a higher-level summary in [`CARDS/KEY_FLOWS.md`](CARDS/KEY_FLOWS.md). Hook/gate flows (`flow.command-gate`, `flow.tool-gate`, `flow.path-guard`) are summarized in [`CARDS/AGENT_RUNTIME.md`](CARDS/AGENT_RUNTIME.md). Migrations are documented in [`CARDS/DATABASE.md`](CARDS/DATABASE.md). The notification fan-out is in [`CARDS/BACKEND_SERVICES.md`](CARDS/BACKEND_SERVICES.md).
+> Most flows below have a higher-level summary in [`KEY_FLOWS.md`](KEY_FLOWS.md). Hook/gate flows (`flow.command-gate`, `flow.tool-gate`, `flow.path-guard`) are summarized in [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md). Migrations are documented in [`DATABASE.md`](DATABASE.md). The notification fan-out is in [`BACKEND_SERVICES.md`](BACKEND_SERVICES.md).
 
 ### `flow.agent-start`
 Spawns a Claude session in a fresh worktree (`agents-lab/worktrees/agent-{item_id}`), non-blocking via `asyncio.create_task`.
