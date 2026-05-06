@@ -1,5 +1,8 @@
 # Project Conventions
 
+> **Load when**: writing or reviewing non-trivial code in `src/`.
+> **Skip when**: doc-only edits or single-line fixes that don't introduce new patterns.
+
 Code style, naming, and idioms actually used in this codebase. Read this before writing new code so the diff blends in.
 
 This is a Python 3.12+ FastAPI + aiosqlite app with a vanilla-JS frontend (no build step) and a Claude SDK agent runtime. Layers go `domain → repositories → services → web/agent`. Most code is AI-written; favor simple, concrete patterns over abstraction.

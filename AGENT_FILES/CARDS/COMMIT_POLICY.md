@@ -1,5 +1,8 @@
 # Commit Policy
 
+> **Load when**: about to run `git commit`, or your changes touch annotated images / agent merge artifacts.
+> **Skip when**: not committing.
+
 ## Annotated Images Policy
 
 **Do not commit annotated images when approving and merging tasks.**

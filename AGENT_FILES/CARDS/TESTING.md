@@ -1,5 +1,8 @@
 # Testing Guide
 
+> **Load when**: adding or modifying tests; deciding which suite to put a new test in.
+> **Skip when**: writing production code with no test changes.
+
 ## Running Tests
 
 ```bash

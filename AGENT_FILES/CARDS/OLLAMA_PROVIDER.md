@@ -1,5 +1,8 @@
 # Ollama as a Provider for the Claude Agent SDK
 
+> **Load when**: working on Ollama integration, model selection, or the `--experimental` flag.
+> **Skip when**: changes don't touch model providers or `AgentConfig.model`.
+
 **Date tested**: 2026-04-12
 **Last reviewed**: 2026-05-01 (no functional changes since last test; the `AgentConfig` Phase 3 refactor preserves `ollama_enabled` / `ollama_base_url` semantics)
 **Status**: Working ✓

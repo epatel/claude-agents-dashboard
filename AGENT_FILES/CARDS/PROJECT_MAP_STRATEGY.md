@@ -1,6 +1,9 @@
 # PROJECT_MAP Strategy
 
-**Status**: Strategy doc — `PROJECT_MAP.md` lives in `AGENT_FILES/`; the live overlay (`?map=1`) and auto-gen script remain on the roadmap below.
+> **Load when**: extending the project-map vocabulary or designing a new flow / UI name.
+> **Skip when**: just consuming existing names from `PROJECT_MAP.md`.
+
+**Status**: Strategy doc — [`PROJECT_MAP.md`](PROJECT_MAP.md) is the live registry; the live overlay (`Cmd+Shift+M` with `--ui-map`) ships, and the auto-gen script remains on the roadmap below.
 
 Plan for building a shared shorthand vocabulary so the user can reference parts of the project unambiguously and Claude can resolve those references to the right files/symbols without round-trips.
 

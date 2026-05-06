@@ -1,5 +1,8 @@
 # Database & Migrations
 
+> **Load when**: writing or running a DB migration; inspecting the schema; whitelisting a new column.
+> **Skip when**: not touching SQL or migrations.
+
 SQLite with **21 versioned migrations (001–021)** in `src/migrations/versions/`. Auto-migrates on startup.
 
 **CLI**:

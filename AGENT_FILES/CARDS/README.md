@@ -1,21 +1,57 @@
-# Cards
+# Cards — routing manifest
 
-Living docs, one per domain. CLAUDE.md is a thin pointer; this folder is the canonical home.
+Living docs grouped by **when to load**. Scan this index first, then load only the cards whose **Load when** matches the task. Don't bulk-load.
 
-| Card | Topic |
-| --- | --- |
-| [OVERVIEW](OVERVIEW.md) | Project intro + running |
-| [CONVENTIONS](CONVENTIONS.md) | Canonical conventions (naming, organization, error handling, async, …) |
-| [BACKEND_SERVICES](BACKEND_SERVICES.md) | 5 services behind `AgentOrchestrator` |
-| [WEB_LAYER](WEB_LAYER.md) | `src/web/` (FastAPI app, routes, websocket) |
-| [AGENT_RUNTIME](AGENT_RUNTIME.md) | `src/agent/` (Claude SDK, MCP tools, hooks) |
-| [DOMAIN_AND_REPOSITORIES](DOMAIN_AND_REPOSITORIES.md) | `ItemState` FSM, repositories, `AgentConfig` |
-| [FRONTEND](FRONTEND.md) | Vanilla JS, Jinja2, dialogs |
-| [DATABASE](DATABASE.md) | SQLite, migrations, CLI |
-| [TESTING](TESTING.md) | Test layout, suites, conventions |
-| [OLLAMA_PROVIDER](OLLAMA_PROVIDER.md) | Models + experimental Ollama provider |
-| [COMMIT_POLICY](COMMIT_POLICY.md) | Git commit conventions |
-| [KEY_FLOWS](KEY_FLOWS.md) | Agent start, clarification, merge, WIP, multi-repo |
-| [MCP_TOOLS](MCP_TOOLS.md) | Built-in MCP tools available to agents |
-| [PROJECT_MAP](PROJECT_MAP.md) | Shorthand vocabulary for flows + UI elements |
-| [PROJECT_MAP_STRATEGY](PROJECT_MAP_STRATEGY.md) | Strategy doc for the project map |
+Each card also carries its own `> Load when` block so you can verify relevance after landing on it.
+
+---
+
+## Orientation
+
+### [ARCHITECTURE](ARCHITECTURE.md)
+- **Load when**: first orienting on this codebase, or you need to know which file/service owns a concept.
+- **Skip when**: you already know the layout.
+- *Tour of backend services, web layer, agent runtime, domain/repositories, frontend, built-in MCP tools.*
+
+### [CONVENTIONS](CONVENTIONS.md)
+- **Load when**: writing or reviewing non-trivial code in `src/`.
+- **Skip when**: doc-only edits or single-line fixes.
+- *Naming, file organization, module boundaries, error handling, async, data layer, frontend, comments, simplicity bias.*
+
+---
+
+## Workflows
+
+### [DATABASE](DATABASE.md)
+- **Load when**: writing or running a DB migration; whitelisting a new column.
+- **Skip when**: not touching SQL or migrations.
+- *Migration CLI, whitelist requirements, inspection commands.*
+
+### [TESTING](TESTING.md)
+- **Load when**: adding or modifying tests; deciding which suite to put a new test in.
+- **Skip when**: writing production code with no test changes.
+- *Test layout (unit / integration / smoke / e2e), suite conventions.*
+
+### [COMMIT_POLICY](COMMIT_POLICY.md)
+- **Load when**: about to run `git commit`, or changes touch annotated images / merge artifacts.
+- **Skip when**: not committing.
+- *Git commit conventions; what not to commit.*
+
+---
+
+## Reference
+
+### [PROJECT_MAP](PROJECT_MAP.md)
+- **Load when**: the user uses a `flow.*` / `card.*` / `dialog.*` shorthand; tracing a flow end-to-end with line numbers.
+- **Skip when**: greenfield work not touching named flows.
+- *Hand-curated flow vocabulary; UI element names; entry-point line numbers.*
+
+### [PROJECT_MAP_STRATEGY](PROJECT_MAP_STRATEGY.md)
+- **Load when**: extending the project-map vocabulary or designing a new flow name.
+- **Skip when**: just consuming existing names.
+- *Strategy / roadmap doc for the project-map system.*
+
+### [OLLAMA_PROVIDER](OLLAMA_PROVIDER.md)
+- **Load when**: working on Ollama integration, model selection, or the `--experimental` flag.
+- **Skip when**: changes don't touch model providers.
+- *Ollama setup; how the SDK routes requests when `ollama_enabled`.*

@@ -1,5 +1,8 @@
 # PROJECT_MAP
 
+> **Load when**: the user uses a `flow.*` / `card.*` / `dialog.*` shorthand; you're tracing a flow end-to-end and need line-numbered entry points; you need to know which WS event a flow emits.
+> **Skip when**: greenfield work that doesn't touch named flows or UI elements.
+
 Shorthand vocabulary for parts of this project. Use these names in conversation; both sides resolve them to the same code.
 
 Naming convention: `subsystem.element[-modifier]`, dotted, lowercase, kebab-case for multi-word parts.
