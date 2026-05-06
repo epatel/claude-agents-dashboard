@@ -25,6 +25,7 @@ def _make_mock_orchestrator():
     mock_orch.workflow_service.find_stale_worktrees = AsyncMock(return_value=[])
     mock_orch.workflow_service._yolo_items = set()
     mock_orch.workflow_service.cleanup_stale_worktree = AsyncMock(return_value={"ok": True})
+    mock_orch.workflow_service.notify_and_auto_start_dependents = AsyncMock()
 
     # db_service
     mock_orch.db_service = MagicMock()
@@ -355,6 +356,41 @@ class TestMoveItem:
         assert resp.status_code == 200
         data = resp.json()
         assert data["worktree_path"] is None
+
+    @pytest.mark.asyncio
+    async def test_move_to_done_triggers_dependent_auto_start(self, client_with_item):
+        """Regression: dragging a required item directly to Done must fire the
+        auto-start hook, not just the merge pipeline. Previously dependents
+        with auto_start=true sat in todo forever after a manual drop."""
+        client, app = client_with_item
+        resp = await client.post(
+            "/api/items/item001/move", json={"column_name": "done", "position": 0}
+        )
+        assert resp.status_code == 200
+        app.state.orchestrator.workflow_service.notify_and_auto_start_dependents.assert_awaited_once_with(
+            "item001"
+        )
+
+    @pytest.mark.asyncio
+    async def test_move_to_archive_triggers_dependent_auto_start(self, client_with_item):
+        client, app = client_with_item
+        resp = await client.post(
+            "/api/items/item001/move", json={"column_name": "archive", "position": 0}
+        )
+        assert resp.status_code == 200
+        app.state.orchestrator.workflow_service.notify_and_auto_start_dependents.assert_awaited_once_with(
+            "item001"
+        )
+
+    @pytest.mark.asyncio
+    async def test_move_to_review_does_not_trigger_auto_start(self, client_with_item):
+        """Auto-start hook should only fire on terminal columns (done/archive)."""
+        client, app = client_with_item
+        resp = await client.post(
+            "/api/items/item001/move", json={"column_name": "review", "position": 0}
+        )
+        assert resp.status_code == 200
+        app.state.orchestrator.workflow_service.notify_and_auto_start_dependents.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

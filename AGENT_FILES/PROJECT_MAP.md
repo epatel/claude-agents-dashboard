@@ -67,11 +67,11 @@ When target is a workspace folder of sibling repos, worktree is rooted in the ch
 - **Tables:** `items` (`repo` column from migration 020)
 
 ### `flow.dependency-autostart`
-When a prerequisite item finishes (merged), auto-starts dependents whose `requires` are now satisfied.
-- **Entry:** `src/services/workflow_service.py:618` `_notify_and_auto_start_dependents`
-- **Invoked from:** `approve_item`
+When a prerequisite item finishes (merged or manually moved to done/archive), auto-starts dependents whose `requires` are now satisfied.
+- **Entry:** `src/services/workflow_service.py` `notify_and_auto_start_dependents`
+- **Invoked from:** the merge pipeline (`approve_item` → all three success paths) and the drag-and-drop move endpoint (`web/routes.py::move_item` when target column is `done`/`archive`)
 - **Todo creation w/ deps:** `:1044` `_create_on_create_todo_callback` (handles `requires`)
-- **WS events:** `item_updated`, `agent_log`
+- **WS events:** `dependencies_resolved`, `blocked_status_changed`, `item_updated`, `agent_log`
 - **Tables:** `items` (deps stored via migration 011)
 
 ### `flow.commit`
