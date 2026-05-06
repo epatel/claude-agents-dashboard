@@ -272,13 +272,13 @@ class TestCancelReview:
 
 
 # ---------------------------------------------------------------------------
-# _notify_and_auto_start_dependents
+# notify_and_auto_start_dependents
 # ---------------------------------------------------------------------------
 
 class TestNotifyAndAutoStartDependents:
     async def test_no_dependents_does_nothing(self, workflow, item):
         # Should not raise, no broadcast
-        await workflow._notify_and_auto_start_dependents(item["id"])
+        await workflow.notify_and_auto_start_dependents(item["id"])
         workflow.notifications.ws_manager.broadcast.assert_not_awaited()
 
     async def test_broadcasts_dependencies_resolved(self, workflow, db_service):
@@ -286,7 +286,7 @@ class TestNotifyAndAutoStartDependents:
         child = await db_service.create_todo_item("Child", "c")
         await db_service.set_item_dependencies(child["id"], [parent["id"]])
 
-        await workflow._notify_and_auto_start_dependents(parent["id"])
+        await workflow.notify_and_auto_start_dependents(parent["id"])
         workflow.notifications.ws_manager.broadcast.assert_awaited()
         call_args = workflow.notifications.ws_manager.broadcast.call_args_list
         event_types = [c[0][0] for c in call_args]
@@ -307,7 +307,7 @@ class TestNotifyAndAutoStartDependents:
             return_value=(tmp_dir / "wt", "agent/x", "main", "abc")
         )
 
-        await workflow._notify_and_auto_start_dependents(parent["id"])
+        await workflow.notify_and_auto_start_dependents(parent["id"])
         # start_agent should have been called for the unblocked child
         workflow.sessions.create_session.assert_awaited()
 

@@ -538,7 +538,11 @@ async def move_item(request: Request, item_id: str, body: ItemMove):
     await request.app.state.ws_manager.broadcast("item_moved", item)
     _invalidate_stats_cache()  # Item status change affects stats
 
-    # When an item moves to done/archive, its dependents may become unblocked
+    # When an item moves to done/archive, its dependents may become unblocked.
+    # Refresh the UI's blocked-state badges *and* fire the auto-start hook so
+    # any dependent with auto_start=true actually launches — without this the
+    # auto-start chain only ran for items reaching done via the merge path,
+    # missing direct drag-to-done/archive moves.
     if body.column_name in ("done", "archive"):
         db_service = orchestrator.db_service
         dependent_ids = await db_service.get_dependent_items(item_id)
@@ -547,6 +551,7 @@ async def move_item(request: Request, item_id: str, body: ItemMove):
             await request.app.state.ws_manager.broadcast("blocked_status_changed", {
                 "blocked": blocked_status,
             })
+        await orchestrator.workflow_service.notify_and_auto_start_dependents(item_id)
 
     return item
 

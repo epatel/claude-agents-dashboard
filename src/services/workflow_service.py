@@ -452,7 +452,7 @@ class WorkflowService:
             item = await self.items.transition(
                 item_id, Event.REQUEST_MERGE, worktree_path=None,
             )
-            await self._notify_and_auto_start_dependents(item_id)
+            await self.notify_and_auto_start_dependents(item_id)
             return item
 
         success, message = await self.git.merge_agent_work(
@@ -476,7 +476,7 @@ class WorkflowService:
                 worktree_path=None, merge_commit=merge_sha,
             )
 
-            await self._notify_and_auto_start_dependents(item_id)
+            await self.notify_and_auto_start_dependents(item_id)
         else:
             await self._log_and_notify(item_id, "system",
                 f"Merge failed — {message[:200]}. Attempting auto-rebase...")
@@ -519,7 +519,7 @@ class WorkflowService:
                             worktree_path=None, merge_commit=merge_sha,
                         )
 
-                        await self._notify_and_auto_start_dependents(item_id)
+                        await self.notify_and_auto_start_dependents(item_id)
                         await self.notifications.broadcast_item_updated(item)
                         return item
                     else:
@@ -605,8 +605,14 @@ class WorkflowService:
         await self.notifications.broadcast_item_updated(item)
         return item
 
-    async def _notify_and_auto_start_dependents(self, resolved_item_id: str):
-        """Notify dependents that a dependency was resolved, and auto-start if configured."""
+    async def notify_and_auto_start_dependents(self, resolved_item_id: str):
+        """Notify dependents that a dependency was resolved, and auto-start if configured.
+
+        Called whenever an item enters a dependency-resolved state (column 'done'
+        or 'archive') — both via the merge pipeline and via direct user moves
+        (drag-and-drop into Done/Archive). Idempotent: re-running it for an
+        already-processed item is a no-op for items that are already running.
+        """
         dependent_ids = await self.db.get_dependent_items(resolved_item_id)
         if not dependent_ids:
             return
