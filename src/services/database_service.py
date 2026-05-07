@@ -221,8 +221,8 @@ class DatabaseService:
 
             # Create copied item
             await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position, model, start_copy, repo) VALUES (?, ?, ?, 'todo', ?, ?, ?, ?)",
-                (copy_id, item["title"], item.get("description", ""), position, item.get("model"), item.get("start_copy", 0), item.get("repo")),
+                "INSERT INTO items (id, title, description, column_name, position, model, start_copy, auto_approve, repo) VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?)",
+                (copy_id, item["title"], item.get("description", ""), position, item.get("model"), item.get("start_copy", 0), item.get("auto_approve", 0), item.get("repo")),
             )
 
             # Copy attachments

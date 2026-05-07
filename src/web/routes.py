@@ -298,8 +298,8 @@ async def create_item(request: Request, body: ItemCreate):
                 raise HTTPException(status_code=400, detail="Epic not found")
 
         await conn.execute(
-            "INSERT INTO items (id, title, description, column_name, position, model, epic_id, auto_start, start_copy, repo) VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?)",
-            (item_id, body.title, body.description, position, body.model, body.epic_id, int(body.auto_start), int(body.start_copy), repo),
+            "INSERT INTO items (id, title, description, column_name, position, model, epic_id, auto_start, start_copy, auto_approve, repo) VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?)",
+            (item_id, body.title, body.description, position, body.model, body.epic_id, int(body.auto_start), int(body.start_copy), int(body.auto_approve), repo),
         )
         await conn.commit()
 

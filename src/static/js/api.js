@@ -17,8 +17,8 @@ const Api = {
         return this.request('GET', '/api/items');
     },
 
-    createItem(title, description = '', model = null, epic_id = null, auto_start = false, start_copy = false, repo = null) {
-        const payload = { title, description, auto_start, start_copy };
+    createItem(title, description = '', model = null, epic_id = null, auto_start = false, start_copy = false, repo = null, auto_approve = false) {
+        const payload = { title, description, auto_start, start_copy, auto_approve };
         if (model) payload.model = model;
         if (epic_id) payload.epic_id = epic_id;
         if (repo) payload.repo = repo;

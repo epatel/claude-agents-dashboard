@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..agent.review_agent import run_auto_review
 from ..agent.session import AgentResult
 from ..domain.item_state import Event, ItemState, UnknownStateEncoding, from_columns
 from ..repositories.epic_repository import EpicRepository
@@ -16,6 +17,9 @@ from .notification_service import NotificationService
 from .session_service import SessionService
 
 logger = logging.getLogger(__name__)
+
+# Hard cap on auto-review return-trips before falling back to manual review.
+_MAX_AUTO_APPROVE_RETRIES = 3
 
 
 class WorkflowService:
@@ -42,6 +46,16 @@ class WorkflowService:
 
         # Merge conflict retry counters (in-memory, per item_id)
         self._merge_retries: Dict[str, int] = {}
+
+        # Auto-approve review-cycle counters (in-memory, per item_id).
+        # Capped at _MAX_AUTO_APPROVE_RETRIES; reset on approval / cancellation
+        # / deletion. Resets across dashboard restarts (acceptable — restart
+        # implies the user is back in the loop).
+        self._auto_approve_retries: Dict[str, int] = {}
+
+        # Last assistant text per item, captured by on_message. Fed to the
+        # review agent so it sees the implementing agent's final summary.
+        self._last_agent_message: Dict[str, str] = {}
 
         # Track which items are running with YOLO mode (bash_yolo=True)
         self._yolo_items: set = set()
@@ -219,6 +233,9 @@ class WorkflowService:
             await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
                 "item_id": item_id, "active": False,
             })
+
+        # Cancelling halts any in-flight auto-approve cycle for this item.
+        self._auto_approve_retries.pop(item_id, None)
 
         await self._log_and_notify(item_id, "system", "Agent cancelled by user")
         item = await self.items.transition(item_id, Event.CANCEL)
@@ -461,6 +478,8 @@ class WorkflowService:
 
         if success:
             self._merge_retries.pop(item_id, None)
+            self._auto_approve_retries.pop(item_id, None)
+            self._last_agent_message.pop(item_id, None)
             merge_sha = message  # on success, message contains the merge commit SHA
             target = base_branch or "current branch"
             short_sha = merge_sha[:8] if merge_sha else ""
@@ -505,6 +524,8 @@ class WorkflowService:
                     )
                     if success2:
                         self._merge_retries.pop(item_id, None)
+                        self._auto_approve_retries.pop(item_id, None)
+                        self._last_agent_message.pop(item_id, None)
                         merge_sha = message2
                         target = base_branch or "current branch"
                         short_sha = merge_sha[:8] if merge_sha else ""
@@ -745,6 +766,10 @@ class WorkflowService:
                 item.get("worktree_path"), item.get("branch_name"), repo=item.get("repo"),
             )
 
+        # Drop in-memory bookkeeping for this item.
+        self._auto_approve_retries.pop(item_id, None)
+        self._last_agent_message.pop(item_id, None)
+
         # Broadcast deletion
         await self.notifications.broadcast_item_deleted(item_id)
         return {"ok": True}
@@ -756,6 +781,12 @@ class WorkflowService:
     # Callback creators
     def _create_on_message_callback(self, item_id: str):
         async def on_message(text: str):
+            # Track the latest assistant message so the auto-review agent can
+            # cite it as the implementing agent's "final message". Each new
+            # text replaces the prior one — by the time on_complete fires the
+            # last one wins, which is exactly what we want.
+            if text:
+                self._last_agent_message[item_id] = text
             await self._log_and_notify(item_id, "agent_message", text)
         return on_message
 
@@ -814,6 +845,15 @@ class WorkflowService:
                     extras["commit_message"] = commit_message
                 item = await self.items.transition(item_id, Event.COMPLETE, **extras)
                 await self.notifications.broadcast_item_updated(item, source="agent")
+
+                # Auto-approve workflow: if the user opted in for this item,
+                # spin up a separate read-only review agent. Schedule it as a
+                # background task so we don't block the on_complete callback
+                # (the review may take tens of seconds and ends up calling
+                # request_changes/approve_item which themselves create new
+                # sessions and would deadlock if we awaited inline).
+                if item.get("auto_approve") and has_file_changes:
+                    asyncio.create_task(self._run_auto_review(item_id))
             else:
                 await self._log_and_notify(item_id, "error", f"Agent failed: {result.error}")
                 item = await self.items.transition(
@@ -1163,6 +1203,153 @@ class WorkflowService:
                 lines.append("")
             return "\n".join(lines)
         return on_view_board
+
+    async def _run_auto_review(self, item_id: str) -> None:
+        """Run a one-shot auto-review agent against a just-completed item.
+
+        Triggered from on_complete when the item has auto_approve=True. The
+        review agent inspects the diff and the implementing agent's last
+        message, then either:
+          - APPROVES → we call approve_item to merge it and clear the counter.
+          - REQUESTS CHANGES → we increment a per-item retry counter and call
+            request_changes to send the comments back to the original agent.
+            After _MAX_AUTO_APPROVE_RETRIES return-trips we stop auto-cycling
+            and leave the item in review for a human.
+
+        Defensive against every failure mode: if anything goes wrong we leave
+        the item in review (its current state) rather than silently merging.
+        """
+        try:
+            item = await self.db.get_item(item_id)
+            if not item:
+                return
+            # Sanity check: the item should still be in review/auto_approve.
+            # If a user cancelled or moved it during the review setup, bail.
+            if item.get("column_name") != "review":
+                return
+            if not item.get("auto_approve"):
+                return
+
+            attempt = self._auto_approve_retries.get(item_id, 0) + 1
+            if attempt > _MAX_AUTO_APPROVE_RETRIES:
+                # Hit the cap. Stop the cycle and let a human step in.
+                self._auto_approve_retries.pop(item_id, None)
+                await self._log_and_notify(
+                    item_id, "system",
+                    f"Auto-approve cycle stopped after {_MAX_AUTO_APPROVE_RETRIES} "
+                    f"review iterations — manual review required."
+                )
+                return
+
+            self._auto_approve_retries[item_id] = attempt
+
+            worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
+            if not worktree_path or not worktree_path.exists():
+                await self._log_and_notify(
+                    item_id, "system",
+                    "Auto-review skipped — worktree no longer available."
+                )
+                return
+
+            # Compute the agent's full diff vs the base branch (committed +
+            # uncommitted). We feed both to the reviewer so it sees the same
+            # state a human reviewer would.
+            from ..git.operations import run_git, get_current_branch
+            base = item.get("base_branch")
+            try:
+                if not base:
+                    base = await get_current_branch(self.git.base_repo_path(item.get("repo")))
+            except Exception:
+                base = "main"
+
+            diff_parts: list[str] = []
+            try:
+                committed = await run_git(worktree_path, "diff", base, "HEAD")
+                if committed.strip():
+                    diff_parts.append(committed)
+            except Exception as e:
+                logger.warning(f"Auto-review: failed to read committed diff: {e}")
+            try:
+                # Uncommitted (working tree vs HEAD) — covers any leftover
+                # work the agent didn't commit before exiting.
+                uncommitted = await run_git(worktree_path, "diff", "HEAD")
+                if uncommitted.strip():
+                    diff_parts.append(
+                        "\n# Uncommitted working-tree changes:\n" + uncommitted
+                    )
+            except Exception:
+                pass
+            full_diff = "\n".join(diff_parts).strip()
+
+            last_message = self._last_agent_message.get(item_id, "")
+
+            # Build Ollama env for the reviewer if the workspace is configured
+            # for it. The reviewer uses the same model selection logic as the
+            # implementing agent so a Claude/Ollama mix doesn't get mismatched.
+            config = await self.db.get_agent_config()
+            review_model = item.get("model") or config.get("model")
+            ollama_env: dict[str, str] | None = None
+            if config.get("ollama_enabled") and review_model and not review_model.startswith("claude-"):
+                from ..constants import DEFAULT_OLLAMA_BASE_URL
+                ollama_env = {
+                    "ANTHROPIC_AUTH_TOKEN": "ollama",
+                    "ANTHROPIC_API_KEY": "",
+                    "ANTHROPIC_BASE_URL": config.get("ollama_base_url", DEFAULT_OLLAMA_BASE_URL),
+                }
+
+            await self._log_and_notify(
+                item_id, "system",
+                f"Auto-review starting (attempt {attempt}/{_MAX_AUTO_APPROVE_RETRIES})…"
+            )
+
+            decision = await run_auto_review(
+                worktree_path=worktree_path,
+                model=review_model,
+                item_title=item.get("title", ""),
+                item_description=item.get("description", ""),
+                diff=full_diff,
+                last_message=last_message,
+                ollama_env=ollama_env,
+            )
+
+            if decision.get("approved"):
+                summary = decision.get("summary") or "Auto-review approved."
+                await self._log_and_notify(
+                    item_id, "system", f"Auto-review approved: {summary}"
+                )
+                self._auto_approve_retries.pop(item_id, None)
+                try:
+                    await self.approve_item(item_id)
+                except Exception as e:
+                    logger.exception("Auto-approve merge failed: %s", e)
+                    await self._log_and_notify(
+                        item_id, "system",
+                        f"Auto-approve approved but merge failed: {e}"
+                    )
+                return
+
+            comments = decision.get("comments") or [
+                "Auto-reviewer requested changes (no specific comments)."
+            ]
+            await self._log_and_notify(
+                item_id, "system",
+                f"Auto-review requested changes (attempt {attempt}/"
+                f"{_MAX_AUTO_APPROVE_RETRIES}): {'; '.join(comments)}"
+            )
+            try:
+                await self.request_changes(item_id, comments)
+            except Exception as e:
+                logger.exception("Auto-approve request_changes failed: %s", e)
+                await self._log_and_notify(
+                    item_id, "system",
+                    f"Auto-review failed to relay comments: {e}"
+                )
+        except Exception as e:
+            logger.exception("Auto-review crashed for %s: %s", item_id, e)
+            await self._log_and_notify(
+                item_id, "system",
+                f"Auto-review crashed: {e}. Item left for manual review."
+            )
 
     async def _restart_session_with_new_permissions(self, item_id: str, command: str, resume_id: str | None, item: Dict[str, Any] | None = None):
         """Restart an agent session with updated allowed commands.
