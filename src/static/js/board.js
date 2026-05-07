@@ -376,11 +376,20 @@ const Board = {
                 return;
             }
 
-            // Create a new item with the same title, description, and model
+            // Create a new item with the same title, description, model,
+            // epic, repo, auto-start, start-as-copy, and auto-approve
+            // settings. Without forwarding these the user's intent (e.g. to
+            // auto-approve the rerun, or to keep it in the same epic) gets
+            // silently dropped on every retry.
             const newItem = await Api.createItem(
                 originalItem.title,
                 originalItem.description || '',
-                originalItem.model
+                originalItem.model,
+                originalItem.epic_id || null,
+                !!originalItem.auto_start,
+                !!originalItem.start_copy,
+                originalItem.repo || null,
+                !!originalItem.auto_approve,
             );
 
             // Copy attachments from the original item to the new item

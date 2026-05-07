@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ project_name }} — Agents Dashboard</title>
-    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/favicon.svg?v={{ static_v }}" type="image/svg+xml">
     <!-- Resolve theme before CSS loads to prevent flash of wrong theme -->
     <script>
     (function() {
@@ -16,11 +16,11 @@
         document.documentElement.setAttribute('data-theme-preference', p);
     })();
     </script>
-    <link rel="stylesheet" href="/static/css/theme.css">
-    <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="stylesheet" href="/static/css/board.css">
-    <link rel="stylesheet" href="/static/css/dialog.css">
-    <link rel="stylesheet" href="/static/css/file-browser.css">
+    <link rel="stylesheet" href="/static/css/theme.css?v={{ static_v }}">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ static_v }}">
+    <link rel="stylesheet" href="/static/css/board.css?v={{ static_v }}">
+    <link rel="stylesheet" href="/static/css/dialog.css?v={{ static_v }}">
+    <link rel="stylesheet" href="/static/css/file-browser.css?v={{ static_v }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css">
 </head>
@@ -98,41 +98,41 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
-    <script src="/static/js/api.js"></script>
-    <script src="/static/js/sound.js"></script>
-    <script src="/static/js/theme.js"></script>
-    <script src="/static/js/diff.js"></script>
-    <script src="/static/js/annotate.js"></script>
+    <script src="/static/js/api.js?v={{ static_v }}"></script>
+    <script src="/static/js/sound.js?v={{ static_v }}"></script>
+    <script src="/static/js/theme.js?v={{ static_v }}"></script>
+    <script src="/static/js/diff.js?v={{ static_v }}"></script>
+    <script src="/static/js/annotate.js?v={{ static_v }}"></script>
 
     <!-- Dialog modules - load in dependency order -->
-    <script src="/static/js/dialog-core.js"></script>
-    <script src="/static/js/dialog-utils.js"></script>
-    <script src="/static/js/attachments.js"></script>
-    <script src="/static/js/item-dialog.js"></script>
-    <script src="/static/js/detail-dialog.js"></script>
-    <script src="/static/js/review-dialog.js"></script>
-    <script src="/static/js/clarification-dialog.js"></script>
-    <script src="/static/js/request-changes-dialog.js"></script>
-    <script src="/static/js/config-dialog.js"></script>
-    <script src="/static/js/annotation-canvas.js"></script>
+    <script src="/static/js/dialog-core.js?v={{ static_v }}"></script>
+    <script src="/static/js/dialog-utils.js?v={{ static_v }}"></script>
+    <script src="/static/js/attachments.js?v={{ static_v }}"></script>
+    <script src="/static/js/item-dialog.js?v={{ static_v }}"></script>
+    <script src="/static/js/detail-dialog.js?v={{ static_v }}"></script>
+    <script src="/static/js/review-dialog.js?v={{ static_v }}"></script>
+    <script src="/static/js/clarification-dialog.js?v={{ static_v }}"></script>
+    <script src="/static/js/request-changes-dialog.js?v={{ static_v }}"></script>
+    <script src="/static/js/config-dialog.js?v={{ static_v }}"></script>
+    <script src="/static/js/annotation-canvas.js?v={{ static_v }}"></script>
 
-    <script src="/static/js/notification-dialog.js"></script>
+    <script src="/static/js/notification-dialog.js?v={{ static_v }}"></script>
 
     <!-- Main dialog coordinator - loads after all modules -->
-    <script src="/static/js/dialogs.js"></script>
-    <script src="/static/js/file-browser.js"></script>
-    <script src="/static/js/search-dialog.js"></script>
-    <script src="/static/js/shortcuts.js"></script>
-    <script src="/static/js/flame.js"></script>
-    <script src="/static/js/stats.js"></script>
-    <script src="/static/js/board.js"></script>
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/dialogs.js?v={{ static_v }}"></script>
+    <script src="/static/js/file-browser.js?v={{ static_v }}"></script>
+    <script src="/static/js/search-dialog.js?v={{ static_v }}"></script>
+    <script src="/static/js/shortcuts.js?v={{ static_v }}"></script>
+    <script src="/static/js/flame.js?v={{ static_v }}"></script>
+    <script src="/static/js/stats.js?v={{ static_v }}"></script>
+    <script src="/static/js/board.js?v={{ static_v }}"></script>
+    <script src="/static/js/app.js?v={{ static_v }}"></script>
 
     {% if ui_map %}
     <!-- PROJECT_MAP overlays: enabled via server flag --ui-map. Cmd+Shift+M cycles modes. See AGENT_FILES/CARDS/PROJECT_MAP.md. -->
-    <script src="/static/js/map_overlay.js"></script>
-    <script src="/static/js/spacing_overlay.js"></script>
-    <script src="/static/js/map_coordinator.js"></script>
+    <script src="/static/js/map_overlay.js?v={{ static_v }}"></script>
+    <script src="/static/js/spacing_overlay.js?v={{ static_v }}"></script>
+    <script src="/static/js/map_coordinator.js?v={{ static_v }}"></script>
     {% endif %}
 </body>
 </html>
