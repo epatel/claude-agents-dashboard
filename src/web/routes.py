@@ -720,10 +720,19 @@ async def pause_agent(
     return await orchestrator.pause_agent(item_id, message)
 
 
+class ResumeAgentBody(BaseModel):
+    message: Optional[str] = None
+
+
 @router.post("/api/items/{item_id}/resume")
-async def resume_agent(request: Request, item_id: str):
+async def resume_agent(
+    request: Request,
+    item_id: str,
+    body: Optional[ResumeAgentBody] = None,
+):
     orchestrator = request.app.state.orchestrator
-    result = await orchestrator.resume_agent(item_id)
+    message = body.message if body else None
+    result = await orchestrator.resume_agent(item_id, message)
     _invalidate_stats_cache()
     return result
 

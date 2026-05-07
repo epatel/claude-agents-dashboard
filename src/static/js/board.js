@@ -303,16 +303,21 @@ const Board = {
         });
     },
 
-    pauseAgent(itemId) {
-        // Pausing now opens a dialog so the user can optionally attach a
-        // note for the agent (e.g. "investigate a different approach").
-        // The dialog handles the actual API call + stopping-state UI.
-        Dialogs.openPause(itemId);
+    async pauseAgent(itemId) {
+        // Pause is a single-click action: stop the agent immediately. To send
+        // a course-correction note, the user opens the work log (detail
+        // dialog) on a paused item and submits the Continue form.
+        this.applyStoppingState(itemId, 'Pausing…');
+        try {
+            await Api.pauseAgent(itemId, null);
+        } catch (err) {
+            console.error('Failed to pause agent:', err);
+        }
     },
 
-    async resumeAgent(itemId) {
+    async resumeAgent(itemId, message = null) {
         try {
-            await Api.resumeAgent(itemId);
+            await Api.resumeAgent(itemId, message);
         } catch (err) {
             console.error('Failed to resume agent:', err);
         }
