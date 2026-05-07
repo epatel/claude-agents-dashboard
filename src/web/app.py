@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -202,6 +203,14 @@ def create_app(target_project: Path, data_dir: Path, *, experimental: bool = Fal
             h = ((h * 33) + ord(ch)) & 0xFFFFFFFF
         return h % 360
     app.state.templates.env.filters["repo_hue"] = _repo_hue
+    # Cache-busting query string for /static/* assets. Bumping on every server
+    # start guarantees that after `./run.sh` (which is when fresh code is
+    # deployed), every browser tab is forced to refetch JS/CSS instead of
+    # serving heuristically-fresh copies from disk cache. Without this, a
+    # long-lived tab can keep using JS that pre-dates the running server,
+    # which is exactly how silent payload drift (e.g. an old api.js failing to
+    # send a newly-added field) sneaks in.
+    app.state.templates.env.globals["static_v"] = str(int(time.time()))
     app.state.experimental = experimental
     app.state.ui_map = ui_map
     app.state.repos = repos or None
