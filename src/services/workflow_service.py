@@ -852,8 +852,17 @@ class WorkflowService:
                 # (the review may take tens of seconds and ends up calling
                 # request_changes/approve_item which themselves create new
                 # sessions and would deadlock if we awaited inline).
-                if item.get("auto_approve") and has_file_changes:
-                    asyncio.create_task(self._run_auto_review(item_id))
+                #
+                # When the agent produced no file changes there's nothing for a
+                # reviewer to inspect — the card lands in review with a "Done"
+                # button instead of "Approve". In that case skip the reviewer
+                # and just approve directly, which is the auto-approve
+                # equivalent of a human clicking "Done".
+                if item.get("auto_approve"):
+                    if has_file_changes:
+                        asyncio.create_task(self._run_auto_review(item_id))
+                    else:
+                        asyncio.create_task(self._auto_approve_no_changes(item_id))
             else:
                 await self._log_and_notify(item_id, "error", f"Agent failed: {result.error}")
                 item = await self.items.transition(
@@ -1203,6 +1212,41 @@ class WorkflowService:
                 lines.append("")
             return "\n".join(lines)
         return on_view_board
+
+    async def _auto_approve_no_changes(self, item_id: str) -> None:
+        """Auto-approve an item that completed without producing file changes.
+
+        For these items the review card shows a "Done" button instead of
+        "Approve & Merge" — there's nothing for the reviewer agent to look at,
+        so we just call approve_item directly. approve_item already detects the
+        no-changes case and skips the merge, transitioning the item straight to
+        done.
+
+        Scheduled as a background task from on_complete so we don't block the
+        agent's completion callback.
+        """
+        try:
+            item = await self.db.get_item(item_id)
+            if not item:
+                return
+            # Sanity: the user (or another flow) may have already moved the
+            # item out of review. In that case do nothing.
+            if item.get("column_name") != "review":
+                return
+            if not item.get("auto_approve"):
+                return
+            self._auto_approve_retries.pop(item_id, None)
+            await self._log_and_notify(
+                item_id, "system",
+                "Auto-approve: no file changes — marking done."
+            )
+            await self.approve_item(item_id)
+        except Exception as e:
+            logger.exception("Auto-approve (no-changes) failed for %s: %s", item_id, e)
+            await self._log_and_notify(
+                item_id, "system",
+                f"Auto-approve failed to mark done: {e}. Item left for manual review."
+            )
 
     async def _run_auto_review(self, item_id: str) -> None:
         """Run a one-shot auto-review agent against a just-completed item.
