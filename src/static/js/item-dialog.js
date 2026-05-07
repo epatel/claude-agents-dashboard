@@ -28,6 +28,7 @@ const ItemDialog = {
         this._initDepPicker(null);
         this._setAutoStart(false);
         this._setStartCopy(false);
+        this._setAutoApprove(false);
         await this._updateDefaultModelDisplay();
         // Show play button for new items
         const playBtn = document.getElementById('item-play-btn');
@@ -60,6 +61,7 @@ const ItemDialog = {
         this._initDepPicker(item.id);
         this._setAutoStart(!!item.auto_start);
         this._setStartCopy(!!item.start_copy);
+        this._setAutoApprove(!!item.auto_approve);
         if (item.id) {
             await this._loadDependencies(item.id);
         }
@@ -174,11 +176,12 @@ const ItemDialog = {
 
         const auto_start = this._getAutoStart();
         const start_copy = this._getStartCopy();
+        const auto_approve = this._getAutoApprove();
 
         try {
             let itemId = id;
             if (id) {
-                const updateData = { title, description, epic_id, auto_start, start_copy };
+                const updateData = { title, description, epic_id, auto_start, start_copy, auto_approve };
                 updateData.model = model;  // null clears to default
                 await Api.updateItem(id, updateData);
             } else {
@@ -188,7 +191,7 @@ const ItemDialog = {
                     alert('Please pick a repo for this item.');
                     return;
                 }
-                const item = await Api.createItem(title, description, model, epic_id, auto_start, start_copy, repo);
+                const item = await Api.createItem(title, description, model, epic_id, auto_start, start_copy, repo, auto_approve);
                 itemId = item.id;
             }
 
@@ -222,6 +225,7 @@ const ItemDialog = {
         const model = document.getElementById('item-form-model').value || null;
         const epic_id = document.getElementById('item-form-epic').value || null;
         const start_copy = this._getStartCopy();
+        const auto_approve = this._getAutoApprove();
 
         if (!title) return;
 
@@ -236,7 +240,7 @@ const ItemDialog = {
             let itemId = id;
             if (id) {
                 // For existing items, just update
-                const updateData = { title, description, epic_id, start_copy };
+                const updateData = { title, description, epic_id, start_copy, auto_approve };
                 if (model !== null) updateData.model = model;
                 await Api.updateItem(id, updateData);
             } else {
@@ -247,7 +251,7 @@ const ItemDialog = {
                     return;
                 }
                 // For new items, create first
-                const item = await Api.createItem(title, description, model, epic_id, false, start_copy, repo);
+                const item = await Api.createItem(title, description, model, epic_id, false, start_copy, repo, auto_approve);
                 itemId = item.id;
             }
 
@@ -501,6 +505,16 @@ const ItemDialog = {
 
     _getStartCopy() {
         const cb = document.getElementById('item-form-start-copy');
+        return cb ? cb.checked : false;
+    },
+
+    _setAutoApprove(value) {
+        const cb = document.getElementById('item-form-auto-approve');
+        if (cb) cb.checked = value;
+    },
+
+    _getAutoApprove() {
+        const cb = document.getElementById('item-form-auto-approve');
         return cb ? cb.checked : false;
     },
 

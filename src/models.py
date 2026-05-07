@@ -19,6 +19,7 @@ class ItemCreate(BaseModel):
     epic_id: Optional[str] = None
     auto_start: bool = False
     start_copy: bool = False
+    auto_approve: bool = False
     # Multi-repo mode: name of the subrepo this item targets. Must be one of the
     # workspace's known repos. None in single-repo mode.
     repo: Optional[str] = None
@@ -34,6 +35,7 @@ class ItemUpdate(BaseModel):
     epic_id: Optional[str] = None
     auto_start: Optional[bool] = None
     start_copy: Optional[bool] = None
+    auto_approve: Optional[bool] = None
 
 
 class EpicCreate(BaseModel):
