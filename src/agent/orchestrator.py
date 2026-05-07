@@ -81,9 +81,16 @@ class AgentOrchestrator:
         """
         return await self.workflow_service.pause_agent(item_id, message)
 
-    async def resume_agent(self, item_id: str) -> Dict[str, Any]:
-        """Resume a paused agent."""
-        return await self.workflow_service.resume_agent(item_id)
+    async def resume_agent(
+        self, item_id: str, message: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Resume a paused agent.
+
+        ``message`` is an optional fresh note from the user (e.g. submitted via
+        the work-log "Continue" form) that takes precedence over any
+        ``pause_message`` stored when the agent was paused.
+        """
+        return await self.workflow_service.resume_agent(item_id, message)
 
     async def retry_agent(self, item_id: str) -> Dict[str, Any]:
         """Retry a failed agent — restart from scratch in existing worktree."""
