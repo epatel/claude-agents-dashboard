@@ -4,7 +4,7 @@
 > **Skip when**: changes don't touch model providers or `AgentConfig.model`.
 
 **Date tested**: 2026-04-12
-**Last reviewed**: 2026-05-01 (no functional changes since last test; the `AgentConfig` Phase 3 refactor preserves `ollama_enabled` / `ollama_base_url` semantics)
+**Last reviewed**: 2026-05-07 (no functional changes since last test; the `AgentConfig` Phase 3 refactor preserves `ollama_enabled` / `ollama_base_url` semantics; verified `/api/ollama/models` route still in `routes.py`)
 **Status**: Working ✓
 
 ## Overview
@@ -92,7 +92,7 @@ Ollama is fully integrated into the dashboard as an experimental feature. Enable
 - `constants.py` — `AVAILABLE_MODELS` list uses `(model_id, display_name, experimental)` tuples; Ollama models are discovered dynamically at runtime
 - `session.py` — Ollama env passthrough via subprocess environment override
 - `session_service.py` — Reads Ollama config from agent_config and passes to session creation
-- `routes.py` — `/api/ollama/models` endpoint for dynamic model discovery; `/api/ollama/status` for connection checking
+- `routes.py` — `/api/ollama/models` endpoint for dynamic model discovery (with optional `?force=true` to bust the cache); connection-status checks are derived from this endpoint succeeding/failing
 
 ## Test Script
 

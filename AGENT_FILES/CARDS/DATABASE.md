@@ -3,7 +3,7 @@
 > **Load when**: writing or running a DB migration; inspecting the schema; whitelisting a new column.
 > **Skip when**: not touching SQL or migrations.
 
-SQLite with **21 versioned migrations (001–021)** in `src/migrations/versions/`. Auto-migrates on startup.
+SQLite with **23 versioned migrations (001–023)** in `src/migrations/versions/`. Auto-migrates on startup (from the FastAPI lifespan).
 
 **CLI**:
 ```bash

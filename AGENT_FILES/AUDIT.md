@@ -1,7 +1,7 @@
 # Security Audit Report
 
 **Date**: 2026-04-10
-**Last updated**: 2026-05-01 (rev 9 — re-confirmed against the in-flight `ItemState` FSM (`src/domain/item_state.py`) and the new item/epic repository layer (`src/repositories/`). No new findings. Finding #5 (dynamic SQL column names) remains remediated: the `ALLOWED_ITEM_COLUMNS` whitelist is now enforced inside `ItemRepository`, and `ALLOWED_EPIC_COLUMNS` is enforced inside `EpicRepository` (the old whitelist in `database_service.py` was removed since callers now go through the repos). The `AgentConfig` Phase 3 refactor (real Python types for `tools`/`mcp_servers`/`plugins`/`allowed_commands`/`allowed_builtin_tools`, with JSON-string-tolerant validators) is a defense-in-depth improvement: parsing happens through Pydantic instead of ad-hoc `json.loads` at call sites.)
+**Last updated**: 2026-05-07 (rev 10 — re-confirmed against migrations 022 (`auto_approve`) and 023 (`pause_message`), plus the new auto-review agent at `src/agent/review_agent.py`. **No new security findings.** Two notes worth recording: (a) the auto-review agent runs as a strictly read-only Claude session — its `can_use_tool` allowlist is `Read`/`Glob`/`Grep` only, with `Edit`/`Write`/`Bash` denied via `PermissionResultDeny`, so the review-agent path does not widen the agent-containment surface; cycle bookkeeping (max 3 retries) lives in `WorkflowService` outside the SDK call. (b) The `pause_message` column is plain user text prepended to the resume prompt — no shell or SQL surface added (parameterized writes via the repo). Finding #5 (dynamic SQL column names) remains remediated and the whitelist constants were renamed from `ALLOWED_*_COLUMNS` to `_WRITABLE_*_COLUMNS` (private to each repository module — `_WRITABLE_ITEM_COLUMNS` in `repositories/item_repository.py`, `_WRITABLE_EPIC_COLUMNS` in `repositories/epic_repository.py`); rename only, semantics unchanged. The `AgentConfig` Phase 3 refactor is unchanged from rev 9.)
 **Scope**: Full codebase review of Claude Agents Dashboard
 **Threat model**: Localhost single-user developer tool. The server binds to `127.0.0.1` only, is operated by the local developer, and is not designed for network exposure or multi-user access. In multi-repo workspace mode the same threat model applies — agents work in a worktree inside one chosen sibling repo and have read-only access to the other siblings via `add_dirs`, with the path guard hook (`path_guard.py`) preventing writes outside the assigned worktree.
 
@@ -66,7 +66,7 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 - **Status**: ✅ **REMEDIATED**
 - **File**: `src/services/database_service.py`
 - **Original issue**: `update_item()` built SQL with f-string column names from dict keys without validation.
-- **Fix implemented**: An `ALLOWED_ITEM_COLUMNS` whitelist is enforced on every item write. As of rev 9 the whitelist lives in `repositories/item_repository.py` (moved out of `database_service.py`) and is checked in `update_fields()` / `transition()` before any SQL is built — invalid keys raise `ValueError`. The equivalent epic whitelist is enforced in `repositories/epic_repository.py` (the old `ALLOWED_EPIC_COLUMNS` constant in `database_service.py` was deleted because all writes now route through the repo).
+- **Fix implemented**: A `_WRITABLE_ITEM_COLUMNS` whitelist is enforced on every item write (renamed from `ALLOWED_ITEM_COLUMNS` in rev 10; private to the module). As of rev 9 the whitelist lives in `repositories/item_repository.py` (moved out of `database_service.py`) and is checked in `update_fields()` / `transition()` before any SQL is built — invalid keys raise `ValueError`. The equivalent epic whitelist (`_WRITABLE_EPIC_COLUMNS`) is enforced in `repositories/epic_repository.py` (the old `ALLOWED_EPIC_COLUMNS` constant in `database_service.py` was deleted because all writes now route through the repo).
 
 ### 6. No CORS Middleware
 
@@ -184,7 +184,7 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 |----------|---------|--------|
 | Do Now | #1 Command filter — shell operator rejection + shlex parsing | ✅ Done |
 | Do Now | #6 CORS middleware — localhost-only origin restriction | ✅ Done |
-| Do Now | #5 SQL column whitelist — ALLOWED_ITEM_COLUMNS validation | ✅ Done |
+| Do Now | #5 SQL column whitelist — `_WRITABLE_ITEM_COLUMNS` validation (renamed from `ALLOWED_ITEM_COLUMNS` in rev 10) | ✅ Done |
 | Consider | #3 Symlink skipping — symlinks displayed but not followed | ✅ Done |
 | Consider | #4 Diff path validation — validate_file_path() applied | ✅ Done |
 | Consider | #2 YOLO mode logging — command tagging + WebSocket events | ✅ Done |
@@ -221,3 +221,4 @@ The codebase has several good security practices worth noting:
 - **Security response headers**: `SecurityHeadersMiddleware` adds `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY` to all responses.
 - **Input validation**: Epic colors are validated against a whitelist via Pydantic `field_validator`, preventing arbitrary input.
 - **Stale worktree detection**: Background periodic task detects and notifies about orphaned worktrees, with UI-driven cleanup actions.
+- **Read-only auto-review agent**: The optional auto-approve workflow (migration 022) spawns a separate Claude session via `src/agent/review_agent.py` to grade the diff before merge. The reviewer is strictly read-only — its `can_use_tool` callback returns `PermissionResultAllow` for `Read`/`Glob`/`Grep` and `PermissionResultDeny` for everything else (no `Edit`/`Write`/`Bash`). Cycle bookkeeping (max 3 retries) lives in `WorkflowService._auto_approve_retries` outside the SDK call, so a malicious or buggy reviewer cannot loop indefinitely.

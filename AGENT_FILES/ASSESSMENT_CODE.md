@@ -1,8 +1,8 @@
 # Code Assessment: Agents Dashboard
 
-**Date**: 2026-05-01
+**Date**: 2026-05-07
 **Scope**: Full source code review of all Python backend, JavaScript frontend, and infrastructure files.
-**Revision**: 40 — Maintenance reassessment. No source-code drift since rev 39 (Phases 1–3 still describe current state); only new work is two pure-HTTP e2e regressions added in `6b11b5e`: `tests/e2e/test_state_machine_dnd.mjs` (5 cases — DnD canonicalization + reorder/done semantics, regression for the off-canon `("doing","cancelled")` family that crashed Start before Phase 2's `move_to_column` normalization) and `tests/e2e/test_config_roundtrip.mjs` (4 steps — Phase 3 typed-field round-trip across SQLite TEXT, plus legacy JSON-string input compatibility via the pre-validator). E2E count is now 7 `.mjs` files (5 agent-spawning + 2 pure-HTTP). The in-flight refactor (Phases 1–3) is unchanged: a new **`ItemState` finite state machine** in `src/domain/item_state.py` is the source of truth for the 13 reachable item states (encoded in DB as the existing `(column_name, status)` pair). `WorkflowService` routes start/pause/resume/cancel, clarify ask/answer, merge/conflict/complete, retry agent/merge through this FSM. New **`ItemRepository`** (`src/repositories/item_repository.py`) and **`EpicRepository`** (`src/repositories/epic_repository.py`) facade `DatabaseService`, own the column whitelists (`ALLOWED_ITEM_COLUMNS` was moved out of `database_service.py`; `ALLOWED_EPIC_COLUMNS` was deleted), and provide intent-named methods (`transition()`, `update_fields()`, `move_item`). Phase 3 promoted `AgentConfig`'s JSON-string fields (`tools`, `mcp_servers`, `plugins`, `allowed_commands`, `allowed_builtin_tools`) to real Python types. Python backend ~8,000 lines across 40 source files (excluding migrations). JavaScript frontend ~8,400 lines across 24 files. CSS ~3,700 lines across 5 files. **21 migrations**. **983 tests across 32 test files** (including conftest.py, plus `test_item_state.py`, `test_item_repository.py`, `test_epic_repository.py`).
+**Revision**: 41 — Maintenance reassessment. New since rev 40: **migration 022 `auto_approve`** (per-item integer mode 0/1/2) wires up an **auto-review agent** at `src/agent/review_agent.py` (~250 LOC) — a strictly read-only Claude call (Read/Glob/Grep only) that grades the diff and either approves or returns comments to the original agent; cycle cap (3 retries) lives in `WorkflowService._auto_approve_retries`. **Migration 023 `pause_message`** lets the user attach a comment when pausing; the message is prepended to the resume prompt and cleared on resume. The column whitelists were renamed from `ALLOWED_*_COLUMNS` to `_WRITABLE_*_COLUMNS` (private, repo-owned) — semantics unchanged. The Phases 1–3 refactor still describes current state: the **`ItemState` finite state machine** in `src/domain/item_state.py` is the source of truth for the 13 reachable item states (encoded in DB as the existing `(column_name, status)` pair); `WorkflowService` routes start/pause/resume/cancel, clarify ask/answer, merge/conflict/complete, retry agent/merge through this FSM; **`ItemRepository`** and **`EpicRepository`** facade `DatabaseService` and own the column whitelists; **`AgentConfig`'s** `tools`/`mcp_servers`/`plugins`/`allowed_commands`/`allowed_builtin_tools` are real Python types with JSON-string-tolerant validators. **23 migrations**. **983 tests across 32 Python test files** (including `conftest.py`, plus `test_item_state.py`, `test_item_repository.py`, `test_epic_repository.py`); 7 E2E `.mjs` files (5 agent-spawning + 2 pure-HTTP). Python backend ~9,000 lines across ~35 source files (excluding migrations). JavaScript frontend ~9,200 lines across 27 files. CSS ~3,800 lines across 5 files.
 
 ---
 
@@ -11,12 +11,14 @@
 Agents Dashboard is a well-architected, production-quality AI agent orchestration platform. The architecture follows clean separation of concerns with 5 focused service classes on the backend, a new domain/repository layer underneath them, and 12 specialized dialog modules on the frontend. Since the previous assessment:
 
 - **`ItemState` finite state machine (`src/domain/item_state.py`)**: the 13 reachable item states (BACKLOG, QUEUED, RUNNING, PAUSED, FAILED, CONFLICT, RESOLVING_CONFLICTS, CLARIFY, MERGE_BLOCKED, REVIEW, DONE, ARCHIVED, CANCELLED) and their transitions are now an explicit FSM. Storage encoding stays unchanged (`(column_name, status)` pair) via `from_columns` / `to_columns`. `WorkflowService` routes start/pause/resume/cancel, clarify ask/answer, merge/conflict/complete, retry agent/merge, and DnD-produced encodings through `transition(state, event)`. A startup state-encoding audit + stale-worktree cleanup uses the FSM to validate persisted state.
-- **Repository layer (`src/repositories/`)**: `ItemRepository` provides read APIs (`get_or_raise`, `list_running`, `list_in_state`) plus state-changing operations (`transition()`, `update_fields()`, `move_item`); it owns `ALLOWED_ITEM_COLUMNS`. `EpicRepository` provides the same shape for epics; the old `ALLOWED_EPIC_COLUMNS` whitelist was deleted from `database_service.py`. The repos are thin facades over `DatabaseService` for now.
+- **Repository layer (`src/repositories/`)**: `ItemRepository` provides read APIs (`get_or_raise`, `list_running`, `list_in_state`) plus state-changing operations (`transition()`, `update_fields()`, `move_item`); it owns `_WRITABLE_ITEM_COLUMNS` (renamed from `ALLOWED_ITEM_COLUMNS` in rev 41 — same semantics, now private to the module). `EpicRepository` provides the same shape for epics with `_WRITABLE_EPIC_COLUMNS`; the old `ALLOWED_EPIC_COLUMNS` whitelist was deleted from `database_service.py`. The repos are thin facades over `DatabaseService` for now.
 - **AgentConfig Phase 3**: `tools`, `mcp_servers`, `plugins`, `allowed_commands`, `allowed_builtin_tools` are real Python types in the Pydantic model; validators tolerate JSON strings on input so DB rows still load.
+- **Auto-approve workflow (migration 022)**: A new `auto_approve` integer column on `items` enables a per-item review-loop mode. After the main agent completes, `WorkflowService` invokes `run_auto_review` from `src/agent/review_agent.py` — a strictly read-only Claude session (`Read`/`Glob`/`Grep` allowed; `Edit`/`Write`/`Bash` denied via `PermissionResultDeny`) that emits a structured `DECISION` block. WorkflowService parses it and either approves the item or sends comments back as a request-changes cycle. Capped at 3 round trips (`_auto_approve_retries`) before falling back to human review. Two short-circuit paths exist: `_auto_approve_no_changes` (no diff → mark Done) and `_auto_approve_direct` (mode 2 → skip the reviewer call).
+- **Pause messages (migration 023)**: A new `pause_message TEXT` column on `items` stores an optional comment supplied when pausing. The message is prepended to the resume prompt and cleared once the agent resumes — gives the user a way to redirect the agent without canceling.
 
 Earlier capabilities still in place include **default model = Claude Opus 4.7** with Sonnet 4.6 selectable (migrations 018, 019), **multi-repo workspace support** (migration 020) with nullable `repo` column and `idx_items_repo` index, **annotation summary** (009), **epic grouping** (010), **item dependencies** (011), **auto-start pipelines** (012), **shortcuts bar** with **create_shortcut MCP tool**, **worktree file browsing**, **retry merge**, **bulk operations**, **animated flame background** (013) with intensity multiplier, **start_copy** (014), **has_file_changes detection** (015), **Ollama provider** (016) gated behind `--experimental`, and **WIP limit** (017) with queued auto-start.
 
-The test suite includes **983 automated tests across 32 test files** plus **E2E tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, Ollama provider configuration, multi-repo workspace mode, clarification context flow, and orchestrator lifecycle.
+The test suite includes **983 automated tests across 32 Python test files** plus **7 E2E `.mjs` tests** via `run-e2e-tests.sh`, with comprehensive coverage for all 5 services, HTTP routes, WebSocket, git operations, agent sessions, MCP tools, diff isolation, command filtering, file browser routes, mini-MCP server protocol, epics, auto-start pipelines, annotation summary/prompt, Ollama provider configuration, multi-repo workspace mode, clarification context flow, and orchestrator lifecycle. Auto-approve and pause-message coverage rides on `test_workflow_service.py`; no dedicated test files were added for migrations 022/023 in this revision.
 
 **Overall Rating**: **A** (Strong — clean architecture, well-decomposed services, robust security posture)
 
@@ -121,14 +123,14 @@ graph TB
 | Module | Lines | Quality | Notes |
 |--------|-------|---------|-------|
 | `services/__init__.py` | 14 | A | Clean re-exports of all 5 services |
-| `services/workflow_service.py` | ~1,330 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, has_file_changes detection, auto-start of dependent items, WIP limit queue management, `_multi_repo_session_kwargs` for multi-repo session wiring, and clarification context plumbing. All state transitions are now routed through the `ItemState` FSM via `ItemRepository.transition()` |
-| `services/database_service.py` | ~558 | A | All DB operations; parameterized queries throughout; item dependency management; `repo` column included in start-copy insert; clarification CRUD persists/retrieves the optional `context` field. Column whitelisting moved out into the repositories (`ALLOWED_ITEM_COLUMNS` lives in `item_repository.py`; the old `ALLOWED_EPIC_COLUMNS` is deleted) |
-| `domain/item_state.py` | 183 | A | New — explicit finite state machine over the 13 reachable item states with `Event` enum, `transition(state, event)`, and `from_columns`/`to_columns` translators that keep the existing two-string DB encoding unchanged |
-| `repositories/item_repository.py` | 188 | A | New — read-only + state-changing facade over `DatabaseService` for items; owns `ALLOWED_ITEM_COLUMNS`; provides `get_or_raise`, `list_running`, `list_in_state`, `transition()`, `update_fields()`, `move_item` |
-| `repositories/epic_repository.py` | 69 | A | New — facade for epic CRUD; owns the epic column whitelist |
-| `services/notification_service.py` | 118 | A | WebSocket broadcasting + tool formatting; clean separation |
+| `services/workflow_service.py` | ~1,705 | A | Core workflow coordination with callback factory pattern, merge conflict auto-resolution, dirty repo overlap detection, has_file_changes detection, auto-start of dependent items, WIP limit queue management, `_multi_repo_session_kwargs` for multi-repo session wiring, clarification context plumbing, **auto-approve cycle bookkeeping (`_auto_approve_retries`, `_auto_approve_direct`, `_auto_approve_no_changes`)**, and pause-message plumbing on resume. All state transitions are routed through the `ItemState` FSM via `ItemRepository.transition()` |
+| `services/database_service.py` | ~566 | A | All DB operations; parameterized queries throughout; item dependency management; `repo` column included in start-copy insert; clarification CRUD persists/retrieves the optional `context` field; `auto_approve` and `pause_message` columns supported via the items SELECT/INSERT paths. Column whitelisting moved out into the repositories (`_WRITABLE_ITEM_COLUMNS` lives in `item_repository.py`; the old `ALLOWED_EPIC_COLUMNS` is deleted) |
+| `domain/item_state.py` | 183 | A | Explicit finite state machine over the 13 reachable item states with `Event` enum, `transition(state, event)`, and `from_columns`/`to_columns` translators that keep the existing two-string DB encoding unchanged |
+| `repositories/item_repository.py` | ~190 | A | Read-only + state-changing facade over `DatabaseService` for items; owns `_WRITABLE_ITEM_COLUMNS` (private to the module); provides `get_or_raise`, `list_running`, `list_in_state`, `transition()`, `update_fields()`, `move_item` |
+| `repositories/epic_repository.py` | 69 | A | Facade for epic CRUD; owns `_WRITABLE_EPIC_COLUMNS` |
+| `services/notification_service.py` | 125 | A | WebSocket broadcasting + tool formatting; clean separation |
 | `services/git_service.py` | 140 | A | Git worktree and merge operations with proper error handling; repo path resolution helpers for multi-repo mode |
-| `services/session_service.py` | 285 | A | Session lifecycle, commit messages, plugin parsing, Ollama config; passes `workspace_root` and `sibling_repo_paths` for multi-repo agents |
+| `services/session_service.py` | 277 | A | Session lifecycle, commit messages, plugin parsing, Ollama config; passes `workspace_root` and `sibling_repo_paths` for multi-repo agents |
 
 ### Backend Python — Core
 
@@ -140,20 +142,21 @@ graph TB
 | `constants.py` | 37 | A | Centralized `AVAILABLE_MODELS` list (with experimental flag), `DEFAULT_MODEL` (Opus 4.7), `DEFAULT_OLLAMA_BASE_URL`, `OPTIONAL_BUILTIN_TOOLS`, `EPIC_COLORS` |
 | `models.py` | 140 | A | Clean Pydantic models, imports `DEFAULT_MODEL` from constants; `start_copy`, `has_file_changes`, `wip_limit`, `flame_intensity_multiplier`, `repo` fields. **Phase 3**: `AgentConfig.tools`, `mcp_servers`, `plugins`, `allowed_commands`, `allowed_builtin_tools` are now real Python types (`list`/`dict`) with validators that tolerate JSON strings on input from SQLite TEXT columns |
 | `database.py` | 55 | A- | Clean async context manager; no connection pooling (acceptable for localhost) |
-| `web/app.py` | 194 | A | Proper lifespan management, clean factory pattern, CORS middleware (localhost-only), security headers; `repos` arg switches the app to multi-repo mode |
-| `web/routes.py` | 1,503 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations; item detail page; Ollama model discovery; WIP limit config; multi-repo `_resolve_item_repo_path()` helper |
+| `web/app.py` | 228 | A | Proper lifespan management (auto-runs DB migrations + state-encoding audit + stale-worktree scanner), clean factory pattern, CORS middleware (localhost-only), security headers; `repos` arg switches the app to multi-repo mode |
+| `web/routes.py` | 1,584 | A- | Comprehensive REST API; stats caching with TTL; search endpoint; shortcuts CRUD + stop endpoint; dependency management; worktree browsing; bulk operations; item detail page; Ollama model discovery; WIP limit config; multi-repo `_resolve_item_repo_path()` helper; auto-approve mode persisted via `PATCH /api/items/{id}` |
 | `web/file_routes.py` | 378 | A | File browser endpoints with path validation, secret hiding, .browserhidden support, binary detection, language mapping, lazy tree scanning |
 | `web/websocket.py` | 187 | A | Rate limiting by IP, connection attempt tracking, stats endpoint, dead-connection cleanup |
-| `agent/orchestrator.py` | 127 | A | Clean facade pattern — delegates all operations to services; multi-repo aware via `repos` parameter; backward compatibility preserved |
-| `agent/session.py` | 737 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult`; Ollama env passthrough; `workspace_root` + `sibling_repo_paths` injected for multi-repo agents (read-only `add_dirs` + system prompt note) |
-| `agent/clarification.py` | ~60 | A | Clean MCP tool definition; accepts optional `context` field passed through to the clarification row |
+| `agent/orchestrator.py` | 154 | A | Clean facade pattern — delegates all operations to services; multi-repo aware via `repos` parameter; backward compatibility preserved |
+| `agent/session.py` | 737 | A- | Clean SDK wrapper; good token extraction with fallbacks; `can_use_tool` returns `PermissionResult`; Ollama env passthrough; `workspace_root` + `sibling_repo_paths` injected for multi-repo agents (read-only `add_dirs` + system prompt note); `use_advisor` enables an Opus advisor sub-agent (Anthropic-only, skipped under Ollama) |
+| `agent/review_agent.py` | 249 | A | **New** — auto-review agent for the auto-approve workflow (migration 022). Spins up a short-lived, read-only Claude session that inspects the diff (capped at 60K chars, with on-demand `Read`/`Glob`/`Grep` for more context) and emits a structured `DECISION` block parsed by `WorkflowService`. `can_use_tool` strictly denies `Edit`/`Write`/`Bash`. Stateless — cycle bookkeeping (max 3 retries) lives in `WorkflowService`. |
+| `agent/clarification.py` | 63 | A | Clean MCP tool definition; accepts optional `context` field passed through to the clarification row |
 | `agent/todo.py` | 165 | A | Clean MCP tool definition with epic and dependency support |
 | `agent/commit_message.py` | 50 | A | Clean MCP tool definition |
 | `agent/command_access.py` | 42 | A | Clean MCP tool for runtime command approval |
 | `agent/command_filter.py` | 90 | A | PreToolUse hook for bash command filtering with shell operator rejection and shlex parsing |
 | `agent/board_view.py` | 42 | A | Board introspection MCP tool |
 | `agent/tool_access.py` | 42 | A | Runtime tool access request MCP tool |
-| `agent/path_guard.py` | 146 | A | PreToolUse hook preventing agents from editing files outside their worktree; multi-repo aware (avoids parent-root false positives across sibling repos) |
+| `agent/path_guard.py` | 146 | A | PreToolUse hook preventing agents from editing files outside their worktree (and outside `workspace_root` for reads in multi-repo mode); avoids parent-root false positives across sibling repos |
 | `agent/tool_filter.py` | 38 | A | PreToolUse hook for optional built-in tool filtering |
 | `agent/shortcut.py` | 59 | A | Create shortcut MCP tool for agents to add bash command shortcuts to the board |
 | `git/operations.py` | 354 | A- | Correct logic; async file reads; `validate_file_path()` prevents path traversal; configurable timeouts |
@@ -181,6 +184,8 @@ graph TB
 | `migrations/versions/019_update_default_model_to_opus_4_7.py` | 56 | A | Upgrades selectable models: Opus 4.6 → 4.7, Sonnet 4 (dated `claude-sonnet-4-20250514`) → Sonnet 4.6, including `+advisor` variants; applied to both `items.model` and `agent_config.model` |
 | `migrations/versions/020_add_repo_to_items.py` | 32 | A | Multi-repo support: adds nullable `repo TEXT` column to `items` and `idx_items_repo` index; NULL preserves single-repo behavior |
 | `migrations/versions/021_add_context_to_clarifications.py` | ~30 | A | Clarification context: adds nullable `context TEXT` column to `clarifications` so the `ask_user` MCP tool can attach background information for the user to read alongside the prompt |
+| `migrations/versions/022_add_auto_approve.py` | ~36 | A | Auto-approve workflow: adds `auto_approve INTEGER DEFAULT 0` column to `items` (modes 0=off, 1=review, 2=direct). Wires up `src/agent/review_agent.py` for an automated read-only diff review with up to 3 cycle retries before falling back to human review |
+| `migrations/versions/023_add_pause_message.py` | ~32 | A | Pause messages: adds nullable `pause_message TEXT` column to `items`. Stores an optional user-supplied comment on pause; prepended to the resume prompt and cleared on resume |
 
 ### Frontend JavaScript
 
@@ -342,7 +347,7 @@ stateDiagram-v2
 | 10 | No WebSocket rate limiting | ✅ Per-IP rate limiting with concurrent connection limits and windowed attempt tracking |
 | 11 | No request timeout for blocking operations | ✅ `asyncio.wait_for()` with `HTTP_REQUEST_TIMEOUT` on approve route |
 | 12 | Migration class discovery uses string comparison | ✅ Justified — `issubclass` fails with dynamic module loading |
-| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (1,154), DatabaseService (503), NotificationService (118), GitService (105), SessionService (229). Orchestrator now 123-line facade |
+| 13 | Orchestrator too large (667 lines) | ✅ Decomposed into 5 services: WorkflowService (~1,705), DatabaseService (~566), NotificationService (~125), GitService (~140), SessionService (~277). Orchestrator now 154-line facade. WorkflowService growth since the decomposition is feature-driven (auto-approve cycles, WIP queueing, multi-repo, FSM-routed transitions) — not a regression in cohesion |
 | 14 | `dialogs.js` too large (801 lines) | ✅ Split into 12 specialized modules with coordinator pattern. Largest module is `search-dialog.js` at 246 lines |
 
 ### Remaining Issues
@@ -363,7 +368,7 @@ stateDiagram-v2
 
 ## Test Coverage
 
-**Current state**: 983 automated tests across 32 test files (including conftest.py) via `./run-tests.sh`, plus 7 E2E `.mjs` test files via `./run-e2e-tests.sh` (5 agent-spawning + 2 pure-HTTP regressions for DnD encoding canonicalization and `AgentConfig` round-trip). Database has 21 migrations.
+**Current state**: 983 automated tests across 32 Python test files (including `conftest.py`) via `./run-tests.sh`, plus 7 E2E `.mjs` test files via `./run-e2e-tests.sh` (5 agent-spawning + 2 pure-HTTP regressions for DnD encoding canonicalization and `AgentConfig` round-trip). Database has 23 migrations. Auto-approve / pause-message coverage rides on `test_workflow_service.py` and `test_advisor.py`; no dedicated test files were added for migrations 022/023 in this revision (the column-add migrations themselves are covered by the generic migration runner suite).
 
 | Test File | Type | Tests | Focus |
 |-----------|------|-------|-------|
@@ -481,6 +486,8 @@ graph LR
 46. **Explicit `ItemState` finite state machine** (`src/domain/item_state.py`): the 13 reachable item states and their transitions are now an enum-based FSM with a centralized `transition(state, event)` function. Storage encoding stays as the existing `(column_name, status)` pair via `from_columns`/`to_columns`, so no migration was needed. `WorkflowService` routes start/pause/resume/cancel, clarify ask/answer, merge/conflict/complete, retry agent/merge, and DnD-produced encodings through the FSM. Startup runs a state-encoding audit + stale-worktree cleanup using the same FSM. New tests cover the FSM directly (`test_item_state.py`, 27 tests).
 47. **Repository layer for items and epics** (`src/repositories/`): `ItemRepository` and `EpicRepository` are facade classes over `DatabaseService` that own column whitelists and expose intent-named methods (`get_or_raise`, `list_running`, `list_in_state`, `transition()`, `update_fields()`, `move_item`). The old `ALLOWED_ITEM_COLUMNS` was moved here and `ALLOWED_EPIC_COLUMNS` was deleted entirely. New tests cover both repos (`test_item_repository.py` 25 tests, `test_epic_repository.py` 9 tests).
 48. **Typed `AgentConfig`** (Phase 3): the `tools`, `mcp_servers`, `plugins`, `allowed_commands`, and `allowed_builtin_tools` fields are now real Python types (`list`/`dict`) on the Pydantic model. Pre-validators tolerate JSON strings on input so DB rows stored as TEXT still load through the model unchanged.
+49. **Auto-approve workflow with read-only reviewer** (migration 022): The `auto_approve` integer mode on `items` (0=off / 1=review / 2=direct) drives `WorkflowService` to invoke `src/agent/review_agent.py` after the main agent completes. The reviewer is a strictly read-only Claude session (`Read`/`Glob`/`Grep` only; `Edit`/`Write`/`Bash` denied via `PermissionResultDeny`) that emits a structured `DECISION` block. Cycle bookkeeping (max 3 retries) lives in `_auto_approve_retries` outside the SDK call, so a misbehaving reviewer cannot loop indefinitely. Two short-circuit paths (`_auto_approve_no_changes` for empty diffs, `_auto_approve_direct` for mode 2) keep the cheap cases cheap.
+50. **Pause messages** (migration 023): The `pause_message TEXT` column on `items` lets the user attach a redirection comment when pausing — "investigate a different approach using async/await" — which is then prepended to the resume prompt and cleared on resume. Lower-friction than canceling and re-creating the item.
 
 ---
 
@@ -488,13 +495,14 @@ graph LR
 
 | Category | Files | Lines |
 |----------|-------|-------|
-| Python backend (src/, excl. migrations) | 40 | ~8,000 |
-| Database migrations | 21 | ~785 |
-| JavaScript frontend | 24 | ~8,400 |
-| CSS styles | 5 | ~3,700 |
+| Python backend (src/, excl. migrations, excl. `__init__.py`) | 35 | ~9,000 |
+| Database migrations | 23 | ~960 |
+| JavaScript frontend | 27 | ~9,200 |
+| CSS styles | 5 | ~3,800 |
 | HTML templates (incl. partials) | 3 | ~895 |
-| Tests | 32 | ~12,000 |
-| **Grand total** | **125** | **~33,780** |
+| Python tests | 32 | ~13,000 |
+| E2E tests (`.mjs`) | 7 (+ `helpers.mjs`) | ~1,200 |
+| **Grand total** | **~132** | **~38,000** |
 
 ---
 
