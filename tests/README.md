@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (983 tests across 32 test files plus `conftest.py`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (21 migrations), security, git operations, services, routes, WebSocket, sessions, agent tools, the new `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (983 tests across 32 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (23 migrations), security, git operations, services, routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 

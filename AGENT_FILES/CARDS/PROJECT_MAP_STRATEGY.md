@@ -13,7 +13,7 @@ Replace phrases like "the merge-conflict auto-resolution path in WorkflowService
 
 ## Filename
 
-`PROJECT_MAP.md` (lives in `AGENT_FILES/`). "Map" suggests navigation; "dictionary" would suggest definitions only.
+`PROJECT_MAP.md` (lives in `AGENT_FILES/CARDS/`). "Map" suggests navigation; "dictionary" would suggest definitions only.
 
 ## Naming convention
 

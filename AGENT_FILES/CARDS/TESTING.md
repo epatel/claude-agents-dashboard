@@ -12,7 +12,7 @@
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 21 migrations.
+The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 23 migrations.
 
 ## Test Structure
 
@@ -70,11 +70,11 @@ Quick checks that core components work:
 
 ### Unit Tests — Domain & Repository Layer (61 tests)
 - **ItemState FSM** (27 tests): The 13 reachable item states, events, transition rules, and `(column_name, status)` encoding round-trips
-- **ItemRepository** (25 tests): Read APIs, `transition()`, `update_fields()`, `move_item`, `ALLOWED_ITEM_COLUMNS` enforcement
-- **EpicRepository** (9 tests): CRUD facade and column whitelist enforcement (replaces the old `ALLOWED_EPIC_COLUMNS` whitelist in `database_service.py`)
+- **ItemRepository** (25 tests): Read APIs, `transition()`, `update_fields()`, `move_item`, `_WRITABLE_ITEM_COLUMNS` enforcement
+- **EpicRepository** (9 tests): CRUD facade and `_WRITABLE_EPIC_COLUMNS` enforcement (replaces the old `ALLOWED_EPIC_COLUMNS` whitelist that lived in `database_service.py`)
 
 ### Unit Tests — Service Layer (224 tests)
-- **WorkflowService** (74 tests): State transitions (driven through the `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, callback factories, clarification context plumbing
+- **WorkflowService** (74 tests): State transitions (driven through the `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing
 - **DatabaseService** (58 tests): CRUD operations, item dependencies, clarification context column (column whitelisting moved into the repositories)
 - **SessionService** (51 tests): Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests): WebSocket broadcasting, tool formatting, event types

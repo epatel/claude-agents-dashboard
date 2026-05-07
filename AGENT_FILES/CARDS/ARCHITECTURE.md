@@ -9,8 +9,8 @@ Tour of the major subsystems. For named flows with line-numbered entry points se
 
 FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin facade delegating to 5 services in `src/services/`:
 
-- `WorkflowService` (1331 LOC) — agent lifecycle, state transitions (driven by `ItemState` FSM in `src/domain/item_state.py`), merge conflict auto-resolution, dependency auto-start, WIP limit queueing, multi-repo session kwargs
-- `DatabaseService` (558 LOC) — all DB operations (parameterized; column whitelists live in the repositories)
+- `WorkflowService` (~1700 LOC) — agent lifecycle, state transitions (driven by `ItemState` FSM in `src/domain/item_state.py`), merge conflict auto-resolution, dependency auto-start, WIP limit queueing, multi-repo session kwargs, pause/resume with session capture
+- `DatabaseService` (~570 LOC) — all DB operations (parameterized; column whitelists live in the repositories)
 - `NotificationService` — WebSocket broadcasting + tool formatting; the single fan-out point on every state change
 - `GitService` — worktree management, merge operations, repo path resolution
 - `SessionService` — Claude SDK session lifecycle, commit messages, plugin parsing, Ollama config
@@ -18,7 +18,7 @@ FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin
 ## Web layer (`src/web/`)
 
 - `app.py` — FastAPI app + lifespan (runs DB migrations, the startup state-encoding audit `_audit_item_state_encodings`, and the periodic stale-worktree scanner)
-- `routes.py` — board/item/epic/clarification HTTP endpoints (~1500 LOC)
+- `routes.py` — board/item/epic/clarification/shortcut/notifications/stats HTTP endpoints (~1600 LOC)
 - `file_routes.py` — attachments + file browser
 - `websocket.py` — WS connection manager
 

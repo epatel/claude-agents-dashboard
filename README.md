@@ -199,7 +199,7 @@ graph TB
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~8,000 lines across 40 source files (excluding migrations)
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~8,400 lines JS + ~3,700 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Opus 4.7 (default), Claude Sonnet 4.6, Claude Haiku 4.5, 7 built-in MCP tools; experimental Sonnet 4.6 + Advisor variant; optional Ollama provider (experimental)
-- **Database**: SQLite with 21 versioned migrations
+- **Database**: SQLite with 23 versioned migrations (auto-runs on startup)
 - **Security**: Localhost only, no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
 
 ### Item lifecycle
@@ -239,7 +239,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–021) adding columns and tables incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–023) adding columns and tables incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -532,13 +532,18 @@ Each project gets its own server instance. Run `run.sh` from different repos —
 
 ## Agent documentation
 
-The `AGENT_FILES/` directory contains supplementary documentation for agents working on this project:
+The `AGENT_FILES/` directory contains supplementary documentation for agents working on this project. The living docs are organized as routing-manifest **cards** in `AGENT_FILES/CARDS/` (start at [`CARDS/README.md`](AGENT_FILES/CARDS/README.md) and load only the cards whose **Load when** matches your task):
 
-- `ASSESSMENT_CODE.md` — Full code assessment with module-by-module quality ratings and codebase statistics
-- `AUDIT.md` — Security audit report with 14 findings (9 of 9 actionable remediated), threat model, and remediation tracking
-- `COMMIT_POLICY.md` — Commit policies (e.g. excluding annotation images)
-- `OLLAMA_PROVIDER.md` — Documentation for using Ollama as a local model provider via Claude Agent SDK
-- `TESTING.md` — Detailed testing guide with test inventory (983 unit/integration tests + E2E tests), writing guidelines, and 21 database migrations
+- [`CARDS/ARCHITECTURE.md`](AGENT_FILES/CARDS/ARCHITECTURE.md) — subsystem tour: services, web layer, agent runtime, repositories, frontend
+- [`CARDS/CONVENTIONS.md`](AGENT_FILES/CARDS/CONVENTIONS.md) — naming, file organization, type-hint style, error shapes per layer, async / data-layer / frontend conventions
+- [`CARDS/PROJECT_MAP.md`](AGENT_FILES/CARDS/PROJECT_MAP.md) — line-numbered entry points for named flows (`flow.merge`, `flow.clarify`, `flow.wip-queue`, …) and the `data-map-name` UI vocabulary
+- [`CARDS/PROJECT_MAP_STRATEGY.md`](AGENT_FILES/CARDS/PROJECT_MAP_STRATEGY.md) — strategy doc for the project-map vocabulary and the live `Cmd+Shift+M` overlay
+- [`CARDS/DATABASE.md`](AGENT_FILES/CARDS/DATABASE.md) — migration CLI, whitelist requirements, schema inspection
+- [`CARDS/TESTING.md`](AGENT_FILES/CARDS/TESTING.md) — test layout (unit / integration / smoke / e2e) and per-suite conventions
+- [`CARDS/COMMIT_POLICY.md`](AGENT_FILES/CARDS/COMMIT_POLICY.md) — commit policies (e.g. excluding annotation images)
+- [`CARDS/OLLAMA_PROVIDER.md`](AGENT_FILES/CARDS/OLLAMA_PROVIDER.md) — Ollama as a local model provider via Claude Agent SDK + dashboard wiring
+
+Two historical snapshots (point-in-time, **not maintained**) sit in the AGENT_FILES root: `ASSESSMENT_CODE.md` (module-by-module quality ratings) and `AUDIT.md` (security audit, 14 findings, 9 of 9 actionable remediated).
 
 ## License
 
