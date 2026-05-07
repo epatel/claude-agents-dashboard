@@ -1070,6 +1070,18 @@ async def get_yolo_items(request: Request):
     return list(orchestrator.workflow_service._yolo_items)
 
 
+@router.get("/api/auto-reviewing-items")
+async def get_auto_reviewing_items(request: Request):
+    """Return item IDs currently being inspected by the auto-review agent.
+
+    Used by the frontend on initial load to attach a "Reviewing" badge to
+    cards whose review agent is in flight; live changes arrive via the
+    `auto_review_changed` WebSocket event.
+    """
+    orchestrator = request.app.state.orchestrator
+    return list(orchestrator.workflow_service._auto_reviewing)
+
+
 # --- Attachments ---
 
 @router.get("/api/items/{item_id}/attachments")

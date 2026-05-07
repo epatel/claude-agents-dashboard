@@ -65,6 +65,13 @@ class WorkflowService:
         # Track which items are running with YOLO mode (bash_yolo=True)
         self._yolo_items: set = set()
 
+        # Track items currently being inspected by the auto-review agent.
+        # Items in this set are sitting in the review column with status=None
+        # (DB-wise no different from a normal review item) but a separate
+        # read-only Claude session is actively examining their diff. The UI
+        # subscribes to `auto_review_changed` to render a "Reviewing…" badge.
+        self._auto_reviewing: set = set()
+
     async def _count_running_agents(self) -> int:
         """Count how many agents are currently running (not queued)."""
         return len(self.sessions.sessions)
@@ -1453,15 +1460,28 @@ class WorkflowService:
                 f"Auto-review starting (attempt {attempt}/{_MAX_AUTO_APPROVE_RETRIES})…"
             )
 
-            decision = await run_auto_review(
-                worktree_path=worktree_path,
-                model=review_model,
-                item_title=item.get("title", ""),
-                item_description=item.get("description", ""),
-                diff=full_diff,
-                last_message=last_message,
-                ollama_env=ollama_env,
-            )
+            # Mark this review-column item as actively under review so the UI
+            # can render a "Reviewing" badge. Cleared in finally even if the
+            # review agent crashes — never leave a stale badge.
+            self._auto_reviewing.add(item_id)
+            await self.notifications.ws_manager.broadcast("auto_review_changed", {
+                "item_id": item_id, "active": True,
+            })
+            try:
+                decision = await run_auto_review(
+                    worktree_path=worktree_path,
+                    model=review_model,
+                    item_title=item.get("title", ""),
+                    item_description=item.get("description", ""),
+                    diff=full_diff,
+                    last_message=last_message,
+                    ollama_env=ollama_env,
+                )
+            finally:
+                self._auto_reviewing.discard(item_id)
+                await self.notifications.ws_manager.broadcast("auto_review_changed", {
+                    "item_id": item_id, "active": False,
+                })
 
             if decision.get("approved"):
                 summary = decision.get("summary") or "Auto-review approved."
