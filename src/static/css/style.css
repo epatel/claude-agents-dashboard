@@ -307,13 +307,14 @@ body {
     display: inline;
 }
 
-/* Spinner */
+/* Spinner — top arc inherits the parent's text color so the spinner tints
+   match status badges (Running=accent, Resolving conflicts/Reviewing=warning). */
 .spinner {
     display: inline-block;
     width: 10px;
     height: 10px;
     border: 2px solid var(--text-muted);
-    border-top-color: var(--accent);
+    border-top-color: currentColor;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
