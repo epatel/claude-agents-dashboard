@@ -49,8 +49,9 @@ const Api = {
         return this.request('POST', `/api/items/${id}/cancel`);
     },
 
-    pauseAgent(id) {
-        return this.request('POST', `/api/items/${id}/pause`);
+    pauseAgent(id, message = null) {
+        const body = message ? { message } : null;
+        return this.request('POST', `/api/items/${id}/pause`, body);
     },
 
     resumeAgent(id) {

@@ -246,15 +246,29 @@ class WorkflowService:
 
         return item
 
-    async def pause_agent(self, item_id: str) -> Dict[str, Any]:
-        """Pause a running agent — save session for later resumption."""
+    async def pause_agent(
+        self, item_id: str, message: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Pause a running agent — save session for later resumption.
+
+        If ``message`` is supplied, it's stored on the item and prepended to
+        the resume prompt the next time the agent runs (e.g. asking it to
+        investigate a different approach).
+        """
         session_id = await self.sessions.pause_session(item_id)
 
         extras: Dict[str, Any] = {}
         if session_id:
             extras["session_id"] = session_id
+        if message is not None:
+            # Store None when blank so we don't carry empty strings around.
+            extras["pause_message"] = message.strip() or None
         item = await self.items.transition(item_id, Event.PAUSE, **extras)
-        await self._log_and_notify(item_id, "system", "Agent paused by user")
+
+        log_msg = "Agent paused by user"
+        if extras.get("pause_message"):
+            log_msg += f" with note: {extras['pause_message']}"
+        await self._log_and_notify(item_id, "system", log_msg)
         await self.notifications.broadcast_item_updated(item)
         return item
 
@@ -262,11 +276,20 @@ class WorkflowService:
         """Resume a paused agent using its saved session."""
         item = await self.items.get_or_raise(item_id)
 
+        # Pick up any note the user attached when pausing. We capture it now
+        # and clear it on the transition so a subsequent pause/resume cycle
+        # doesn't re-send the old note.
+        pause_message = (item.get("pause_message") or "").strip()
+
         resume_id = item.get("session_id")
         if resume_id:
             await self._log_and_notify(item_id, "system", f"Agent resuming session {resume_id[:8]}...")
         else:
             await self._log_and_notify(item_id, "system", "Agent resuming (no session to resume — starting fresh)")
+        if pause_message:
+            await self._log_and_notify(
+                item_id, "user_action", f"Resume note from user: {pause_message}"
+            )
 
         config = await self.db.get_agent_config()
         worktree_path = Path(item["worktree_path"])
@@ -281,7 +304,12 @@ class WorkflowService:
         else:
             self._yolo_items.discard(item_id)
 
-        item = await self.items.transition(item_id, Event.RESUME)
+        # Clear pause_message on the same write that performs the transition
+        # so the note is consumed exactly once.
+        resume_extras: Dict[str, Any] = {}
+        if pause_message or item.get("pause_message"):
+            resume_extras["pause_message"] = None
+        item = await self.items.transition(item_id, Event.RESUME, **resume_extras)
         await self.notifications.broadcast_item_updated(item)
 
         model = item.get("model") or config.get("model")
@@ -305,6 +333,17 @@ class WorkflowService:
         )
 
         prompt = f"Continue working on your task:\nTask: {item['title']}\n\n{item['description']}"
+        if pause_message:
+            # Surface the user's note prominently — these are mid-flight course
+            # corrections (e.g. "investigate a different approach"), not just
+            # extra context, so we want them at the top of the resume prompt.
+            prompt = (
+                "The user paused you with this note — please address it before "
+                "continuing:\n\n"
+                f"{pause_message}\n\n"
+                "---\n\n"
+                + prompt
+            )
         attachments = await self.db.get_attachments(item_id)
         await self.sessions.start_session_task(item_id, session, prompt, attachments, resume_id)
 

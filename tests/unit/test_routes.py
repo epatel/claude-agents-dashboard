@@ -417,7 +417,22 @@ class TestAgentActions:
         client, app = client_with_item
         resp = await client.post("/api/items/item001/pause")
         assert resp.status_code == 200
-        app.state.orchestrator.pause_agent.assert_awaited_once_with("item001")
+        # Pause now accepts an optional message — when no body is sent, the
+        # route still forwards None so the orchestrator can keep a single
+        # signature for both flows.
+        app.state.orchestrator.pause_agent.assert_awaited_once_with("item001", None)
+
+    @pytest.mark.asyncio
+    async def test_pause_agent_with_message(self, client_with_item):
+        client, app = client_with_item
+        resp = await client.post(
+            "/api/items/item001/pause",
+            json={"message": "investigate a simpler approach"},
+        )
+        assert resp.status_code == 200
+        app.state.orchestrator.pause_agent.assert_awaited_once_with(
+            "item001", "investigate a simpler approach"
+        )
 
     @pytest.mark.asyncio
     async def test_resume_agent(self, client_with_item):

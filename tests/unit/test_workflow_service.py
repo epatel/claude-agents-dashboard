@@ -170,6 +170,80 @@ class TestPauseAgent:
         result = await workflow.pause_agent(running_item["id"])
         assert result["status"] == "paused"
 
+    async def test_pause_stores_message(self, workflow, running_item):
+        result = await workflow.pause_agent(
+            running_item["id"], message="investigate a simpler approach"
+        )
+        assert result["pause_message"] == "investigate a simpler approach"
+
+    async def test_pause_strips_blank_message(self, workflow, running_item):
+        # Pure whitespace shouldn't end up in the prompt as a phantom note.
+        result = await workflow.pause_agent(running_item["id"], message="   \n  ")
+        assert result["pause_message"] is None
+
+    async def test_pause_no_message_leaves_field_unset(self, workflow, running_item):
+        result = await workflow.pause_agent(running_item["id"])
+        assert result.get("pause_message") in (None, "")
+
+
+# ---------------------------------------------------------------------------
+# resume_agent — pause-message handling
+# ---------------------------------------------------------------------------
+
+class TestResumeWithPauseMessage:
+    @pytest_asyncio.fixture
+    async def paused_item(self, db_service, tmp_dir, item):
+        # Set up an item in the paused state with everything resume_agent
+        # expects to find on it.
+        worktree = tmp_dir / "worktrees" / "agent-test"
+        worktree.mkdir(parents=True, exist_ok=True)
+        await db_service.update_item(
+            item["id"],
+            column_name="doing",
+            status="paused",
+            worktree_path=str(worktree),
+            session_id="sess-old",
+            pause_message="investigate a simpler approach",
+        )
+        return await db_service.get_item(item["id"])
+
+    async def test_resume_prepends_pause_message_to_prompt(
+        self, workflow, paused_item
+    ):
+        await workflow.resume_agent(paused_item["id"])
+
+        # start_session_task(item_id, session, prompt, attachments, resume_id)
+        call = workflow.sessions.start_session_task.await_args
+        assert call is not None
+        prompt = call.args[2]
+        assert "investigate a simpler approach" in prompt
+        # The note must come BEFORE the standard "Continue working" preamble
+        # so the agent sees the course-correction first.
+        assert prompt.index("investigate a simpler approach") < prompt.index(
+            "Continue working on your task"
+        )
+
+    async def test_resume_clears_pause_message(self, workflow, paused_item):
+        await workflow.resume_agent(paused_item["id"])
+        refreshed = await workflow.db.get_item(paused_item["id"])
+        assert refreshed.get("pause_message") in (None, "")
+
+    async def test_resume_without_pause_message_uses_plain_prompt(
+        self, workflow, db_service, tmp_dir, item
+    ):
+        worktree = tmp_dir / "worktrees" / "agent-test"
+        worktree.mkdir(parents=True, exist_ok=True)
+        await db_service.update_item(
+            item["id"],
+            column_name="doing",
+            status="paused",
+            worktree_path=str(worktree),
+            session_id="sess-old",
+        )
+        await workflow.resume_agent(item["id"])
+        prompt = workflow.sessions.start_session_task.await_args.args[2]
+        assert "paused you with this note" not in prompt
+
 
 # ---------------------------------------------------------------------------
 # submit_clarification

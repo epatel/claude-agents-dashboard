@@ -34,7 +34,7 @@ _WRITABLE_ITEM_COLUMNS = {
     "branch_name", "worktree_path", "session_id", "model",
     "base_branch", "base_commit", "done_at", "epic_id",
     "merge_commit", "auto_start", "auto_approve", "commit_message",
-    "has_file_changes",
+    "has_file_changes", "pause_message",
     # NB: `start_copy` is intentionally NOT here — it's an init-only flag
     # consumed by the spawn path. See test_rejects_start_copy.
 }

@@ -40,6 +40,11 @@ const Dialogs = {
     openRequestChanges: (itemId) => RequestChangesDialog.openRequestChanges(itemId),
     submitChanges: (event) => RequestChangesDialog.submitChanges(event),
 
+    // Pause dialog - delegate to PauseDialog
+    openPause: (itemId) => PauseDialog.openPause(itemId),
+    submitPause: (event) => PauseDialog.submitPause(event),
+    submitPauseWithoutNote: () => PauseDialog.submitPauseWithoutNote(),
+
     // Notification dialog - delegate to NotificationDialog
     openNotifications: () => NotificationDialog.open(),
 
