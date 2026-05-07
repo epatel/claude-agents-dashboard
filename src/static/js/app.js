@@ -423,6 +423,9 @@ const App = {
             case 'yolo_mode_changed':
                 Board.setYoloMode(data.item_id, data.active);
                 break;
+            case 'auto_review_changed':
+                Board.setAutoReviewing(data.item_id, data.active);
+                break;
             case 'epic_created':
             case 'epic_updated':
             case 'epic_deleted':

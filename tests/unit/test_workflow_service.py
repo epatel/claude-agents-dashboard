@@ -1251,3 +1251,111 @@ class TestAutoApproveDirect:
         assert called == [f"direct:{item['id']}"], (
             f"Expected direct path to be dispatched, got {called}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Auto-review badge tracking
+# ---------------------------------------------------------------------------
+
+class TestAutoReviewBadgeTracking:
+    """The auto-review agent runs outside the regular session manager, so we
+    track in-flight reviews in `_auto_reviewing` and broadcast
+    `auto_review_changed` events. The UI uses both to render a "Reviewing"
+    badge on review-column cards while the diff is being inspected."""
+
+    @pytest_asyncio.fixture
+    async def review_item(self, db_service, item, tmp_dir):
+        wt = tmp_dir / "worktrees" / "review-badge"
+        wt.mkdir(parents=True, exist_ok=True)
+        await db_service.update_item(
+            item["id"],
+            column_name="review",
+            status=None,
+            auto_approve=1,  # AUTO_APPROVE_REVIEW
+            has_file_changes=1,
+            worktree_path=str(wt),
+            branch_name="agent/review-badge",
+            base_branch="main",
+        )
+        return item
+
+    async def test_run_auto_review_marks_and_unmarks_item(
+        self, workflow, review_item
+    ):
+        # While run_auto_review is awaiting, the item should be in the set;
+        # once it resolves, the set should be empty.
+        seen_during_review: list[bool] = []
+
+        async def fake_run_review(**kwargs):
+            seen_during_review.append(
+                review_item["id"] in workflow._auto_reviewing
+            )
+            return {"approved": True, "comments": [], "summary": "ok", "raw": ""}
+
+        with patch("src.services.workflow_service.run_auto_review",
+                   side_effect=fake_run_review), \
+             patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
+             patch.object(workflow, "approve_item", new=AsyncMock()):
+            await workflow._run_auto_review(review_item["id"])
+
+        assert seen_during_review == [True], (
+            "item must be marked as auto-reviewing while run_auto_review runs"
+        )
+        assert review_item["id"] not in workflow._auto_reviewing, (
+            "item must be unmarked once review finishes"
+        )
+
+    async def test_run_auto_review_broadcasts_events(
+        self, workflow, review_item
+    ):
+        async def fake_run_review(**kwargs):
+            return {"approved": True, "comments": [], "summary": "ok", "raw": ""}
+
+        with patch("src.services.workflow_service.run_auto_review",
+                   side_effect=fake_run_review), \
+             patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
+             patch.object(workflow, "approve_item", new=AsyncMock()):
+            await workflow._run_auto_review(review_item["id"])
+
+        # Two broadcasts: active=True at start, active=False at end.
+        review_calls = [
+            call for call in workflow.notifications.ws_manager.broadcast.await_args_list
+            if call.args and call.args[0] == "auto_review_changed"
+        ]
+        assert len(review_calls) == 2, (
+            f"expected 2 auto_review_changed broadcasts, got {len(review_calls)}: "
+            f"{review_calls}"
+        )
+        assert review_calls[0].args[1] == {
+            "item_id": review_item["id"], "active": True,
+        }
+        assert review_calls[1].args[1] == {
+            "item_id": review_item["id"], "active": False,
+        }
+
+    async def test_run_auto_review_unmarks_on_agent_failure(
+        self, workflow, review_item
+    ):
+        # If the review agent itself raises, we must still clear the badge —
+        # otherwise the UI would show "Reviewing" forever.
+        async def boom(**kwargs):
+            raise RuntimeError("review agent crashed")
+
+        with patch("src.services.workflow_service.run_auto_review",
+                   side_effect=boom), \
+             patch("src.git.operations.run_git", new=AsyncMock(return_value="")):
+            # _run_auto_review swallows exceptions internally (logs + bails).
+            await workflow._run_auto_review(review_item["id"])
+
+        assert review_item["id"] not in workflow._auto_reviewing, (
+            "item must be unmarked even when run_auto_review raises"
+        )
+        # And the active=False broadcast must still go out.
+        review_calls = [
+            call for call in workflow.notifications.ws_manager.broadcast.await_args_list
+            if call.args and call.args[0] == "auto_review_changed"
+        ]
+        assert any(
+            call.args[1] == {"item_id": review_item["id"], "active": False}
+            for call in review_calls
+        ), "expected an active=False broadcast on failure"

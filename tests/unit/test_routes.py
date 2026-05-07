@@ -24,6 +24,7 @@ def _make_mock_orchestrator():
     mock_orch.workflow_service = MagicMock()
     mock_orch.workflow_service.find_stale_worktrees = AsyncMock(return_value=[])
     mock_orch.workflow_service._yolo_items = set()
+    mock_orch.workflow_service._auto_reviewing = set()
     mock_orch.workflow_service.cleanup_stale_worktree = AsyncMock(return_value={"ok": True})
     mock_orch.workflow_service.notify_and_auto_start_dependents = AsyncMock()
 
@@ -912,6 +913,27 @@ class TestYoloItems:
         client, app = client_with_item
         app.state.orchestrator.workflow_service._yolo_items = {"item001", "item002"}
         resp = await client.get("/api/yolo-items")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data) == {"item001", "item002"}
+
+
+# ---------------------------------------------------------------------------
+# Auto-reviewing items
+# ---------------------------------------------------------------------------
+
+class TestAutoReviewingItems:
+    @pytest.mark.asyncio
+    async def test_get_auto_reviewing_items_empty(self, client):
+        resp = await client.get("/api/auto-reviewing-items")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    @pytest.mark.asyncio
+    async def test_get_auto_reviewing_items_with_entries(self, client_with_item):
+        client, app = client_with_item
+        app.state.orchestrator.workflow_service._auto_reviewing = {"item001", "item002"}
+        resp = await client.get("/api/auto-reviewing-items")
         assert resp.status_code == 200
         data = resp.json()
         assert set(data) == {"item001", "item002"}

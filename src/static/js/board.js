@@ -18,6 +18,11 @@ const Board = {
     // Track items running in YOLO mode
     _yoloItems: new Set(),
 
+    // Track items currently being inspected by the auto-review agent.
+    // Used to render a "Reviewing" badge on review-column cards while a
+    // separate read-only review session is in flight.
+    _autoReviewingItems: new Set(),
+
     // djb2 hash mapped to a hue; must match Python's _repo_hue in app.py so
     // server-rendered cards and JS-rendered cards agree on repo color.
     repoHue(name) {
@@ -40,6 +45,7 @@ const Board = {
         await this.loadEpics();
         await this.loadBlockedStatus();
         await this.loadYoloItems();
+        await this.loadAutoReviewingItems();
         this.renderTodoColumn();
         this.renderDoneColumn();
         this.renderArchiveColumn();
@@ -64,6 +70,56 @@ const Board = {
             const ids = await Api.request('GET', '/api/yolo-items');
             this._yoloItems = new Set(ids);
         } catch { /* ignore */ }
+    },
+
+    async loadAutoReviewingItems() {
+        try {
+            const ids = await Api.request('GET', '/api/auto-reviewing-items');
+            this._autoReviewingItems = new Set(ids);
+            // Inject the badge into any cards already rendered server-side
+            // (review-column cards exist in the DOM before init() runs).
+            for (const itemId of this._autoReviewingItems) {
+                this._applyAutoReviewBadge(itemId, true);
+            }
+        } catch { /* ignore */ }
+    },
+
+    setAutoReviewing(itemId, active) {
+        if (active) {
+            this._autoReviewingItems.add(itemId);
+        } else {
+            this._autoReviewingItems.delete(itemId);
+        }
+        this._applyAutoReviewBadge(itemId, active);
+    },
+
+    // Surgically add/remove the "Reviewing" status badge on an existing
+    // review-column card without re-rendering the whole card. Mirrors the
+    // approach used for YOLO badges so we don't fight the server-rendered
+    // initial DOM.
+    _applyAutoReviewBadge(itemId, active) {
+        const card = document.querySelector(`.card[data-id="${itemId}"]`);
+        if (!card) return;
+        // Don't overlay the reviewing badge if the item already has a real
+        // status (e.g. conflict, merge_blocked) — that takes precedence.
+        const existingStatus = card.querySelector('.card-status');
+        if (active) {
+            if (existingStatus && !existingStatus.classList.contains('card-status-reviewing')) {
+                return;
+            }
+            if (!existingStatus) {
+                const badge = document.createElement('div');
+                badge.className = 'card-status card-status-reviewing';
+                badge.dataset.mapName = 'card.status';
+                badge.innerHTML = '<span class="spinner"></span> Reviewing';
+                const titleEl = card.querySelector('.card-title');
+                if (titleEl && titleEl.parentNode) {
+                    titleEl.parentNode.insertBefore(badge, titleEl.nextSibling);
+                }
+            }
+        } else if (existingStatus && existingStatus.classList.contains('card-status-reviewing')) {
+            existingStatus.remove();
+        }
     },
 
     setYoloMode(itemId, active) {
@@ -506,6 +562,11 @@ const Board = {
             const yoloBadge = (item.status === 'running' || item.status === 'resolving_conflicts') && this._yoloItems.has(item.id)
                 ? '<span class="card-yolo-badge">⚡ YOLO</span>' : '';
             statusHtml = `<div class="card-status card-status-${item.status}" data-map-name="card.status">${labels[item.status] || item.status}${yoloBadge}</div>`;
+        } else if (item.column_name === 'review' && this._autoReviewingItems.has(item.id)) {
+            // Review column item with no DB status but an auto-review agent
+            // is actively inspecting its diff — surface that to the user the
+            // same way Running is surfaced for Doing.
+            statusHtml = `<div class="card-status card-status-reviewing" data-map-name="card.status"><span class="spinner"></span> Reviewing</div>`;
         }
 
         // Blocked badge for todo items

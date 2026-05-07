@@ -242,6 +242,13 @@
     color: var(--warning);
 }
 
+/* Review-column items currently being inspected by the auto-review agent.
+   Same accent treatment as a running agent in the Doing column so the
+   "agent is actively working" signal is consistent across columns. */
+.card-status-reviewing {
+    color: var(--accent);
+}
+
 /* Optimistic UI state applied on the card when the user has clicked
    pause/cancel but the backend hasn't yet confirmed the state change.
    Cleared automatically when the server broadcasts item_updated. */
