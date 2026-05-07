@@ -873,3 +873,124 @@ class TestRetryAgent:
         result = await workflow.retry_agent(item["id"])
         assert result["status"] == "running"
         assert result["column_name"] == "doing"
+
+
+# ---------------------------------------------------------------------------
+# Auto-approve: items without file changes
+# ---------------------------------------------------------------------------
+
+class TestAutoApproveNoChanges:
+    """Auto-approve must also handle items where the agent finished without
+    producing any file changes — i.e. the review card shows a "Done" button
+    instead of "Approve & Merge". Without this path the card just sits in
+    review forever."""
+
+    @pytest_asyncio.fixture
+    async def review_item(self, db_service, item, tmp_dir):
+        # Item that's landed in review with auto_approve set and a worktree
+        # path. No diff (no commits, no modified files) — this is what
+        # has_file_changes=0 looks like in practice.
+        wt = tmp_dir / "worktrees" / "no-changes"
+        wt.mkdir(parents=True, exist_ok=True)
+        await db_service.update_item(
+            item["id"],
+            column_name="review",
+            status=None,
+            auto_approve=1,
+            has_file_changes=0,
+            worktree_path=str(wt),
+            branch_name="agent/no-changes",
+            base_branch="main",
+        )
+        return item
+
+    async def test_no_changes_path_moves_item_to_done(
+        self, workflow, review_item
+    ):
+        # approve_item internally calls run_git("status") and get_changed_files;
+        # patch both to simulate a clean repo with zero agent-touched files.
+        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
+             patch("src.git.operations.get_changed_files",
+                   new=AsyncMock(return_value=[])):
+            await workflow._auto_approve_no_changes(review_item["id"])
+        updated = await workflow.db.get_item(review_item["id"])
+        assert updated["column_name"] == "done"
+
+    async def test_no_changes_path_skips_merge_call(
+        self, workflow, review_item
+    ):
+        workflow.git.merge_agent_work = AsyncMock(return_value=(True, "ok"))
+        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
+             patch("src.git.operations.get_changed_files",
+                   new=AsyncMock(return_value=[])):
+            await workflow._auto_approve_no_changes(review_item["id"])
+        # No diff → no merge.
+        workflow.git.merge_agent_work.assert_not_called()
+
+    async def test_no_op_when_item_left_review(
+        self, workflow, db_service, review_item
+    ):
+        # User cancelled review before the auto-approve task ran.
+        await db_service.update_item(review_item["id"], column_name="todo")
+        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
+             patch("src.git.operations.get_changed_files",
+                   new=AsyncMock(return_value=[])):
+            await workflow._auto_approve_no_changes(review_item["id"])
+        # Should not have moved out of todo.
+        updated = await workflow.db.get_item(review_item["id"])
+        assert updated["column_name"] == "todo"
+
+    async def test_no_op_when_auto_approve_unset(
+        self, workflow, db_service, review_item
+    ):
+        await db_service.update_item(review_item["id"], auto_approve=0)
+        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
+             patch("src.git.operations.get_changed_files",
+                   new=AsyncMock(return_value=[])):
+            await workflow._auto_approve_no_changes(review_item["id"])
+        updated = await workflow.db.get_item(review_item["id"])
+        # Stays in review for human action.
+        assert updated["column_name"] == "review"
+
+    async def test_on_complete_schedules_no_changes_auto_approve(
+        self, workflow, db_service, item, tmp_dir
+    ):
+        """When auto_approve is set and the agent produced no diff, the
+        on_complete callback must dispatch _auto_approve_no_changes — not just
+        no-op the way it did before."""
+        wt = tmp_dir / "worktrees" / "no-changes-2"
+        wt.mkdir(parents=True, exist_ok=True)
+        await db_service.update_item(
+            item["id"],
+            column_name="doing",
+            status="running",
+            auto_approve=1,
+            worktree_path=str(wt),
+            branch_name="agent/no-changes-2",
+            base_branch="main",
+        )
+
+        called: list[str] = []
+
+        async def fake_no_changes(iid):
+            called.append(iid)
+
+        async def fake_run_review(iid):  # would indicate the wrong branch
+            called.append(f"review:{iid}")
+
+        result = AgentResult(success=True, session_id="sess-x")
+        with patch("src.git.operations.get_changed_files",
+                   new=AsyncMock(return_value=[])), \
+             patch.object(workflow, "_auto_approve_no_changes",
+                          side_effect=fake_no_changes), \
+             patch.object(workflow, "_run_auto_review",
+                          side_effect=fake_run_review):
+            cb = workflow._create_on_complete_callback(item["id"])
+            await cb(result)
+            # The two paths are dispatched as background tasks via
+            # asyncio.create_task. Yield once so they get a chance to run.
+            await asyncio.sleep(0)
+
+        assert called == [item["id"]], (
+            f"Expected no-changes path to be dispatched, got {called}"
+        )
