@@ -3,13 +3,38 @@ from typing import Any, Optional
 from datetime import datetime
 import json
 import uuid
-from .constants import DEFAULT_MODEL, DEFAULT_OLLAMA_BASE_URL, EPIC_COLORS
+from .constants import (
+    DEFAULT_MODEL,
+    DEFAULT_OLLAMA_BASE_URL,
+    EPIC_COLORS,
+    AUTO_APPROVE_OFF,
+    AUTO_APPROVE_REVIEW,
+    AUTO_APPROVE_MODES,
+)
 
 VALID_EPIC_COLOR_KEYS = {c["key"] for c in EPIC_COLORS}
 
 
 def new_id() -> str:
     return uuid.uuid4().hex[:12]
+
+
+def _coerce_auto_approve(v: Any) -> Any:
+    """auto_approve graduated from a boolean to a tri-state int (0/1/2).
+    Old API clients (and the JS api.js default) still send True/False — coerce
+    those to the int equivalents so the API stays backward compatible:
+        False -> 0 (OFF), True -> 1 (REVIEW, the original auto-approve mode).
+    Reject anything outside the allowed set to fail fast on bad input."""
+    if v is None:
+        return v
+    if isinstance(v, bool):
+        return AUTO_APPROVE_REVIEW if v else AUTO_APPROVE_OFF
+    if isinstance(v, int) and v in AUTO_APPROVE_MODES:
+        return v
+    raise ValueError(
+        f"auto_approve must be one of {sorted(AUTO_APPROVE_MODES)} "
+        f"(0=off, 1=with review, 2=direct); got {v!r}"
+    )
 
 
 class ItemCreate(BaseModel):
@@ -19,10 +44,15 @@ class ItemCreate(BaseModel):
     epic_id: Optional[str] = None
     auto_start: bool = False
     start_copy: bool = False
-    auto_approve: bool = False
+    auto_approve: int = AUTO_APPROVE_OFF
     # Multi-repo mode: name of the subrepo this item targets. Must be one of the
     # workspace's known repos. None in single-repo mode.
     repo: Optional[str] = None
+
+    @field_validator("auto_approve", mode="before")
+    @classmethod
+    def _validate_auto_approve(cls, v: Any) -> Any:
+        return _coerce_auto_approve(v)
 
 
 class ItemUpdate(BaseModel):
@@ -35,7 +65,12 @@ class ItemUpdate(BaseModel):
     epic_id: Optional[str] = None
     auto_start: Optional[bool] = None
     start_copy: Optional[bool] = None
-    auto_approve: Optional[bool] = None
+    auto_approve: Optional[int] = None
+
+    @field_validator("auto_approve", mode="before")
+    @classmethod
+    def _validate_auto_approve(cls, v: Any) -> Any:
+        return _coerce_auto_approve(v)
 
 
 class EpicCreate(BaseModel):

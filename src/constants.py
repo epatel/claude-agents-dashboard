@@ -19,6 +19,18 @@ DEFAULT_MODEL = "claude-opus-4-7"
 # Default Ollama base URL
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 
+# Auto-approve modes for items.
+# Stored as INTEGER in the items.auto_approve column (legacy: 0/1 boolean).
+#   0 (OFF)    — no auto-approve; the agent's work lands in Review for a human.
+#   1 (REVIEW) — spawn a read-only review agent; auto-merge if it APPROVES.
+#                If it requests changes, the comments go back to the original
+#                agent (capped at 3 round-trips before falling back to manual).
+#   2 (DIRECT) — auto-merge as soon as the agent finishes, with no review pass.
+AUTO_APPROVE_OFF = 0
+AUTO_APPROVE_REVIEW = 1
+AUTO_APPROVE_DIRECT = 2
+AUTO_APPROVE_MODES = {AUTO_APPROVE_OFF, AUTO_APPROVE_REVIEW, AUTO_APPROVE_DIRECT}
+
 # Built-in Claude Code tools that can be opted-in via agent config.
 # These require explicit allowlisting in permission_mode="acceptEdits".
 OPTIONAL_BUILTIN_TOOLS = [

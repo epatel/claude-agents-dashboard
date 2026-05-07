@@ -392,7 +392,10 @@ const Board = {
                 !!originalItem.auto_start,
                 !!originalItem.start_copy,
                 originalItem.repo || null,
-                !!originalItem.auto_approve,
+                // auto_approve is a tri-state int (0/1/2). Forward the mode as-is
+                // so a "Direct" item stays Direct, a "With Review" item stays
+                // With Review, etc. on the rerun.
+                Number(originalItem.auto_approve) || 0,
             );
 
             // Copy attachments from the original item to the new item

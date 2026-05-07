@@ -17,7 +17,10 @@ const Api = {
         return this.request('GET', '/api/items');
     },
 
-    createItem(title, description = '', model = null, epic_id = null, auto_start = false, start_copy = false, repo = null, auto_approve = false) {
+    // auto_approve is a tri-state int (0 = off, 1 = with review, 2 = direct).
+    // Booleans are still accepted for back-compat: the server coerces
+    // false → 0 and true → 1.
+    createItem(title, description = '', model = null, epic_id = null, auto_start = false, start_copy = false, repo = null, auto_approve = 0) {
         const payload = { title, description, auto_start, start_copy, auto_approve };
         if (model) payload.model = model;
         if (epic_id) payload.epic_id = epic_id;
