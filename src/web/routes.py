@@ -705,10 +705,19 @@ async def cancel_agent(request: Request, item_id: str):
     return await orchestrator.cancel_agent(item_id)
 
 
+class PauseAgentBody(BaseModel):
+    message: Optional[str] = None
+
+
 @router.post("/api/items/{item_id}/pause")
-async def pause_agent(request: Request, item_id: str):
+async def pause_agent(
+    request: Request,
+    item_id: str,
+    body: Optional[PauseAgentBody] = None,
+):
     orchestrator = request.app.state.orchestrator
-    return await orchestrator.pause_agent(item_id)
+    message = body.message if body else None
+    return await orchestrator.pause_agent(item_id, message)
 
 
 @router.post("/api/items/{item_id}/resume")

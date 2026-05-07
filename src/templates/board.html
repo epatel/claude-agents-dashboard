@@ -348,6 +348,28 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
     </div>
 </dialog>
 
+<!-- Pause Agent Dialog -->
+<dialog id="pause-dialog" class="modal modal-large">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Pause Agent</h3>
+            <button class="btn-close" onclick="Dialogs.close('pause-dialog')">&times;</button>
+        </div>
+        <form id="pause-form" onsubmit="Dialogs.submitPause(event)">
+            <input type="hidden" id="pause-item-id" value="">
+            <div class="form-group">
+                <label for="pause-message">Optional note for the agent <span class="tooltip" title="The agent will see this note when it resumes — useful for course corrections like 'investigate a different approach' or 'check the X module first'.">?</span></label>
+                <textarea id="pause-message" rows="6" placeholder="e.g. investigate a simpler approach using …"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn" onclick="Dialogs.close('pause-dialog')">Cancel</button>
+                <button type="button" class="btn" onclick="Dialogs.submitPauseWithoutNote()">Pause without note</button>
+                <button type="submit" class="btn btn-primary">Pause &amp; send note</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
 <!-- Request Changes Dialog -->
 <dialog id="changes-dialog" class="modal modal-large">
     <div class="modal-content">

@@ -303,13 +303,11 @@ const Board = {
         });
     },
 
-    async pauseAgent(itemId) {
-        this.applyStoppingState(itemId, 'Pausing…');
-        try {
-            await Api.pauseAgent(itemId);
-        } catch (err) {
-            console.error('Failed to pause agent:', err);
-        }
+    pauseAgent(itemId) {
+        // Pausing now opens a dialog so the user can optionally attach a
+        // note for the agent (e.g. "investigate a different approach").
+        // The dialog handles the actual API call + stopping-state UI.
+        Dialogs.openPause(itemId);
     },
 
     async resumeAgent(itemId) {

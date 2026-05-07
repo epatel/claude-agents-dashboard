@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..database import Database
 from ..repositories.epic_repository import EpicRepository
@@ -71,9 +71,15 @@ class AgentOrchestrator:
         """Cancel a running agent."""
         return await self.workflow_service.cancel_agent(item_id)
 
-    async def pause_agent(self, item_id: str) -> Dict[str, Any]:
-        """Pause a running agent — save session for later resumption."""
-        return await self.workflow_service.pause_agent(item_id)
+    async def pause_agent(
+        self, item_id: str, message: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Pause a running agent — save session for later resumption.
+
+        ``message`` is an optional note for the agent (e.g. "investigate a
+        different approach") that will be prepended to the resume prompt.
+        """
+        return await self.workflow_service.pause_agent(item_id, message)
 
     async def resume_agent(self, item_id: str) -> Dict[str, Any]:
         """Resume a paused agent."""
