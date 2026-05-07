@@ -260,6 +260,141 @@ async def test_callback_does_not_immediately_start_with_dependencies(db_service)
     assert result["auto_start"] == 1
 
 
+# ── auto_approve persistence (create_todo MCP tool can request it) ───
+
+
+@pytest.mark.asyncio
+async def test_create_todo_item_persists_auto_approve(db_service):
+    """create_todo_item must persist the auto_approve mode passed in."""
+    item = await db_service.create_todo_item(
+        "Reviewed Task", "Needs auto-review", auto_approve=1
+    )
+    assert item["auto_approve"] == 1
+
+
+@pytest.mark.asyncio
+async def test_create_todo_item_persists_auto_approve_direct(db_service):
+    """auto_approve=2 (direct) must be persisted as 2."""
+    item = await db_service.create_todo_item(
+        "Direct Task", "Skip review", auto_approve=2
+    )
+    assert item["auto_approve"] == 2
+
+
+@pytest.mark.asyncio
+async def test_create_todo_item_auto_approve_default_is_off(db_service):
+    """auto_approve defaults to 0 (OFF) when not provided."""
+    item = await db_service.create_todo_item("Default", "")
+    assert item["auto_approve"] == 0
+
+
+@pytest.mark.asyncio
+async def test_create_todo_item_auto_approve_invalid_falls_back_to_off(db_service):
+    """Out-of-range auto_approve values are coerced to 0."""
+    item = await db_service.create_todo_item("Weird", "", auto_approve=42)
+    assert item["auto_approve"] == 0
+
+
+@pytest.mark.asyncio
+async def test_callback_forwards_auto_approve_to_db(db_service):
+    """The on_create_todo callback must forward auto_approve to create_todo_item."""
+    mock_notifications = MagicMock()
+    mock_notifications.broadcast_item_created = AsyncMock()
+    mock_notifications.ws_manager = MagicMock()
+    mock_notifications.ws_manager.broadcast = AsyncMock()
+
+    from src.services.workflow_service import WorkflowService
+
+    with patch.object(WorkflowService, '__init__', lambda self, **kw: None):
+        ws = WorkflowService.__new__(WorkflowService)
+        ws.db = db_service
+        ws.notifications = mock_notifications
+        ws._log_and_notify = AsyncMock()
+        ws.start_agent = AsyncMock()
+
+        callback = ws._create_on_create_todo_callback("parent-123")
+        # Pass autostart=False, auto_approve=2 (direct)
+        result = await callback("Task", "desc", None, None, False, 2)
+
+    assert result["auto_approve"] == 2
+
+
+@pytest.mark.asyncio
+async def test_callback_supports_autostart_and_auto_approve_together(db_service):
+    """Callback must accept both autostart and auto_approve in the same call."""
+    mock_notifications = MagicMock()
+    mock_notifications.broadcast_item_created = AsyncMock()
+    mock_notifications.ws_manager = MagicMock()
+    mock_notifications.ws_manager.broadcast = AsyncMock()
+
+    from src.services.workflow_service import WorkflowService
+
+    with patch.object(WorkflowService, '__init__', lambda self, **kw: None):
+        ws = WorkflowService.__new__(WorkflowService)
+        ws.db = db_service
+        ws.notifications = mock_notifications
+        ws._log_and_notify = AsyncMock()
+        ws.start_agent = AsyncMock()
+
+        callback = ws._create_on_create_todo_callback("parent-123")
+        result = await callback("Both", "desc", None, None, True, 1)
+
+        # Give the asyncio.create_task a chance to run (autostart with no deps)
+        await asyncio.sleep(0.1)
+
+    ws.start_agent.assert_called_once()
+    assert result["auto_start"] == 1
+    assert result["auto_approve"] == 1
+    assert result.get("autostart_scheduled") is True
+
+
+@pytest.mark.asyncio
+async def test_callback_auto_approve_invalid_coerced_to_off(db_service):
+    """Invalid auto_approve values are coerced to OFF before hitting the db."""
+    mock_notifications = MagicMock()
+    mock_notifications.broadcast_item_created = AsyncMock()
+    mock_notifications.ws_manager = MagicMock()
+    mock_notifications.ws_manager.broadcast = AsyncMock()
+
+    from src.services.workflow_service import WorkflowService
+
+    with patch.object(WorkflowService, '__init__', lambda self, **kw: None):
+        ws = WorkflowService.__new__(WorkflowService)
+        ws.db = db_service
+        ws.notifications = mock_notifications
+        ws._log_and_notify = AsyncMock()
+        ws.start_agent = AsyncMock()
+
+        callback = ws._create_on_create_todo_callback("parent-123")
+        result = await callback("Bad", "desc", None, None, False, 99)
+
+    assert result["auto_approve"] == 0
+
+
+@pytest.mark.asyncio
+async def test_callback_auto_approve_default_is_off(db_service):
+    """Calling the callback with the legacy 5-arg signature still works (auto_approve defaults to 0)."""
+    mock_notifications = MagicMock()
+    mock_notifications.broadcast_item_created = AsyncMock()
+    mock_notifications.ws_manager = MagicMock()
+    mock_notifications.ws_manager.broadcast = AsyncMock()
+
+    from src.services.workflow_service import WorkflowService
+
+    with patch.object(WorkflowService, '__init__', lambda self, **kw: None):
+        ws = WorkflowService.__new__(WorkflowService)
+        ws.db = db_service
+        ws.notifications = mock_notifications
+        ws._log_and_notify = AsyncMock()
+        ws.start_agent = AsyncMock()
+
+        callback = ws._create_on_create_todo_callback("parent-123")
+        # Legacy 5-positional-arg call site
+        result = await callback("Legacy", "desc", None, None, False)
+
+    assert result["auto_approve"] == 0
+
+
 @pytest.mark.asyncio
 async def test_callback_starts_agent_immediately_without_dependencies(db_service):
     """When autostart=True and no requires, agent should start immediately."""
