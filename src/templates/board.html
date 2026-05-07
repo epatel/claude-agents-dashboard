@@ -123,10 +123,16 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
             <div class="form-group">
                 <label for="item-form-auto-approve" style="display:flex;align-items:center;gap:8px;">
                     Auto-approve
-                    <input type="checkbox" id="item-form-auto-approve" style="cursor:pointer;">
+                    <select id="item-form-auto-approve" style="cursor:pointer;">
+                        <option value="0">Off — manual review</option>
+                        <option value="2">Direct — merge without review</option>
+                        <option value="1">With Review — auto-review then merge</option>
+                    </select>
                 </label>
                 <p class="text-muted" style="font-size:12px;margin:4px 0 0;">
-                    When enabled, a separate review agent inspects the diff after the implementing agent finishes. If the reviewer approves, the work is auto-merged. Otherwise its comments go back to the agent (capped at 3 return-trips before falling back to manual review).
+                    <strong>Off:</strong> the agent's work lands in Review for you to inspect.<br>
+                    <strong>Direct:</strong> merge as soon as the agent finishes — no review pass.<br>
+                    <strong>With Review:</strong> a separate review agent inspects the diff. If it approves, the work is auto-merged; otherwise its comments go back to the agent (capped at 3 return-trips before falling back to manual review).
                 </p>
             </div>
             <div class="form-group">

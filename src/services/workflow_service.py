@@ -8,6 +8,11 @@ from typing import Any, Dict, List, Optional
 
 from ..agent.review_agent import run_auto_review
 from ..agent.session import AgentResult
+from ..constants import (
+    AUTO_APPROVE_DIRECT,
+    AUTO_APPROVE_OFF,
+    AUTO_APPROVE_REVIEW,
+)
 from ..domain.item_state import Event, ItemState, UnknownStateEncoding, from_columns
 from ..repositories.epic_repository import EpicRepository
 from ..repositories.item_repository import ItemRepository
@@ -908,19 +913,22 @@ class WorkflowService:
                 item = await self.items.transition(item_id, Event.COMPLETE, **extras)
                 await self.notifications.broadcast_item_updated(item, source="agent")
 
-                # Auto-approve workflow: if the user opted in for this item,
-                # spin up a separate read-only review agent. Schedule it as a
-                # background task so we don't block the on_complete callback
-                # (the review may take tens of seconds and ends up calling
-                # request_changes/approve_item which themselves create new
-                # sessions and would deadlock if we awaited inline).
+                # Auto-approve workflow. Tri-state (see constants.py):
+                #   OFF    — leave it for a human in the Review column.
+                #   REVIEW — spin up a read-only review agent (or, with no
+                #            file changes, approve directly since there's
+                #            nothing to review).
+                #   DIRECT — skip the review agent entirely and approve as
+                #            soon as the agent finishes.
                 #
-                # When the agent produced no file changes there's nothing for a
-                # reviewer to inspect — the card lands in review with a "Done"
-                # button instead of "Approve". In that case skip the reviewer
-                # and just approve directly, which is the auto-approve
-                # equivalent of a human clicking "Done".
-                if item.get("auto_approve"):
+                # All paths are scheduled as background tasks so we don't block
+                # this callback (the review may take tens of seconds, and
+                # request_changes/approve_item create new sessions that would
+                # deadlock if awaited inline).
+                mode = int(item.get("auto_approve") or 0)
+                if mode == AUTO_APPROVE_DIRECT:
+                    asyncio.create_task(self._auto_approve_direct(item_id))
+                elif mode == AUTO_APPROVE_REVIEW:
                     if has_file_changes:
                         asyncio.create_task(self._run_auto_review(item_id))
                     else:
@@ -1308,6 +1316,43 @@ class WorkflowService:
             await self._log_and_notify(
                 item_id, "system",
                 f"Auto-approve failed to mark done: {e}. Item left for manual review."
+            )
+
+    async def _auto_approve_direct(self, item_id: str) -> None:
+        """Auto-approve an item without running a review agent.
+
+        Triggered from on_complete when the user picked the DIRECT auto-approve
+        mode — i.e. "merge as soon as the agent says it's done, no second
+        opinion." Calls approve_item, which handles both the no-diff and
+        with-diff paths (merging when there are changes, marking done when
+        there aren't).
+
+        Scheduled as a background task from on_complete for the same reason as
+        the other auto-approve paths: approve_item creates new sessions and
+        would deadlock if awaited inline.
+        """
+        try:
+            item = await self.db.get_item(item_id)
+            if not item:
+                return
+            # Sanity: the user may have moved the item out of review before
+            # this task got scheduled.
+            if item.get("column_name") != "review":
+                return
+            mode = int(item.get("auto_approve") or 0)
+            if mode != AUTO_APPROVE_DIRECT:
+                return
+            self._auto_approve_retries.pop(item_id, None)
+            await self._log_and_notify(
+                item_id, "system",
+                "Auto-approve (direct): skipping review — merging now."
+            )
+            await self.approve_item(item_id)
+        except Exception as e:
+            logger.exception("Auto-approve (direct) failed for %s: %s", item_id, e)
+            await self._log_and_notify(
+                item_id, "system",
+                f"Auto-approve (direct) failed: {e}. Item left for manual review."
             )
 
     async def _run_auto_review(self, item_id: str) -> None:

@@ -61,7 +61,10 @@ const ItemDialog = {
         this._initDepPicker(item.id);
         this._setAutoStart(!!item.auto_start);
         this._setStartCopy(!!item.start_copy);
-        this._setAutoApprove(!!item.auto_approve);
+        // Pass the raw value (int 0/1/2 or legacy bool) so the setter can
+        // distinguish "with review" (1) from "direct" (2). Coercing to !!
+        // here would collapse both modes to 1.
+        this._setAutoApprove(item.auto_approve);
         if (item.id) {
             await this._loadDependencies(item.id);
         }
@@ -508,14 +511,25 @@ const ItemDialog = {
         return cb ? cb.checked : false;
     },
 
+    // auto_approve is a tri-state int (0 = off, 1 = with review, 2 = direct).
+    // Older items may have it stored as a boolean — coerce truthy to 1 (the
+    // legacy "with review" meaning) so existing items keep their behavior.
     _setAutoApprove(value) {
-        const cb = document.getElementById('item-form-auto-approve');
-        if (cb) cb.checked = value;
+        const sel = document.getElementById('item-form-auto-approve');
+        if (!sel) return;
+        let mode;
+        if (value === true) mode = 1;
+        else if (value === false || value == null) mode = 0;
+        else mode = parseInt(value, 10);
+        if (![0, 1, 2].includes(mode)) mode = 0;
+        sel.value = String(mode);
     },
 
     _getAutoApprove() {
-        const cb = document.getElementById('item-form-auto-approve');
-        return cb ? cb.checked : false;
+        const sel = document.getElementById('item-form-auto-approve');
+        if (!sel) return 0;
+        const mode = parseInt(sel.value, 10);
+        return [0, 1, 2].includes(mode) ? mode : 0;
     },
 
     _updateAutoStartVisibility() {

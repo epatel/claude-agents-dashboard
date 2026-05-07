@@ -1135,3 +1135,119 @@ class TestAutoApproveNoChanges:
         assert called == [item["id"]], (
             f"Expected no-changes path to be dispatched, got {called}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Auto-approve: DIRECT mode (skip review entirely)
+# ---------------------------------------------------------------------------
+
+class TestAutoApproveDirect:
+    """auto_approve=2 (DIRECT) means: merge as soon as the agent finishes — no
+    review-agent pass. The on_complete callback should dispatch
+    _auto_approve_direct, and that helper should call approve_item without
+    spawning the reviewer."""
+
+    @pytest_asyncio.fixture
+    async def review_item_direct(self, db_service, item, tmp_dir):
+        wt = tmp_dir / "worktrees" / "direct"
+        wt.mkdir(parents=True, exist_ok=True)
+        await db_service.update_item(
+            item["id"],
+            column_name="review",
+            status=None,
+            auto_approve=2,  # AUTO_APPROVE_DIRECT
+            has_file_changes=1,
+            worktree_path=str(wt),
+            branch_name="agent/direct",
+            base_branch="main",
+        )
+        return item
+
+    async def test_direct_path_calls_approve_item(
+        self, workflow, review_item_direct
+    ):
+        # Patch approve_item to confirm it's invoked. We don't care about its
+        # internals here — the no-changes/clean-merge tests cover those.
+        with patch.object(
+            workflow, "approve_item", new=AsyncMock()
+        ) as mock_approve:
+            await workflow._auto_approve_direct(review_item_direct["id"])
+            mock_approve.assert_awaited_once_with(review_item_direct["id"])
+
+    async def test_direct_path_skips_review_agent(
+        self, workflow, review_item_direct
+    ):
+        # The reviewer must not be spawned in DIRECT mode — that's the whole
+        # point of this mode vs auto_approve=1.
+        with patch("src.services.workflow_service.run_auto_review",
+                   new=AsyncMock()) as mock_review, \
+             patch.object(workflow, "approve_item", new=AsyncMock()):
+            await workflow._auto_approve_direct(review_item_direct["id"])
+            mock_review.assert_not_called()
+
+    async def test_direct_no_op_when_mode_is_review(
+        self, workflow, db_service, review_item_direct
+    ):
+        # Defense in depth: if something dispatched _auto_approve_direct on an
+        # item that's actually in REVIEW mode (1), bail out — that path is
+        # supposed to go through _run_auto_review, not skip review.
+        await db_service.update_item(review_item_direct["id"], auto_approve=1)
+        with patch.object(workflow, "approve_item", new=AsyncMock()) as mock_approve:
+            await workflow._auto_approve_direct(review_item_direct["id"])
+            mock_approve.assert_not_called()
+
+    async def test_direct_no_op_when_item_left_review(
+        self, workflow, db_service, review_item_direct
+    ):
+        # User cancelled before the background task ran.
+        await db_service.update_item(review_item_direct["id"], column_name="todo")
+        with patch.object(workflow, "approve_item", new=AsyncMock()) as mock_approve:
+            await workflow._auto_approve_direct(review_item_direct["id"])
+            mock_approve.assert_not_called()
+
+    async def test_on_complete_dispatches_direct_path(
+        self, workflow, db_service, item, tmp_dir
+    ):
+        """auto_approve=2 must route to _auto_approve_direct, NOT to
+        _run_auto_review or _auto_approve_no_changes."""
+        wt = tmp_dir / "worktrees" / "direct-2"
+        wt.mkdir(parents=True, exist_ok=True)
+        await db_service.update_item(
+            item["id"],
+            column_name="doing",
+            status="running",
+            auto_approve=2,
+            worktree_path=str(wt),
+            branch_name="agent/direct-2",
+            base_branch="main",
+        )
+
+        called: list[str] = []
+
+        async def fake_direct(iid):
+            called.append(f"direct:{iid}")
+
+        async def fake_review(iid):
+            called.append(f"review:{iid}")
+
+        async def fake_no_changes(iid):
+            called.append(f"no-changes:{iid}")
+
+        result = AgentResult(success=True, session_id="sess-direct")
+        # has_file_changes=1 — pretend the agent did produce a diff. Direct
+        # mode should bypass review either way.
+        with patch("src.git.operations.get_changed_files",
+                   new=AsyncMock(return_value=["foo.py"])), \
+             patch.object(workflow, "_auto_approve_direct",
+                          side_effect=fake_direct), \
+             patch.object(workflow, "_run_auto_review",
+                          side_effect=fake_review), \
+             patch.object(workflow, "_auto_approve_no_changes",
+                          side_effect=fake_no_changes):
+            cb = workflow._create_on_complete_callback(item["id"])
+            await cb(result)
+            await asyncio.sleep(0)
+
+        assert called == [f"direct:{item['id']}"], (
+            f"Expected direct path to be dispatched, got {called}"
+        )
