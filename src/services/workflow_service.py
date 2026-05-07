@@ -469,6 +469,12 @@ class WorkflowService:
             item = await self.items.transition(
                 item_id, Event.REQUEST_MERGE, worktree_path=None,
             )
+            # Broadcast BEFORE notify_and_auto_start_dependents — without this,
+            # the frontend never sees the column change and the card stays in
+            # Review until a reload. notify_and_auto_start_dependents only
+            # fires a "dependencies_resolved" event, and only when dependents
+            # exist, so it can't be relied on to refresh the moving card.
+            await self.notifications.broadcast_item_updated(item)
             await self.notify_and_auto_start_dependents(item_id)
             return item
 
@@ -495,6 +501,13 @@ class WorkflowService:
                 worktree_path=None, merge_commit=merge_sha,
             )
 
+            # Broadcast the column change to the frontend. The
+            # notify_and_auto_start_dependents call below only emits
+            # "dependencies_resolved" (and only when dependents exist), so
+            # without this broadcast the card stays in Review until a reload.
+            # The rebase-retry success branch below already does this — keep
+            # the two paths in sync.
+            await self.notifications.broadcast_item_updated(item)
             await self.notify_and_auto_start_dependents(item_id)
         else:
             await self._log_and_notify(item_id, "system",

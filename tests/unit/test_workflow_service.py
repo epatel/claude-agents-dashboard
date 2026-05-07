@@ -927,6 +927,53 @@ class TestAutoApproveNoChanges:
         # No diff → no merge.
         workflow.git.merge_agent_work.assert_not_called()
 
+    async def test_no_changes_path_broadcasts_item_updated(
+        self, workflow, review_item
+    ):
+        # Regression: the no-changes branch in approve_item used to skip
+        # broadcast_item_updated, so the frontend never saw the column change
+        # and the card stayed in Review until a reload.
+        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
+             patch("src.git.operations.get_changed_files",
+                   new=AsyncMock(return_value=[])):
+            await workflow._auto_approve_no_changes(review_item["id"])
+        # The broadcast must include the post-transition item (column=done).
+        workflow.notifications.broadcast_item_updated.assert_awaited()
+        broadcast_args = [
+            call.args[0]
+            for call in workflow.notifications.broadcast_item_updated.await_args_list
+        ]
+        assert any(
+            arg.get("id") == review_item["id"] and arg.get("column_name") == "done"
+            for arg in broadcast_args
+        ), f"expected a done-column broadcast for {review_item['id']}, got {broadcast_args}"
+
+    async def test_clean_merge_path_broadcasts_item_updated(
+        self, workflow, db_service, review_item
+    ):
+        # Regression: the clean merge-success branch in approve_item also used
+        # to skip broadcast_item_updated, leaving the card stuck in Review on
+        # auto-approve when the agent did produce file changes.
+        # Force the file-changes branch and a successful merge.
+        await db_service.update_item(review_item["id"], has_file_changes=1)
+        workflow.git.merge_agent_work = AsyncMock(
+            return_value=(True, "deadbeefdeadbeef")
+        )
+        workflow.git.base_repo_path = MagicMock(return_value=Path("/tmp"))
+        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
+             patch("src.git.operations.get_changed_files",
+                   new=AsyncMock(return_value=["foo.py"])):
+            await workflow.approve_item(review_item["id"])
+        workflow.notifications.broadcast_item_updated.assert_awaited()
+        broadcast_args = [
+            call.args[0]
+            for call in workflow.notifications.broadcast_item_updated.await_args_list
+        ]
+        assert any(
+            arg.get("id") == review_item["id"] and arg.get("column_name") == "done"
+            for arg in broadcast_args
+        ), f"expected a done-column broadcast for {review_item['id']}, got {broadcast_args}"
+
     async def test_no_op_when_item_left_review(
         self, workflow, db_service, review_item
     ):
