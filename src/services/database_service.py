@@ -173,11 +173,20 @@ class DatabaseService:
                     d[key] = default
             return d
 
-    async def create_todo_item(self, title: str, description: str, epic_id: str = None, auto_start: bool = False, start_copy: bool = False) -> Dict[str, Any]:
+    async def create_todo_item(self, title: str, description: str, epic_id: str = None, auto_start: bool = False, start_copy: bool = False, auto_approve: int = 0) -> Dict[str, Any]:
         """Create a new todo item and return it."""
         from ..models import new_id
 
         todo_id = new_id()
+
+        # auto_approve is a tri-state int (0=off, 1=review, 2=direct).
+        # Coerce anything else to OFF so we never persist a bogus mode.
+        try:
+            auto_approve_int = int(auto_approve) if auto_approve is not None else 0
+        except (TypeError, ValueError):
+            auto_approve_int = 0
+        if auto_approve_int not in (0, 1, 2):
+            auto_approve_int = 0
 
         async with self.db.connect() as conn:
             # Get next position in todo column
@@ -189,8 +198,8 @@ class DatabaseService:
 
             # Create new todo item
             await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position, epic_id, auto_start, start_copy) VALUES (?, ?, ?, 'todo', ?, ?, ?, ?)",
-                (todo_id, title, description, position, epic_id, auto_start, int(start_copy)),
+                "INSERT INTO items (id, title, description, column_name, position, epic_id, auto_start, start_copy, auto_approve) VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?)",
+                (todo_id, title, description, position, epic_id, auto_start, int(start_copy), auto_approve_int),
             )
             await conn.commit()
 

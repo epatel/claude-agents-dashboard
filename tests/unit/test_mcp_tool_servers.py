@@ -396,7 +396,7 @@ class TestTodoServer:
 
         result = await tool.handler({"title": "Write tests"})
 
-        cb.assert_awaited_once_with("Write tests", "", None, None, False)
+        cb.assert_awaited_once_with("Write tests", "", None, None, False, 0)
         assert "Write tests" in result["content"][0]["text"]
         assert "42" in result["content"][0]["text"]
 
@@ -412,10 +412,11 @@ class TestTodoServer:
             "epic_id": "epic-1",
             "requires": ["dep-1", "dep-2"],
             "autostart": True,
+            "auto_approve": 2,
         })
 
         cb.assert_awaited_once_with(
-            "Full Task", "Do all the things", "epic-1", ["dep-1", "dep-2"], True
+            "Full Task", "Do all the things", "epic-1", ["dep-1", "dep-2"], True, 2
         )
 
     @pytest.mark.asyncio
@@ -506,6 +507,68 @@ class TestTodoServer:
     def test_create_todo_schema_title_required(self):
         from src.agent.todo import CREATE_TODO_SCHEMA
         assert "title" in CREATE_TODO_SCHEMA["required"]
+
+    def test_create_todo_schema_has_auto_approve(self):
+        """Schema should expose auto_approve as an integer enum [0, 1, 2]."""
+        from src.agent.todo import CREATE_TODO_SCHEMA
+        prop = CREATE_TODO_SCHEMA["properties"].get("auto_approve")
+        assert prop is not None, "create_todo schema must expose auto_approve"
+        assert prop["type"] == "integer"
+        assert prop["enum"] == [0, 1, 2]
+
+    @pytest.mark.asyncio
+    async def test_create_todo_auto_approve_review_message(self):
+        """auto_approve=1 should be forwarded and surfaced in the result message."""
+        cb = AsyncMock(return_value={"id": "10", "title": "Reviewed Task"})
+        cap = self._make(cb)
+        tool = get_tool(cap["tools"], "create_todo")
+
+        result = await tool.handler({"title": "Reviewed Task", "auto_approve": 1})
+
+        cb.assert_awaited_once_with("Reviewed Task", "", None, None, False, 1)
+        assert "review mode" in result["content"][0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_create_todo_auto_approve_direct_message(self):
+        """auto_approve=2 should be forwarded and surfaced as direct merge."""
+        cb = AsyncMock(return_value={"id": "11", "title": "Direct Task"})
+        cap = self._make(cb)
+        tool = get_tool(cap["tools"], "create_todo")
+
+        result = await tool.handler({"title": "Direct Task", "auto_approve": 2})
+
+        cb.assert_awaited_once_with("Direct Task", "", None, None, False, 2)
+        assert "direct merge" in result["content"][0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_create_todo_auto_approve_invalid_falls_back_to_off(self):
+        """Out-of-range auto_approve values must be coerced to 0 (OFF)."""
+        cb = AsyncMock(return_value={"id": "12", "title": "T"})
+        cap = self._make(cb)
+        tool = get_tool(cap["tools"], "create_todo")
+
+        await tool.handler({"title": "T", "auto_approve": 7})
+        cb.assert_awaited_once_with("T", "", None, None, False, 0)
+
+    @pytest.mark.asyncio
+    async def test_create_todo_autostart_and_auto_approve_together(self):
+        """Both autostart and auto_approve can be set on the same call."""
+        cb = AsyncMock(return_value={
+            "id": "13", "title": "Both", "autostart_scheduled": True,
+        })
+        cap = self._make(cb)
+        tool = get_tool(cap["tools"], "create_todo")
+
+        result = await tool.handler({
+            "title": "Both",
+            "autostart": True,
+            "auto_approve": 1,
+        })
+
+        cb.assert_awaited_once_with("Both", "", None, None, True, 1)
+        text = result["content"][0]["text"]
+        assert "auto-start scheduled" in text
+        assert "review mode" in text
 
     def test_create_epic_schema_title_required(self):
         from src.agent.todo import CREATE_EPIC_SCHEMA
