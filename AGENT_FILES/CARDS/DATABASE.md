@@ -25,3 +25,7 @@ python -m src.manage rollback
 sqlite3 agents-lab/dashboard.db ".schema"
 sqlite3 agents-lab/dashboard.db "SELECT * FROM items;"
 ```
+
+---
+
+**See also**: [CONVENTIONS](CONVENTIONS.md) (data-layer section), [TESTING](TESTING.md) (`tests/unit/migrations/` is required for new migrations).

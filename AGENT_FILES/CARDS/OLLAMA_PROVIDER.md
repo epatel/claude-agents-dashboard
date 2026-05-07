@@ -103,3 +103,7 @@ source venv/bin/activate
 python test_ollama_sdk.py              # defaults to qwen3.5:9b
 python test_ollama_sdk.py gemma3:12b   # try another model
 ```
+
+---
+
+**See also**: [ARCHITECTURE](ARCHITECTURE.md) (`SessionService` is where the provider routing lives).

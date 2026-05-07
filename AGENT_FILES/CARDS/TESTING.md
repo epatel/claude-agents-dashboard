@@ -208,3 +208,7 @@ End-to-end tests live in `tests/e2e/` as `.mjs` files and run via `./run-e2e-tes
 | `helpers.mjs` | Shared test utilities (`startServer`, `stopServer`, `page.evaluate` for `fetch`) | — |
 
 The first five tests run real agent sessions against a temporary test project and consume Claude tokens. The last two are pure-HTTP regression coverage — they exercise the SM/DnD encoding and the config boundary without spawning an agent, so they're free to run.
+
+---
+
+**See also**: [CONVENTIONS](CONVENTIONS.md) (testing section), [DATABASE](DATABASE.md) (when adding migration tests).

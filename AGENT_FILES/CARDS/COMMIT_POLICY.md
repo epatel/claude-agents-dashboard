@@ -34,3 +34,7 @@ If this command returns any results, remove the annotation files from staging be
 - ✅ Added annotation patterns to `.gitignore`
 - ✅ Created policy documentation
 - 📝 Manual verification required during merge/approval process
+
+---
+
+**See also**: none — commit conventions stand alone.

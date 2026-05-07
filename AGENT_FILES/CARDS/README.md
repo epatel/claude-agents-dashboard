@@ -2,7 +2,27 @@
 
 Living docs grouped by **when to load**. Scan this index first, then load only the cards whose **Load when** matches the task. Don't bulk-load.
 
-Each card also carries its own `> Load when` block so you can verify relevance after landing on it.
+Each card also carries its own `> Load when` block so you can verify relevance after landing on it, and a `See also` footer pointing at sibling cards likely co-needed.
+
+---
+
+## Task → cards
+
+Common operations and the cards that cover them. Order is suggested reading order.
+
+| Task | Cards |
+| --- | --- |
+| Add a new MCP tool or PreToolUse hook | [ARCHITECTURE](ARCHITECTURE.md) (agent runtime) → [CONVENTIONS](CONVENTIONS.md) |
+| Add a DB migration / new column | [DATABASE](DATABASE.md) → [CONVENTIONS](CONVENTIONS.md) (data layer) → [TESTING](TESTING.md) (`tests/unit/migrations/`) |
+| Add a frontend dialog or card change | [ARCHITECTURE](ARCHITECTURE.md) (frontend) → [CONVENTIONS](CONVENTIONS.md) (frontend) |
+| Add a new service / repository / endpoint | [ARCHITECTURE](ARCHITECTURE.md) → [CONVENTIONS](CONVENTIONS.md) |
+| Trace an existing flow end-to-end | [PROJECT_MAP](PROJECT_MAP.md) only |
+| Introduce a new named flow / UI vocabulary | [PROJECT_MAP_STRATEGY](PROJECT_MAP_STRATEGY.md) → [PROJECT_MAP](PROJECT_MAP.md) |
+| Modify Ollama integration / model selection | [OLLAMA_PROVIDER](OLLAMA_PROVIDER.md) → [ARCHITECTURE](ARCHITECTURE.md) (`SessionService`) |
+| Localized bug fix in existing code | None — read the code |
+| About to commit | [COMMIT_POLICY](COMMIT_POLICY.md) |
+
+If your task isn't above, fall through to the **Load when** triggers below.
 
 ---
 

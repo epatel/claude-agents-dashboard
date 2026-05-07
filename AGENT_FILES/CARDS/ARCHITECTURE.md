@@ -68,3 +68,7 @@ Vanilla JS in `src/static/js/`, **no build step**.
 1. **Backend**: `models.py` → migration in `src/migrations/versions/` → service logic (`services/workflow|database|git|session`) and/or repository method → endpoint in `web/routes.py` (or `web/file_routes.py` for attachments). Workflow state changes must go through `ItemState.transition()`.
 2. **Frontend**: templates + dialog module in `src/static/js/` + WebSocket event handling in `app.js` + broadcast from `NotificationService`.
 3. **MCP tool / hook**: drop a new file in `src/agent/`, register it from `session.py`'s tool/server wiring, and (if it's a hook that can deny) make sure the agent has a way to request access — see `command_access` / `tool_access` for the pattern.
+
+---
+
+**See also**: [CONVENTIONS](CONVENTIONS.md) (how to write the code once you know where), [PROJECT_MAP](PROJECT_MAP.md) (line-numbered entry points for each named flow).

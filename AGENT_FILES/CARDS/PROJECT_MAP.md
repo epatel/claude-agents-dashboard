@@ -274,3 +274,7 @@ Subsystem prefixes:
 | `dialog.settings.footer` | Modal footer | `src/templates/board.html` |
 | `dialog.settings.btn-cancel` | Cancel button | `src/templates/board.html` |
 | `dialog.settings.btn-save` | Save button | `src/templates/board.html` |
+
+---
+
+**See also**: [ARCHITECTURE](ARCHITECTURE.md) (subsystem context behind each flow), [PROJECT_MAP_STRATEGY](PROJECT_MAP_STRATEGY.md) (rationale + roadmap for the vocabulary).

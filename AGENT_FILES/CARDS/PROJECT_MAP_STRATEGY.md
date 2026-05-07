@@ -64,3 +64,7 @@ Overlay reads agent state and badges cards mid-flow — e.g., a card currently m
 - **Naming style:** chose functional aliases (`flow.merge`) over codenames (`Mergebot`) — self-documenting, no learning cost — and over hierarchical IDs (`BE/workflow/merge`) — less bureaucratic.
 - **UI discovery:** chose live overlay over static mockup for staleness reasons.
 - **Coverage:** chose selective tagging over exhaustive — avoids noise, lets the vocabulary grow with actual usage.
+
+---
+
+**See also**: [PROJECT_MAP](PROJECT_MAP.md) (the live registry this strategy describes).
