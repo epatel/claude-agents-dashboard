@@ -577,6 +577,39 @@ body {
     color: var(--text-secondary);
 }
 
+.detail-resume-form {
+    border-top: 1px solid var(--border-light);
+    padding: 12px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.detail-resume-form label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.detail-resume-form textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text);
+    resize: vertical;
+}
+
+.detail-resume-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
 .log-entry {
     margin-bottom: 8px;
     padding-bottom: 8px;

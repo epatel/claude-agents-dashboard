@@ -272,14 +272,24 @@ class WorkflowService:
         await self.notifications.broadcast_item_updated(item)
         return item
 
-    async def resume_agent(self, item_id: str) -> Dict[str, Any]:
-        """Resume a paused agent using its saved session."""
+    async def resume_agent(
+        self, item_id: str, message: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Resume a paused agent using its saved session.
+
+        If ``message`` is supplied, it's used as the resume note (taking
+        precedence over any ``pause_message`` previously stored on the item).
+        Empty/whitespace-only messages fall back to the stored note, if any.
+        """
         item = await self.items.get_or_raise(item_id)
 
-        # Pick up any note the user attached when pausing. We capture it now
-        # and clear it on the transition so a subsequent pause/resume cycle
-        # doesn't re-send the old note.
-        pause_message = (item.get("pause_message") or "").strip()
+        # The caller (work-log "Continue" form) may supply a fresh note. If
+        # they don't, fall back to whatever the agent was paused with — both
+        # are surfaced the same way: prepended to the resume prompt and then
+        # cleared on the transition so a subsequent cycle starts clean.
+        submitted = (message or "").strip()
+        stored = (item.get("pause_message") or "").strip()
+        pause_message = submitted or stored
 
         resume_id = item.get("session_id")
         if resume_id:

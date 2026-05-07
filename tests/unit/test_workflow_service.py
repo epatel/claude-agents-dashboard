@@ -244,6 +244,26 @@ class TestResumeWithPauseMessage:
         prompt = workflow.sessions.start_session_task.await_args.args[2]
         assert "paused you with this note" not in prompt
 
+    async def test_resume_with_explicit_message_overrides_stored_note(
+        self, workflow, paused_item
+    ):
+        # The new "Continue" form on the work-log dialog passes the user's
+        # note via resume_agent(message=...). When supplied, it should win
+        # over whatever pause_message happened to be on the item.
+        await workflow.resume_agent(paused_item["id"], message="try plan B instead")
+        prompt = workflow.sessions.start_session_task.await_args.args[2]
+        assert "try plan B instead" in prompt
+        assert "investigate a simpler approach" not in prompt
+
+    async def test_resume_with_blank_message_falls_back_to_stored_note(
+        self, workflow, paused_item
+    ):
+        # Empty/whitespace-only submissions from the Continue form should
+        # leave the stored pause_message in effect rather than wipe it out.
+        await workflow.resume_agent(paused_item["id"], message="   \n  ")
+        prompt = workflow.sessions.start_session_task.await_args.args[2]
+        assert "investigate a simpler approach" in prompt
+
 
 # ---------------------------------------------------------------------------
 # submit_clarification

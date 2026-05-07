@@ -54,8 +54,10 @@ const Api = {
         return this.request('POST', `/api/items/${id}/pause`, body);
     },
 
-    resumeAgent(id) {
-        return this.request('POST', `/api/items/${id}/resume`);
+    resumeAgent(id, message = null) {
+        const trimmed = message ? message.trim() : '';
+        const body = trimmed ? { message: trimmed } : null;
+        return this.request('POST', `/api/items/${id}/resume`, body);
     },
 
     retryAgent(id) {

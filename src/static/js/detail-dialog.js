@@ -175,6 +175,22 @@ const DetailDialog = {
             actionsEl.insertBefore(rerunBtn, editBtn);
         }
 
+        // Continue form: only visible for paused items. Lets the user send
+        // an optional note that the agent receives on resume — replaces the
+        // old "pause with note" dialog.
+        const resumeForm = document.getElementById('detail-resume-form');
+        const resumeMessage = document.getElementById('detail-resume-message');
+        if (resumeForm && resumeMessage) {
+            if (item.status === 'paused') {
+                resumeForm.style.display = '';
+                resumeForm.dataset.itemId = itemId;
+                resumeMessage.value = '';
+            } else {
+                resumeForm.style.display = 'none';
+                resumeForm.dataset.itemId = '';
+            }
+        }
+
         // Load work log
         const logEl = document.getElementById('detail-log');
         try {
@@ -201,6 +217,17 @@ const DetailDialog = {
         this.switchDetailTab(defaultTab);
 
         DialogCore.open('detail-dialog');
+    },
+
+    async submitResume(event) {
+        if (event) event.preventDefault();
+        const form = document.getElementById('detail-resume-form');
+        const messageEl = document.getElementById('detail-resume-message');
+        const itemId = form ? form.dataset.itemId : '';
+        if (!itemId) return;
+        const message = (messageEl && messageEl.value || '').trim() || null;
+        DialogCore.close('detail-dialog');
+        await Board.resumeAgent(itemId, message);
     },
 
     switchDetailTab(tabName) {
@@ -243,6 +270,15 @@ const DetailDialog = {
 
         const oldPlay = document.getElementById('detail-play-btn');
         if (oldPlay) oldPlay.remove();
+
+        // _showDetailDirect is the fallback for items in the questions column,
+        // which are never paused — but defensively hide the resume form so it
+        // never carries over from a previous open of a paused item.
+        const resumeForm = document.getElementById('detail-resume-form');
+        if (resumeForm) {
+            resumeForm.style.display = 'none';
+            resumeForm.dataset.itemId = '';
+        }
 
         const logEl = document.getElementById('detail-log');
         try {
