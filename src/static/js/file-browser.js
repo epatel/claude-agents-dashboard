@@ -546,20 +546,14 @@ const FileBrowser = {
                 }
             });
         }
-        // Render mermaid diagrams
-        if (typeof mermaid !== 'undefined') {
-            const codeBlocks = mdDiv.querySelectorAll('code.language-mermaid');
-            codeBlocks.forEach((code, i) => {
-                const pre = code.parentElement;
-                const mermaidDiv = document.createElement('div');
-                mermaidDiv.className = 'mermaid';
-                mermaidDiv.textContent = code.textContent;
-                pre.replaceWith(mermaidDiv);
-            });
-            if (mdDiv.querySelectorAll('.mermaid').length > 0) {
-                mermaid.run({ nodes: mdDiv.querySelectorAll('.mermaid') });
-            }
-        }
+        // Render mermaid diagrams (rewrite code blocks → div.mermaid, then run)
+        mdDiv.querySelectorAll('code.language-mermaid').forEach(code => {
+            const mermaidDiv = document.createElement('div');
+            mermaidDiv.className = 'mermaid';
+            mermaidDiv.textContent = code.textContent;
+            code.parentElement.replaceWith(mermaidDiv);
+        });
+        DialogUtils.runMermaid(mdDiv);
     },
 
     _renderMarkdown(container, tab) {

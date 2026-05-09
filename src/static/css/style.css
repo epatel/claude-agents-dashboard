@@ -466,6 +466,37 @@ body {
     margin-bottom: 12px;
 }
 
+/* Diagram container — override .log-content pre / .detail-body pre styling
+ * so the rendered SVG fills the available width on a transparent background. */
+.mermaid {
+    background: transparent;
+    padding: 0;
+    margin: 12px 0;
+    overflow-x: auto;
+    font-family: inherit;
+    font-size: inherit;
+    white-space: normal;
+    min-height: 40px;
+}
+
+.mermaid svg {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+}
+
+/* Fallback when mermaid parsing fails — show the raw source with a warning bar. */
+.mermaid-failed {
+    border-left: 3px solid var(--warning);
+    padding-left: 8px;
+    margin: 12px 0;
+}
+
+.mermaid-failed pre {
+    margin: 0;
+}
+
 .detail-model-info {
     margin-top: 16px;
     padding: 8px 12px;
