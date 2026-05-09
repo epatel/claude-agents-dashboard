@@ -128,38 +128,53 @@ const DialogUtils = {
         return d.innerHTML.replace(/\n/g, '<br>');
     },
 
-    /** Render mermaid diagrams inside `container`; on failure show raw source. */
+    /**
+     * Render mermaid diagrams inside `container`; on failure show raw source.
+     *
+     * Uses `mermaid.render(id, text)` rather than `mermaid.run({ nodes })`
+     * because `run()` measures text dimensions in-place — and our review
+     * dialog tabs (Result, Work Log) start with `display: none`, where
+     * `getBoundingClientRect` returns 0 and the SVG collapses to a small
+     * dark rectangle. `render()` uses an offscreen temp container appended
+     * to `document.body`, so layout works regardless of where the
+     * destination node lives.
+     */
     runMermaid(container) {
         if (typeof mermaid === 'undefined' || !container) return;
         const nodes = container.querySelectorAll('div.mermaid:not([data-processed="true"])');
         if (nodes.length === 0) return;
-        // Capture sources upfront — mermaid replaces textContent during render.
-        const sources = new Map();
-        nodes.forEach(node => sources.set(node, node.textContent));
-        const showFallback = () => {
-            sources.forEach((src, node) => {
-                if (node.querySelector('svg')) return; // rendered ok
-                node.classList.remove('mermaid');
-                node.classList.add('mermaid-failed');
-                const pre = document.createElement('pre');
-                const code = document.createElement('code');
-                code.className = 'language-mermaid';
-                code.textContent = src;
-                pre.appendChild(code);
-                node.replaceChildren(pre);
-            });
+
+        const showFallback = (node, source) => {
+            node.classList.remove('mermaid');
+            node.classList.add('mermaid-failed');
+            const pre = document.createElement('pre');
+            const code = document.createElement('code');
+            code.className = 'language-mermaid';
+            code.textContent = source;
+            pre.appendChild(code);
+            node.replaceChildren(pre);
         };
-        try {
-            const result = mermaid.run({ nodes });
-            if (result && typeof result.catch === 'function') {
-                result.catch(err => {
-                    console.warn('mermaid render failed:', err);
-                    showFallback();
-                });
+
+        nodes.forEach((node, i) => {
+            const source = node.textContent;
+            const id = `mermaid-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`;
+            // Mark immediately so a re-entrant call doesn't double-render.
+            node.setAttribute('data-processed', 'true');
+            try {
+                const p = mermaid.render(id, source);
+                Promise.resolve(p)
+                    .then(({ svg, bindFunctions }) => {
+                        node.innerHTML = svg;
+                        if (bindFunctions) bindFunctions(node);
+                    })
+                    .catch(err => {
+                        console.warn('mermaid render failed:', err);
+                        showFallback(node, source);
+                    });
+            } catch (err) {
+                console.warn('mermaid render failed:', err);
+                showFallback(node, source);
             }
-        } catch (err) {
-            console.warn('mermaid render failed:', err);
-            showFallback();
-        }
+        });
     },
 };
