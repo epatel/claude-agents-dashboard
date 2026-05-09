@@ -57,6 +57,7 @@ const DetailDialog = {
         }
 
         body.innerHTML = content;
+        DialogUtils.runMermaid(body);
 
         // Wire up copy buttons
         body.querySelectorAll('.copy-sha-btn').forEach(btn => {
@@ -199,6 +200,7 @@ const DetailDialog = {
                 logEl.innerHTML = log.map(e =>
                     `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${DialogUtils.renderMarkdown(e.content)}</div></div>`
                 ).join('');
+                DialogUtils.runMermaid(logEl);
                 // Scroll to end after initial load
                 DialogCore.forceAutoScroll(logEl);
             } else {
@@ -259,7 +261,9 @@ const DetailDialog = {
         if (!item) return;
 
         document.getElementById('detail-title').textContent = item.title;
-        document.getElementById('detail-body').innerHTML = DialogUtils.renderMarkdown(item.description || '(no description)');
+        const detailBodyEl = document.getElementById('detail-body');
+        detailBodyEl.innerHTML = DialogUtils.renderMarkdown(item.description || '(no description)');
+        DialogUtils.runMermaid(detailBodyEl);
 
         const editBtn = document.getElementById('detail-edit-btn');
         const deleteBtn = document.getElementById('detail-delete-btn');
@@ -288,6 +292,7 @@ const DetailDialog = {
                 : '<div class="log-entry">No work log entries</div>';
             // Scroll to end after initial load
             if (log.length > 0) {
+                DialogUtils.runMermaid(logEl);
                 DialogCore.forceAutoScroll(logEl);
             }
         } catch { logEl.innerHTML = ''; }

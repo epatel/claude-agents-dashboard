@@ -61,6 +61,7 @@ const Dialogs = {
 
     // Utility functions - delegate to DialogUtils
     renderMarkdown: (text) => DialogUtils.renderMarkdown(text),
+    runMermaid: (container) => DialogUtils.runMermaid(container),
 
     // Expose internal state for backward compatibility
     get _currentItemId() { return DialogCore._currentItemId; },

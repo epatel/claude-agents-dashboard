@@ -58,7 +58,9 @@ const ClarificationDialog = {
     showClarification(itemId, prompt, choices, context) {
         this._restoreFormHTML();
         document.getElementById('clarify-item-id').value = itemId;
-        document.getElementById('clarify-prompt').innerHTML = DialogUtils.renderMarkdown(prompt);
+        const promptEl = document.getElementById('clarify-prompt');
+        promptEl.innerHTML = DialogUtils.renderMarkdown(prompt);
+        DialogUtils.runMermaid(promptEl);
         document.getElementById('clarify-response').value = '';
 
         const contextGroup = document.getElementById('clarify-context-group');
@@ -67,6 +69,7 @@ const ClarificationDialog = {
             const ctxStr = (context == null) ? '' : String(context).trim();
             if (ctxStr) {
                 contextEl.innerHTML = DialogUtils.renderMarkdown(ctxStr);
+                DialogUtils.runMermaid(contextEl);
                 contextGroup.style.display = '';
             } else {
                 contextEl.innerHTML = '';

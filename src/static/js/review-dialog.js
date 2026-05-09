@@ -893,6 +893,7 @@ const ReviewDialog = {
         // Populate description tab
         const descEl = document.getElementById('review-description');
         descEl.innerHTML = DialogUtils.renderMarkdown(item.description || '(no description)');
+        DialogUtils.runMermaid(descEl);
 
         // Populate work log tab + capture last agent_message for the Result tab
         const logEl = document.getElementById('review-log');
@@ -905,6 +906,7 @@ const ReviewDialog = {
                 logEl.innerHTML = log.map(e =>
                     `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${DialogUtils.renderMarkdown(e.content)}</div></div>`
                 ).join('');
+                DialogUtils.runMermaid(logEl);
                 // Scroll to end after initial load
                 DialogCore.forceAutoScroll(logEl);
                 // Find most recent agent_message for the Result tab
@@ -927,6 +929,7 @@ const ReviewDialog = {
                 resultEl.innerHTML =
                     `<div class="result-meta" style="opacity:0.7;font-size:12px;margin-bottom:8px">Final agent message — ${lastAgentMessage.timestamp}</div>` +
                     `<div class="result-body">${DialogUtils.renderMarkdown(lastAgentMessage.content)}</div>`;
+                DialogUtils.runMermaid(resultEl);
                 resultTabBtn.style.display = '';
             } else {
                 resultEl.innerHTML = '';
