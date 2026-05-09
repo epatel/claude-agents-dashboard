@@ -457,6 +457,7 @@ const App = {
             entry.className = `log-entry log-entry-${data.entry_type}`;
             entry.innerHTML = `<span class="log-meta">[${data.entry_type}]</span> <div class="log-content">${Dialogs.renderMarkdown(data.content)}</div>`;
             detailLogEl.appendChild(entry);
+            Dialogs.runMermaid(entry);
             // Use the reliable auto-scroll utility
             this.autoScroll(detailLogEl);
         }
@@ -468,6 +469,7 @@ const App = {
             entry.className = `log-entry log-entry-${data.entry_type}`;
             entry.innerHTML = `<span class="log-meta">[${data.entry_type}]</span> <div class="log-content">${Dialogs.renderMarkdown(data.content)}</div>`;
             reviewLogEl.appendChild(entry);
+            Dialogs.runMermaid(entry);
             // Use the reliable auto-scroll utility
             this.autoScroll(reviewLogEl);
         }

@@ -105,11 +105,52 @@ const DialogUtils = {
     renderMarkdown(text) {
         if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
             const html = marked.parse(text || '');
-            return DOMPurify.sanitize(html);
+            const sanitized = DOMPurify.sanitize(html);
+            // Rewrite ```mermaid fenced code blocks (rendered by marked as
+            // <pre><code class="language-mermaid">...</code></pre>) into
+            // <pre class="mermaid">...</pre> containers so mermaid.run() can
+            // turn them into SVG diagrams. Without this rewrite the diagram
+            // source shows as a plain code block (see worklog/result tabs).
+            const tmp = document.createElement('div');
+            tmp.innerHTML = sanitized;
+            tmp.querySelectorAll('pre code.language-mermaid').forEach(codeEl => {
+                const pre = codeEl.parentElement;
+                if (!pre || !pre.parentElement) return;
+                const diagram = codeEl.textContent;
+                const mermaidEl = document.createElement('pre');
+                mermaidEl.className = 'mermaid';
+                // textContent so the diagram source survives a later innerHTML
+                // round-trip without needing manual HTML escaping.
+                mermaidEl.textContent = diagram;
+                pre.replaceWith(mermaidEl);
+            });
+            return tmp.innerHTML;
         }
         // Fallback: escape HTML and convert newlines
         const d = document.createElement('div');
         d.textContent = text || '';
         return d.innerHTML.replace(/\n/g, '<br>');
+    },
+
+    /**
+     * Render any mermaid diagrams (`<pre class="mermaid">`) inside `container`.
+     * Safe to call multiple times — mermaid skips nodes that already carry
+     * `data-processed="true"`. No-ops if mermaid isn't loaded or container
+     * has no mermaid blocks.
+     */
+    runMermaid(container) {
+        if (typeof mermaid === 'undefined' || !container) return;
+        const nodes = container.querySelectorAll
+            ? container.querySelectorAll('pre.mermaid:not([data-processed="true"])')
+            : null;
+        if (!nodes || nodes.length === 0) return;
+        try {
+            const result = mermaid.run({ nodes });
+            if (result && typeof result.catch === 'function') {
+                result.catch(err => console.warn('mermaid render failed:', err));
+            }
+        } catch (err) {
+            console.warn('mermaid render failed:', err);
+        }
     },
 };
