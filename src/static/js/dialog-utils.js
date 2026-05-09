@@ -106,22 +106,18 @@ const DialogUtils = {
         if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
             const html = marked.parse(text || '');
             const sanitized = DOMPurify.sanitize(html);
-            // Rewrite ```mermaid fenced code blocks (rendered by marked as
-            // <pre><code class="language-mermaid">...</code></pre>) into
-            // <pre class="mermaid">...</pre> containers so mermaid.run() can
-            // turn them into SVG diagrams. Without this rewrite the diagram
-            // source shows as a plain code block (see worklog/result tabs).
+            // Convert ```mermaid fenced blocks (marked emits <pre><code
+            // class="language-mermaid">) into <div class="mermaid"> so
+            // mermaid.run() picks them up. <div> (not <pre>) avoids the
+            // dark code-block styling that would mask successful renders.
             const tmp = document.createElement('div');
             tmp.innerHTML = sanitized;
             tmp.querySelectorAll('pre code.language-mermaid').forEach(codeEl => {
                 const pre = codeEl.parentElement;
                 if (!pre || !pre.parentElement) return;
-                const diagram = codeEl.textContent;
-                const mermaidEl = document.createElement('pre');
+                const mermaidEl = document.createElement('div');
                 mermaidEl.className = 'mermaid';
-                // textContent so the diagram source survives a later innerHTML
-                // round-trip without needing manual HTML escaping.
-                mermaidEl.textContent = diagram;
+                mermaidEl.textContent = codeEl.textContent;
                 pre.replaceWith(mermaidEl);
             });
             return tmp.innerHTML;
@@ -132,25 +128,38 @@ const DialogUtils = {
         return d.innerHTML.replace(/\n/g, '<br>');
     },
 
-    /**
-     * Render any mermaid diagrams (`<pre class="mermaid">`) inside `container`.
-     * Safe to call multiple times — mermaid skips nodes that already carry
-     * `data-processed="true"`. No-ops if mermaid isn't loaded or container
-     * has no mermaid blocks.
-     */
+    /** Render mermaid diagrams inside `container`; on failure show raw source. */
     runMermaid(container) {
         if (typeof mermaid === 'undefined' || !container) return;
-        const nodes = container.querySelectorAll
-            ? container.querySelectorAll('pre.mermaid:not([data-processed="true"])')
-            : null;
-        if (!nodes || nodes.length === 0) return;
+        const nodes = container.querySelectorAll('div.mermaid:not([data-processed="true"])');
+        if (nodes.length === 0) return;
+        // Capture sources upfront — mermaid replaces textContent during render.
+        const sources = new Map();
+        nodes.forEach(node => sources.set(node, node.textContent));
+        const showFallback = () => {
+            sources.forEach((src, node) => {
+                if (node.querySelector('svg')) return; // rendered ok
+                node.classList.remove('mermaid');
+                node.classList.add('mermaid-failed');
+                const pre = document.createElement('pre');
+                const code = document.createElement('code');
+                code.className = 'language-mermaid';
+                code.textContent = src;
+                pre.appendChild(code);
+                node.replaceChildren(pre);
+            });
+        };
         try {
             const result = mermaid.run({ nodes });
             if (result && typeof result.catch === 'function') {
-                result.catch(err => console.warn('mermaid render failed:', err));
+                result.catch(err => {
+                    console.warn('mermaid render failed:', err);
+                    showFallback();
+                });
             }
         } catch (err) {
             console.warn('mermaid render failed:', err);
+            showFallback();
         }
     },
 };
