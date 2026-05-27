@@ -452,3 +452,20 @@
     white-space: nowrap;
     flex-shrink: 0;
 }
+
+/* Auto-approve toggle in the detail dialog header */
+.detail-auto-approve-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.detail-auto-approve-wrap select {
+    font-size: 12px;
+    padding: 2px 6px;
+    cursor: pointer;
+}
