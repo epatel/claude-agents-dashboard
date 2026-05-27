@@ -160,6 +160,14 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
             <span id="detail-column-badge" class="detail-column-badge"></span>
             <h3 id="detail-title"></h3>
             <div class="modal-header-actions" id="detail-header-actions">
+                <label id="detail-auto-approve-wrap" class="detail-auto-approve-wrap" style="display:none" title="Auto-approve mode for this item. Takes effect when the agent finishes.">
+                    <span class="detail-auto-approve-label">Auto-approve</span>
+                    <select id="detail-auto-approve">
+                        <option value="0">Off — manual review</option>
+                        <option value="2">Direct — merge without review</option>
+                        <option value="1">With Review — auto-review then merge</option>
+                    </select>
+                </label>
                 <button class="btn btn-sm" id="detail-delete-btn" title="Delete item" style="color: var(--danger)">&#128465;</button>
                 <button class="btn btn-sm" id="detail-edit-btn">Edit</button>
                 <button class="btn-close" onclick="Dialogs.close('detail-dialog')">&times;</button>

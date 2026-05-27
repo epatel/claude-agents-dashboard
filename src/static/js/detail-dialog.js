@@ -122,6 +122,39 @@ const DetailDialog = {
             }
         };
 
+        // Auto-approve toggle: visible while item is in Doing so the user can
+        // change the mode mid-flight (it's read when the agent finishes).
+        // Stored as tri-state int (0=Off, 1=With Review, 2=Direct). Older
+        // items may have it as a boolean — coerce truthy → 1.
+        const autoApproveWrap = document.getElementById('detail-auto-approve-wrap');
+        const autoApproveSelect = document.getElementById('detail-auto-approve');
+        if (autoApproveWrap && autoApproveSelect) {
+            if (item.column_name === 'doing') {
+                let mode;
+                if (item.auto_approve === true) mode = 1;
+                else if (item.auto_approve === false || item.auto_approve == null) mode = 0;
+                else mode = parseInt(item.auto_approve, 10);
+                if (![0, 1, 2].includes(mode)) mode = 0;
+                autoApproveSelect.value = String(mode);
+                autoApproveWrap.style.display = '';
+                autoApproveSelect.onchange = async () => {
+                    const newValue = parseInt(autoApproveSelect.value, 10);
+                    const prev = mode;
+                    try {
+                        await Api.updateItem(item.id, { auto_approve: newValue });
+                        item.auto_approve = newValue;
+                        mode = newValue;
+                    } catch (err) {
+                        console.error('Failed to update auto_approve:', err);
+                        autoApproveSelect.value = String(prev);
+                    }
+                };
+            } else {
+                autoApproveWrap.style.display = 'none';
+                autoApproveSelect.onchange = null;
+            }
+        }
+
         // Add play button and start copy button in Todo
         if (item.column_name === 'todo') {
             const playBtn = document.createElement('button');
@@ -274,6 +307,12 @@ const DetailDialog = {
 
         const oldPlay = document.getElementById('detail-play-btn');
         if (oldPlay) oldPlay.remove();
+
+        // Hide auto-approve toggle in the questions fallback view.
+        const autoApproveWrap = document.getElementById('detail-auto-approve-wrap');
+        const autoApproveSelect = document.getElementById('detail-auto-approve');
+        if (autoApproveWrap) autoApproveWrap.style.display = 'none';
+        if (autoApproveSelect) autoApproveSelect.onchange = null;
 
         // _showDetailDirect is the fallback for items in the questions column,
         // which are never paused — but defensively hide the resume form so it
