@@ -14,6 +14,10 @@ Standalone scrum board that orchestrates Claude agents working on a **separate t
 
 Server binds to `127.0.0.1:8000` (auto-increments up to 8019).
 
+## Shared plan
+
+Always read **[`@project-plan.md`](project-plan.md)** before starting — it holds the shared goal and current state across agents. When spawning subagents or worktree agents, tell them to read it first and to update its **Current state** and **Decisions** sections before finishing.
+
 ## Docs
 
 Before doing real work, scan **[`AGENT_FILES/CARDS/README.md`](AGENT_FILES/CARDS/README.md)** — the routing manifest — and load only the cards whose **Load when** matches the task. Don't bulk-load.
