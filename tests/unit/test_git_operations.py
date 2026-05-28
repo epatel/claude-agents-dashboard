@@ -687,23 +687,82 @@ class TestMergeBranch:
         assert msg == "abc123sha"
 
     @pytest.mark.asyncio
-    async def test_no_base_uses_current_branch(self):
-        with patch("src.git.operations.get_current_branch", return_value="develop") as mock_gcb:
-            async def _run_git_side(cwd, *args, **kwargs):
-                if args[0] == "checkout":
-                    assert args[1] == "develop"
-                    return ""
-                if args[0] == "merge":
-                    return ""
-                if args == ("rev-parse", "HEAD"):
-                    return "sha"
-                return ""
+    async def test_no_base_refuses_to_guess(self):
+        """When base is omitted, merge_branch must refuse — never silently
+        fall back to the repo's current HEAD. Silent fallback was the source
+        of the bug where agents started on a feature branch ended up merged
+        into main, because by the time merge_branch ran the shared repo had
+        been left on main by a previous merge."""
+        # No run_git patching needed — the function should bail before any
+        # git command runs.
+        success, msg = await merge_branch(REPO, "feature")
+        assert success is False
+        assert "explicit base" in msg.lower() or "base_branch" in msg
 
+    @pytest.mark.asyncio
+    async def test_restores_original_head_after_success(self):
+        """merge_branch checks out `base` to perform the merge, but must
+        restore whichever branch the user had checked out before — otherwise
+        every merge silently leaves the shared target repo on `base`."""
+        calls: list[tuple] = []
+
+        async def _run_git_side(cwd, *args, **kwargs):
+            calls.append(args)
+            if args == ("rev-parse", "HEAD"):
+                return "sha"
+            return ""
+
+        with patch("src.git.operations.get_current_branch", return_value="feature/work"):
             with patch("src.git.operations.run_git", side_effect=_run_git_side):
-                success, _ = await merge_branch(REPO, "feature")
+                success, _ = await merge_branch(REPO, "agent/x", base="main")
 
-        mock_gcb.assert_called_once_with(REPO)
         assert success is True
+        # The final checkout must restore feature/work.
+        assert ("checkout", "feature/work") in calls, (
+            f"Expected final checkout to restore feature/work, got: {calls}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_restores_original_head_after_conflict(self):
+        """HEAD restoration must happen even when the merge fails."""
+        merge_err = subprocess.CalledProcessError(1, "git", stderr=b"merge conflict")
+        calls: list[tuple] = []
+
+        async def _run_git_side(cwd, *args, **kwargs):
+            calls.append(args)
+            if args[0] == "merge" and "--abort" not in args:
+                raise merge_err
+            return ""
+
+        with patch("src.git.operations.get_current_branch", return_value="feature/work"):
+            with patch("src.git.operations.run_git", side_effect=_run_git_side):
+                success, _ = await merge_branch(REPO, "agent/x", base="main")
+
+        assert success is False
+        # Even on failure, HEAD should be restored.
+        assert ("checkout", "feature/work") in calls, (
+            f"Expected final checkout to restore feature/work after conflict, got: {calls}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_skips_restore_when_already_on_base(self):
+        """If the user was already on `base`, don't issue a redundant checkout."""
+        calls: list[tuple] = []
+
+        async def _run_git_side(cwd, *args, **kwargs):
+            calls.append(args)
+            if args == ("rev-parse", "HEAD"):
+                return "sha"
+            return ""
+
+        with patch("src.git.operations.get_current_branch", return_value="main"):
+            with patch("src.git.operations.run_git", side_effect=_run_git_side):
+                success, _ = await merge_branch(REPO, "agent/x", base="main")
+
+        assert success is True
+        # Exactly one checkout — the pre-merge one. No restore needed.
+        checkouts = [c for c in calls if c[0] == "checkout"]
+        assert len(checkouts) == 1, f"Expected 1 checkout, got {checkouts}"
 
     @pytest.mark.asyncio
     async def test_conflict_returns_false_and_aborts(self):

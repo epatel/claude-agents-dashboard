@@ -57,27 +57,35 @@ class GitService:
     async def create_or_reuse_worktree(self, item_id: str,
                                       existing_worktree_path: Optional[str] = None,
                                       existing_branch_name: Optional[str] = None,
-                                      repo: Optional[str] = None) -> Tuple[Path, str, str, Optional[str]]:
+                                      repo: Optional[str] = None) -> Tuple[Path, str, Optional[str], Optional[str]]:
         """Create a new worktree or reuse an existing one.
 
         Returns:
             Tuple of (worktree_path, branch_name, base_branch, base_commit)
-            base_commit is the SHA of the base branch at creation time (None when reusing).
+
+            base_branch is the branch the worktree was forked from. It is
+            returned ONLY when a fresh worktree is created — on the reuse
+            paths it is None, signalling the caller to preserve whatever
+            base_branch was originally recorded on the item. We deliberately
+            don't hardcode "main" here: doing so silently rewrote the merge
+            target for items started from feature branches.
+
+            base_commit is the SHA of the base branch at creation time (None
+            when reusing).
         """
         branch_name = existing_branch_name or f"agent/{item_id}"
         base = self.base_repo_path(repo)
 
-        # Check if we can reuse existing worktree
+        # Check if we can reuse existing worktree. The item's base_branch
+        # was recorded when the worktree was first created — don't touch it.
         if existing_worktree_path and Path(existing_worktree_path).exists():
             worktree_path = Path(existing_worktree_path)
-            base_branch = "main"
-            return worktree_path, branch_name, base_branch, None
+            return worktree_path, branch_name, None, None
 
         # Check if worktree dir already exists from previous run
         worktree_path = self.worktree_path_for(item_id, branch_name, repo)
         if worktree_path.exists():
-            base_branch = "main"
-            return worktree_path, branch_name, base_branch, None
+            return worktree_path, branch_name, None, None
 
         # Clean up stale branch if it exists
         try:
