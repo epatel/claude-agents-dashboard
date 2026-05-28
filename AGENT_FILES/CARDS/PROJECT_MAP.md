@@ -30,7 +30,7 @@ Spawns a Claude session in a fresh worktree (`agents-lab/worktrees/agent-{item_i
 
 ### `flow.merge`
 Commits uncommitted worktree changes, merges into base. On conflict: captures diff, resets worktree to latest base, restarts agent with conflict prompt.
-- **Entry:** `src/services/workflow_service.py:446` `approve_item`
+- **Entry:** `src/services/workflow_service.py:450` `approve_item`
 - **HTTP:** `POST /api/items/{id}/approve` (`src/web/routes.py:879`)
 - **WS events:** `item_updated`, `merge_blocked`, `agent_log`
 - **Tables:** `items`
@@ -38,15 +38,15 @@ Commits uncommitted worktree changes, merges into base. On conflict: captures di
 ### `flow.clarify`
 MCP `ask_user` moves item to "Clarify" column, awaits `asyncio.Event`. HTTP endpoint sets the event with the user's answer, agent resumes.
 - **MCP tool:** `src/agent/clarification.py:55` `ask_user`
-- **Callback:** `src/services/workflow_service.py:994` `_create_on_clarify_callback`
-- **Resume:** `src/services/workflow_service.py:819` `submit_clarification`
+- **Callback:** `src/services/workflow_service.py:1018` `_create_on_clarify_callback`
+- **Resume:** `src/services/workflow_service.py:843` `submit_clarification`
 - **HTTP:** `POST /api/items/{id}/clarify` (`src/web/routes.py:929`)
 - **WS events:** `clarification_requested`, `item_updated`
 - **Tables:** `items`
 
 ### `flow.pause-resume`
 Captures `session_id`, kills process. Resume builds `ClaudeAgentOptions(resume=session_id, continue_conversation=True)`.
-- **Entry:** `src/services/workflow_service.py:262` `pause_agent` / `:288` `resume_agent`
+- **Entry:** `src/services/workflow_service.py:266` `pause_agent` / `:292` `resume_agent`
 - **HTTP:** `POST /api/items/{id}/pause` (`src/web/routes.py:712`), `POST /api/items/{id}/resume` (`:727`)
 - **Session ops:** `src/services/session_service.py:140` `pause_session`
 - **WS events:** `item_updated`, `agent_log`
@@ -54,7 +54,7 @@ Captures `session_id`, kills process. Resume builds `ClaudeAgentOptions(resume=s
 
 ### `flow.stale-scan`
 Compares `git worktree list` against DB on startup and every 5 min. Emits cleanup notifications with action buttons.
-- **Entry:** `src/services/workflow_service.py:1594` `find_stale_worktrees` / `:1653` `cleanup_stale_worktree`
+- **Entry:** `src/services/workflow_service.py:1618` `find_stale_worktrees` / `:1677` `cleanup_stale_worktree`
 - **Scheduler:** registered from the FastAPI lifespan in `src/web/app.py`
 - **WS events:** `item_updated`, notification with `action` dict
 - **Tables:** `items`, `notifications`

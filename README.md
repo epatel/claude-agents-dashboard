@@ -42,7 +42,7 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 983 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1035 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -100,7 +100,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Cancel & cancel review** — cancel a running agent or discard review changes, clean up worktree/branch
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
-- **Per-item model selection** — choose between Claude Opus 4.7 (default), Claude Sonnet 4.6, and Claude Haiku 4.5 per item (falls back to global config); experimental Claude Sonnet 4.6 + Advisor mode available with `--experimental` flag
+- **Per-item model selection** — choose between Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, and Claude Haiku 4.5 per item (falls back to global config); experimental Claude Sonnet 4.6 + Advisor mode available with `--experimental` flag
 - **Multi-repo workspaces** — point the dashboard at a folder containing sibling git repos and each item picks one of them via a `repo` field; worktrees are created inside the chosen subrepo and agents get read-only access to the other sibling repos for cross-repo context
 - **WIP limit** — configurable cap on concurrent running agents; items started beyond the limit are queued and auto-started when a slot opens
 - **Agent config** — set system prompt, model, project context, MCP servers, and plugins
@@ -196,10 +196,10 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~8,000 lines across 40 source files (excluding migrations)
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~8,400 lines JS + ~3,700 lines CSS
-- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Opus 4.7 (default), Claude Sonnet 4.6, Claude Haiku 4.5, 7 built-in MCP tools; experimental Sonnet 4.6 + Advisor variant; optional Ollama provider (experimental)
-- **Database**: SQLite with 23 versioned migrations (auto-runs on startup)
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~8,900 lines across 40 source files (excluding migrations)
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~9,300 lines JS + ~3,850 lines CSS
+- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, Claude Haiku 4.5, 7 built-in MCP tools; experimental Sonnet 4.6 + Advisor variant; optional Ollama provider (experimental)
+- **Database**: SQLite with 24 versioned migrations (auto-runs on startup)
 - **Security**: Localhost only, no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
 
 ### Item lifecycle
@@ -239,7 +239,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–023) adding columns and tables incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–024) adding columns and tables incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
