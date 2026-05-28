@@ -314,13 +314,37 @@ async def commit_worktree_changes(worktree_path: Path, message: str) -> bool:
 async def merge_branch(repo: Path, branch: str, base: str | None = None,
                        worktree_path: Path | None = None,
                        commit_message: str | None = None) -> tuple[bool, str]:
-    """Merge branch into base. Returns (success, message).
+    """Merge `branch` into `base` inside `repo`. Returns (success, message).
 
-    If worktree_path is given, first commits any uncommitted changes there.
-    If commit_message is provided, it is used instead of the default generic message.
+    `base` is REQUIRED. The agent's worktree was forked from a specific
+    branch, and the only correct merge target is that exact branch — recorded
+    on the item as `base_branch` at worktree creation time. We deliberately
+    don't fall back to "the repo's current HEAD" or "main" here: silent
+    fallbacks were the source of the bug where agents started on a feature
+    branch ended up merged into `main`.
+
+    If `worktree_path` is given, any uncommitted changes there are committed
+    first. If `commit_message` is provided, it is used instead of a default.
+
+    Side effects on `repo`: this temporarily checks out `base` to perform the
+    merge, then restores whichever branch was previously checked out — so the
+    user's working state in the shared target repo is left as we found it
+    (best-effort; failure to restore is swallowed).
     """
-    if base is None:
-        base = await get_current_branch(repo)
+    if not base:
+        return False, (
+            "merge_branch requires an explicit base branch. The worktree's "
+            "source branch (item.base_branch) was not provided — refusing to "
+            "guess. Pass the branch the agent forked from."
+        )
+
+    # Snapshot the repo's currently checked-out branch so we can restore it
+    # after the merge. Only restore if it's different from `base`, otherwise
+    # the post-merge state is already correct.
+    try:
+        original_head = await get_current_branch(repo)
+    except Exception:
+        original_head = None
 
     try:
         # Commit uncommitted changes in the worktree first
@@ -352,3 +376,14 @@ async def merge_branch(repo: Path, branch: str, base: str | None = None,
         except (subprocess.CalledProcessError, asyncio.TimeoutError):
             pass
         return False, e.stderr.decode() if e.stderr else str(e)
+    finally:
+        # Best-effort restore of the user's previously checked-out branch.
+        # Without this, every merge would leave the shared target repo sitting
+        # on `base` (typically `main`), which then cascades: the next item
+        # created here would record `base_branch = main` because
+        # create_worktree snapshots HEAD at creation time.
+        if original_head and original_head != base:
+            try:
+                await run_git(repo, "checkout", original_head)
+            except (subprocess.CalledProcessError, asyncio.TimeoutError):
+                pass

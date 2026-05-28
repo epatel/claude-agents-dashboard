@@ -185,7 +185,12 @@ class TestOrchestratorLifecycle:
             item_id,
             column_name="review",
             branch_name=f"agent/{item_id}",
-            worktree_path="/mock/worktree"
+            worktree_path="/mock/worktree",
+            # approve_item now refuses to merge without an explicit base_branch
+            # (the worktree's source branch). The real `start_agent` path records
+            # this at worktree creation; this test bypasses that path and writes
+            # the fields directly, so we have to provide it.
+            base_branch="main",
         )
 
         async def mock_run_git(repo, *args, **kwargs):

@@ -71,12 +71,14 @@ async def test_run_git_uses_default_timeout_for_other_operations():
 @pytest.mark.asyncio
 async def test_merge_branch_handles_timeout():
     """Test that merge_branch propagates timeout errors."""
+    # base is required now — pass "main" explicitly. get_current_branch is
+    # still called once to snapshot HEAD for restore.
     with patch('src.git.operations.get_current_branch', return_value="main"):
         with patch('src.git.operations.run_git') as mock_run_git:
             # checkout succeeds, merge times out, abort succeeds
             mock_run_git.side_effect = [None, asyncio.TimeoutError("Merge timed out"), None]
 
-            success, message = await merge_branch(Path("/fake/repo"), "feature-branch")
+            success, message = await merge_branch(Path("/fake/repo"), "feature-branch", base="main")
 
             assert success is False
             assert "timed out" in message.lower()
@@ -94,7 +96,7 @@ async def test_merge_branch_aborts_on_timeout():
                 None   # abort
             ]
 
-            success, message = await merge_branch(Path("/fake/repo"), "feature-branch")
+            success, message = await merge_branch(Path("/fake/repo"), "feature-branch", base="main")
 
             assert success is False
             # Verify abort was called

@@ -161,12 +161,16 @@ class WorkflowService:
             repo=item.get("repo"),
         )
 
-        # Update item state (preserve existing base_commit if reusing worktree)
+        # Update item state. Both base_branch and base_commit are only set
+        # on first creation — on the reuse paths create_or_reuse_worktree
+        # returns None so we don't overwrite whatever was originally recorded
+        # (which would silently change the merge target).
         extras: Dict[str, Any] = dict(
             branch_name=branch_name,
             worktree_path=str(worktree_path),
-            base_branch=base_branch,
         )
+        if base_branch:
+            extras["base_branch"] = base_branch
         if base_commit:
             extras["base_commit"] = base_commit
         item = await self.items.transition(item_id, Event.START, **extras)
@@ -451,6 +455,26 @@ class WorkflowService:
         base_branch = item.get("base_branch")
         worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
         commit_msg = item.get("commit_message")
+
+        # Refuse to merge without an explicit base_branch. The agent's
+        # worktree was forked from a specific branch (recorded as
+        # base_branch at create_worktree time) and that is the ONLY correct
+        # merge target. If it's missing — e.g. a legacy item, or a corrupted
+        # record — we must not silently pick a fallback like "main" or "the
+        # current HEAD of the target repo"; doing so was the original bug.
+        if not base_branch:
+            await self._log_and_notify(item_id, "system",
+                "Cannot merge — item is missing base_branch (the branch this "
+                "worktree was forked from). Refusing to guess a merge target. "
+                "Set base_branch on the item, or recreate the worktree.")
+            item = await self.items.transition(item_id, Event.MERGE_BLOCKED)
+            await self.notifications.broadcast_item_updated(item)
+            await self.notifications.ws_manager.broadcast("merge_blocked", {
+                "item_id": item_id,
+                "message": "Cannot merge — item has no recorded base branch. "
+                           "The merge target is unknown.",
+            })
+            return item
 
         # Check if base repo has dirty files that overlap with the agent's changes
         from ..git.operations import run_git
