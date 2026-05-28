@@ -483,7 +483,7 @@ class AgentSession:
                 allowed_tools=allowed_tools if allowed_tools else None,
                 can_use_tool=can_use_tool_fn,
                 add_dirs=[str(self.worktree_path), *(str(p) for p in self.sibling_repo_paths)],
-                thinking={"type": "enabled", "budget_tokens": 10000},
+                thinking={"type": "enabled", "budget_tokens": 32000},
                 plugins=plugins if plugins else None,
                 hooks=hooks,
                 setting_sources=["project"],  # Load CLAUDE.md from target project
