@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (983 tests across 32 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (23 migrations), security, git operations, services, routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1035 tests across 33 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (24 migrations), security, git operations, services, routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -10,34 +10,35 @@ tests/
 ├── unit/                                         # Unit tests (fast, isolated)
 │   ├── migrations/
 │   │   ├── test_migration_runner.py             # Core migration functionality (14 tests)
-│   │   └── test_migration_edge_cases.py         # Edge cases and error scenarios (14 tests)
+│   │   ├── test_migration_edge_cases.py         # Edge cases and error scenarios (14 tests)
+│   │   └── test_default_model_024.py            # Migration 024 default-model bump (4 tests)
 │   ├── test_advisor.py                          # Advisor logic (13 tests)
 │   ├── test_allowed_commands.py                 # Command filter + access MCP tool (26 tests)
 │   ├── test_annotation_prompt.py                # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py               # Annotation summary generation (2 tests)
 │   ├── test_app.py                              # FastAPI app creation and middleware (26 tests)
-│   ├── test_create_todo_autostart.py            # Todo creation with auto-start (13 tests)
+│   ├── test_create_todo_autostart.py            # Todo creation with auto-start (21 tests)
 │   ├── test_database_service.py                 # DatabaseService CRUD operations (58 tests)
 │   ├── test_diff_mixing.py                      # Diff isolation between items (6 tests)
 │   ├── test_epic_repository.py                  # EpicRepository facade (9 tests)
 │   ├── test_epics.py                            # Epic CRUD, progress, item assignment (19 tests)
 │   ├── test_file_routes.py                      # File browser routes (66 tests)
-│   ├── test_git_operations.py                   # Git diff, merge, commit operations (67 tests)
+│   ├── test_git_operations.py                   # Git diff, merge, commit operations (70 tests)
 │   ├── test_git_timeout.py                      # Git timeout handling (5 tests)
 │   ├── test_git_worktree.py                     # Git worktree create/cleanup (15 tests)
 │   ├── test_item_repository.py                  # ItemRepository facade + transition()/update_fields() (25 tests)
-│   ├── test_item_state.py                       # ItemState FSM: states, events, encoding (27 tests)
+│   ├── test_item_state.py                       # ItemState FSM: states, events, encoding (66 tests)
 │   ├── test_main.py                             # Server startup and port discovery (34 tests)
 │   ├── test_manage.py                           # Migration CLI commands (24 tests)
-│   ├── test_mcp_tool_servers.py                 # MCP tool server creation and invocation (52 tests)
+│   ├── test_mcp_tool_servers.py                 # MCP tool server creation and invocation (57 tests)
 │   ├── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
 │   ├── test_notification_service.py             # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
-│   ├── test_routes.py                           # HTTP endpoint tests (85 tests)
+│   ├── test_routes.py                           # HTTP endpoint tests (94 tests)
 │   ├── test_session.py                          # AgentSession SDK wrapper (69 tests)
 │   ├── test_session_service.py                  # SessionService lifecycle (51 tests)
 │   ├── test_websocket.py                        # WebSocket connection and rate limiting (45 tests)
-│   └── test_workflow_service.py                 # WorkflowService state transitions (74 tests)
+│   └── test_workflow_service.py                 # WorkflowService state transitions (97 tests)
 ├── integration/                                  # Integration tests (slower, multi-component)
 │   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (14 tests)
 ├── smoke/                                        # Smoke tests (basic functionality)
@@ -48,44 +49,44 @@ tests/
 
 ## Test Coverage by Area
 
-### 1. Domain & Repository Layer (61 tests)
-- **ItemState FSM** (27 tests) — States, events, transitions, `from_columns`/`to_columns` encoding round-trips
+### 1. Domain & Repository Layer (100 tests)
+- **ItemState FSM** (66 tests) — States, events, transitions, `from_columns`/`to_columns` encoding round-trips
 - **ItemRepository** (25 tests) — Read APIs, `transition()`, `update_fields()`, `move_item`, column whitelist enforcement
 - **EpicRepository** (9 tests) — CRUD facade and column whitelist enforcement
 
-### 2. Service Layer (224 tests)
-- **WorkflowService** (74 tests) — State transitions (now driven through `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, callback factories, clarification context plumbing
+### 2. Service Layer (247 tests)
+- **WorkflowService** (97 tests) — State transitions (now driven through `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, callback factories, clarification context plumbing
 - **DatabaseService** (58 tests) — CRUD operations, item dependencies, clarification context column (column whitelisting moved to the repositories)
 - **SessionService** (51 tests) — Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests) — WebSocket broadcasting, tool formatting, event types
 
-### 3. Web Layer (222 tests)
-- **Routes** (85 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval
+### 3. Web Layer (231 tests)
+- **Routes** (94 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval
 - **File Routes** (66 tests) — File browser path validation, secret detection, .browserhidden, language mapping, directory scanning
 - **WebSocket** (45 tests) — Connection management, rate limiting, dead-connection cleanup
 - **App** (26 tests) — FastAPI factory, middleware, CORS, security headers, lifespan
 
-### 4. Git Layer (87 tests)
-- **Git Operations** (67 tests) — Diff generation, merge, commit, path validation, timeout handling
+### 4. Git Layer (90 tests)
+- **Git Operations** (70 tests) — Diff generation, merge, commit, path validation, timeout handling
 - **Git Worktree** (15 tests) — Worktree create/cleanup, base branch tracking
 - **Git Timeout** (5 tests) — Timeout configuration and recovery
 
-### 5. Agent Tools (160 tests)
-- **MCP Tool Servers** (52 tests) — Tool server creation, invocation, request/response flow, `ask_user` context field passthrough
+### 5. Agent Tools (165 tests)
+- **MCP Tool Servers** (57 tests) — Tool server creation, invocation, request/response flow, `ask_user` context field passthrough
 - **Allowed Commands** (26 tests) — Command filter hook, shell operator rejection, YOLO mode bypass
 - **Advisor** (13 tests) — Agent advisor logic
 - **Session** (69 tests) — AgentSession SDK wrapper, token extraction, event handling, Ollama provider
 
-### 6. Features (56 tests)
+### 6. Features (64 tests)
 - **Epics** (19 tests) — CRUD, progress stats, item assignment, filtering, dependencies
-- **Todo Auto-start** (13 tests) — Todo creation with dependency-based auto-start
+- **Todo Auto-start** (21 tests) — Todo creation with dependency-based auto-start
 - **Diff Mixing** (6 tests) — Diff isolation between concurrent items
 - **Annotation Summary** (2 tests) — Summary text generation
 - **Annotation Prompt** (5 tests) — Prompt formatting for agents
 - **Mini-MCP** (11 tests) — Example MCP server protocol compliance
 
-### 7. Infrastructure (112 tests)
-- **Migrations** (28 tests) — Runner, up/down, discovery, edge cases
+### 7. Infrastructure (124 tests)
+- **Migrations** (32 tests) — Runner, up/down, discovery, edge cases, migration 024 default-model bump
 - **Main** (34 tests) — Server startup, port discovery, git validation
 - **Manage** (24 tests) — Migration CLI commands
 - **Path Validation** (14 tests) — Traversal prevention, null bytes, symlinks
@@ -114,14 +115,14 @@ Run with: `./run-e2e-tests.sh` (supports `--verbose` flag for colored output)
 Use `--model` to override the Claude model used by all E2E agents (defaults to the server's configured model):
 ```bash
 ./run-e2e-tests.sh --model claude-haiku-4-5-20251001   # cheaper/faster runs
-./run-e2e-tests.sh --model claude-opus-4-7 --verbose    # combine with other flags
+./run-e2e-tests.sh --model claude-opus-4-8 --verbose    # combine with other flags
 ```
 
 ## Running Tests
 
 ### Quick Start
 ```bash
-# Run all 983 tests
+# Run all 1035 tests
 ./run-tests.sh
 
 # Run specific test categories

@@ -3,7 +3,7 @@
 > **Load when**: writing or running a DB migration; inspecting the schema; whitelisting a new column.
 > **Skip when**: not touching SQL or migrations.
 
-SQLite with **23 versioned migrations (001–023)** in `src/migrations/versions/`. Auto-migrates on startup (from the FastAPI lifespan).
+SQLite with **24 versioned migrations (001–024)** in `src/migrations/versions/`. Auto-migrates on startup (from the FastAPI lifespan). The latest (`024`) bumps the default model to `claude-opus-4-8`.
 
 **CLI**:
 ```bash
