@@ -41,6 +41,15 @@ CREATE_TODO_SCHEMA = {
                 "2 = DIRECT: auto-merge as soon as the agent finishes, with no review pass."
             ),
         },
+        "use_chrome": {
+            "type": "boolean",
+            "description": (
+                "If true, the agent for this todo launches with browser access "
+                "(the claude --chrome tools: navigate, read pages, click, screenshot). "
+                "Set this for tasks that involve the web or a running UI. "
+                "Leave false (default) for code-only tasks."
+            ),
+        },
     },
     "required": ["title"],
 }
@@ -78,7 +87,7 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
 
     Args:
         on_create_todo: async callback(title, description, epic_id=None, requires=None,
-            autostart=False, auto_approve=0) -> dict
+            autostart=False, auto_approve=0, use_chrome=False) -> dict
             Called when agent uses the create_todo tool.
             Should return the created item info (id, title, etc).
         on_delete_todo: async callback(item_id) -> str
@@ -102,7 +111,8 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
         "If the todo has no dependencies, the agent starts immediately. "
         "If the todo has dependencies, the agent auto-starts once all dependencies are completed. "
         "Set 'auto_approve' to 1 (review) or 2 (direct merge) to skip the human review step "
-        "when the agent completes. Defaults to 0 (off) — work lands in Review for a human.",
+        "when the agent completes. Defaults to 0 (off) — work lands in Review for a human. "
+        "Set 'use_chrome' to true for tasks that need a browser (web pages, a running UI).",
         CREATE_TODO_SCHEMA,
     )
     async def create_todo(input: dict) -> dict:
@@ -119,8 +129,9 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
             auto_approve = 0
         if auto_approve not in (0, 1, 2):
             auto_approve = 0
+        use_chrome = bool(input.get("use_chrome", False))
         item_info = await on_create_todo(
-            title, description, epic_id, requires, autostart, auto_approve
+            title, description, epic_id, requires, autostart, auto_approve, use_chrome
         )
         msg = f"Created todo item: {item_info['title']} (ID: {item_info['id']})"
         if item_info.get("autostart_scheduled"):
@@ -133,6 +144,8 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
             msg += " — auto-approve: review mode"
         elif auto_approve == 2:
             msg += " — auto-approve: direct merge"
+        if use_chrome:
+            msg += " — browser access enabled"
         return {
             "content": [
                 {

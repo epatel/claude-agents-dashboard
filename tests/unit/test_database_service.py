@@ -33,6 +33,23 @@ async def item(db_service):
 
 
 # ---------------------------------------------------------------------------
+# create_todo_item — use_chrome
+# ---------------------------------------------------------------------------
+
+class TestCreateTodoItemUseChrome:
+    async def test_defaults_off(self, db_service):
+        item = await db_service.create_todo_item("Code Task", "desc")
+        assert item["use_chrome"] == 0
+
+    async def test_persists_when_enabled(self, db_service):
+        item = await db_service.create_todo_item("Browse Task", "desc", use_chrome=True)
+        assert item["use_chrome"] == 1
+        # Survives a re-read from the DB.
+        reread = await db_service.get_item(item["id"])
+        assert reread["use_chrome"] == 1
+
+
+# ---------------------------------------------------------------------------
 # copy_item
 # ---------------------------------------------------------------------------
 

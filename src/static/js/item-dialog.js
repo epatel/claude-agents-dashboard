@@ -29,6 +29,7 @@ const ItemDialog = {
         this._setAutoStart(false);
         this._setStartCopy(false);
         this._setAutoApprove(false);
+        this._setUseChrome(false);
         await this._updateDefaultModelDisplay();
         // Show play button for new items
         const playBtn = document.getElementById('item-play-btn');
@@ -65,6 +66,7 @@ const ItemDialog = {
         // distinguish "with review" (1) from "direct" (2). Coercing to !!
         // here would collapse both modes to 1.
         this._setAutoApprove(item.auto_approve);
+        this._setUseChrome(!!item.use_chrome);
         if (item.id) {
             await this._loadDependencies(item.id);
         }
@@ -180,11 +182,12 @@ const ItemDialog = {
         const auto_start = this._getAutoStart();
         const start_copy = this._getStartCopy();
         const auto_approve = this._getAutoApprove();
+        const use_chrome = this._getUseChrome();
 
         try {
             let itemId = id;
             if (id) {
-                const updateData = { title, description, epic_id, auto_start, start_copy, auto_approve };
+                const updateData = { title, description, epic_id, auto_start, start_copy, auto_approve, use_chrome };
                 updateData.model = model;  // null clears to default
                 await Api.updateItem(id, updateData);
             } else {
@@ -194,7 +197,7 @@ const ItemDialog = {
                     alert('Please pick a repo for this item.');
                     return;
                 }
-                const item = await Api.createItem(title, description, model, epic_id, auto_start, start_copy, repo, auto_approve);
+                const item = await Api.createItem(title, description, model, epic_id, auto_start, start_copy, repo, auto_approve, use_chrome);
                 itemId = item.id;
             }
 
@@ -229,6 +232,7 @@ const ItemDialog = {
         const epic_id = document.getElementById('item-form-epic').value || null;
         const start_copy = this._getStartCopy();
         const auto_approve = this._getAutoApprove();
+        const use_chrome = this._getUseChrome();
 
         if (!title) return;
 
@@ -243,7 +247,7 @@ const ItemDialog = {
             let itemId = id;
             if (id) {
                 // For existing items, just update
-                const updateData = { title, description, epic_id, start_copy, auto_approve };
+                const updateData = { title, description, epic_id, start_copy, auto_approve, use_chrome };
                 if (model !== null) updateData.model = model;
                 await Api.updateItem(id, updateData);
             } else {
@@ -254,7 +258,7 @@ const ItemDialog = {
                     return;
                 }
                 // For new items, create first
-                const item = await Api.createItem(title, description, model, epic_id, false, start_copy, repo, auto_approve);
+                const item = await Api.createItem(title, description, model, epic_id, false, start_copy, repo, auto_approve, use_chrome);
                 itemId = item.id;
             }
 
@@ -508,6 +512,16 @@ const ItemDialog = {
 
     _getStartCopy() {
         const cb = document.getElementById('item-form-start-copy');
+        return cb ? cb.checked : false;
+    },
+
+    _setUseChrome(value) {
+        const cb = document.getElementById('item-form-use-chrome');
+        if (cb) cb.checked = value;
+    },
+
+    _getUseChrome() {
+        const cb = document.getElementById('item-form-use-chrome');
         return cb ? cb.checked : false;
     },
 

@@ -776,6 +776,16 @@ class TestOnCreateTodoCallback:
         new = await cb("Blocked Task", "desc", requires=[item["id"]], autostart=True)
         assert not new.get("autostart_scheduled")
 
+    async def test_use_chrome_persisted(self, workflow, item):
+        cb = workflow._create_on_create_todo_callback(item["id"])
+        new = await cb("Browse Task", "desc", use_chrome=True)
+        assert new["use_chrome"] == 1
+
+    async def test_use_chrome_defaults_off(self, workflow, item):
+        cb = workflow._create_on_create_todo_callback(item["id"])
+        new = await cb("Code Task", "desc")
+        assert new["use_chrome"] == 0
+
 
 # ---------------------------------------------------------------------------
 # Callback: _create_on_create_epic_callback

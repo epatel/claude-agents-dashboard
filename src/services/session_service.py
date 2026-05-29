@@ -41,7 +41,8 @@ class SessionService:
                            on_create_shortcut: Optional[Callable] = None,
                            workspace_root: Optional[Path] = None,
                            sibling_repo_paths: Optional[List[Path]] = None,
-                           item_repo_name: Optional[str] = None) -> AgentSession:
+                           item_repo_name: Optional[str] = None,
+                           use_chrome: bool = False) -> AgentSession:
         """Create a new agent session with all callbacks."""
         # Use provided model or fall back to config model
         raw_model = model or config.get("model")
@@ -115,6 +116,7 @@ class SessionService:
             workspace_root=workspace_root,
             sibling_repo_paths=sibling_repo_paths,
             item_repo_name=item_repo_name,
+            use_chrome=use_chrome,
         )
 
         self.sessions[item_id] = session

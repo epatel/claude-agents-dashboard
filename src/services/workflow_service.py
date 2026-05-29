@@ -77,27 +77,32 @@ class WorkflowService:
         """Count how many agents are currently running (not queued)."""
         return len(self.sessions.sessions)
 
-    def _multi_repo_session_kwargs(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """Extra kwargs for SessionService.create_session when in multi-repo mode.
+    def _item_session_kwargs(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Per-item extra kwargs for SessionService.create_session.
 
-        Empty dict in single-repo mode so callers can splat it either way.
+        Always carries the item's `use_chrome` flag; adds multi-repo read-scope
+        kwargs when in multi-repo mode. Callers can splat it either way.
         Uses getattr so mocks that don't expose `repos` (e.g. MagicMock spec'd
         against GitService before this attribute existed) behave as single-mode.
         """
+        kwargs: Dict[str, Any] = {
+            "use_chrome": bool(item.get("use_chrome")) if item else False,
+        }
         repos = getattr(self.git, "repos", None)
         if not repos:
-            return {}
+            return kwargs
         item_repo = item.get("repo") if item else None
         # Read scope: all known repos except the one the item is actively working on
         # (the agent's own repo is reached via the worktree, not as a sibling).
         sibling_paths = [
             self.git.base_repo_path(r) for r in repos if r != item_repo
         ]
-        return {
+        kwargs.update({
             "workspace_root": self.git.target_project,
             "sibling_repo_paths": sibling_paths,
             "item_repo_name": item_repo,
-        }
+        })
+        return kwargs
 
     async def _is_at_wip_limit(self) -> bool:
         """Check if the number of running agents has reached the WIP limit."""
@@ -210,7 +215,7 @@ class WorkflowService:
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **self._multi_repo_session_kwargs(item),
+            **self._item_session_kwargs(item),
         )
 
         # Build prompt and fetch attachments
@@ -356,7 +361,7 @@ class WorkflowService:
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **self._multi_repo_session_kwargs(item),
+            **self._item_session_kwargs(item),
         )
 
         prompt = f"Continue working on your task:\nTask: {item['title']}\n\n{item['description']}"
@@ -438,7 +443,7 @@ class WorkflowService:
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **self._multi_repo_session_kwargs(item),
+            **self._item_session_kwargs(item),
         )
 
         prompt = f"Task: {item['title']}\n\n{item['description']}"
@@ -707,7 +712,7 @@ class WorkflowService:
                     on_request_tool=self._create_on_request_tool_callback(item_id),
                     on_view_board=self._create_on_view_board_callback(),
                     on_delete_todo=self._create_on_delete_todo_callback(item_id),
-                    **self._multi_repo_session_kwargs(item),
+                    **self._item_session_kwargs(item),
                 )
 
                 conflict_prompt = (
@@ -809,7 +814,7 @@ class WorkflowService:
             on_view_board=self._create_on_view_board_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **self._multi_repo_session_kwargs(item),
+            **self._item_session_kwargs(item),
         )
 
         # Fetch attachments for context
@@ -1187,7 +1192,7 @@ class WorkflowService:
         return on_request_tool
 
     def _create_on_create_todo_callback(self, item_id: str):
-        async def on_create_todo(title: str, description: str, epic_id: str = None, requires: list[str] = None, autostart: bool = False, auto_approve: int = 0) -> Dict[str, Any]:
+        async def on_create_todo(title: str, description: str, epic_id: str = None, requires: list[str] = None, autostart: bool = False, auto_approve: int = 0, use_chrome: bool = False) -> Dict[str, Any]:
             # Coerce auto_approve to a known mode (0/1/2). Anything else falls back to OFF.
             try:
                 auto_approve_int = int(auto_approve) if auto_approve is not None else 0
@@ -1196,7 +1201,8 @@ class WorkflowService:
             if auto_approve_int not in AUTO_APPROVE_MODES:
                 auto_approve_int = AUTO_APPROVE_OFF
             item = await self.db.create_todo_item(
-                title, description, epic_id, autostart, auto_approve=auto_approve_int
+                title, description, epic_id, autostart, auto_approve=auto_approve_int,
+                use_chrome=bool(use_chrome),
             )
             if requires:
                 await self.db.set_item_dependencies(item["id"], requires)
@@ -1594,7 +1600,7 @@ class WorkflowService:
                 on_request_tool=self._create_on_request_tool_callback(item_id),
                 on_view_board=self._create_on_view_board_callback(),
                 on_delete_todo=self._create_on_delete_todo_callback(item_id),
-                **self._multi_repo_session_kwargs(item or {}),
+                **self._item_session_kwargs(item or {}),
             )
 
             # Include original task so agent knows what to do even without resume

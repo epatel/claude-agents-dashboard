@@ -45,6 +45,9 @@ class ItemCreate(BaseModel):
     auto_start: bool = False
     start_copy: bool = False
     auto_approve: int = AUTO_APPROVE_OFF
+    # When True, the item's agent launches with `claude --chrome`, giving it
+    # the Claude-in-Chrome browser tools. Off for code-only tasks.
+    use_chrome: bool = False
     # Multi-repo mode: name of the subrepo this item targets. Must be one of the
     # workspace's known repos. None in single-repo mode.
     repo: Optional[str] = None
@@ -66,6 +69,7 @@ class ItemUpdate(BaseModel):
     auto_start: Optional[bool] = None
     start_copy: Optional[bool] = None
     auto_approve: Optional[int] = None
+    use_chrome: Optional[bool] = None
 
     @field_validator("auto_approve", mode="before")
     @classmethod

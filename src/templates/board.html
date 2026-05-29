@@ -144,6 +144,17 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                     When enabled, the Start button becomes Start Copy — keeping the original item in Todo when started.
                 </p>
             </div>
+            <div class="form-group">
+                <label for="item-form-use-chrome" style="display:flex;align-items:center;gap:8px;">
+                    🌐 Browser access
+                    <input type="checkbox" id="item-form-use-chrome" style="cursor:pointer;">
+                </label>
+                <p class="text-muted" style="font-size:12px;margin:4px 0 0;">
+                    Launch this task's agent with <code>claude --chrome</code>, giving it browser tools
+                    (navigate, read pages, click, screenshot). Use for tasks that need the web or a running UI.
+                    Leave off for code-only tasks. Requires Chrome with the Claude extension running.
+                </p>
+            </div>
             <div class="modal-footer">
                 <button type="button" class="btn" onclick="Dialogs.close('item-dialog')">Cancel</button>
                 <button type="button" id="item-play-btn" class="btn btn-primary" onclick="Dialogs.submitItemAndStart(event)" title="Save item and immediately start agent">▶ Save & Start</button>

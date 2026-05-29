@@ -132,6 +132,7 @@ class AgentSession:
         bash_yolo: bool = False,
         allowed_builtin_tools: list[str] | None = None,
         use_advisor: bool = False,
+        use_chrome: bool = False,
         ollama_env: dict[str, str] | None = None,
         workspace_root: Path | None = None,
         sibling_repo_paths: list[Path] | None = None,
@@ -166,6 +167,7 @@ class AgentSession:
         self.mcp_enabled = mcp_enabled      # Whether MCP is enabled from agent config
         self.plugins = plugins              # List of plugin configs: [{"type": "local", "path": "..."}]
         self.use_advisor = use_advisor      # Enable Opus advisor subagent
+        self.use_chrome = use_chrome        # Launch claude --chrome (browser tools)
         self.client: ClaudeSDKClient | None = None
         self._task: asyncio.Task | None = None
         self._cancelled = False
@@ -314,7 +316,22 @@ class AgentSession:
             "4. Form a specific hypothesis, test with the smallest possible change\n"
             "5. If stuck after 3 attempts, use mcp__clarification__ask_user to explain what you tried"
         )
-        full_system_prompt = (self.system_prompt or "") + cwd_note + multi_repo_note + clarify_note + commit_note + todo_note + brainstorm_note + debug_note + command_note + tool_note
+        # Chrome browser integration is launched via the `claude --chrome` flag
+        # below. Skip it in Ollama mode — small local models are overwhelmed by
+        # the extra browser tool definitions.
+        chrome_enabled = self.use_chrome and not is_ollama
+        browser_note = ""
+        if chrome_enabled:
+            browser_note = (
+                "\n\nYou have access to a web browser via the Claude-in-Chrome tools "
+                "(mcp__claude-in-chrome__*): navigate to URLs, read page content, inspect "
+                "the DOM, take screenshots, fill forms, and read the console/network. Use "
+                "them whenever the task involves the web, a running UI, or anything you need "
+                "to see in a browser. The browser shares the user's Chrome session — be "
+                "careful with any destructive or authenticated actions."
+            )
+
+        full_system_prompt = (self.system_prompt or "") + cwd_note + multi_repo_note + clarify_note + commit_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note
 
         # Configure allowed MCP tools
         allowed_tools = []
@@ -340,6 +357,13 @@ class AgentSession:
             if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view", "shortcut"]:  # Skip our built-in servers
                 allowed_tools.append(f"mcp__{server_name}__*")
                 logger.info(f"Allowing all tools from external MCP server: {server_name}")
+
+        # Allow the Claude-in-Chrome browser tools when chrome is enabled. The
+        # `claude --chrome` flag (set in the SDK options below) registers this
+        # MCP server at the CLI level, so it never appears in `mcp_servers`.
+        if chrome_enabled:
+            allowed_tools.append("mcp__claude-in-chrome__*")
+            logger.info("Chrome integration enabled: allowing mcp__claude-in-chrome__* tools")
 
         # Build plugins list from configured plugin paths
         # Skip plugins for Ollama — they add many tool definitions that
@@ -416,8 +440,12 @@ class AgentSession:
 
         # Build can_use_tool callback to allow plugin and external MCP tools
         # by prefix match, since SDK wildcard patterns don't work.
+        # The CLI-registered Chrome MCP server's wildcard isn't honored by the
+        # SDK either, so allow its tools by prefix in can_use_tool too.
+        chrome_prefixes = ["mcp__claude-in-chrome__"] if chrome_enabled else []
+
         can_use_tool_fn = None
-        all_prefixes = plugin_prefixes + external_mcp_prefixes
+        all_prefixes = plugin_prefixes + external_mcp_prefixes + chrome_prefixes
         if all_prefixes:
             allowed_set = set(allowed_tools) if allowed_tools else set()
             async def can_use_tool(tool_name: str, *args):
@@ -489,6 +517,9 @@ class AgentSession:
                 setting_sources=["project"],  # Load CLAUDE.md from target project
                 agents=agents,
                 env={},
+                # `--chrome` registers the Claude-in-Chrome MCP server and its
+                # browser tools. Enabled per-task via the item's use_chrome flag.
+                extra_args=({"chrome": None} if chrome_enabled else {}),
             )
 
         if resume_session_id:

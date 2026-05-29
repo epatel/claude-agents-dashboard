@@ -396,7 +396,7 @@ class TestTodoServer:
 
         result = await tool.handler({"title": "Write tests"})
 
-        cb.assert_awaited_once_with("Write tests", "", None, None, False, 0)
+        cb.assert_awaited_once_with("Write tests", "", None, None, False, 0, False)
         assert "Write tests" in result["content"][0]["text"]
         assert "42" in result["content"][0]["text"]
 
@@ -413,11 +413,37 @@ class TestTodoServer:
             "requires": ["dep-1", "dep-2"],
             "autostart": True,
             "auto_approve": 2,
+            "use_chrome": True,
         })
 
         cb.assert_awaited_once_with(
-            "Full Task", "Do all the things", "epic-1", ["dep-1", "dep-2"], True, 2
+            "Full Task", "Do all the things", "epic-1", ["dep-1", "dep-2"], True, 2, True
         )
+
+    @pytest.mark.asyncio
+    async def test_create_todo_use_chrome_defaults_false(self):
+        cb = AsyncMock(return_value={"id": "7", "title": "Code Task"})
+        cap = self._make(cb)
+        tool = get_tool(cap["tools"], "create_todo")
+
+        await tool.handler({"title": "Code Task"})
+
+        # use_chrome is the 7th positional arg and defaults to False.
+        assert cb.await_args.args[6] is False
+
+    @pytest.mark.asyncio
+    async def test_create_todo_use_chrome_message(self):
+        cb = AsyncMock(return_value={"id": "8", "title": "Browse Task"})
+        cap = self._make(cb)
+        tool = get_tool(cap["tools"], "create_todo")
+
+        result = await tool.handler({"title": "Browse Task", "use_chrome": True})
+        assert "browser access enabled" in result["content"][0]["text"]
+
+    def test_create_todo_schema_has_use_chrome(self):
+        from src.agent.todo import CREATE_TODO_SCHEMA
+        assert "use_chrome" in CREATE_TODO_SCHEMA["properties"]
+        assert CREATE_TODO_SCHEMA["properties"]["use_chrome"]["type"] == "boolean"
 
     @pytest.mark.asyncio
     async def test_create_todo_autostart_scheduled_message(self):
@@ -525,7 +551,7 @@ class TestTodoServer:
 
         result = await tool.handler({"title": "Reviewed Task", "auto_approve": 1})
 
-        cb.assert_awaited_once_with("Reviewed Task", "", None, None, False, 1)
+        cb.assert_awaited_once_with("Reviewed Task", "", None, None, False, 1, False)
         assert "review mode" in result["content"][0]["text"]
 
     @pytest.mark.asyncio
@@ -537,7 +563,7 @@ class TestTodoServer:
 
         result = await tool.handler({"title": "Direct Task", "auto_approve": 2})
 
-        cb.assert_awaited_once_with("Direct Task", "", None, None, False, 2)
+        cb.assert_awaited_once_with("Direct Task", "", None, None, False, 2, False)
         assert "direct merge" in result["content"][0]["text"]
 
     @pytest.mark.asyncio
@@ -548,7 +574,7 @@ class TestTodoServer:
         tool = get_tool(cap["tools"], "create_todo")
 
         await tool.handler({"title": "T", "auto_approve": 7})
-        cb.assert_awaited_once_with("T", "", None, None, False, 0)
+        cb.assert_awaited_once_with("T", "", None, None, False, 0, False)
 
     @pytest.mark.asyncio
     async def test_create_todo_autostart_and_auto_approve_together(self):
@@ -565,7 +591,7 @@ class TestTodoServer:
             "auto_approve": 1,
         })
 
-        cb.assert_awaited_once_with("Both", "", None, None, True, 1)
+        cb.assert_awaited_once_with("Both", "", None, None, True, 1, False)
         text = result["content"][0]["text"]
         assert "auto-start scheduled" in text
         assert "review mode" in text

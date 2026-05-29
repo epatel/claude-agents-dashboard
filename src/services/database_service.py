@@ -173,7 +173,7 @@ class DatabaseService:
                     d[key] = default
             return d
 
-    async def create_todo_item(self, title: str, description: str, epic_id: str = None, auto_start: bool = False, start_copy: bool = False, auto_approve: int = 0) -> Dict[str, Any]:
+    async def create_todo_item(self, title: str, description: str, epic_id: str = None, auto_start: bool = False, start_copy: bool = False, auto_approve: int = 0, use_chrome: bool = False) -> Dict[str, Any]:
         """Create a new todo item and return it."""
         from ..models import new_id
 
@@ -198,8 +198,8 @@ class DatabaseService:
 
             # Create new todo item
             await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position, epic_id, auto_start, start_copy, auto_approve) VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?)",
-                (todo_id, title, description, position, epic_id, auto_start, int(start_copy), auto_approve_int),
+                "INSERT INTO items (id, title, description, column_name, position, epic_id, auto_start, start_copy, auto_approve, use_chrome) VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?)",
+                (todo_id, title, description, position, epic_id, auto_start, int(start_copy), auto_approve_int, int(use_chrome)),
             )
             await conn.commit()
 
