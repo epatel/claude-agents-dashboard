@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
 
-from src.agent.session import AgentSession, AgentResult, build_attachment_prompt
+from src.agent.session import (
+    AgentSession,
+    AgentResult,
+    build_attachment_prompt,
+    _server_result_text,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -37,6 +42,41 @@ class TestAgentResult:
         r = AgentResult(success=False, error="oops")
         assert r.success is False
         assert r.error == "oops"
+
+    def test_api_error_status_defaults_none(self):
+        r = AgentResult(success=False, error="oops")
+        assert r.api_error_status is None
+
+
+# ---------------------------------------------------------------------------
+# _server_result_text helper
+# ---------------------------------------------------------------------------
+
+class TestServerResultText:
+    def test_none_returns_empty(self):
+        assert _server_result_text(None) == ""
+
+    def test_string_is_stripped(self):
+        assert _server_result_text("  hi  ") == "hi"
+
+    def test_list_of_strings_joined(self):
+        assert _server_result_text(["a", "b"]) == "a\nb"
+
+    def test_list_of_dicts_uses_text_then_content(self):
+        content = [{"text": "t"}, {"content": "c"}]
+        assert _server_result_text(content) == "t\nc"
+
+    def test_list_skips_empty_parts(self):
+        content = [{"text": "t"}, {"other": "ignored"}, "x"]
+        assert _server_result_text(content) == "t\nx"
+
+    def test_list_of_objects_uses_text_attr(self):
+        obj = MagicMock()
+        obj.text = "from-attr"
+        assert _server_result_text([obj]) == "from-attr"
+
+    def test_fallback_stringifies_other(self):
+        assert _server_result_text(42) == "42"
 
 
 
@@ -350,7 +390,24 @@ class TestReceiveLoop:
         msg.content = [block]
         return msg
 
-    def _make_result_message(self, session_id="sess-1", is_error=False, result_text=None, cost=0.01, usage=None):
+    def _make_server_tool_use_message(self, name: str, inp: dict):
+        from claude_agent_sdk import AssistantMessage, ServerToolUseBlock
+        block = MagicMock(spec=ServerToolUseBlock)
+        block.name = name
+        block.input = inp
+        msg = MagicMock(spec=AssistantMessage)
+        msg.content = [block]
+        return msg
+
+    def _make_server_tool_result_message(self, content):
+        from claude_agent_sdk import AssistantMessage, ServerToolResultBlock
+        block = MagicMock(spec=ServerToolResultBlock)
+        block.content = content
+        msg = MagicMock(spec=AssistantMessage)
+        msg.content = [block]
+        return msg
+
+    def _make_result_message(self, session_id="sess-1", is_error=False, result_text=None, cost=0.01, usage=None, api_error_status=None):
         from claude_agent_sdk import ResultMessage
         msg = MagicMock(spec=ResultMessage)
         msg.session_id = session_id
@@ -358,6 +415,7 @@ class TestReceiveLoop:
         msg.result = result_text
         msg.total_cost_usd = cost
         msg.usage = usage or {}
+        msg.api_error_status = api_error_status
         return msg
 
     async def _run_receive_loop_with_messages(self, session, messages):
@@ -425,6 +483,76 @@ class TestReceiveLoop:
         result_arg = on_complete.call_args[0][0]
         assert result_arg.success is False
         assert result_arg.error == "Something broke"
+
+    @pytest.mark.asyncio
+    async def test_server_tool_use_block_calls_on_tool_use(self):
+        on_tool = AsyncMock()
+        session = make_session(on_tool_use=on_tool)
+        msg = self._make_server_tool_use_message("web_search", {"query": "claude"})
+        await self._run_receive_loop_with_messages(session, [msg])
+        on_tool.assert_called_once_with("web_search", {"query": "claude"})
+
+    @pytest.mark.asyncio
+    async def test_server_tool_result_block_string_content(self):
+        on_msg = AsyncMock()
+        session = make_session(on_message=on_msg)
+        msg = self._make_server_tool_result_message("advisor says hi")
+        await self._run_receive_loop_with_messages(session, [msg])
+        on_msg.assert_called_once_with("[advisor] advisor says hi")
+
+    @pytest.mark.asyncio
+    async def test_server_tool_result_block_list_content_flattened(self):
+        on_msg = AsyncMock()
+        session = make_session(on_message=on_msg)
+        content = [{"text": "first"}, "second", {"content": "third"}]
+        msg = self._make_server_tool_result_message(content)
+        await self._run_receive_loop_with_messages(session, [msg])
+        on_msg.assert_called_once_with("[advisor] first\nsecond\nthird")
+
+    @pytest.mark.asyncio
+    async def test_server_tool_result_block_empty_content_no_message(self):
+        on_msg = AsyncMock()
+        session = make_session(on_message=on_msg)
+        msg = self._make_server_tool_result_message("")
+        await self._run_receive_loop_with_messages(session, [msg])
+        on_msg.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_error_result_prefixes_http_status(self):
+        on_complete = AsyncMock()
+        session = make_session(on_complete=on_complete)
+        msg = self._make_result_message(
+            is_error=True, result_text="Overloaded", api_error_status=529
+        )
+        await self._run_receive_loop_with_messages(session, [msg])
+        result_arg = on_complete.call_args[0][0]
+        assert result_arg.success is False
+        assert result_arg.api_error_status == 529
+        assert result_arg.error == "[HTTP 529] Overloaded"
+
+    @pytest.mark.asyncio
+    async def test_success_result_ignores_api_error_status(self):
+        on_complete = AsyncMock()
+        session = make_session(on_complete=on_complete)
+        # Status present but not an error — must not be prefixed, error stays None.
+        msg = self._make_result_message(is_error=False, api_error_status=200)
+        await self._run_receive_loop_with_messages(session, [msg])
+        result_arg = on_complete.call_args[0][0]
+        assert result_arg.success is True
+        assert result_arg.error is None
+        assert result_arg.api_error_status == 200
+
+    @pytest.mark.asyncio
+    async def test_error_result_without_status_unprefixed(self):
+        on_complete = AsyncMock()
+        session = make_session(on_complete=on_complete)
+        msg = self._make_result_message(
+            is_error=True, result_text="plain failure", api_error_status=None
+        )
+        await self._run_receive_loop_with_messages(session, [msg])
+        result_arg = on_complete.call_args[0][0]
+        assert result_arg.error == "plain failure"
+        assert result_arg.api_error_status is None
 
     @pytest.mark.asyncio
     async def test_token_usage_parsed(self):
