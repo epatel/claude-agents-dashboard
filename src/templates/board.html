@@ -79,7 +79,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
             </div>
             {% endif %}
             <div class="form-group">
-                <label for="item-form-model">Model <span class="tooltip" title="The Claude model to use for this specific task. Leave empty to use the global default model. Sonnet is fast and capable, Sonnet + Advisor adds an Opus advisor subagent for complex reasoning, Opus is most powerful, Haiku is cheapest.">?</span></label>
+                <label for="item-form-model">Model <span class="tooltip" title="The Claude model to use for this specific task. Leave empty to use the global default model. Sonnet is fast and capable, Opus is most powerful, Haiku is cheapest.">?</span></label>
                 <select id="item-form-model">
                     <option value="">Use Global Default</option>
                     <optgroup label="Anthropic Models">
@@ -420,7 +420,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
             <!-- General tab -->
             <div class="config-tab-content" data-map-name="dialog.settings.panel-general" data-config-tab="general" style="padding:20px;">
                 <div class="form-group" style="margin:0;">
-                    <label for="config-model">Model <span class="tooltip" title="The Claude model used for all agent tasks. Sonnet is fast and capable, Sonnet + Advisor adds an Opus advisor subagent for complex reasoning, Opus is most powerful, Haiku is cheapest.">?</span></label>
+                    <label for="config-model">Model <span class="tooltip" title="The Claude model used for all agent tasks. Sonnet is fast and capable, Opus is most powerful, Haiku is cheapest.">?</span></label>
                     <select id="config-model" data-map-name="dialog.settings.field-model" style="width:100%;">
                         <optgroup label="Anthropic Models">
                         {% for model_id, display_name, is_experimental in available_models %}

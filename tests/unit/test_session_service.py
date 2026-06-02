@@ -19,7 +19,6 @@ def make_mock_session(current_session_id=None):
     session.cancel = AsyncMock()
     session.start = AsyncMock()
     session.model = None
-    session.use_advisor = False
     return session
 
 
@@ -67,27 +66,6 @@ class TestCreateSession:
             await service.create_session("item-1", temp_dir, config={"model": "config-model"})
             kwargs = MockAS.call_args.kwargs
         assert kwargs["model"] == "config-model"
-
-    @pytest.mark.asyncio
-    async def test_advisor_suffix_sets_use_advisor_true(self, temp_dir):
-        service = make_service()
-        mock_session = make_mock_session()
-
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
-            await service.create_session("item-1", temp_dir, config={}, model="claude-sonnet+advisor")
-            kwargs = MockAS.call_args.kwargs
-        assert kwargs["use_advisor"] is True
-        assert kwargs["model"] == "claude-sonnet"
-
-    @pytest.mark.asyncio
-    async def test_no_advisor_suffix_use_advisor_false(self, temp_dir):
-        service = make_service()
-        mock_session = make_mock_session()
-
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
-            await service.create_session("item-1", temp_dir, config={}, model="claude-sonnet")
-            kwargs = MockAS.call_args.kwargs
-        assert kwargs["use_advisor"] is False
 
     @pytest.mark.asyncio
     async def test_system_prompt_appends_project_context(self, temp_dir):

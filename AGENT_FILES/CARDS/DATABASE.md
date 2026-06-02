@@ -3,7 +3,7 @@
 > **Load when**: writing or running a DB migration; inspecting the schema; whitelisting a new column.
 > **Skip when**: not touching SQL or migrations.
 
-SQLite with **26 versioned migrations (001–026)** in `src/migrations/versions/`. Auto-migrates on startup (from the FastAPI lifespan). The latest (`026`) adds `api_error_status` to `token_usage` for API failure classification.
+SQLite with **27 versioned migrations (001–027)** in `src/migrations/versions/`. Auto-migrates on startup (from the FastAPI lifespan). The latest (`027`) strips the removed `+advisor` model suffix from stored `items`/`agent_config` rows.
 
 **CLI**:
 ```bash

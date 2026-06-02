@@ -147,10 +147,6 @@ class TestAgentSessionConstructor:
         session = make_session(allowed_commands=cmds)
         assert session.allowed_commands == cmds
 
-    def test_use_advisor_stored_true(self):
-        session = make_session(use_advisor=True)
-        assert session.use_advisor is True
-
     def test_ollama_env_stored(self):
         env = {
             "ANTHROPIC_AUTH_TOKEN": "ollama",

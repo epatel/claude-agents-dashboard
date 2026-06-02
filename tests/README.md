@@ -12,7 +12,6 @@ tests/
 │   │   ├── test_migration_runner.py             # Core migration functionality (14 tests)
 │   │   ├── test_migration_edge_cases.py         # Edge cases and error scenarios (14 tests)
 │   │   └── test_default_model_024.py            # Migration 024 default-model bump (4 tests)
-│   ├── test_advisor.py                          # Advisor logic (13 tests)
 │   ├── test_allowed_commands.py                 # Command filter + access MCP tool (26 tests)
 │   ├── test_annotation_prompt.py                # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py               # Annotation summary generation (2 tests)
@@ -71,11 +70,10 @@ tests/
 - **Git Worktree** (15 tests) — Worktree create/cleanup, base branch tracking
 - **Git Timeout** (5 tests) — Timeout configuration and recovery
 
-### 5. Agent Tools (165 tests)
+### 5. Agent Tools
 - **MCP Tool Servers** (57 tests) — Tool server creation, invocation, request/response flow, `ask_user` context field passthrough
 - **Allowed Commands** (26 tests) — Command filter hook, shell operator rejection, YOLO mode bypass
-- **Advisor** (13 tests) — Agent advisor logic
-- **Session** (69 tests) — AgentSession SDK wrapper, token extraction, event handling, Ollama provider
+- **Session** — AgentSession SDK wrapper, token extraction, event handling, Ollama provider
 
 ### 6. Features (64 tests)
 - **Epics** (19 tests) — CRUD, progress stats, item assignment, filtering, dependencies

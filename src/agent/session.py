@@ -160,7 +160,6 @@ class AgentSession:
         allowed_commands: list[str] | None = None,
         bash_yolo: bool = False,
         allowed_builtin_tools: list[str] | None = None,
-        use_advisor: bool = False,
         use_chrome: bool = False,
         ollama_env: dict[str, str] | None = None,
         workspace_root: Path | None = None,
@@ -195,7 +194,6 @@ class AgentSession:
         self.mcp_servers = mcp_servers      # JSON string of MCP server configurations from agent config
         self.mcp_enabled = mcp_enabled      # Whether MCP is enabled from agent config
         self.plugins = plugins              # List of plugin configs: [{"type": "local", "path": "..."}]
-        self.use_advisor = use_advisor      # Enable Opus advisor subagent
         self.use_chrome = use_chrome        # Launch claude --chrome (browser tools)
         self.client: ClaudeSDKClient | None = None
         self._task: asyncio.Task | None = None
@@ -492,19 +490,6 @@ class AgentSession:
         # Detect Ollama mode — use lighter SDK options for local models
         is_ollama = bool(self.ollama_env)
 
-        # Configure advisor subagent if enabled (Anthropic-only — uses Opus)
-        agents = None
-        if self.use_advisor and not is_ollama:
-            from claude_agent_sdk import AgentDefinition
-            agents = {
-                "advisor": AgentDefinition(
-                    model="opus",
-                    description="A more powerful model for complex reasoning, architecture decisions, and code review. Use when you need a second opinion or face a difficult problem.",
-                    prompt="You are an expert advisor. Provide thorough, well-reasoned analysis. Focus on correctness, edge cases, and best practices.",
-                ),
-            }
-            logger.info("Advisor subagent enabled (Opus)")
-
         if is_ollama:
             # Ollama models: lighter config to avoid overwhelming small models.
             # - No thinking budget (models handle thinking natively)
@@ -544,7 +529,6 @@ class AgentSession:
                 plugins=plugins if plugins else None,
                 hooks=hooks,
                 setting_sources=["project"],  # Load CLAUDE.md from target project
-                agents=agents,
                 env={},
                 # `--chrome` registers the Claude-in-Chrome MCP server and its
                 # browser tools. Enabled per-task via the item's use_chrome flag.

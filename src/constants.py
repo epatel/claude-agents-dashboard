@@ -6,7 +6,6 @@ Constants for the agents dashboard application.
 # Each entry: (model_id, display_name, experimental)
 AVAILABLE_MODELS = [
     ("claude-sonnet-4-6", "Claude Sonnet 4.6", False),
-    ("claude-sonnet-4-6+advisor", "Claude Sonnet 4.6 + Advisor", True),
     ("claude-opus-4-8", "Claude Opus 4.8", False),
     ("claude-opus-4-7", "Claude Opus 4.7", False),
     ("claude-opus-4-6", "Claude Opus 4.6", False),
