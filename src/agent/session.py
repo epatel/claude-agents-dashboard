@@ -19,6 +19,8 @@ from claude_agent_sdk import (
     TextBlock,
     ToolUseBlock,
     ToolResultBlock,
+    ServerToolUseBlock,
+    ServerToolResultBlock,
     ThinkingBlock,
     HookMatcher,
     PermissionResultAllow,
@@ -37,6 +39,33 @@ class AgentResult:
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
+    # HTTP status of a failing API call (429/500/529, etc.) when is_error.
+    # Safe-to-log classifier for API failures vs. agent/task errors.
+    api_error_status: int | None = None
+
+
+def _server_result_text(content) -> str:
+    """Flatten a ServerToolResultBlock's content into displayable text.
+
+    Server tool results (advisor analysis, web_search, etc.) arrive as either
+    a plain string or a list of content blocks/dicts. Pull out any text so it
+    isn't silently dropped.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(item.get("text") or item.get("content") or "")
+            else:
+                parts.append(getattr(item, "text", "") or "")
+        return "\n".join(p for p in parts if p).strip()
+    return str(content).strip()
 
 
 _ANNOTATION_PREFIX_RE = re.compile(r"^(annotation_\d+)_(original|annotated)\.jpg$")
@@ -590,6 +619,19 @@ class AgentSession:
                         elif isinstance(block, ToolUseBlock):
                             if self.on_tool_use:
                                 await self.on_tool_use(block.name, block.input)
+                        elif isinstance(block, ServerToolUseBlock):
+                            # Server-executed tool call (advisor, web_search).
+                            # Previously dropped — surface it like any tool use.
+                            if self.on_tool_use:
+                                await self.on_tool_use(block.name, block.input)
+                        elif isinstance(block, ServerToolResultBlock):
+                            # Result of a server-executed tool (e.g. advisor
+                            # analysis). Previously dropped, causing messages
+                            # carrying only server-side calls to arrive empty.
+                            if self.on_message:
+                                text = _server_result_text(block.content)
+                                if text:
+                                    await self.on_message(f"[advisor] {text}")
 
                 elif isinstance(message, ResultMessage):
                     # Capture session_id
@@ -611,14 +653,25 @@ class AgentSession:
                     if total_tokens is None and input_tokens is not None and output_tokens is not None:
                         total_tokens = input_tokens + output_tokens
 
+                    # HTTP status of a failing API call (429/500/529, etc.).
+                    # Lets callers distinguish transient API errors from agent
+                    # or task failures, and prefix the error for clarity.
+                    api_error_status = getattr(message, "api_error_status", None)
+                    if not isinstance(api_error_status, int):
+                        api_error_status = None
+                    error_text = message.result if message.is_error else None
+                    if message.is_error and api_error_status:
+                        error_text = f"[HTTP {api_error_status}] {error_text or ''}".strip()
+
                     result = AgentResult(
                         success=not message.is_error,
                         session_id=message.session_id,
                         cost_usd=message.total_cost_usd,
-                        error=message.result if message.is_error else None,
+                        error=error_text,
                         input_tokens=input_tokens,
                         output_tokens=output_tokens,
                         total_tokens=total_tokens,
+                        api_error_status=api_error_status,
                     )
                     if self.on_complete:
                         await self.on_complete(result)
