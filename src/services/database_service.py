@@ -307,22 +307,26 @@ class DatabaseService:
 
     async def save_token_usage(self, item_id: str, result: AgentResult):
         """Save token usage statistics to the database."""
-        # Only save if we have meaningful data
-        if not any([result.input_tokens, result.output_tokens, result.total_tokens, result.cost_usd]):
+        # Only save if we have meaningful data. An api_error_status counts:
+        # API failures (429/529, ...) often carry no token/cost data but the
+        # status itself is worth recording for failure classification.
+        if not any([result.input_tokens, result.output_tokens, result.total_tokens,
+                    result.cost_usd, result.api_error_status]):
             return
 
         async with self.db.connect() as conn:
             await conn.execute("""
                 INSERT INTO token_usage
-                (item_id, session_id, input_tokens, output_tokens, total_tokens, cost_usd)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (item_id, session_id, input_tokens, output_tokens, total_tokens, cost_usd, api_error_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 item_id,
                 result.session_id,
                 result.input_tokens,
                 result.output_tokens,
                 result.total_tokens,
-                result.cost_usd
+                result.cost_usd,
+                result.api_error_status,
             ))
             await conn.commit()
 

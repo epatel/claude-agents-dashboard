@@ -976,7 +976,7 @@ class WorkflowService:
                     item_id, Event.FAIL, session_id=result.session_id,
                 )
                 await self.notifications.broadcast_item_updated(item, source="agent")
-                self._add_failure_notification(item_id, result.error)
+                self._add_failure_notification(item_id, result.error, result.api_error_status)
 
             # Remove finished session from tracking so it no longer counts as active
             self.sessions.remove_session(item_id)
@@ -1011,12 +1011,27 @@ class WorkflowService:
             await self.process_queue()
         return on_error
 
-    def _add_failure_notification(self, item_id: str, error: str):
-        """Add a system notification for agent failures."""
+    # HTTP statuses that indicate a transient, retryable API failure rather
+    # than a real task error (rate limit, overload, gateway/server hiccups).
+    _TRANSIENT_API_STATUSES = frozenset({429, 500, 502, 503, 529})
+
+    def _add_failure_notification(self, item_id: str, error: str, api_error_status: int | None = None):
+        """Add a system notification for agent failures.
+
+        When the failure carries a transient API status (429/500/529, ...),
+        classify it as retryable so the user knows it isn't their task at fault.
+        """
         try:
             from ..web.routes import add_notification
-            short_error = error[:200] if len(error) > 200 else error
-            add_notification("error", f"Agent {item_id[:8]} failed: {short_error}", source=f"agent:{item_id[:8]}")
+            short_error = (error or "")[:200]
+            if api_error_status in self._TRANSIENT_API_STATUSES:
+                message = (
+                    f"Agent {item_id[:8]} failed: API temporarily unavailable "
+                    f"(HTTP {api_error_status}). This is transient — retry the item."
+                )
+            else:
+                message = f"Agent {item_id[:8]} failed: {short_error}"
+            add_notification("error", message, source=f"agent:{item_id[:8]}")
         except Exception:
             pass
 

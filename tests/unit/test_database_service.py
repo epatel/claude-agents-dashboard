@@ -252,6 +252,35 @@ class TestSaveTokenUsage:
             row = await cursor.fetchone()
         assert row[0] == 1
 
+    async def test_saves_api_error_status(self, db_service, item):
+        result = AgentResult(
+            success=False, error="[HTTP 529] Overloaded",
+            total_tokens=5, api_error_status=529,
+        )
+        await db_service.save_token_usage(item["id"], result)
+        async with db_service.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT api_error_status FROM token_usage WHERE item_id = ?",
+                (item["id"],),
+            )
+            row = await cursor.fetchone()
+        assert row is not None
+        assert row[0] == 529
+
+    async def test_saves_when_only_api_error_status_present(self, db_service, item):
+        """API failures often carry no token/cost data, but the status alone
+        is worth recording — a row must still be written."""
+        result = AgentResult(success=False, api_error_status=429)
+        await db_service.save_token_usage(item["id"], result)
+        async with db_service.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT api_error_status FROM token_usage WHERE item_id = ?",
+                (item["id"],),
+            )
+            row = await cursor.fetchone()
+        assert row is not None
+        assert row[0] == 429
+
 
 # ---------------------------------------------------------------------------
 # save_allowed_command

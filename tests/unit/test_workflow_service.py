@@ -535,6 +535,51 @@ class TestOnCompleteCallback:
         await cb(result)
         workflow.notifications.broadcast_item_updated.assert_awaited()
 
+    async def test_transient_api_failure_notification(self, workflow, running_item):
+        result = AgentResult(success=False, error="[HTTP 529] Overloaded",
+                             session_id="sess-fail", api_error_status=529)
+        cb = workflow._create_on_complete_callback(running_item["id"])
+        with patch("src.web.routes.add_notification") as add_notif:
+            await cb(result)
+        msg = add_notif.call_args[0][1]
+        assert "HTTP 529" in msg
+        assert "transient" in msg.lower()
+        assert "retry" in msg.lower()
+
+
+# ---------------------------------------------------------------------------
+# _add_failure_notification — API error classification
+# ---------------------------------------------------------------------------
+
+class TestFailureNotification:
+    @pytest.mark.parametrize("status", [429, 500, 502, 503, 529])
+    def test_transient_status_marked_retryable(self, workflow, status):
+        with patch("src.web.routes.add_notification") as add_notif:
+            workflow._add_failure_notification("item1234", "boom", status)
+        msg = add_notif.call_args[0][1]
+        assert f"HTTP {status}" in msg
+        assert "transient" in msg.lower()
+
+    def test_non_transient_status_uses_raw_error(self, workflow):
+        with patch("src.web.routes.add_notification") as add_notif:
+            workflow._add_failure_notification("item1234", "real task error", 400)
+        msg = add_notif.call_args[0][1]
+        assert "real task error" in msg
+        assert "transient" not in msg.lower()
+
+    def test_no_status_uses_raw_error(self, workflow):
+        with patch("src.web.routes.add_notification") as add_notif:
+            workflow._add_failure_notification("item1234", "plain failure", None)
+        msg = add_notif.call_args[0][1]
+        assert "plain failure" in msg
+
+    def test_error_is_truncated(self, workflow):
+        with patch("src.web.routes.add_notification") as add_notif:
+            workflow._add_failure_notification("item1234", "x" * 500, None)
+        msg = add_notif.call_args[0][1]
+        # 200-char cap on the error body (plus the fixed prefix).
+        assert msg.count("x") == 200
+
 
 # ---------------------------------------------------------------------------
 # Callback: _create_on_error_callback
