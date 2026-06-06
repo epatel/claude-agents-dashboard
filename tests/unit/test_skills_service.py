@@ -28,9 +28,11 @@ class TestHelpers:
             ("o", "r", "main", "skills/foo")
 
 
-def _installed_skill(lib: Path, name: str, description: str = "desc"):
+def _installed_skill(lib: Path, name: str, description: str = "desc", source: str = ""):
     (lib / name / ".claude-plugin").mkdir(parents=True)
-    (lib / name / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": name}))
+    (lib / name / ".claude-plugin" / "plugin.json").write_text(
+        json.dumps({"name": name, "source": source})
+    )
     sd = lib / name / "skills" / name
     sd.mkdir(parents=True)
     (sd / "SKILL.md").write_text(f"---\nname: {name}\ndescription: {description}\n---\n")
@@ -40,13 +42,15 @@ class TestInstalledLibrary:
     def test_list_installed_with_enabled_flags(self, tmp_path):
         svc = SkillsService(library_dir=tmp_path / "lib")
         (tmp_path / "lib").mkdir()
-        _installed_skill(tmp_path / "lib", "docx", "Make docx")
+        _installed_skill(tmp_path / "lib", "docx", "Make docx", source="anthropics/skills/skills/docx@main")
         _installed_skill(tmp_path / "lib", "pdf", "Make pdf")
         out = svc.list_installed(enabled=["docx"])
         by_name = {s["name"]: s for s in out}
         assert by_name["docx"]["enabled"] is True
         assert by_name["docx"]["description"] == "Make docx"
+        assert by_name["docx"]["source"] == "anthropics/skills/skills/docx@main"
         assert by_name["pdf"]["enabled"] is False
+        assert by_name["pdf"]["source"] == ""
 
     def test_plugin_path_guards_bad_names(self, tmp_path):
         svc = SkillsService(library_dir=tmp_path / "lib")
@@ -103,6 +107,9 @@ class TestInstall:
         assert not (base / "skills" / "other").exists()
         manifest = json.loads((base / ".claude-plugin" / "plugin.json").read_text())
         assert manifest["name"] == "docx" and manifest["description"] == "Make docx files"
+        # install source is recorded for the "installed from" tooltip
+        assert manifest["source"] == "anthropics/skills/skills/docx"
+        assert res["source"] == "anthropics/skills/skills/docx"
 
     @pytest.mark.asyncio
     async def test_install_rejects_bad_name(self, tmp_path):

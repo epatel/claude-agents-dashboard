@@ -122,9 +122,16 @@ class SkillsService:
             if md:
                 fm = _parse_frontmatter(md.read_text(encoding="utf-8", errors="replace"))
                 description = fm.get("description", "") or ""
+            source = ""
+            manifest = self.library_dir / name / ".claude-plugin" / "plugin.json"
+            try:
+                source = json.loads(manifest.read_text(encoding="utf-8")).get("source", "") or ""
+            except Exception:
+                pass
             out.append({
                 "name": name,
                 "description": description,
+                "source": source,
                 "enabled": name in enabled_set,
             })
         return out
@@ -310,7 +317,10 @@ class SkillsService:
         manifest_dir = dest_root / ".claude-plugin"
         manifest_dir.mkdir(parents=True, exist_ok=True)
         (manifest_dir / "plugin.json").write_text(
-            json.dumps({"name": name, "version": "1.0.0", "description": description}, indent=2),
+            json.dumps({
+                "name": name, "version": "1.0.0",
+                "description": description, "source": spec,
+            }, indent=2),
             encoding="utf-8",
         )
-        return {"ok": True, "name": name, "description": description}
+        return {"ok": True, "name": name, "description": description, "source": spec}
