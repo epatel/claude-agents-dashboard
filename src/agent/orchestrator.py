@@ -11,6 +11,7 @@ from ..web.websocket import ConnectionManager
 from ..services import (
     DatabaseService,
     GitService,
+    GraphService,
     NotificationService,
     SessionService,
     WorkflowService,
@@ -44,6 +45,9 @@ class AgentOrchestrator:
         self.epic_repository = EpicRepository(self.db_service)
         self.git_service = GitService(target_project, self.worktree_dir, repos=repos)
         self.notification_service = NotificationService(ws_manager)
+        self.graph_service = GraphService(
+            target_project, self.notification_service, repos=repos
+        )
         self.session_service = SessionService()
         self.workflow_service = WorkflowService(
             self.db_service,

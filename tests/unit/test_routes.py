@@ -116,6 +116,18 @@ def _make_mock_orchestrator():
     mock_orch.delete_item = AsyncMock(return_value={"ok": True})
     mock_orch.shutdown = AsyncMock()
 
+    # graph_service (graphify)
+    mock_orch.graph_service = MagicMock()
+    mock_orch.graph_service._lock = MagicMock()
+    mock_orch.graph_service._lock.locked.return_value = False
+    mock_orch.graph_service.status = AsyncMock(return_value={
+        "installed_version": "0.8.33", "latest_version": "0.8.33",
+        "building": False, "graph": {"exists": False}, "graph_dir": "/x/graphify-out",
+    })
+    mock_orch.graph_service.build = AsyncMock(return_value={"ok": True, "graph": {}})
+    mock_orch.graph_service.install = AsyncMock(return_value={"ok": True, "version": "0.8.33"})
+    mock_orch.graph_service.query = AsyncMock(return_value={"ok": True, "answer": "ans"})
+
     return mock_orch
 
 
@@ -1182,3 +1194,59 @@ class TestDiff:
         data = resp.json()
         assert data["diff"] == ""
         assert data["files"] == []
+
+
+# ---------------------------------------------------------------------------
+# Graphify endpoints
+# ---------------------------------------------------------------------------
+
+class TestGraphify:
+    @pytest.mark.asyncio
+    async def test_status(self, client):
+        resp = await client.get("/api/graphify/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["installed_version"] == "0.8.33"
+        assert data["graph"] == {"exists": False}
+
+    @pytest.mark.asyncio
+    async def test_build_starts(self, app_and_db):
+        app, db = app_and_db
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/graphify/build", json={"semantic": False})
+        assert resp.status_code == 200
+        assert resp.json() == {"started": True, "semantic": False}
+
+    @pytest.mark.asyncio
+    async def test_build_rejected_when_already_building(self, app_and_db):
+        app, db = app_and_db
+        app.state.orchestrator.graph_service._lock.locked.return_value = True
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/graphify/build", json={"semantic": True})
+        assert resp.status_code == 200
+        assert resp.json() == {"started": False, "status": "already_building"}
+
+    @pytest.mark.asyncio
+    async def test_install(self, client):
+        resp = await client.post("/api/graphify/install")
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_query(self, app_and_db):
+        app, db = app_and_db
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.get("/api/graphify/query", params={"q": "how does X work"})
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True, "answer": "ans"}
+        app.state.orchestrator.graph_service.query.assert_awaited_once_with("how does X work")
+
+    @pytest.mark.asyncio
+    async def test_query_blank_is_400(self, client):
+        resp = await client.get("/api/graphify/query", params={"q": "   "})
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_query_missing_param_is_422(self, client):
+        resp = await client.get("/api/graphify/query")
+        assert resp.status_code == 422

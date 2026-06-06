@@ -34,6 +34,10 @@ class NotificationService:
         """Broadcast item deletion event."""
         await self.ws_manager.broadcast("item_deleted", {"id": item_id})
 
+    async def broadcast_graph_event(self, event_type: str, data: Dict[str, Any]):
+        """Broadcast a graphify event (e.g. graph_build_progress, graph_ready)."""
+        await self.ws_manager.broadcast(event_type, data)
+
     async def broadcast_agent_log(self, item_id: str, entry_type: str, content: str):
         """Broadcast agent log event."""
         await self.ws_manager.broadcast("agent_log", {

@@ -994,6 +994,45 @@ async def get_available_tools():
     return OPTIONAL_BUILTIN_TOOLS
 
 
+# --- Graphify knowledge graph ---------------------------------------------
+
+class GraphBuildRequest(BaseModel):
+    semantic: bool = False
+
+
+@router.get("/api/graphify/status")
+async def graphify_status(request: Request):
+    """Installed/latest version, whether a build is running, and graph stats."""
+    return await request.app.state.orchestrator.graph_service.status()
+
+
+@router.post("/api/graphify/build")
+async def graphify_build(request: Request, body: GraphBuildRequest = GraphBuildRequest()):
+    """Kick off a (re)build in the background; progress streams over WebSocket.
+
+    AST `update` by default (free); set semantic=true for LLM extraction.
+    """
+    graph_service = request.app.state.orchestrator.graph_service
+    if graph_service._lock.locked():
+        return {"started": False, "status": "already_building"}
+    asyncio.create_task(graph_service.build(semantic=body.semantic))
+    return {"started": True, "semantic": body.semantic}
+
+
+@router.post("/api/graphify/install")
+async def graphify_install(request: Request):
+    """Upgrade graphifyy in the dashboard venv (privileged — confirm in the UI)."""
+    return await request.app.state.orchestrator.graph_service.install()
+
+
+@router.get("/api/graphify/query")
+async def graphify_query(request: Request, q: str):
+    """BFS traversal of the graph for a natural-language question (read-only)."""
+    if not q or not q.strip():
+        raise HTTPException(status_code=400, detail="query 'q' is required")
+    return await request.app.state.orchestrator.graph_service.query(q.strip())
+
+
 @router.get("/api/ollama/models")
 async def get_ollama_models(request: Request, force: bool = False):
     """Discover locally available Ollama models via the Ollama REST API."""

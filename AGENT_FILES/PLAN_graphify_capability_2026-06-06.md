@@ -4,7 +4,7 @@ Companion to [`EVAL_graphify_capability_2026-06-06.md`](EVAL_graphify_capability
 
 ## Locked decisions
 
-1. **Graph lives in `agents-lab/graphify-out/`** — the existing dashboard data dir, already gitignored in the target repo (`src/main.py:156-179`). Never committed into the target's history. (`graph.json` = truth; `graph.html`/`GRAPH_REPORT.md`/`cache/` = derived.)
+1. **Graph lives in `<target_project>/graphify-out/`**, and the dashboard adds `graphify-out/` to the target's `.gitignore` (mirroring the `agents-lab/` handling in `src/main.py:156-179`). Never committed into the target's history. (`graph.json` = truth; `graph.html`/`GRAPH_REPORT.md`/`cache/` = derived.) **Correction (verified empirically during Phase 1):** the original plan said `agents-lab/graphify-out/`, but `graphify update <path>` always writes to `<path>/graphify-out/` (ignores cwd, no `--out`), and even `extract --out` leaks a `cache/` into the scan root — so the tool dictates the scan-root location. `GraphService._ensure_gitignore()` keeps it out of git instead.
 2. **The server is the sole writer.** A new `GraphService` shells out to `venv/bin/graphify` (pinned, not PATH — per `AGENT_FILES/CARDS/GRAPHIFY.md`). Agents never write the graph.
 3. **Agents read via a `graph_query` MCP tool** (native pattern, like `view_board`/`ask_user`) — no files in the worktree, no `path_guard` exception.
 4. **Freshness is merge-reactive and free:** after an item merges to root, the server runs incremental `graphify update` (AST-only, no LLM). Semantic enrichment (~230k tokens) is explicit opt-in.
@@ -17,22 +17,25 @@ Companion to [`EVAL_graphify_capability_2026-06-06.md`](EVAL_graphify_capability
 
 Goal: server can build, refresh, query, and report on the graph. No UI yet.
 
-- [ ] `src/services/graph_service.py` — new service (6th, sibling to the 5 in `src/services/`). Methods, all via `asyncio.create_subprocess_exec` (**arg list, never `shell=True`** — query text is user input):
-  - `status()` → `{installed_version, latest_version (cached PyPI lookup), graph: {exists, nodes, edges, communities, last_built, cost}}`. Reads `agents-lab/graphify-out/{graph.json, cost.json}`.
-  - `build(semantic: bool)` → `graphify extract <root> --out agents-lab/` (semantic) or `graphify update <root>` writing into `agents-lab/graphify-out/` (AST). Runs detached; emits progress.
-  - `refresh()` → incremental AST `update` (the merge-reactive call).
-  - `query(q)` / `path(a,b)` / `explain(x)` → `graphify query "<q>" --graph agents-lab/graphify-out/graph.json` etc. Read-only.
-  - `install()` → `venv/bin/pip install --upgrade graphifyy` (privileged; see risks).
-  - Internal: a build **lock** so concurrent builds can't clobber `graph.json`; coalesce queued refreshes.
-- [ ] Resolve the target/workspace root the same way `main.py` does for `agents-lab/` (single + multi-repo).
-- [ ] Wire `GraphService` into `AgentOrchestrator` (`src/agent/orchestrator.py`) or expose directly to routes — match how the other services are surfaced.
-- [ ] Endpoints in `src/web/routes.py` (or new `src/web/graph_routes.py` if it keeps routes.py lean):
+- [x] `src/services/graph_service.py` — new service (6th, sibling to the 5 in `src/services/`). Methods, all via `asyncio.create_subprocess_exec` (**arg list, never `shell=True`**), running `sys.executable -m graphify` (venv interpreter):
+  - `status()` → `{installed_version (importlib.metadata), latest_version (cached PyPI lookup), building, graph: {exists, nodes, edges, communities, built_at_commit, last_built, cost}, graph_dir}`. Reads `<target>/graphify-out/{graph.json, cost.json}`; stats cached by graph.json mtime.
+  - `build(semantic: bool)` → `graphify update <root>` (AST, free) or `graphify extract <root> [--backend gemini]` (semantic). Serialized by a lock; broadcasts progress.
+  - `refresh()` → AST `build(semantic=False)`, never raises (the merge-reactive call).
+  - `query(q)` / `path(a,b)` / `explain(x)` → `graphify <cmd> ... --graph <target>/graphify-out/graph.json`. Read-only; guard when no graph yet.
+  - `install()` → `sys.executable -m pip install --upgrade graphifyy` (privileged; see risks).
+  - `_ensure_gitignore()` → adds `graphify-out/` to the target `.gitignore` (single-repo only).
+  - Build **lock**: concurrent build rejected (`already_building`) so they can't clobber `graph.json`.
+- [x] Resolve the target/workspace root from the orchestrator (`target_project`, `repos`) like the other services.
+- [x] Wire `GraphService` into `AgentOrchestrator` (`src/agent/orchestrator.py:48`); reachable via `request.app.state.orchestrator.graph_service`.
+- [x] Endpoints in `src/web/routes.py` (after the config endpoints):
   - `GET  /api/graphify/status`
-  - `POST /api/graphify/build`  (body `{semantic: bool}`; returns immediately, streams progress)
+  - `POST /api/graphify/build`  (body `{semantic: bool}`; background task, returns immediately)
   - `POST /api/graphify/install`
   - `GET  /api/graphify/query?q=...`
-- [ ] Progress over the existing WS fan-out (`NotificationService` → `src/web/websocket.py:133`): broadcast `graph_build_progress` / `graph_ready`.
-- [ ] Tests (`tests/unit/test_graph_service.py`): mock subprocess; assert arg lists (no shell), lock behavior, status parsing, query passthrough. Per `AGENT_FILES/CARDS/TESTING.md`.
+- [x] Progress over the existing WS fan-out — `NotificationService.broadcast_graph_event()` → `graph_build_progress` / `graph_ready`.
+- [x] Tests: `tests/unit/test_graph_service.py` (12) + `tests/unit/test_routes.py::TestGraphify` (7). Assert argv/no-shell, lock, stats parsing, query passthrough. Full suite: 1067 passing.
+
+**Phase 1 complete.** Remaining for the feature: Phase 2 (Settings tab + migration), Phase 3 (graph_query MCP tool), Phase 4 (auto-refresh on merge).
 
 ## Phase 2 — Settings ▸ Graphify tab (v1 surface)
 
