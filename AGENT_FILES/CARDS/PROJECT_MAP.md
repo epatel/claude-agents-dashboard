@@ -116,7 +116,7 @@ PreToolUse hook resolves Read/Edit/Write paths and denies any access outside the
 ### `flow.notify-broadcast`
 Single fan-out point to WebSocket clients on every state change.
 - **Service:** `src/services/notification_service.py:18` `broadcast_item_updated` (and `_created` / `_deleted` / `agent_log` / `clarification_requested` / `epic_*`)
-- **WS endpoint:** `/ws` (`src/web/routes.py:1597` `websocket_endpoint`)
+- **WS endpoint:** `/ws` (`src/web/routes.py:1692` `websocket_endpoint`)
 - **Event types emitted:** `item_updated`, `item_created`, `item_deleted`, `agent_log`, `clarification_requested`, `epic_created`, `epic_updated`, `epic_deleted`, `merge_blocked`, `graph_build_progress`, `graph_ready`
 - **Tables:** `items`, `epics`, `notifications`
 
@@ -126,12 +126,21 @@ Graphify knowledge graph. The dashboard owns `graphify-out/`; agents get a read-
 - **Callback:** `src/services/workflow_service.py:1357` `_create_on_graph_query_callback`
 - **Auto-refresh:** `src/services/workflow_service.py:1367` `_maybe_refresh_graph_after_merge` (called from `approve_item` success paths)
 - **Service:** `src/services/graph_service.py:37` `GraphService` (`:226` `build` · `:263` `refresh` · `:298` `query` · `:178` `status`)
-- **HTTP:** `GET /api/graphify/status` (`src/web/routes.py:1006`), `POST /api/graphify/build` (`:1012`), `POST /api/graphify/install` (`:1025`), `GET /api/graphify/query` (`:1031`)
+- **HTTP:** `GET /api/graphify/status` (`src/web/routes.py:1009`), `POST /api/graphify/build` (`:1015`), `POST /api/graphify/install` (`:1028`), `GET /api/graphify/query` (`:1034`)
 - **WS events:** `graph_build_progress`, `graph_ready`
 - **Tables:** `agent_config` (`graphify_enabled` / `graphify_auto_refresh` / `graphify_backend` from migration 028)
 
+### `flow.skills`
+Agent-Skills library. Installed skills live in a gitignored `skill-library/<name>/` (each a one-skill plugin); the enabled set is per-project and delivered to agents via the SDK `plugins=` option (not as an MCP tool).
+- **Service:** `src/services/skills_service.py` `SkillsService` (`browse` · `discover` · `install` · `list_installed` · `plugin_path` · `remove`)
+- **Delivery:** `src/services/session_service.py` `_parse_plugins(plugins, enabled_skills)` resolves enabled names → `skill-library/<name>` and merges into `plugins=`
+- **HTTP:** `GET /api/skills` (`src/web/routes.py:1067`), `GET /api/skills/browse` (`:1075`), `POST /api/skills/discover` (`:1085`), `POST /api/skills/install` (`:1097`), `POST /api/skills/{name}/enabled` (`:1113`), `DELETE /api/skills/{name}` (`:1125`)
+- **Frontend:** Settings ▸ Skills tab in `src/static/js/config-dialog.js`
+- **WS events:** none
+- **Tables:** `agent_config` (`enabled_skills` from migration 029)
+
 ### `flow.migration`
-Versioned schema migrations (`001`–`028` in `src/migrations/versions/`). Auto-runs pending migrations on startup.
+Versioned schema migrations (`001`–`029` in `src/migrations/versions/`). Auto-runs pending migrations on startup.
 - **Trigger:** auto-migrate from the FastAPI lifespan in `src/web/app.py`
 - **CLI:** `python -m src.manage [status|migrate|rollback|init]`
 - **Note:** any new `items`/`epics` columns must also be added to the repo-level whitelists — `src/repositories/item_repository.py` (`_WRITABLE_ITEM_COLUMNS`) and `src/repositories/epic_repository.py` (`_WRITABLE_EPIC_COLUMNS`)
@@ -274,7 +283,7 @@ Subsystem prefixes:
 | `dialog.settings.btn-close` | × close button | `src/templates/board.html` |
 | `dialog.settings.form` | Settings form | `src/templates/board.html` |
 | `dialog.settings.tabs` | Tab-bar wrapper | `src/templates/board.html` |
-| `dialog.settings.tab-{id}` | Individual tab button; `{id}` ∈ `general`, `prompts`, `ollama`, `mcp`, `plugins`, `appearance`, `graphify` | `src/templates/board.html` |
+| `dialog.settings.tab-{id}` | Individual tab button; `{id}` ∈ `general`, `prompts`, `ollama`, `mcp`, `plugins`, `skills`, `appearance`, `graphify` | `src/templates/board.html` |
 | `dialog.settings.panel-{id}` | Tab content panel | `src/templates/board.html` |
 | `dialog.settings.field-model` | Model `<select>` (General) | `src/templates/board.html` |
 | `dialog.settings.field-wip-limit` | WIP limit `<input>` (General) | `src/templates/board.html` |

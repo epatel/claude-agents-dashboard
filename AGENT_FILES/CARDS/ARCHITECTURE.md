@@ -7,7 +7,7 @@ Tour of the major subsystems. For named flows with line-numbered entry points se
 
 ## Backend services
 
-FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin facade delegating to 6 services in `src/services/`:
+FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin facade delegating to 7 services in `src/services/`:
 
 - `WorkflowService` (~1800 LOC) — agent lifecycle, state transitions (driven by `ItemState` FSM in `src/domain/item_state.py`), merge conflict auto-resolution, dependency auto-start, WIP limit queueing, single/multi-repo session kwargs (`_item_session_kwargs`), pause/resume with session capture, post-merge graph refresh
 - `DatabaseService` (~570 LOC) — all DB operations (parameterized; column whitelists live in the repositories)
@@ -15,6 +15,7 @@ FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin
 - `GitService` — worktree management, merge operations, repo path resolution
 - `SessionService` — Claude SDK session lifecycle, commit messages, plugin parsing, Ollama config
 - `GraphService` — graphify knowledge graph: build/refresh/query/status, version detection, cost tracking; shells out to the `graphify` venv binary and owns `graphify-out/`
+- `SkillsService` — dashboard-managed library of Agent Skills: install/list/remove, browse Anthropic's public repo, discover skills in any GitHub repo/path; installs into a gitignored `skill-library/<name>/` (each wrapped as a one-skill plugin). Per-project enable lives in `agent_config.enabled_skills`; `SessionService._parse_plugins` resolves enabled names to plugin paths and merges them into the SDK `plugins=` list (so skills load regardless of git/worktree/`setting_sources`)
 
 ## Web layer (`src/web/`)
 

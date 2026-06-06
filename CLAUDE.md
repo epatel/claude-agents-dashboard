@@ -9,7 +9,7 @@ Standalone scrum board that orchestrates Claude agents working on a **separate t
 ./run.sh /path/to/workspace-folder  # Multi-repo mode
 ./run.sh /path/to/project --experimental  # Enable experimental features (Ollama provider)
 ./run.sh /path/to/project --ui-map        # PROJECT_MAP overlays (Cmd+Shift+M)
-./run-tests.sh                      # All tests (1115: unit/integration/smoke)
+./run-tests.sh                      # All tests (1137: unit/integration/smoke)
 ./run-e2e-tests.sh                  # E2E tests (Node Playwright, spawns agents)
 ```
 

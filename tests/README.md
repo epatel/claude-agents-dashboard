@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (1115 tests across 39 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (28 migrations), security, git operations, services (including the graphify `GraphService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1137 tests across 41 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (29 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -15,7 +15,8 @@ tests/
 │   │   ├── test_use_chrome_025.py               # Migration 025 use_chrome column (4 tests)
 │   │   ├── test_api_error_status_026.py         # Migration 026 api_error_status column (4 tests)
 │   │   ├── test_remove_advisor_027.py           # Migration 027 strip +advisor suffix (5 tests)
-│   │   └── test_graphify_config_028.py          # Migration 028 graphify config (3 tests)
+│   │   ├── test_graphify_config_028.py          # Migration 028 graphify config (3 tests)
+│   │   └── test_enabled_skills_029.py           # Migration 029 enabled_skills column (3 tests)
 │   ├── test_allowed_commands.py                 # Command filter + access MCP tool (26 tests)
 │   ├── test_annotation_prompt.py                # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py               # Annotation summary generation (2 tests)
@@ -42,6 +43,7 @@ tests/
 │   ├── test_routes.py                           # HTTP endpoint tests (102 tests)
 │   ├── test_session.py                          # AgentSession SDK wrapper (83 tests)
 │   ├── test_session_service.py                  # SessionService lifecycle (49 tests)
+│   ├── test_skills_service.py                   # SkillsService install/browse/discover/enable (11 tests)
 │   ├── test_use_chrome.py                       # Per-task Chrome integration (17 tests)
 │   ├── test_websocket.py                        # WebSocket connection and rate limiting (45 tests)
 │   └── test_workflow_service.py                 # WorkflowService state transitions (108 tests)
@@ -60,15 +62,16 @@ tests/
 - **ItemRepository** (25 tests) — Read APIs, `transition()`, `update_fields()`, `move_item`, column whitelist enforcement
 - **EpicRepository** (9 tests) — CRUD facade and column whitelist enforcement
 
-### 2. Service Layer (272 tests)
+### 2. Service Layer (283 tests)
 - **WorkflowService** (108 tests) — State transitions (driven through `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
 - **DatabaseService** (62 tests) — CRUD operations, item dependencies, clarification context column (column whitelisting moved to the repositories)
-- **SessionService** (49 tests) — Session lifecycle, commit messages, plugin parsing, SDK wrapper
+- **SessionService** (49 tests) — Session lifecycle, commit messages, plugin parsing (incl. enabled-skill plugins), SDK wrapper
 - **NotificationService** (41 tests) — WebSocket broadcasting, tool formatting, event types
 - **GraphService** (12 tests) — graphify build/refresh/query/status, version detection, cost tracking
+- **SkillsService** (11 tests) — library install/list/remove, browse Anthropic source, multi-skill repo discovery, spec parsing, gitignore management
 
-### 3. Web Layer (239 tests)
-- **Routes** (102 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, graphify endpoints
+### 3. Web Layer (247 tests)
+- **Routes** (110 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, graphify endpoints, skills library endpoints
 - **File Routes** (66 tests) — File browser path validation, secret detection, .browserhidden, language mapping, directory scanning
 - **WebSocket** (45 tests) — Connection management, rate limiting, dead-connection cleanup
 - **App** (26 tests) — FastAPI factory, middleware, CORS, security headers, lifespan
@@ -95,8 +98,8 @@ tests/
 - **Annotation Prompt** (5 tests) — Prompt formatting for agents
 - **Annotation Summary** (2 tests) — Summary text generation
 
-### 7. Infrastructure (140 tests)
-- **Migrations** (48 tests) — Runner, up/down, discovery, edge cases; per-migration data tests for 024 (default-model bump), 025 (use_chrome), 026 (api_error_status), 027 (remove +advisor), 028 (graphify config)
+### 7. Infrastructure (143 tests)
+- **Migrations** (51 tests) — Runner, up/down, discovery, edge cases; per-migration data tests for 024 (default-model bump), 025 (use_chrome), 026 (api_error_status), 027 (remove +advisor), 028 (graphify config), 029 (enabled_skills)
 - **Main** (34 tests) — Server startup, port discovery, git validation
 - **Manage** (24 tests) — Migration CLI commands
 - **Path Validation** (14 tests) — Traversal prevention, null bytes, symlinks
@@ -132,7 +135,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 1115 tests
+# Run all 1137 tests
 ./run-tests.sh
 
 # Run specific test categories
