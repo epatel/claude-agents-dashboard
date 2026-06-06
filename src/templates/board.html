@@ -337,6 +337,25 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
     </div>
 </dialog>
 
+<!-- Skill Info Dialog -->
+<dialog id="skill-info-dialog" class="modal" style="width: min(560px, 90vw);">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="skill-info-name" style="font-family:var(--font-mono);"></h3>
+            <button class="btn-close" onclick="Dialogs.close('skill-info-dialog')">&times;</button>
+        </div>
+        <div style="padding: 20px;">
+            <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Description</div>
+            <p id="skill-info-desc" style="margin:0 0 16px;white-space:pre-wrap;line-height:1.5;"></p>
+            <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Installed from</div>
+            <div id="skill-info-source" style="font-size:13px;word-break:break-all;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="Dialogs.close('skill-info-dialog')">Close</button>
+        </div>
+    </div>
+</dialog>
+
 <!-- View Attachment Dialog -->
 <dialog id="view-attach-dialog" class="modal" style="width: min(900px, 95vw); max-height: 95vh; background: transparent; box-shadow: none;">
     <div class="modal-content" style="background: var(--bg-secondary); border-radius: var(--radius); box-shadow: var(--shadow-lg);">

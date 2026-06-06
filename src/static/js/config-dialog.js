@@ -409,15 +409,13 @@ const ConfigDialog = {
             el.innerHTML = '<div style="color:var(--text-muted);padding:4px 0;">No skills installed yet. Add one below.</div>';
             return;
         }
+        this._installedSkills = skills;
         el.innerHTML = skills.map(s => {
             const name = this._escapeHtml(s.name);
-            const descText = s.description || 'No description provided.';
-            const srcText = s.source ? `\n\nInstalled from: ${s.source}` : '\n\n(source not recorded — reinstall to capture)';
-            const info = this._escapeHtml(descText + srcText);
             return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:6px;">
                 <span style="display:flex;align-items:center;gap:6px;flex:0 0 auto;min-width:0;max-width:78%;">
                     <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--text-primary);">${name}</span>
-                    <span title="${info}" style="flex:0 0 auto;cursor:help;color:var(--text-muted);font-size:13px;line-height:1;">&#9432;</span>
+                    <span title="Details & source" onclick="ConfigDialog.showSkillInfo('${name}')" style="flex:0 0 auto;cursor:pointer;color:var(--text-muted);font-size:13px;line-height:1;">&#9432;</span>
                 </span>
                 <span style="display:flex;align-items:center;gap:12px;flex:0 0 auto;">
                     <input type="checkbox" ${s.enabled ? 'checked' : ''} title="Enable for this project" onchange="ConfigDialog.toggleSkill('${name}', this.checked)" style="cursor:pointer;margin:0;">
@@ -445,6 +443,41 @@ const ConfigDialog = {
         }).join('');
         const head = header ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">${this._escapeHtml(header)}</div>` : '';
         el.innerHTML = head + rows;
+    },
+
+    // Resolve an install spec (owner/repo[/path][@ref] or a URL) to a GitHub URL.
+    _sourceUrl(spec) {
+        if (!spec) return null;
+        if (/^https?:\/\//.test(spec)) return spec;
+        let s = spec, ref = null;
+        const at = s.lastIndexOf('@');
+        if (at > 0) { ref = s.slice(at + 1); s = s.slice(0, at); }
+        const parts = s.split('/').filter(Boolean);
+        if (parts.length < 2) return null;
+        const [owner, repo, ...rest] = parts;
+        const path = rest.join('/');
+        let url = `https://github.com/${owner}/${repo}`;
+        if (ref && path) url += `/tree/${ref}/${path}`;
+        else if (ref) url += `/tree/${ref}`;
+        else if (path) url += `/tree/HEAD/${path}`;
+        return url;
+    },
+
+    showSkillInfo(name) {
+        const s = (this._installedSkills || []).find(x => x.name === name);
+        if (!s) return;
+        document.getElementById('skill-info-name').textContent = s.name;
+        document.getElementById('skill-info-desc').textContent = s.description || 'No description provided.';
+        const srcEl = document.getElementById('skill-info-source');
+        if (s.source) {
+            const url = this._sourceUrl(s.source);
+            srcEl.innerHTML = url
+                ? `<a href="${this._escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--accent);">${this._escapeHtml(s.source)}</a>`
+                : this._escapeHtml(s.source);
+        } else {
+            srcEl.innerHTML = '<span style="color:var(--text-muted);">source not recorded — reinstall to capture</span>';
+        }
+        DialogCore.open('skill-info-dialog');
     },
 
     async refreshSkills() {
