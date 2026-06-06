@@ -1305,12 +1305,16 @@ class TestSkills:
         assert resp.json()["skills"][0]["spec"].startswith("anthropics/skills/")
 
     @pytest.mark.asyncio
-    async def test_install(self, app_and_db):
+    async def test_install_auto_enables(self, app_and_db):
         app, db = app_and_db
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             resp = await c.post("/api/skills/install", json={"spec": "anthropics/skills/skills/docx"})
-        assert resp.status_code == 200 and resp.json()["ok"] is True
-        app.state.orchestrator.skills_service.install.assert_awaited_once_with("anthropics/skills/skills/docx")
+            assert resp.status_code == 200 and resp.json()["ok"] is True
+            assert resp.json()["enabled"] is True
+            app.state.orchestrator.skills_service.install.assert_awaited_once_with("anthropics/skills/skills/docx")
+            # the freshly installed skill is enabled for this project
+            cfg = (await c.get("/api/config")).json()
+        assert "docx" in (cfg.get("enabled_skills") or [])
 
     @pytest.mark.asyncio
     async def test_install_requires_spec(self, client):

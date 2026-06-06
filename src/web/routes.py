@@ -1098,7 +1098,16 @@ async def skills_discover(request: Request, body: SkillInstallRequest):
 async def skills_install(request: Request, body: SkillInstallRequest):
     if not body.spec or not body.spec.strip():
         raise HTTPException(status_code=400, detail="spec is required")
-    return await request.app.state.orchestrator.skills_service.install(body.spec.strip())
+    res = await request.app.state.orchestrator.skills_service.install(body.spec.strip())
+    # Auto-enable the freshly installed skill for this project.
+    if res.get("ok") and res.get("name"):
+        db = request.app.state.db
+        enabled = await _enabled_skills(db)
+        if res["name"] not in enabled:
+            enabled.append(res["name"])
+            await _write_enabled_skills(db, enabled)
+        res["enabled"] = True
+    return res
 
 
 @router.post("/api/skills/{name}/enabled")
