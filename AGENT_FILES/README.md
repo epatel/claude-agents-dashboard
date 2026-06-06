@@ -9,5 +9,6 @@ Project documentation for agents and humans. Two layers:
   - `SDK_BUMP_2026-06-03.md` — record of the `claude-agent-sdk` floor bump (>=0.2.88).
   - `EVAL_file_checkpointing_2026-06-03.md` — eval of SDK file checkpointing for review→reject (decision: no).
   - `PLAN_graphify_capability_2026-06-06.md` / `EVAL_graphify_capability_2026-06-06.md` — feasibility eval + implementation plan for the graphify knowledge-graph capability (now shipped; see `CARDS/GRAPHIFY.md`).
+  - `PLAN_skills_library_2026-06-06.md` — implementation plan for the Agent-Skills library (now shipped; see `CARDS/SKILLS.md`).
 
 If you're orienting on the project, go to `CARDS/` and ignore the root files unless you specifically need historical context.

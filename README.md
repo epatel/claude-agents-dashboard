@@ -42,7 +42,7 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1115 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1137 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -103,6 +103,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Per-item model selection** — choose between Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, and Claude Haiku 4.5 per item (falls back to global config)
 - **Auto-approve modes** — per-item setting to skip the manual review gate: OFF (lands in Review for a human), REVIEW (spawns a read-only review agent that auto-merges on approval or sends comments back to the original agent, capped at 3 round-trips), or DIRECT (auto-merge as soon as the agent finishes)
 - **Knowledge graph (graphify)** — the dashboard owns a navigable AST + optional semantic graph of the target project (`graphify-out/`); when enabled in Settings ▸ Graphify, agents get a read-only `graph_query` MCP tool to orient before editing, and the graph auto-refreshes after a merge (free AST build); managed via `/api/graphify/*` with live build-progress over WebSocket
+- **Skills library** — a dashboard-managed library of [Agent Skills](https://docs.claude.com/en/docs/claude-code/skills): browse Anthropic's public skills repo, or install any skill from a GitHub repo/path/URL via Settings ▸ Skills. Installed skills are stored in a gitignored `skill-library/` (each wrapped as a one-skill plugin) and enabled **per project**; enabled skills are delivered to agents through the SDK `plugins=` option so they load regardless of git/worktree/`setting_sources`. Managed via `/api/skills/*`
 - **Per-task Chrome integration** — items can opt into a Chrome browser session for the agent (`use_chrome`), enabling browser-driven work
 - **Transient API-error handling** — agent completions classify and persist `api_error_status` on `token_usage`, surfacing transient Claude API failures (e.g. overload) distinctly from real agent errors
 - **Multi-repo workspaces** — point the dashboard at a folder containing sibling git repos and each item picks one of them via a `repo` field; worktrees are created inside the chosen subrepo and agents get read-only access to the other sibling repos for cross-repo context
@@ -159,6 +160,7 @@ graph TB
             GS["GitService"]
             SS["SessionService"]
             GRS["GraphService"]
+            SKS["SkillsService"]
         end
         Sess["AgentSession — Claude SDK wrapper"]
         DB["Database — aiosqlite + migrations"]
@@ -188,6 +190,8 @@ graph TB
     WF --> NS
     WF --> SS
     WF --> GRS
+    Orch --> SKS
+    SKS -->|"enabled skills → plugins="| Sess
     SS --> Sess
     DBS --> DB
     NS --> WSMgr
@@ -204,10 +208,10 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 6-service architecture (Workflow, Database, Notification, Git, Session, Graph) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~9,500 lines across 42 source files (excluding migrations)
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~9,400 lines JS + ~3,850 lines CSS
-- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, Claude Haiku 4.5, 8 built-in MCP tools (incl. read-only `graph_query`); optional Ollama provider (experimental)
-- **Database**: SQLite with 28 versioned migrations (auto-runs on startup)
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 7-service architecture (Workflow, Database, Notification, Git, Session, Graph, Skills) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~9,900 lines across 43 source files (excluding migrations)
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~9,600 lines JS + ~3,850 lines CSS
+- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, Claude Haiku 4.5, 8 built-in MCP tools (incl. read-only `graph_query`); installable Agent Skills delivered via `plugins=`; optional Ollama provider (experimental)
+- **Database**: SQLite with 29 versioned migrations (auto-runs on startup)
 - **Security**: Localhost only, no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
 
 ### Item lifecycle
@@ -247,7 +251,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–028) adding columns and tables incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–029) adding columns and tables incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -342,6 +346,7 @@ erDiagram
         bool graphify_enabled
         bool graphify_auto_refresh
         text graphify_backend
+        text enabled_skills
         text updated_at
     }
 
@@ -484,6 +489,12 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `POST` | `/api/graphify/build` | Build the graph (`semantic` flag for the LLM layer) |
 | `POST` | `/api/graphify/install` | Upgrade the graphify package in the dashboard venv |
 | `GET` | `/api/graphify/query` | Query the graph (`q=...`) |
+| `GET` | `/api/skills` | List installed library skills with per-project enabled flags |
+| `GET` | `/api/skills/browse` | List installable skills from a public source (cached) |
+| `POST` | `/api/skills/discover` | Find every skill (folder with a `SKILL.md`) in a repo/path |
+| `POST` | `/api/skills/install` | Install a skill from a GitHub repo/path/URL spec |
+| `POST` | `/api/skills/{name}/enabled` | Enable/disable an installed skill for this project |
+| `DELETE` | `/api/skills/{name}` | Remove a skill from the library |
 | `GET` | `/api/files/tree` | Directory tree (lazy, depth-limited) |
 | `GET` | `/api/files/content` | File content (text, image, binary) |
 | `WebSocket` | `/ws` | Real-time event stream |
@@ -565,6 +576,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 - [`CARDS/COMMIT_POLICY.md`](AGENT_FILES/CARDS/COMMIT_POLICY.md) — commit policies (e.g. excluding annotation images)
 - [`CARDS/OLLAMA_PROVIDER.md`](AGENT_FILES/CARDS/OLLAMA_PROVIDER.md) — Ollama as a local model provider via Claude Agent SDK + dashboard wiring
 - [`CARDS/GRAPHIFY.md`](AGENT_FILES/CARDS/GRAPHIFY.md) — using and maintaining the codebase knowledge graph (`graphify-out/`)
+- [`CARDS/SKILLS.md`](AGENT_FILES/CARDS/SKILLS.md) — the Agent-Skills library: install/enable skills and how enabled ones reach agents via `plugins=`
 
 Point-in-time snapshots (**not maintained**) sit in the AGENT_FILES root: `ASSESSMENT_CODE.md` (module-by-module quality ratings), `AUDIT.md` (security audit, 14 findings, 9 of 9 actionable remediated), and dated decision/eval records (`EVAL_*`, `PLAN_*`, `SDK_BUMP_*`).
 

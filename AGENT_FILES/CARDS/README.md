@@ -20,6 +20,7 @@ Common operations and the cards that cover them. Order is suggested reading orde
 | Introduce a new named flow / UI vocabulary | [PROJECT_MAP_STRATEGY](PROJECT_MAP_STRATEGY.md) → [PROJECT_MAP](PROJECT_MAP.md) |
 | Modify Ollama integration / model selection | [OLLAMA_PROVIDER](OLLAMA_PROVIDER.md) → [ARCHITECTURE](ARCHITECTURE.md) (`SessionService`) |
 | Query / rebuild / upgrade the knowledge graph | [GRAPHIFY](GRAPHIFY.md) only |
+| Work on the skills library / how skills reach agents | [SKILLS](SKILLS.md) → [ARCHITECTURE](ARCHITECTURE.md) (`SessionService`) |
 | Localized bug fix in existing code | None — read the code |
 | About to commit | [COMMIT_POLICY](COMMIT_POLICY.md) |
 
@@ -81,3 +82,8 @@ If your task isn't above, fall through to the **Load when** triggers below.
 - **Load when**: querying the `graphify-out/` knowledge graph, rebuilding it, or upgrading the graphify tool/skill.
 - **Skip when**: normal feature work not touching the graph.
 - *Use the venv binary (not PATH); query/path/explain; incremental update vs full rebuild; upgrading tool + skill together.*
+
+### [SKILLS](SKILLS.md)
+- **Load when**: working on the Agent-Skills library (install/browse/discover/enable), the Settings ▸ Skills tab, or how enabled skills reach agents.
+- **Skip when**: feature work that doesn't touch skills.
+- *`SkillsService`, gitignored `skill-library/`, per-project `enabled_skills`, delivery via SDK `plugins=`, `/api/skills/*`.*
