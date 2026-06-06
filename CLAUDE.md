@@ -7,9 +7,10 @@ Standalone scrum board that orchestrates Claude agents working on a **separate t
 ```bash
 ./run.sh /path/to/target-project    # Single-repo mode
 ./run.sh /path/to/workspace-folder  # Multi-repo mode
-./run.sh /path/to/project --experimental  # Ollama provider, Sonnet + Advisor
-./run-tests.sh                      # All tests
-./run-e2e-tests.sh                  # E2E tests
+./run.sh /path/to/project --experimental  # Enable experimental features (Ollama provider)
+./run.sh /path/to/project --ui-map        # PROJECT_MAP overlays (Cmd+Shift+M)
+./run-tests.sh                      # All tests (1115: unit/integration/smoke)
+./run-e2e-tests.sh                  # E2E tests (Node Playwright, spawns agents)
 ```
 
 Server binds to `127.0.0.1:8000` (auto-increments up to 8019).

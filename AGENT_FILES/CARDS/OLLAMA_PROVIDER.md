@@ -4,7 +4,7 @@
 > **Skip when**: changes don't touch model providers or `AgentConfig.model`.
 
 **Date tested**: 2026-04-12
-**Last reviewed**: 2026-05-07 (no functional changes since last test; the `AgentConfig` Phase 3 refactor preserves `ollama_enabled` / `ollama_base_url` semantics; verified `/api/ollama/models` route still in `routes.py`)
+**Last reviewed**: 2026-06-06 (doc reassessment — no functional changes; `ollama_enabled` / `ollama_base_url` columns and the `/api/ollama/models` route still present; the removed `+advisor` experimental model is unrelated to the Ollama provider, which remains the only thing gated behind `--experimental`)
 **Status**: Working ✓
 
 ## Overview

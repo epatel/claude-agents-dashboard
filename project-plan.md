@@ -28,7 +28,9 @@ Replace this with the specific objective the moment one is in flight.
 ## Milestones
 
 - [x] M0 — Baseline: Opus 4.8 default, 24 migrations (001–024), 1035 tests passing, cards current (2026-05-28)
-- [ ] M1 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
+- [x] M1 — Graphify knowledge graph shipped (GraphService + `/api/graphify` + Settings ▸ Graphify tab + `graph_query` MCP tool + post-merge auto-refresh, migration 028); `+advisor` model removed (migration 027); per-task Chrome (025) and `api_error_status` (026) landed (2026-06-06)
+- [x] M2 — Docs reassessed and refreshed: README / tests/README / CLAUDE / AGENT_FILES cards updated to 28 migrations (001–028), 1115 tests, 6 services, 8 MCP tools (2026-06-06)
+- [ ] M3 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
 
 ## Decisions
 
@@ -39,12 +41,23 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 - 2026-05-28 — Extended-thinking budget is 32000 tokens (`src/agent/session.py`). Locked.
 - 2026-05-28 — All item state transitions go through the `ItemState` FSM
   (`src/domain/item_state.py`); raw `(column_name, status)` writes outside the SM are a regression. Locked.
+- 2026-06-06 — The experimental `+advisor` model suffix is removed (migration 027 strips
+  it from stored rows); the session layer no longer parses it. Do not reintroduce the suffix.
+- 2026-06-06 — The dashboard owns the graphify knowledge graph (`graphify-out/`); agents get a
+  read-only `graph_query` MCP tool only when `graphify_enabled` (migration 028, off by default).
+  AST builds/refreshes are free; semantic (LLM) builds cost tokens — run sparingly.
 
 ## Current state / handoff
 
-Baseline established (2026-05-28). No objective currently in flight. Cards in
-`AGENT_FILES/CARDS/` were audited against the codebase and confirmed accurate — no drift.
-The next agent to pick up real work should set **Goal**, add an **M1** milestone, and
+Docs reassessed 2026-06-06. No objective currently in flight. Since the 2026-05-28
+baseline the codebase grew by four migrations (025 use_chrome, 026 api_error_status,
+027 remove +advisor, 028 graphify config), a sixth service (`GraphService`), an eighth
+built-in MCP tool (`graph_query`), and the graphify capability end-to-end. README,
+tests/README, CLAUDE.md, and all `AGENT_FILES/CARDS/` were re-audited against the code
+and corrected (migration count, test counts, service/tool counts, PROJECT_MAP line
+numbers, advisor removal). The dated snapshots in `AGENT_FILES/` root (AUDIT, ASSESSMENT_CODE,
+EVAL_*, PLAN_*, SDK_BUMP_*) are point-in-time records and were intentionally left untouched.
+The next agent to pick up real work should set **Goal**, add an **M3** milestone, and
 update this note as the running handoff.
 
 ## Open questions

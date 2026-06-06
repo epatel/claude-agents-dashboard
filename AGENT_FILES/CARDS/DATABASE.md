@@ -3,7 +3,7 @@
 > **Load when**: writing or running a DB migration; inspecting the schema; whitelisting a new column.
 > **Skip when**: not touching SQL or migrations.
 
-SQLite with **27 versioned migrations (001–027)** in `src/migrations/versions/`. Auto-migrates on startup (from the FastAPI lifespan). The latest (`027`) strips the removed `+advisor` model suffix from stored `items`/`agent_config` rows.
+SQLite with **28 versioned migrations (001–028)** in `src/migrations/versions/`. Auto-migrates on startup (from the FastAPI lifespan). Recent ones: `025` adds `items.use_chrome`, `026` adds `token_usage.api_error_status`, `027` strips the removed `+advisor` model suffix from stored `items`/`agent_config` rows, and `028` adds the graphify config columns to `agent_config` (`graphify_enabled`, `graphify_auto_refresh`, `graphify_backend`).
 
 **CLI**:
 ```bash
