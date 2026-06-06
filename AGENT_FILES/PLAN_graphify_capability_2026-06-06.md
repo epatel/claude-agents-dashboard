@@ -64,13 +64,15 @@ Goal: agents can orient against the graph, gated by `graphify_enabled`.
 
 **Phase 3 complete.** Remaining: Phase 4 (auto-refresh on merge), Phase 5 (optional viewer / semantics / multi-repo).
 
-## Phase 4 — Auto-refresh on merge
+## Phase 4 — Auto-refresh on merge — COMPLETE
 
 Goal: graph tracks mainline with zero token cost and zero agent involvement.
 
-- [ ] In `WorkflowService` at the approve→merge seam (after a successful merge to root), if `graphify_auto_refresh`, call `GraphService.refresh()` (fire-and-forget background task; WS progress). Serialize via the GraphService lock.
-- [ ] UI staleness hint: status shows "last built @ commit" + dirty marker if HEAD moved since.
-- [ ] Tests: merge triggers exactly one refresh; refresh is non-blocking; lock coalesces.
+- [x] `WorkflowService._maybe_refresh_graph_after_merge()` — fires `GraphService.refresh()` as a fire-and-forget task on both successful-merge branches of `approve_item` (direct merge + rebase-retry). Gated on `graphify_auto_refresh` **and an existing `graph.json`** — it maintains an opted-in graph but never silently builds one (initial build stays the Settings-tab action). Free AST; serialized by GraphService's build lock; the `graph_ready` WS event already refreshes the Settings tab.
+- [~] UI staleness hint: deferred — `built_at_commit` is already surfaced in status; the live `graph_ready` refresh keeps the tab current, so an explicit dirty marker is a nice-to-have for later.
+- [x] Tests: `tests/unit/test_graph_query_tool.py::TestAutoRefreshOnMerge` (4) — refreshes when enabled+graph-exists, skips when disabled / no graph / no graph_service. Full suite: 1081 passing.
+
+**Phase 4 complete.** Remaining: Phase 5 (optional viewer dialog / semantic polish / multi-repo).
 
 ## Phase 5 — Optional follow-ups
 

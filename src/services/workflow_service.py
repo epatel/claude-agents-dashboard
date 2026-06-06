@@ -605,6 +605,7 @@ class WorkflowService:
             # the two paths in sync.
             await self.notifications.broadcast_item_updated(item)
             await self.notify_and_auto_start_dependents(item_id)
+            await self._maybe_refresh_graph_after_merge()
         else:
             await self._log_and_notify(item_id, "system",
                 f"Merge failed — {message[:200]}. Attempting auto-rebase...")
@@ -651,6 +652,7 @@ class WorkflowService:
 
                         await self.notify_and_auto_start_dependents(item_id)
                         await self.notifications.broadcast_item_updated(item)
+                        await self._maybe_refresh_graph_after_merge()
                         return item
                     else:
                         await self._log_and_notify(item_id, "system",
@@ -1361,6 +1363,31 @@ class WorkflowService:
                 return result.get("answer") or "(no result)"
             return f"Graph query failed: {result.get('error') or 'unknown error'}"
         return on_graph_query
+
+    async def _maybe_refresh_graph_after_merge(self) -> None:
+        """Fire-and-forget incremental graph refresh after a merge to root.
+
+        Only when `graphify_auto_refresh` is set AND a graph already exists —
+        we maintain an existing graph against mainline, but never silently build
+        one the user hasn't opted into (initial build is the Settings tab). The
+        refresh is free (AST) and serialized by GraphService's own build lock.
+        """
+        if not self.graph_service or not self.graph_service.graph_json.exists():
+            return
+        try:
+            config = await self.db.get_agent_config()
+        except Exception:
+            return
+        if not config.get("graphify_auto_refresh"):
+            return
+
+        async def _run():
+            try:
+                await self.graph_service.refresh()
+            except Exception:
+                logger.exception("graphify: auto-refresh after merge failed")
+
+        asyncio.create_task(_run())
 
     async def _auto_approve_no_changes(self, item_id: str) -> None:
         """Auto-approve an item that completed without producing file changes.
