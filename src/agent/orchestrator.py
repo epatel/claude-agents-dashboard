@@ -57,6 +57,7 @@ class AgentOrchestrator:
             data_dir=data_dir,
             item_repository=self.item_repository,
             epic_repository=self.epic_repository,
+            graph_service=self.graph_service,
         )
 
         # Keep references for backward compatibility

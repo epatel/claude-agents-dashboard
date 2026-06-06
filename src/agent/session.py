@@ -154,6 +154,8 @@ class AgentSession:
         on_delete_todo=None,
         on_create_epic=None,
         on_create_shortcut=None,
+        on_graph_query=None,
+        graphify_enabled: bool = False,
         mcp_servers: str | None = None,
         mcp_enabled: bool = False,
         plugins: list[dict] | None = None,
@@ -188,6 +190,8 @@ class AgentSession:
         self.on_request_command = on_request_command  # async callback(command: str, reason: str) -> str
         self.on_request_tool = on_request_tool      # async callback(tool_name: str, reason: str) -> str
         self.on_view_board = on_view_board          # async callback() -> str
+        self.on_graph_query = on_graph_query        # async callback(question: str) -> str
+        self.graphify_enabled = graphify_enabled    # expose graph_query tool to the agent
         self.on_delete_todo = on_delete_todo        # async callback(item_id: str) -> str
         self.on_create_epic = on_create_epic        # async callback(title: str, color: str) -> dict
         self.on_create_shortcut = on_create_shortcut  # async callback(name: str, command: str) -> dict
@@ -231,6 +235,11 @@ class AgentSession:
         # Skip external MCP servers for Ollama — their tool definitions flood the
         # context window and overwhelm small local models.
         is_ollama = bool(self.ollama_env)
+        # graphify graph_query tool — only when enabled in config (skip for Ollama:
+        # extra tool definitions overwhelm small local models).
+        if self.on_graph_query and self.graphify_enabled and not is_ollama:
+            from .graph_query import create_graph_query_server
+            mcp_servers["graph_query"] = create_graph_query_server(self.on_graph_query)
         if self.mcp_enabled and self.mcp_servers and not is_ollama:
             # mcp_servers arrives as a parsed dict; tolerate a JSON
             # string for legacy callers.
@@ -358,7 +367,16 @@ class AgentSession:
                 "careful with any destructive or authenticated actions."
             )
 
-        full_system_prompt = (self.system_prompt or "") + cwd_note + multi_repo_note + clarify_note + commit_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note
+        graph_note = ""
+        if "graph_query" in mcp_servers:
+            graph_note = (
+                "\n\nThis project has a knowledge graph of its code. Before editing "
+                "unfamiliar code, use mcp__graph_query__graph_query to orient — ask what "
+                "calls a function, where a concept lives, or how a flow connects. "
+                "Answers cite source locations you can open."
+            )
+
+        full_system_prompt = (self.system_prompt or "") + cwd_note + multi_repo_note + clarify_note + commit_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note
 
         # Configure allowed MCP tools
         allowed_tools = []
@@ -378,10 +396,12 @@ class AgentSession:
             allowed_tools.append("mcp__board_view__view_board")
         if "shortcut" in mcp_servers:
             allowed_tools.append("mcp__shortcut__create_shortcut")
+        if "graph_query" in mcp_servers:
+            allowed_tools.append("mcp__graph_query__graph_query")
 
         # Allow all tools from external MCP servers (using wildcard for each server)
         for server_name, server_config in mcp_servers.items():
-            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view", "shortcut"]:  # Skip our built-in servers
+            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view", "shortcut", "graph_query"]:  # Skip our built-in servers
                 allowed_tools.append(f"mcp__{server_name}__*")
                 logger.info(f"Allowing all tools from external MCP server: {server_name}")
 

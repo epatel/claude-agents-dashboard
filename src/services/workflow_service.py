@@ -35,8 +35,10 @@ class WorkflowService:
                  notification_service: NotificationService, session_service: SessionService,
                  data_dir: Path | None = None,
                  item_repository: ItemRepository | None = None,
-                 epic_repository: EpicRepository | None = None):
+                 epic_repository: EpicRepository | None = None,
+                 graph_service=None):
         self.db = db_service
+        self.graph_service = graph_service
         self.git = git_service
         self.notifications = notification_service
         self.sessions = session_service
@@ -213,6 +215,7 @@ class WorkflowService:
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
             on_view_board=self._create_on_view_board_callback(),
+            on_graph_query=self._create_on_graph_query_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
             **self._item_session_kwargs(item),
@@ -359,6 +362,7 @@ class WorkflowService:
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
             on_view_board=self._create_on_view_board_callback(),
+            on_graph_query=self._create_on_graph_query_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
             **self._item_session_kwargs(item),
@@ -441,6 +445,7 @@ class WorkflowService:
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
             on_view_board=self._create_on_view_board_callback(),
+            on_graph_query=self._create_on_graph_query_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
             **self._item_session_kwargs(item),
@@ -711,6 +716,7 @@ class WorkflowService:
                     on_request_command=self._create_on_request_command_callback(item_id),
                     on_request_tool=self._create_on_request_tool_callback(item_id),
                     on_view_board=self._create_on_view_board_callback(),
+            on_graph_query=self._create_on_graph_query_callback(),
                     on_delete_todo=self._create_on_delete_todo_callback(item_id),
                     **self._item_session_kwargs(item),
                 )
@@ -812,6 +818,7 @@ class WorkflowService:
             on_request_command=self._create_on_request_command_callback(item_id),
             on_request_tool=self._create_on_request_tool_callback(item_id),
             on_view_board=self._create_on_view_board_callback(),
+            on_graph_query=self._create_on_graph_query_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
             **self._item_session_kwargs(item),
@@ -1345,6 +1352,16 @@ class WorkflowService:
             return "\n".join(lines)
         return on_view_board
 
+    def _create_on_graph_query_callback(self):
+        async def on_graph_query(question: str) -> str:
+            if not self.graph_service:
+                return "Knowledge graph is not available."
+            result = await self.graph_service.query(question or "")
+            if result.get("ok"):
+                return result.get("answer") or "(no result)"
+            return f"Graph query failed: {result.get('error') or 'unknown error'}"
+        return on_graph_query
+
     async def _auto_approve_no_changes(self, item_id: str) -> None:
         """Auto-approve an item that completed without producing file changes.
 
@@ -1614,6 +1631,7 @@ class WorkflowService:
                 on_request_command=self._create_on_request_command_callback(item_id),
                 on_request_tool=self._create_on_request_tool_callback(item_id),
                 on_view_board=self._create_on_view_board_callback(),
+            on_graph_query=self._create_on_graph_query_callback(),
                 on_delete_todo=self._create_on_delete_todo_callback(item_id),
                 **self._item_session_kwargs(item or {}),
             )

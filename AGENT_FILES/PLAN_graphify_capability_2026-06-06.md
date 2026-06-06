@@ -37,29 +37,32 @@ Goal: server can build, refresh, query, and report on the graph. No UI yet.
 
 **Phase 1 complete.** Remaining for the feature: Phase 2 (Settings tab + migration), Phase 3 (graph_query MCP tool), Phase 4 (auto-refresh on merge).
 
-## Phase 2 — Settings ▸ Graphify tab (v1 surface)
+## Phase 2 — Settings ▸ Graphify tab (v1 surface) — COMPLETE
 
 Goal: a human can enable, install/upgrade, build, and see status/cost.
 
-- [ ] **DB migration** `src/migrations/versions/028_*.py` (next after 027): add `agent_config` columns `graphify_enabled INTEGER DEFAULT 0`, `graphify_auto_refresh INTEGER DEFAULT 1`, `graphify_backend TEXT DEFAULT 'ast'`. Implement `up()`/`down()`.
-- [ ] `src/models.py::AgentConfig` — add the three fields (validators tolerant of raw values, per existing pattern). Add to the agent-config **write whitelist** wherever `agent_config` columns are gated (mirror `_WRITABLE_*` discipline; **no raw column writes**).
-- [ ] `GET/PUT /api/config` — include the new fields in load + save.
-- [ ] `src/templates/board.html` — add tab button after Plugins (`board.html:417`) and a `data-config-tab="graphify"` pane (clone the Ollama pane `board.html:469` for the status-dot + action-button shape). Default-hidden, `data-map-name` annotations for the project-map.
-- [ ] `src/static/js/config-dialog.js`:
-  - In `openConfig()`: load the three fields; call a new `refreshGraphifyStatus()` (mirrors `refreshOllamaModels()` → status dot + version + counts via `/api/graphify/status`).
-  - In `submitConfig()`: add the three fields to the `config` payload.
-  - New actions: `installGraphify()` → confirm (reuse `toggleYolo` confirm pattern) → `POST /api/graphify/install`; `buildGraph(semantic)` → `POST /api/graphify/build` (semantic path shows a token-cost confirm).
-- [ ] `src/static/js/api.js` — add `getGraphifyStatus()`, `buildGraph()`, `installGraphify()`.
-- [ ] `src/static/js/app.js` — handle `graph_build_progress`/`graph_ready` WS events → update the tab's status line.
+- [x] **DB migration** `src/migrations/versions/028_add_graphify_config.py`: adds `agent_config` columns `graphify_enabled INTEGER DEFAULT 0`, `graphify_auto_refresh INTEGER DEFAULT 1`, `graphify_backend TEXT DEFAULT 'ast'`. `down()` is a no-op (matches recent column-add migrations).
+- [x] `src/models.py::AgentConfig` — added the three fields. (No whitelist change needed: `agent_config` writes go through the explicit `UPDATE` in `PUT /api/config`, and `get_agent_config` uses `SELECT *`, so new columns flow through automatically.)
+- [x] `GET/PUT /api/config` — GET auto-includes them (`SELECT *`); PUT's explicit `UPDATE` extended with the three columns.
+- [x] `src/templates/board.html` — Graphify tab button (after Plugins) + `data-config-tab="graphify"` pane: status line, conditional Upgrade button, enable / auto-refresh toggles, backend select, Build/Enrich buttons.
+- [x] `src/static/js/config-dialog.js`: `openConfig()` loads the three fields + calls `refreshGraphifyStatus()`; `submitConfig()` sends them; new `refreshGraphifyStatus()` / `installGraphify()` (confirm) / `buildGraph(semantic)` (token-cost confirm for semantic).
+- [x] `src/static/js/app.js` — handles `graph_build_progress` / `graph_ready` → refreshes the tab status if open.
+- [x] Tests: `tests/unit/migrations/test_graphify_config_028.py` (3) + `test_routes.py::TestConfig::test_graphify_fields_round_trip`. Full suite: 1071 passing.
+
+(Used `Api.request()` directly from config-dialog.js rather than adding `api.js` helpers — consistent with how the dialog already calls `/api/config`.)
+
+**Phase 2 complete.** Remaining: Phase 3 (graph_query MCP tool), Phase 4 (auto-refresh on merge).
 - [ ] Tests: route tests for the new endpoints (`tests/unit/test_routes.py` style); migration test under `tests/unit/migrations/`.
 
-## Phase 3 — graph_query MCP tool (agent consumption)
+## Phase 3 — graph_query MCP tool (agent consumption) — COMPLETE
 
 Goal: agents can orient against the graph, gated by `graphify_enabled`.
 
-- [ ] `src/agent/graph_query.py` — MCP tool server exposing `graph_query` (and optionally `graph_path`, `graph_explain`). Each calls `GraphService` read methods. Pattern: copy `src/agent/board_view.py` (`view_board`).
-- [ ] Wire into `SessionService`/`session.py` tool assembly **only when `graphify_enabled`** is set on the config. Add a one-line system-prompt note ("Before editing, query the code graph to orient") like other tool hints.
-- [ ] Tests: tool present iff enabled; query passthrough returns graph answer.
+- [x] `src/agent/graph_query.py` — MCP tool server exposing `graph_query` (takes `{question}`). Pattern mirrors `src/agent/board_view.py`.
+- [x] Wired through the stack: `AgentSession` gains `on_graph_query` + `graphify_enabled` and registers the server / permits `mcp__graph_query__graph_query` / adds a system-prompt hint **only when `graphify_enabled` and not Ollama**; `SessionService.create_session` forwards both from config; `WorkflowService._create_on_graph_query_callback()` (delegating to `GraphService.query`) is passed at all 6 call sites; `AgentOrchestrator` passes `graph_service` into `WorkflowService`.
+- [x] Tests: `tests/unit/test_graph_query_tool.py` (7) — server builds, session stores/defaults the fields, callback returns answer / surfaces errors / handles missing graph_service. Full suite: 1077 passing.
+
+**Phase 3 complete.** Remaining: Phase 4 (auto-refresh on merge), Phase 5 (optional viewer / semantics / multi-repo).
 
 ## Phase 4 — Auto-refresh on merge
 
