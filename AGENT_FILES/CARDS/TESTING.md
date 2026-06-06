@@ -6,13 +6,13 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1035 tests
+./run-tests.sh              # Run all 1115 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 24 migrations.
+The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 28 migrations (001–028).
 
 ## Test Structure
 
@@ -26,14 +26,17 @@ tests/
 │   ├── migrations/
 │   │   ├── test_migration_runner.py    # Migration up/down/status (14 tests)
 │   │   ├── test_migration_edge_cases.py # Edge cases, discovery (14 tests)
-│   │   └── test_default_model_024.py   # Migration 024 default-model bump (4 tests)
-│   ├── test_advisor.py                # Advisor logic (13 tests)
+│   │   ├── test_default_model_024.py   # Migration 024 default-model bump (4 tests)
+│   │   ├── test_use_chrome_025.py      # Migration 025 use_chrome column (4 tests)
+│   │   ├── test_api_error_status_026.py # Migration 026 api_error_status column (4 tests)
+│   │   ├── test_remove_advisor_027.py  # Migration 027 strip +advisor suffix (5 tests)
+│   │   └── test_graphify_config_028.py # Migration 028 graphify config (3 tests)
 │   ├── test_allowed_commands.py       # Command filter + access MCP (26 tests)
 │   ├── test_annotation_prompt.py      # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py     # Annotation summary generation (2 tests)
 │   ├── test_app.py                    # FastAPI app and middleware (26 tests)
 │   ├── test_create_todo_autostart.py  # Todo creation with auto-start (21 tests)
-│   ├── test_database_service.py       # DatabaseService CRUD (58 tests)
+│   ├── test_database_service.py       # DatabaseService CRUD (62 tests)
 │   ├── test_diff_mixing.py           # Diff isolation between items (6 tests)
 │   ├── test_epic_repository.py       # EpicRepository facade (9 tests)
 │   ├── test_epics.py                 # Epic CRUD, progress, assignment (19 tests)
@@ -41,19 +44,22 @@ tests/
 │   ├── test_git_operations.py        # Git diff, merge, commit (70 tests)
 │   ├── test_git_timeout.py           # Git timeout handling (5 tests)
 │   ├── test_git_worktree.py          # Worktree create/cleanup (15 tests)
+│   ├── test_graph_query_tool.py      # graph_query MCP tool server (10 tests)
+│   ├── test_graph_service.py         # GraphService build/refresh/query/status (12 tests)
 │   ├── test_item_repository.py       # ItemRepository facade + transitions (25 tests)
 │   ├── test_item_state.py            # ItemState FSM: states, events, encoding (66 tests)
 │   ├── test_main.py                  # Server startup, port discovery (34 tests)
 │   ├── test_manage.py                # Migration CLI commands (24 tests)
-│   ├── test_mcp_tool_servers.py      # MCP tool server tests (57 tests)
+│   ├── test_mcp_tool_servers.py      # MCP tool server tests (60 tests)
 │   ├── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
 │   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
-│   ├── test_routes.py               # HTTP endpoint tests (94 tests)
-│   ├── test_session.py              # AgentSession SDK wrapper (69 tests)
-│   ├── test_session_service.py      # SessionService lifecycle (51 tests)
+│   ├── test_routes.py               # HTTP endpoint tests (102 tests)
+│   ├── test_session.py              # AgentSession SDK wrapper (83 tests)
+│   ├── test_session_service.py      # SessionService lifecycle (49 tests)
+│   ├── test_use_chrome.py           # Per-task Chrome integration (17 tests)
 │   ├── test_websocket.py            # WebSocket rate limiting (45 tests)
-│   └── test_workflow_service.py     # WorkflowService transitions (97 tests)
+│   └── test_workflow_service.py     # WorkflowService transitions (108 tests)
 ├── integration/
 │   └── test_orchestrator_lifecycle.py  # Full agent workflow (14 tests)
 └── README.md
@@ -74,14 +80,15 @@ Quick checks that core components work:
 - **ItemRepository** (25 tests): Read APIs, `transition()`, `update_fields()`, `move_item`, `_WRITABLE_ITEM_COLUMNS` enforcement
 - **EpicRepository** (9 tests): CRUD facade and `_WRITABLE_EPIC_COLUMNS` enforcement (replaces the old `ALLOWED_EPIC_COLUMNS` whitelist that lived in `database_service.py`)
 
-### Unit Tests — Service Layer (247 tests)
-- **WorkflowService** (97 tests): State transitions (driven through the `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing
-- **DatabaseService** (58 tests): CRUD operations, item dependencies, clarification context column (column whitelisting moved into the repositories)
-- **SessionService** (51 tests): Session lifecycle, commit messages, plugin parsing, SDK wrapper
+### Unit Tests — Service Layer (272 tests)
+- **WorkflowService** (108 tests): State transitions (driven through the `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
+- **DatabaseService** (62 tests): CRUD operations, item dependencies, clarification context column (column whitelisting moved into the repositories)
+- **SessionService** (49 tests): Session lifecycle, commit messages, plugin parsing, SDK wrapper
 - **NotificationService** (41 tests): WebSocket broadcasting, tool formatting, event types
+- **GraphService** (12 tests): graphify build/refresh/query/status, version detection, cost tracking
 
-### Unit Tests — Web Layer (231 tests)
-- **Routes** (94 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval
+### Unit Tests — Web Layer (239 tests)
+- **Routes** (102 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, `/api/graphify/*`
 - **File Routes** (66 tests): Path validation, secret detection, .browserhidden, language mapping, directory scanning, file content
 - **WebSocket** (45 tests): Connection management, rate limiting, dead-connection cleanup
 - **App** (26 tests): FastAPI factory, middleware, CORS, security headers, lifespan
@@ -92,32 +99,33 @@ Quick checks that core components work:
 - **Git Timeout** (5 tests): Timeout configuration and recovery
 
 ### Unit Tests — Agent Tools (96 tests)
-- **MCP Tool Servers** (57 tests): Tool server creation, invocation, request/response flow, `ask_user` context field passthrough
+- **MCP Tool Servers** (60 tests): Tool server creation, invocation, request/response flow, `ask_user` context field passthrough
 - **Allowed Commands** (26 tests): Command filter hook, shell operator rejection, YOLO mode bypass, runtime approval persistence
-- **Advisor** (13 tests): Agent advisor logic
+- **graph_query tool** (10 tests): Read-only knowledge-graph MCP tool server
 
-### Unit Tests — Session (69 tests)
+### Unit Tests — Session (83 tests)
 - AgentSession SDK wrapper, token extraction, event handling, Ollama provider env configuration
 
-### Unit Tests — Migrations (32 tests)
+### Unit Tests — Migrations (48 tests)
 - Apply/rollback single and multiple migrations
 - Migration discovery from files
 - Edge cases: malformed files, concurrent apply, long versions, empty methods
 - Performance: 100-file discovery under 1 second
-- Migration 024 default-model bump (`claude-opus-4-7` → `claude-opus-4-8`) up/down data migration
+- Per-migration data tests: 024 default-model bump (`claude-opus-4-7` → `claude-opus-4-8`), 025 use_chrome, 026 api_error_status, 027 strip `+advisor` suffix, 028 graphify config
 
 ### Unit Tests — Infrastructure (72 tests)
 - **Main** (34 tests): Server startup, port discovery, git validation
 - **Manage** (24 tests): Migration CLI commands
 - **Path Validation** (14 tests): Traversal prevention, null bytes, symlinks, control characters
 
-### Unit Tests — Features (64 tests)
+### Unit Tests — Features (81 tests)
 - **Epics** (19 tests): CRUD, progress stats, item assignment, filtering, dependencies
 - **Todo Auto-start** (21 tests): Todo creation with dependency-based auto-start
-- **Diff Mixing** (6 tests): Diff isolation between concurrent items, base commit pinning
-- **Annotation Summary** (2 tests): Summary text generation
-- **Annotation Prompt** (5 tests): Prompt formatting for agents
+- **use_chrome** (17 tests): Per-task Chrome browser integration
 - **Mini-MCP** (11 tests): Example MCP server protocol compliance
+- **Diff Mixing** (6 tests): Diff isolation between concurrent items, base commit pinning
+- **Annotation Prompt** (5 tests): Prompt formatting for agents
+- **Annotation Summary** (2 tests): Summary text generation
 
 ### Integration Tests (14 tests)
 Tests the full orchestrator lifecycle through the service layer:

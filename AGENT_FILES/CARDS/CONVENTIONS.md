@@ -134,7 +134,7 @@ When in doubt, read these:
 - **Domain / state machine**: `src/domain/item_state.py`
 - **Repository facade**: `src/repositories/item_repository.py`
 - **Focused service**: `src/services/notification_service.py`
-- **HTTP route handler**: `src/web/routes.py::board_page` (~`routes.py:181`)
+- **HTTP route handler**: `src/web/routes.py::board_page` (~`routes.py:182`)
 - **MCP tool server**: `src/agent/clarification.py`
 - **PreToolUse hook**: `src/agent/command_filter.py`
 - **Migration**: `src/migrations/versions/021_add_context_to_clarifications.py`

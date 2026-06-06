@@ -42,7 +42,7 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1035 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1115 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## How it works
 
@@ -101,6 +101,10 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
 - **Per-item model selection** — choose between Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, and Claude Haiku 4.5 per item (falls back to global config)
+- **Auto-approve modes** — per-item setting to skip the manual review gate: OFF (lands in Review for a human), REVIEW (spawns a read-only review agent that auto-merges on approval or sends comments back to the original agent, capped at 3 round-trips), or DIRECT (auto-merge as soon as the agent finishes)
+- **Knowledge graph (graphify)** — the dashboard owns a navigable AST + optional semantic graph of the target project (`graphify-out/`); when enabled in Settings ▸ Graphify, agents get a read-only `graph_query` MCP tool to orient before editing, and the graph auto-refreshes after a merge (free AST build); managed via `/api/graphify/*` with live build-progress over WebSocket
+- **Per-task Chrome integration** — items can opt into a Chrome browser session for the agent (`use_chrome`), enabling browser-driven work
+- **Transient API-error handling** — agent completions classify and persist `api_error_status` on `token_usage`, surfacing transient Claude API failures (e.g. overload) distinctly from real agent errors
 - **Multi-repo workspaces** — point the dashboard at a folder containing sibling git repos and each item picks one of them via a `repo` field; worktrees are created inside the chosen subrepo and agents get read-only access to the other sibling repos for cross-repo context
 - **WIP limit** — configurable cap on concurrent running agents; items started beyond the limit are queued and auto-started when a slot opens
 - **Agent config** — set system prompt, model, project context, MCP servers, and plugins
@@ -154,6 +158,7 @@ graph TB
             NS["NotificationService"]
             GS["GitService"]
             SS["SessionService"]
+            GRS["GraphService"]
         end
         Sess["AgentSession — Claude SDK wrapper"]
         DB["Database — aiosqlite + migrations"]
@@ -167,6 +172,7 @@ graph TB
         BoardView["view_board"]
         ToolAccess["request_tool_access"]
         ShortcutTool["create_shortcut"]
+        GraphQuery["graph_query"]
     end
 
     subgraph GitLayer["Git Layer"]
@@ -181,6 +187,7 @@ graph TB
     WF --> GS
     WF --> NS
     WF --> SS
+    WF --> GRS
     SS --> Sess
     DBS --> DB
     NS --> WSMgr
@@ -189,6 +196,7 @@ graph TB
     Sess --> TodoTool
     Sess --> CommitTool
     Sess --> ShortcutTool
+    Sess --> GraphQuery
     DB -->|SQLite| DB
     GS --> GitOps
     GS --> WT
@@ -196,10 +204,10 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 5-service architecture (Workflow, Database, Notification, Git, Session) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~8,900 lines across 40 source files (excluding migrations)
-- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~9,300 lines JS + ~3,850 lines CSS
-- **Agent**: Claude Agent SDK (`claude-agent-sdk`), models: Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, Claude Haiku 4.5, 7 built-in MCP tools; optional Ollama provider (experimental)
-- **Database**: SQLite with 27 versioned migrations (auto-runs on startup)
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 6-service architecture (Workflow, Database, Notification, Git, Session, Graph) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~9,500 lines across 42 source files (excluding migrations)
+- **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~9,400 lines JS + ~3,850 lines CSS
+- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, Claude Haiku 4.5, 8 built-in MCP tools (incl. read-only `graph_query`); optional Ollama provider (experimental)
+- **Database**: SQLite with 28 versioned migrations (auto-runs on startup)
 - **Security**: Localhost only, no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
 
 ### Item lifecycle
@@ -239,7 +247,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–024) adding columns and tables incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–028) adding columns and tables incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -274,6 +282,9 @@ erDiagram
         int start_copy
         int has_file_changes
         text repo
+        int auto_approve
+        text pause_message
+        int use_chrome
         text created_at
         text updated_at
     }
@@ -308,6 +319,7 @@ erDiagram
         int output_tokens
         int total_tokens
         real cost_usd
+        int api_error_status
         text completed_at
     }
 
@@ -327,6 +339,9 @@ erDiagram
         bool ollama_enabled
         text ollama_base_url
         int wip_limit
+        bool graphify_enabled
+        bool graphify_auto_refresh
+        text graphify_backend
         text updated_at
     }
 
@@ -464,6 +479,11 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `GET` | `/api/shortcuts/{id}/output` | Get shortcut output |
 | `POST` | `/api/shortcuts/{id}/reset` | Reset shortcut |
 | `GET` | `/api/websocket/stats` | WebSocket connection stats |
+| `GET` | `/api/ollama/models` | Discover local Ollama models (experimental; `?force=true` busts cache) |
+| `GET` | `/api/graphify/status` | Knowledge-graph status: installed/latest version, build-in-progress, graph stats |
+| `POST` | `/api/graphify/build` | Build the graph (`semantic` flag for the LLM layer) |
+| `POST` | `/api/graphify/install` | Upgrade the graphify package in the dashboard venv |
+| `GET` | `/api/graphify/query` | Query the graph (`q=...`) |
 | `GET` | `/api/files/tree` | Directory tree (lazy, depth-limited) |
 | `GET` | `/api/files/content` | File content (text, image, binary) |
 | `WebSocket` | `/ws` | Real-time event stream |
@@ -482,6 +502,8 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `epic_created` | Server → Client | New epic added |
 | `epic_updated` | Server → Client | Epic fields changed |
 | `epic_deleted` | Server → Client | Epic removed |
+| `graph_build_progress` | Server → Client | Graphify build phase updates |
+| `graph_ready` | Server → Client | Graphify build finished (or failed) |
 
 ## Troubleshooting
 
@@ -542,8 +564,9 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 - [`CARDS/TESTING.md`](AGENT_FILES/CARDS/TESTING.md) — test layout (unit / integration / smoke / e2e) and per-suite conventions
 - [`CARDS/COMMIT_POLICY.md`](AGENT_FILES/CARDS/COMMIT_POLICY.md) — commit policies (e.g. excluding annotation images)
 - [`CARDS/OLLAMA_PROVIDER.md`](AGENT_FILES/CARDS/OLLAMA_PROVIDER.md) — Ollama as a local model provider via Claude Agent SDK + dashboard wiring
+- [`CARDS/GRAPHIFY.md`](AGENT_FILES/CARDS/GRAPHIFY.md) — using and maintaining the codebase knowledge graph (`graphify-out/`)
 
-Two historical snapshots (point-in-time, **not maintained**) sit in the AGENT_FILES root: `ASSESSMENT_CODE.md` (module-by-module quality ratings) and `AUDIT.md` (security audit, 14 findings, 9 of 9 actionable remediated).
+Point-in-time snapshots (**not maintained**) sit in the AGENT_FILES root: `ASSESSMENT_CODE.md` (module-by-module quality ratings), `AUDIT.md` (security audit, 14 findings, 9 of 9 actionable remediated), and dated decision/eval records (`EVAL_*`, `PLAN_*`, `SDK_BUMP_*`).
 
 ## License
 

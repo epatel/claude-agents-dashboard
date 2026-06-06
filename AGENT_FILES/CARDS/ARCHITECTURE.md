@@ -7,18 +7,19 @@ Tour of the major subsystems. For named flows with line-numbered entry points se
 
 ## Backend services
 
-FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin facade delegating to 5 services in `src/services/`:
+FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin facade delegating to 6 services in `src/services/`:
 
-- `WorkflowService` (~1700 LOC) — agent lifecycle, state transitions (driven by `ItemState` FSM in `src/domain/item_state.py`), merge conflict auto-resolution, dependency auto-start, WIP limit queueing, multi-repo session kwargs, pause/resume with session capture
+- `WorkflowService` (~1800 LOC) — agent lifecycle, state transitions (driven by `ItemState` FSM in `src/domain/item_state.py`), merge conflict auto-resolution, dependency auto-start, WIP limit queueing, single/multi-repo session kwargs (`_item_session_kwargs`), pause/resume with session capture, post-merge graph refresh
 - `DatabaseService` (~570 LOC) — all DB operations (parameterized; column whitelists live in the repositories)
-- `NotificationService` — WebSocket broadcasting + tool formatting; the single fan-out point on every state change
+- `NotificationService` — WebSocket broadcasting + tool formatting; the single fan-out point on every state change (incl. graphify `graph_build_progress` / `graph_ready` events)
 - `GitService` — worktree management, merge operations, repo path resolution
 - `SessionService` — Claude SDK session lifecycle, commit messages, plugin parsing, Ollama config
+- `GraphService` — graphify knowledge graph: build/refresh/query/status, version detection, cost tracking; shells out to the `graphify` venv binary and owns `graphify-out/`
 
 ## Web layer (`src/web/`)
 
 - `app.py` — FastAPI app + lifespan (runs DB migrations, the startup state-encoding audit `_audit_item_state_encodings`, and the periodic stale-worktree scanner)
-- `routes.py` — board/item/epic/clarification/shortcut/notifications/stats HTTP endpoints (~1600 LOC)
+- `routes.py` — board/item/epic/clarification/shortcut/notifications/stats/graphify HTTP endpoints (~1650 LOC)
 - `file_routes.py` — attachments + file browser
 - `websocket.py` — WS connection manager
 
@@ -34,6 +35,7 @@ Claude SDK integration plus built-in MCP tool servers and PreToolUse hooks. One 
 - `command_access.py` — `request_command_access`
 - `tool_access.py` — `request_tool_access`
 - `shortcut.py` — `create_shortcut`
+- `graph_query.py` — `graph_query` (read-only knowledge-graph query; only wired in when `graphify_enabled`)
 
 **PreToolUse hooks**:
 - `command_filter.py` — denies shell commands not in the allowlist
