@@ -19,6 +19,7 @@ Common operations and the cards that cover them. Order is suggested reading orde
 | Trace an existing flow end-to-end | [PROJECT_MAP](PROJECT_MAP.md) only |
 | Introduce a new named flow / UI vocabulary | [PROJECT_MAP_STRATEGY](PROJECT_MAP_STRATEGY.md) → [PROJECT_MAP](PROJECT_MAP.md) |
 | Modify Ollama integration / model selection | [OLLAMA_PROVIDER](OLLAMA_PROVIDER.md) → [ARCHITECTURE](ARCHITECTURE.md) (`SessionService`) |
+| Query / rebuild / upgrade the knowledge graph | [GRAPHIFY](GRAPHIFY.md) only |
 | Localized bug fix in existing code | None — read the code |
 | About to commit | [COMMIT_POLICY](COMMIT_POLICY.md) |
 
@@ -75,3 +76,8 @@ If your task isn't above, fall through to the **Load when** triggers below.
 - **Load when**: working on Ollama integration, model selection, or the `--experimental` flag.
 - **Skip when**: changes don't touch model providers.
 - *Ollama setup; how the SDK routes requests when `ollama_enabled`.*
+
+### [GRAPHIFY](GRAPHIFY.md)
+- **Load when**: querying the `graphify-out/` knowledge graph, rebuilding it, or upgrading the graphify tool/skill.
+- **Skip when**: normal feature work not touching the graph.
+- *Use the venv binary (not PATH); query/path/explain; incremental update vs full rebuild; upgrading tool + skill together.*
