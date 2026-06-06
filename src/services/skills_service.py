@@ -191,6 +191,51 @@ class SkillsService:
             })
         return out
 
+    async def discover(self, spec: str) -> List[Dict[str, Any]]:
+        """Find every skill (a folder with a SKILL.md) in a repo/path.
+
+        Accepts a bare repo (owner/repo or URL) or a sub-path; returns one entry
+        per SKILL.md found, each with a fully-resolved install `spec` pinned to
+        the ref. A single exact skill path returns one entry.
+        """
+        return await asyncio.to_thread(self._discover_sync, spec)
+
+    def _discover_sync(self, spec: str) -> List[Dict[str, Any]]:
+        owner, repo, ref, path = self._parse_spec(spec)
+        if not ref:
+            info = self._get_json(f"https://api.github.com/repos/{owner}/{repo}")
+            ref = info.get("default_branch", "main")
+        tree = self._get_json(
+            f"https://api.github.com/repos/{owner}/{repo}/git/trees/{ref}?recursive=1"
+        ).get("tree", [])
+        prefix = (path.rstrip("/") + "/") if path else ""
+        found = []
+        for node in tree:
+            p = node.get("path", "")
+            if node.get("type") != "blob" or not p.startswith(prefix):
+                continue
+            if not (p.endswith("/SKILL.md") or p == "SKILL.md"):
+                continue
+            skill_path = p[: -len("SKILL.md")].rstrip("/")  # folder holding SKILL.md
+            name = (skill_path.split("/")[-1] if skill_path else repo).lower()
+            if not _valid_name(name):
+                continue
+            description = ""
+            try:
+                raw = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{p}"
+                description = _parse_frontmatter(self._get_text(raw)).get("description", "") or ""
+            except Exception:
+                pass
+            install_spec = f"{owner}/{repo}" + (f"/{skill_path}" if skill_path else "") + f"@{ref}"
+            found.append({
+                "name": name,
+                "path": skill_path,
+                "description": description,
+                "spec": install_spec,
+            })
+        found.sort(key=lambda s: s["name"])
+        return found
+
     @staticmethod
     def _parse_spec(spec: str):
         """Resolve a spec to (owner, repo, ref, path). Accepts:

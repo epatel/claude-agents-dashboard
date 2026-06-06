@@ -138,6 +138,10 @@ def _make_mock_orchestrator():
     )
     mock_orch.skills_service.install = AsyncMock(return_value={"ok": True, "name": "docx"})
     mock_orch.skills_service.remove = AsyncMock(return_value={"ok": True, "name": "docx"})
+    mock_orch.skills_service.discover = AsyncMock(return_value=[
+        {"name": "docx", "path": "skills/docx", "description": "d", "spec": "anthropics/skills/skills/docx@main"},
+        {"name": "pdf", "path": "skills/pdf", "description": "p", "spec": "anthropics/skills/skills/pdf@main"},
+    ])
 
     return mock_orch
 
@@ -1311,6 +1315,21 @@ class TestSkills:
     @pytest.mark.asyncio
     async def test_install_requires_spec(self, client):
         resp = await client.post("/api/skills/install", json={"spec": "  "})
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_discover_lists_repo_skills(self, app_and_db):
+        app, db = app_and_db
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/skills/discover", json={"spec": "anthropics/skills"})
+        assert resp.status_code == 200
+        names = [s["name"] for s in resp.json()["skills"]]
+        assert names == ["docx", "pdf"]
+        app.state.orchestrator.skills_service.discover.assert_awaited_once_with("anthropics/skills")
+
+    @pytest.mark.asyncio
+    async def test_discover_requires_spec(self, client):
+        resp = await client.post("/api/skills/discover", json={"spec": ""})
         assert resp.status_code == 400
 
     @pytest.mark.asyncio

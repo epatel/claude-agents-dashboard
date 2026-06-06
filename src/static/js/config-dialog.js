@@ -406,23 +406,38 @@ const ConfigDialog = {
         const el = document.getElementById('skills-installed-list');
         if (!el) return;
         if (!skills || skills.length === 0) {
-            el.innerHTML = '<div style="color:var(--text-muted);">No skills installed yet. Add one below.</div>';
+            el.innerHTML = '<div style="color:var(--text-muted);padding:4px 0;">No skills installed yet. Add one below.</div>';
             return;
         }
         el.innerHTML = skills.map(s => {
             const name = this._escapeHtml(s.name);
             const desc = this._escapeHtml(s.description || '');
-            return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:4px;">
-                <input type="checkbox" ${s.enabled ? 'checked' : ''} title="Enable for this project"
-                       onchange="ConfigDialog.toggleSkill('${name}', this.checked)" style="cursor:pointer;margin-top:2px;">
-                <div style="flex:1;min-width:0;">
-                    <div style="font-family:var(--font-mono);font-size:12px;">${name}</div>
-                    <div style="font-size:11px;color:var(--text-muted);">${desc}</div>
-                </div>
-                <button type="button" class="btn btn-xs" title="Remove from library"
-                        onclick="ConfigDialog.removeSkill('${name}')" style="opacity:0.6;min-width:auto;">&#10005;</button>
+            return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:6px;">
+                <span style="flex:1 1 auto;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${desc}">${name}</span>
+                <button type="button" class="btn btn-xs" title="Remove from library" onclick="ConfigDialog.removeSkill('${name}')" style="flex:0 0 auto;opacity:0.55;min-width:auto;padding:2px 8px;">&#10005;</button>
+                <input type="checkbox" ${s.enabled ? 'checked' : ''} title="Enable for this project" onchange="ConfigDialog.toggleSkill('${name}', this.checked)" style="flex:0 0 auto;cursor:pointer;margin:0;">
             </div>`;
         }).join('');
+    },
+
+    // Shared renderer for installable choices (browse results + multi-skill repos).
+    _renderSkillChoices(el, skills, header) {
+        if (!el) return;
+        const rows = skills.map(s => {
+            const name = this._escapeHtml(s.name);
+            const desc = this._escapeHtml(s.description || '');
+            const spec = this._escapeHtml(s.spec || '');
+            const sub = s.path ? this._escapeHtml(s.path) : '';
+            return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:6px;">
+                <div style="flex:1 1 auto;min-width:0;">
+                    <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}${sub ? ` <span style="color:var(--text-muted);font-size:11px;">${sub}</span>` : ''}</div>
+                    <div style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${desc}">${desc}</div>
+                </div>
+                <button type="button" class="btn btn-xs" onclick="ConfigDialog.installExact('${spec}','${name}')" style="flex:0 0 auto;min-width:auto;">Install</button>
+            </div>`;
+        }).join('');
+        const head = header ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">${this._escapeHtml(header)}</div>` : '';
+        el.innerHTML = head + rows;
     },
 
     async refreshSkills() {
@@ -459,24 +474,50 @@ const ConfigDialog = {
         this.refreshSkills();
     },
 
-    async installSkill(spec) {
+    // "Add by URL" — scan the repo/path for SKILL.md files, then install or
+    // present a picker when a repo contains more than one skill.
+    async installSkill() {
         const input = document.getElementById('skill-add-input');
-        const value = (spec || (input ? input.value : '') || '').trim();
+        const value = (input ? input.value : '').trim();
         if (!value) return;
+        const el = document.getElementById('skills-browse-list');
+        if (el) el.textContent = 'Scanning repo…';
+        let found;
+        try {
+            const data = await Api.request('POST', '/api/skills/discover', { spec: value });
+            found = data.skills || [];
+        } catch (err) {
+            if (el) el.innerHTML = '<span style="color:var(--warning);">⚠ could not scan that repo (not found, or GitHub rate limit?)</span>';
+            return;
+        }
+        if (found.length === 0) {
+            if (el) el.innerHTML = '<span style="color:var(--text-muted);">No SKILL.md found in that repo/path.</span>';
+            return;
+        }
+        if (found.length === 1) {
+            if (el) el.innerHTML = '';
+            await this.installExact(found[0].spec, found[0].name);
+            if (input) input.value = '';
+            return;
+        }
+        this._renderSkillChoices(el, found, `Found ${found.length} skills — choose which to install:`);
+    },
+
+    // Install one resolved skill spec (from browse, a repo scan, or a single hit).
+    async installExact(spec, name) {
         const confirmed = await DialogCore.confirm(
-            `Install "${value}"? Installing a third-party skill adds its instructions to your agents when enabled.`,
+            `Install "${name || spec}"? Installing a third-party skill adds its instructions to your agents when enabled.`,
             'Install skill?', 'Install'
         );
         if (!confirmed) return;
         const el = document.getElementById('skills-installed-list');
         if (el) el.textContent = 'Installing…';
         try {
-            const res = await Api.request('POST', '/api/skills/install', { spec: value });
+            const res = await Api.request('POST', '/api/skills/install', { spec });
             if (res && res.ok === false) {
                 if (el) el.innerHTML = `<span style="color:var(--warning);">⚠ Install failed: ${this._escapeHtml(res.error || 'unknown error')}</span>`;
                 return;
             }
-            if (input) input.value = '';
         } catch (err) {
             console.error('install skill failed:', err);
         }
@@ -493,18 +534,7 @@ const ConfigDialog = {
                 el.innerHTML = '<span style="color:var(--text-muted);">No skills found.</span>';
                 return;
             }
-            el.innerHTML = skills.map(s => {
-                const name = this._escapeHtml(s.name);
-                const desc = this._escapeHtml(s.description || '');
-                const spec = this._escapeHtml(s.spec || '');
-                return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:4px;">
-                    <div style="flex:1;min-width:0;">
-                        <div style="font-family:var(--font-mono);font-size:12px;">${name}</div>
-                        <div style="font-size:11px;color:var(--text-muted);">${desc}</div>
-                    </div>
-                    <button type="button" class="btn btn-xs" onclick="ConfigDialog.installSkill('${spec}')" style="min-width:auto;">Install</button>
-                </div>`;
-            }).join('');
+            this._renderSkillChoices(el, skills, null);
         } catch (err) {
             if (el) el.innerHTML = '<span style="color:var(--warning);">⚠ failed to load (GitHub rate limit?)</span>';
         }

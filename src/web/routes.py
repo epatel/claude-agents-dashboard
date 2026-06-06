@@ -1082,6 +1082,18 @@ async def skills_browse(request: Request, source: str = "anthropic"):
     return {"skills": skills}
 
 
+@router.post("/api/skills/discover")
+async def skills_discover(request: Request, body: SkillInstallRequest):
+    """Find every skill (folder with a SKILL.md) in a repo/path."""
+    if not body.spec or not body.spec.strip():
+        raise HTTPException(status_code=400, detail="spec is required")
+    try:
+        skills = await request.app.state.orchestrator.skills_service.discover(body.spec.strip())
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"discover failed: {exc}")
+    return {"skills": skills}
+
+
 @router.post("/api/skills/install")
 async def skills_install(request: Request, body: SkillInstallRequest):
     if not body.spec or not body.spec.strip():

@@ -113,6 +113,46 @@ class TestInstall:
         assert res["ok"] is False
 
 
+class TestDiscover:
+    @pytest.mark.asyncio
+    async def test_finds_all_skills_in_repo(self, tmp_path):
+        svc = SkillsService(library_dir=tmp_path / "lib")
+
+        def fake_get_json(url):
+            if url.endswith("/repos/o/r"):
+                return {"default_branch": "trunk"}
+            if "git/trees/trunk" in url:
+                return {"tree": [
+                    {"type": "blob", "path": "a/SKILL.md"},
+                    {"type": "blob", "path": "nested/b/SKILL.md"},
+                    {"type": "blob", "path": "README.md"},
+                ]}
+            raise AssertionError(url)
+
+        svc._get_json = fake_get_json
+        svc._get_text = lambda url: "---\ndescription: D\n---\n"
+
+        found = await svc.discover("o/r")
+        names = sorted(s["name"] for s in found)
+        assert names == ["a", "b"]
+        by_name = {s["name"]: s for s in found}
+        # install spec is pinned to the resolved ref and points at the skill folder
+        assert by_name["b"]["spec"] == "o/r/nested/b@trunk"
+        assert by_name["a"]["spec"] == "o/r/a@trunk"
+
+    @pytest.mark.asyncio
+    async def test_root_skill(self, tmp_path):
+        svc = SkillsService(library_dir=tmp_path / "lib")
+        svc._get_json = lambda url: (
+            {"default_branch": "main"} if url.endswith("/repos/o/r")
+            else {"tree": [{"type": "blob", "path": "SKILL.md"}]}
+        )
+        svc._get_text = lambda url: "---\ndescription: root\n---\n"
+        found = await svc.discover("o/r")
+        assert len(found) == 1
+        assert found[0]["name"] == "r" and found[0]["spec"] == "o/r@main"
+
+
 class TestBrowse:
     @pytest.mark.asyncio
     async def test_browse_anthropic(self, tmp_path):

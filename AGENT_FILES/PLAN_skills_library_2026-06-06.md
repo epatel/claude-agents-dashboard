@@ -68,6 +68,11 @@ graph TD
 - [x] `enabled_skills` is **not** written by `PUT /api/config` — owned solely by `/api/skills/{name}/enabled` so saving Settings can't wipe a project's enabled set.
 - [x] Tests: `test_skills_service.py` (incl. mocked install/browse + name-traversal guard), migration 029 test, `test_routes.py::TestSkills`. 1099 passing.
 
+### Phase 2.1 — repo discovery + UI polish
+
+- [x] **Repo discovery** — `SkillsService.discover(spec)` + `POST /api/skills/discover`: given a bare repo (`owner/repo` or URL) it scans the tree for **every** `SKILL.md` and returns one install candidate per skill (folder path = the SKILL.md's parent; install `spec` pinned to the resolved ref `@<sha/branch>`). "Add by URL" now scans first: 0 → message, 1 → install, >1 → a picker list. Exact skill paths still resolve to a single hit. Live-verified: `anthropics/skills` → 18 skills; exact path → 1.
+- [x] **Row UI** — installed rows are now single-line `name … [×] [✓]` (name truncates with ellipsis, description on hover-title, enable checkbox right-aligned), replacing the broken wrapping/overlap layout. Browse + discovery results share one `_renderSkillChoices` renderer. 1103 passing.
+
 ## Risks
 
 | Risk | Mitigation |
