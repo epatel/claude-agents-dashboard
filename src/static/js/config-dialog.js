@@ -96,6 +96,9 @@ const ConfigDialog = {
             document.getElementById('config-graphify-backend').value = config.graphify_backend || 'ast';
             this.refreshGraphifyStatus();
 
+            // Load skills library (installed + enabled flags)
+            this.refreshSkills();
+
             // Populate Ollama models in the config model dropdown
             if (config.ollama_enabled && this._ollamaModels.length > 0) {
                 this._updateModelSelect('config-model', false);
@@ -390,6 +393,120 @@ const ConfigDialog = {
             if (el) el.innerHTML = '<span style="color:var(--accent);">● building… (progress streams live)</span>';
         } catch (err) {
             console.error('graphify build failed:', err);
+        }
+    },
+
+    _escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+        ));
+    },
+
+    _renderInstalledSkills(skills) {
+        const el = document.getElementById('skills-installed-list');
+        if (!el) return;
+        if (!skills || skills.length === 0) {
+            el.innerHTML = '<div style="color:var(--text-muted);">No skills installed yet. Add one below.</div>';
+            return;
+        }
+        el.innerHTML = skills.map(s => {
+            const name = this._escapeHtml(s.name);
+            const desc = this._escapeHtml(s.description || '');
+            return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:4px;">
+                <input type="checkbox" ${s.enabled ? 'checked' : ''} title="Enable for this project"
+                       onchange="ConfigDialog.toggleSkill('${name}', this.checked)" style="cursor:pointer;margin-top:2px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-family:var(--font-mono);font-size:12px;">${name}</div>
+                    <div style="font-size:11px;color:var(--text-muted);">${desc}</div>
+                </div>
+                <button type="button" class="btn btn-xs" title="Remove from library"
+                        onclick="ConfigDialog.removeSkill('${name}')" style="opacity:0.6;min-width:auto;">&#10005;</button>
+            </div>`;
+        }).join('');
+    },
+
+    async refreshSkills() {
+        const el = document.getElementById('skills-installed-list');
+        if (el) el.textContent = 'Loading…';
+        try {
+            const data = await Api.request('GET', '/api/skills');
+            this._renderInstalledSkills(data.installed || []);
+        } catch (err) {
+            if (el) el.innerHTML = '<span style="color:var(--warning);">⚠ failed to load skills</span>';
+        }
+    },
+
+    async toggleSkill(name, enabled) {
+        try {
+            await Api.request('POST', `/api/skills/${encodeURIComponent(name)}/enabled`, { enabled: !!enabled });
+        } catch (err) {
+            console.error('toggle skill failed:', err);
+            this.refreshSkills();
+        }
+    },
+
+    async removeSkill(name) {
+        const confirmed = await DialogCore.confirm(
+            `Remove skill "${name}" from the library? It will also be disabled for this project.`,
+            'Remove skill?', 'Remove'
+        );
+        if (!confirmed) return;
+        try {
+            await Api.request('DELETE', `/api/skills/${encodeURIComponent(name)}`);
+        } catch (err) {
+            console.error('remove skill failed:', err);
+        }
+        this.refreshSkills();
+    },
+
+    async installSkill(spec) {
+        const input = document.getElementById('skill-add-input');
+        const value = (spec || (input ? input.value : '') || '').trim();
+        if (!value) return;
+        const confirmed = await DialogCore.confirm(
+            `Install "${value}"? Installing a third-party skill adds its instructions to your agents when enabled.`,
+            'Install skill?', 'Install'
+        );
+        if (!confirmed) return;
+        const el = document.getElementById('skills-installed-list');
+        if (el) el.textContent = 'Installing…';
+        try {
+            const res = await Api.request('POST', '/api/skills/install', { spec: value });
+            if (res && res.ok === false) {
+                if (el) el.innerHTML = `<span style="color:var(--warning);">⚠ Install failed: ${this._escapeHtml(res.error || 'unknown error')}</span>`;
+                return;
+            }
+            if (input) input.value = '';
+        } catch (err) {
+            console.error('install skill failed:', err);
+        }
+        this.refreshSkills();
+    },
+
+    async browseSkills() {
+        const el = document.getElementById('skills-browse-list');
+        if (el) el.textContent = 'Loading…';
+        try {
+            const data = await Api.request('GET', '/api/skills/browse?source=anthropic');
+            const skills = data.skills || [];
+            if (skills.length === 0) {
+                el.innerHTML = '<span style="color:var(--text-muted);">No skills found.</span>';
+                return;
+            }
+            el.innerHTML = skills.map(s => {
+                const name = this._escapeHtml(s.name);
+                const desc = this._escapeHtml(s.description || '');
+                const spec = this._escapeHtml(s.spec || '');
+                return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:4px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-family:var(--font-mono);font-size:12px;">${name}</div>
+                        <div style="font-size:11px;color:var(--text-muted);">${desc}</div>
+                    </div>
+                    <button type="button" class="btn btn-xs" onclick="ConfigDialog.installSkill('${spec}')" style="min-width:auto;">Install</button>
+                </div>`;
+            }).join('');
+        } catch (err) {
+            if (el) el.innerHTML = '<span style="color:var(--warning);">⚠ failed to load (GitHub rate limit?)</span>';
         }
     },
 

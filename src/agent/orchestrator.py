@@ -14,6 +14,7 @@ from ..services import (
     GraphService,
     NotificationService,
     SessionService,
+    SkillsService,
     WorkflowService,
 )
 
@@ -48,6 +49,7 @@ class AgentOrchestrator:
         self.graph_service = GraphService(
             target_project, self.notification_service, repos=repos
         )
+        self.skills_service = SkillsService()
         self.session_service = SessionService()
         self.workflow_service = WorkflowService(
             self.db_service,

@@ -986,6 +986,9 @@ async def update_config(request: Request, body: AgentConfig):
                 body.graphify_auto_refresh,
                 body.graphify_backend,
             ),
+            # NOTE: enabled_skills is intentionally NOT written here — it is owned
+            # by the /api/skills/{name}/enabled endpoints so saving Settings can't
+            # wipe a project's enabled skill set.
         )
         await conn.commit()
     return await DatabaseService(db).get_agent_config()
@@ -1034,6 +1037,77 @@ async def graphify_query(request: Request, q: str):
     if not q or not q.strip():
         raise HTTPException(status_code=400, detail="query 'q' is required")
     return await request.app.state.orchestrator.graph_service.query(q.strip())
+
+
+# --- Skills library --------------------------------------------------------
+
+class SkillInstallRequest(BaseModel):
+    spec: str
+
+
+class SkillEnabledRequest(BaseModel):
+    enabled: bool
+
+
+async def _enabled_skills(db) -> list:
+    from ..services.database_service import DatabaseService
+    cfg = await DatabaseService(db).get_agent_config()
+    return list(cfg.get("enabled_skills") or [])
+
+
+async def _write_enabled_skills(db, enabled: list) -> None:
+    async with db.connect() as conn:
+        await conn.execute(
+            "UPDATE agent_config SET enabled_skills = ?, updated_at = datetime('now') WHERE id = 1",
+            (json.dumps(enabled),),
+        )
+        await conn.commit()
+
+
+@router.get("/api/skills")
+async def skills_list(request: Request):
+    """Installed library skills with per-project enabled flags."""
+    enabled = await _enabled_skills(request.app.state.db)
+    skills = request.app.state.orchestrator.skills_service.list_installed(enabled)
+    return {"installed": skills}
+
+
+@router.get("/api/skills/browse")
+async def skills_browse(request: Request, source: str = "anthropic"):
+    """List installable skills from a public source (cached)."""
+    try:
+        skills = await request.app.state.orchestrator.skills_service.browse(source)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"browse failed: {exc}")
+    return {"skills": skills}
+
+
+@router.post("/api/skills/install")
+async def skills_install(request: Request, body: SkillInstallRequest):
+    if not body.spec or not body.spec.strip():
+        raise HTTPException(status_code=400, detail="spec is required")
+    return await request.app.state.orchestrator.skills_service.install(body.spec.strip())
+
+
+@router.post("/api/skills/{name}/enabled")
+async def skills_set_enabled(request: Request, name: str, body: SkillEnabledRequest):
+    db = request.app.state.db
+    enabled = await _enabled_skills(db)
+    if body.enabled and name not in enabled:
+        enabled.append(name)
+    elif not body.enabled:
+        enabled = [n for n in enabled if n != name]
+    await _write_enabled_skills(db, enabled)
+    return {"ok": True, "enabled": enabled}
+
+
+@router.delete("/api/skills/{name}")
+async def skills_remove(request: Request, name: str):
+    db = request.app.state.db
+    res = await request.app.state.orchestrator.skills_service.remove(name)
+    enabled = [n for n in await _enabled_skills(db) if n != name]
+    await _write_enabled_skills(db, enabled)
+    return res
 
 
 @router.get("/api/ollama/models")

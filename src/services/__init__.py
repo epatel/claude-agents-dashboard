@@ -5,6 +5,7 @@ from .git_service import GitService
 from .graph_service import GraphService
 from .notification_service import NotificationService
 from .session_service import SessionService
+from .skills_service import SkillsService
 from .workflow_service import WorkflowService
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     "GraphService",
     "NotificationService",
     "SessionService",
+    "SkillsService",
     "WorkflowService",
 ]

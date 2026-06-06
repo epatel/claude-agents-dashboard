@@ -416,6 +416,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                 <button type="button" class="review-tab" data-map-name="dialog.settings.tab-mcp" data-tab="mcp" onclick="Dialogs.switchConfigTab('mcp')">MCP</button>
                 <button type="button" class="review-tab" data-map-name="dialog.settings.tab-plugins" data-tab="plugins" onclick="Dialogs.switchConfigTab('plugins')">Plugins</button>
                 <button type="button" class="review-tab" data-map-name="dialog.settings.tab-graphify" data-tab="graphify" onclick="Dialogs.switchConfigTab('graphify')">Graphify</button>
+                <button type="button" class="review-tab" data-map-name="dialog.settings.tab-skills" data-tab="skills" onclick="Dialogs.switchConfigTab('skills')">Skills</button>
                 <button type="button" class="review-tab" data-map-name="dialog.settings.tab-appearance" data-tab="appearance" onclick="Dialogs.switchConfigTab('appearance')">Appearance</button>
             </div>
             <!-- General tab -->
@@ -568,6 +569,40 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                         <button type="button" class="btn btn-sm" onclick="ConfigDialog.buildGraph(true)">Enrich (semantic)</button>
                     </div>
                     <p class="text-muted" style="font-size:12px;margin:8px 0 0;">AST build is free and runs in seconds. Semantic enrichment uses an LLM and can cost ~hundreds of thousands of tokens on a large repo.</p>
+                </div>
+            </div>
+            <!-- Skills tab -->
+            <div class="config-tab-content" data-map-name="dialog.settings.panel-skills" data-config-tab="skills" style="padding:20px;display:none;">
+                <p class="text-muted" style="font-size:12px;margin:0 0 12px;">
+                    Install Agent Skills into a local library and enable a subset for <b>this project</b>.
+                    Enabled skills are delivered to agents. Installing a third-party skill adds its
+                    instructions to your agents — review before enabling.
+                </p>
+                <div class="form-group" style="margin:0;">
+                    <label style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                        Installed skills
+                        <button type="button" class="btn btn-xs" onclick="ConfigDialog.refreshSkills()" title="Refresh" style="font-size:11px;padding:2px 8px;">↻ Refresh</button>
+                    </label>
+                    <div id="skills-installed-list" style="font-size:12px;color:var(--text-muted);">Loading…</div>
+                </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label for="skill-add-input">Add by GitHub URL or <code>owner/repo/path</code></label>
+                    <div style="display:flex;gap:8px;margin-top:6px;">
+                        <input type="text" id="skill-add-input" placeholder="anthropics/skills/skills/docx" style="flex:1;"
+                               onkeydown="if(event.key==='Enter'){event.preventDefault();ConfigDialog.installSkill();}">
+                        <button type="button" class="btn btn-sm" onclick="ConfigDialog.installSkill()">Install</button>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
+                        Browse anthropics/skills
+                        <button type="button" class="btn btn-xs" onclick="ConfigDialog.browseSkills()" style="font-size:11px;padding:2px 8px;">Load list</button>
+                    </label>
+                    <div id="skills-browse-list" style="font-size:12px;color:var(--text-muted);">
+                        Click “Load list” to fetch installable skills from
+                        <a href="https://github.com/anthropics/skills" target="_blank" style="color:var(--accent);">anthropics/skills</a>.
+                        More at <a href="https://skills.pub/" target="_blank" style="color:var(--accent);">skills.pub</a> (paste a GitHub URL above to install).
+                    </div>
                 </div>
             </div>
             <!-- Appearance tab -->

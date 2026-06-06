@@ -161,6 +161,7 @@ class DatabaseService:
                 ("plugins", []),
                 ("allowed_commands", []),
                 ("allowed_builtin_tools", []),
+                ("enabled_skills", []),
                 ("mcp_servers", {}),
             ):
                 raw = d.get(key)

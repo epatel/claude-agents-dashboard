@@ -196,8 +196,9 @@ class AgentConfig(BaseModel):
     graphify_enabled: bool = False
     graphify_auto_refresh: bool = True
     graphify_backend: str = "ast"
+    enabled_skills: list[str] = Field(default_factory=list)
 
-    @field_validator("tools", "plugins", "allowed_commands", "allowed_builtin_tools", mode="before")
+    @field_validator("tools", "plugins", "allowed_commands", "allowed_builtin_tools", "enabled_skills", mode="before")
     @classmethod
     def _parse_json_list(cls, v: Any) -> Any:
         if v is None or v == "":

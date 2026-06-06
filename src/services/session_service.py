@@ -63,7 +63,7 @@ class SessionService:
 
         # config has already been parsed by db.get_agent_config (Phase 3),
         # so list/dict fields arrive as real Python types.
-        plugins = self._parse_plugins(config.get("plugins"))
+        plugins = self._parse_plugins(config.get("plugins"), config.get("enabled_skills"))
         allowed_commands = list(config.get("allowed_commands") or [])
         allowed_builtin_tools = list(config.get("allowed_builtin_tools") or [])
 
@@ -232,17 +232,20 @@ class SessionService:
             self._caffeinate_proc = None
             logger.info("caffeinate stopped — idle sleep re-enabled")
 
-    def _parse_plugins(self, plugins: Optional[Any]) -> Optional[List[Dict[str, Any]]]:
+    def _parse_plugins(self, plugins: Optional[Any],
+                       enabled_skills: Optional[Any] = None) -> Optional[List[Dict[str, Any]]]:
         """Merge auto-discovered plugins (from the dashboard's plugins/
-        directory) with user-configured ones from agent config.
+        directory) with user-configured ones from agent config, plus the
+        project's enabled library skills (skill-library/<name>).
 
         After Phase 3, `plugins` arrives as a real list (db.get_agent_config
         decodes JSON before handing it back). A string is still tolerated
         for legacy callers."""
         result = []
+        root = Path(__file__).parent.parent.parent
 
         # Auto-discover plugins from the dashboard's plugins/ directory
-        plugins_dir = Path(__file__).parent.parent.parent / "plugins"
+        plugins_dir = root / "plugins"
         if plugins_dir.is_dir():
             for entry in sorted(plugins_dir.iterdir()):
                 manifest = entry / ".claude-plugin" / "plugin.json"
@@ -268,6 +271,25 @@ class SessionService:
                 if path and path not in seen:
                     result.append({"type": "local", "path": path})
                     seen.add(path)
+
+        # Per-project enabled library skills (each is a one-skill plugin).
+        if isinstance(enabled_skills, str):
+            try:
+                enabled_skills = json.loads(enabled_skills) if enabled_skills else []
+            except (json.JSONDecodeError, TypeError):
+                enabled_skills = []
+        if isinstance(enabled_skills, list) and enabled_skills:
+            seen = {p["path"] for p in result}
+            library_dir = root / "skill-library"
+            for name in enabled_skills:
+                if not isinstance(name, str) or not name:
+                    continue
+                skill_dir = library_dir / name
+                if (skill_dir / ".claude-plugin" / "plugin.json").exists():
+                    path = str(skill_dir.resolve())
+                    if path not in seen:
+                        result.append({"type": "local", "path": path})
+                        seen.add(path)
 
         if result:
             logger.info(f"Loaded {len(result)} plugin(s): {', '.join(p['path'].rsplit('/', 1)[-1] for p in result)}")

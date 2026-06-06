@@ -128,6 +128,17 @@ def _make_mock_orchestrator():
     mock_orch.graph_service.install = AsyncMock(return_value={"ok": True, "version": "0.8.33"})
     mock_orch.graph_service.query = AsyncMock(return_value={"ok": True, "answer": "ans"})
 
+    # skills_service
+    mock_orch.skills_service = MagicMock()
+    mock_orch.skills_service.list_installed = MagicMock(
+        return_value=[{"name": "docx", "description": "Make docx", "enabled": False}]
+    )
+    mock_orch.skills_service.browse = AsyncMock(
+        return_value=[{"name": "docx", "description": "Make docx", "spec": "anthropics/skills/skills/docx"}]
+    )
+    mock_orch.skills_service.install = AsyncMock(return_value={"ok": True, "name": "docx"})
+    mock_orch.skills_service.remove = AsyncMock(return_value={"ok": True, "name": "docx"})
+
     return mock_orch
 
 
@@ -1270,3 +1281,52 @@ class TestGraphify:
     async def test_query_missing_param_is_422(self, client):
         resp = await client.get("/api/graphify/query")
         assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Skills library endpoints
+# ---------------------------------------------------------------------------
+
+class TestSkills:
+    @pytest.mark.asyncio
+    async def test_list(self, client):
+        resp = await client.get("/api/skills")
+        assert resp.status_code == 200
+        assert resp.json()["installed"][0]["name"] == "docx"
+
+    @pytest.mark.asyncio
+    async def test_browse(self, client):
+        resp = await client.get("/api/skills/browse?source=anthropic")
+        assert resp.status_code == 200
+        assert resp.json()["skills"][0]["spec"].startswith("anthropics/skills/")
+
+    @pytest.mark.asyncio
+    async def test_install(self, app_and_db):
+        app, db = app_and_db
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/skills/install", json={"spec": "anthropics/skills/skills/docx"})
+        assert resp.status_code == 200 and resp.json()["ok"] is True
+        app.state.orchestrator.skills_service.install.assert_awaited_once_with("anthropics/skills/skills/docx")
+
+    @pytest.mark.asyncio
+    async def test_install_requires_spec(self, client):
+        resp = await client.post("/api/skills/install", json={"spec": "  "})
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_enable_toggles_persist(self, client):
+        # enable docx, then confirm it shows in the config + can be disabled
+        r1 = await client.post("/api/skills/docx/enabled", json={"enabled": True})
+        assert r1.status_code == 200 and "docx" in r1.json()["enabled"]
+        cfg = (await client.get("/api/config")).json()
+        assert "docx" in (cfg.get("enabled_skills") or [])
+        r2 = await client.post("/api/skills/docx/enabled", json={"enabled": False})
+        assert "docx" not in r2.json()["enabled"]
+
+    @pytest.mark.asyncio
+    async def test_remove_drops_from_enabled(self, client):
+        await client.post("/api/skills/docx/enabled", json={"enabled": True})
+        resp = await client.delete("/api/skills/docx")
+        assert resp.status_code == 200 and resp.json()["ok"] is True
+        cfg = (await client.get("/api/config")).json()
+        assert "docx" not in (cfg.get("enabled_skills") or [])
