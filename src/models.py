@@ -193,6 +193,9 @@ class AgentConfig(BaseModel):
     ollama_enabled: bool = False
     ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
     wip_limit: int = 0
+    graphify_enabled: bool = False
+    graphify_auto_refresh: bool = True
+    graphify_backend: str = "ast"
 
     @field_validator("tools", "plugins", "allowed_commands", "allowed_builtin_tools", mode="before")
     @classmethod

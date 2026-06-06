@@ -90,6 +90,12 @@ const ConfigDialog = {
             intensitySlider.value = intensityVal;
             document.getElementById('config-flame-intensity-value').textContent = intensityVal.toFixed(1);
 
+            // Load graphify settings
+            document.getElementById('config-graphify-enabled').checked = config.graphify_enabled === true || config.graphify_enabled === 1;
+            document.getElementById('config-graphify-auto-refresh').checked = config.graphify_auto_refresh !== false && config.graphify_auto_refresh !== 0;
+            document.getElementById('config-graphify-backend').value = config.graphify_backend || 'ast';
+            this.refreshGraphifyStatus();
+
             // Populate Ollama models in the config model dropdown
             if (config.ollama_enabled && this._ollamaModels.length > 0) {
                 this._updateModelSelect('config-model', false);
@@ -317,6 +323,76 @@ const ConfigDialog = {
         }
     },
 
+    _renderGraphifyStatus(st) {
+        const el = document.getElementById('graphify-status');
+        const upgradeRow = document.getElementById('graphify-upgrade-row');
+        if (!el) return;
+        const installed = st.installed_version || 'not installed';
+        const latest = st.latest_version;
+        const behind = latest && st.installed_version && latest !== st.installed_version;
+        const g = st.graph || {};
+        let graphLine;
+        if (st.building) {
+            graphLine = '<span style="color:var(--accent);">● building…</span>';
+        } else if (g.exists) {
+            const built = g.last_built ? new Date(g.last_built).toLocaleString() : 'unknown';
+            graphLine = `graph: ${g.nodes} nodes · ${g.edges} edges · ${g.communities} communities<br>last built ${built}`;
+            if (g.cost && g.cost.total_output_tokens) {
+                graphLine += `<br>semantic cost: ${g.cost.total_output_tokens.toLocaleString()} output tokens`;
+            }
+        } else {
+            graphLine = '<span style="color:var(--text-muted);">no graph built yet</span>';
+        }
+        el.innerHTML = `graphify ${installed}${latest ? ` · latest ${latest}` : ''}${behind ? ' <span style="color:var(--warning);">(update available)</span>' : ' ✓'}<br>${graphLine}`;
+        if (upgradeRow) upgradeRow.style.display = behind ? '' : 'none';
+    },
+
+    async refreshGraphifyStatus() {
+        const el = document.getElementById('graphify-status');
+        if (el) el.textContent = 'Loading…';
+        try {
+            const st = await Api.request('GET', '/api/graphify/status');
+            this._renderGraphifyStatus(st);
+        } catch (err) {
+            if (el) el.innerHTML = '<span style="color:var(--warning);">⚠ failed to load status</span>';
+        }
+    },
+
+    async installGraphify() {
+        const confirmed = await DialogCore.confirm(
+            'This upgrades the graphify package in the dashboard\'s Python environment. It may take a minute.',
+            'Upgrade graphify?',
+            'Upgrade'
+        );
+        if (!confirmed) return;
+        const el = document.getElementById('graphify-status');
+        if (el) el.textContent = 'Upgrading…';
+        try {
+            await Api.request('POST', '/api/graphify/install');
+        } catch (err) {
+            console.error('graphify install failed:', err);
+        }
+        this.refreshGraphifyStatus();
+    },
+
+    async buildGraph(semantic) {
+        if (semantic) {
+            const confirmed = await DialogCore.confirm(
+                'Semantic enrichment runs an LLM over the codebase and can cost hundreds of thousands of tokens. AST builds are free. Continue with semantic?',
+                'Build semantic graph?',
+                'Build (semantic)'
+            );
+            if (!confirmed) return;
+        }
+        try {
+            await Api.request('POST', '/api/graphify/build', { semantic: !!semantic });
+            const el = document.getElementById('graphify-status');
+            if (el) el.innerHTML = '<span style="color:var(--accent);">● building… (progress streams live)</span>';
+        } catch (err) {
+            console.error('graphify build failed:', err);
+        }
+    },
+
     async submitConfig(event) {
         event.preventDefault();
         const config = {
@@ -334,6 +410,9 @@ const ConfigDialog = {
             ollama_enabled: document.getElementById('config-ollama-enabled').checked,
             ollama_base_url: document.getElementById('config-ollama-base-url').value || 'http://localhost:11434',
             wip_limit: parseInt(document.getElementById('config-wip-limit').value, 10) || 0,
+            graphify_enabled: document.getElementById('config-graphify-enabled').checked,
+            graphify_auto_refresh: document.getElementById('config-graphify-auto-refresh').checked,
+            graphify_backend: document.getElementById('config-graphify-backend').value || 'ast',
         };
         try {
             await Api.request('PUT', '/api/config', config);

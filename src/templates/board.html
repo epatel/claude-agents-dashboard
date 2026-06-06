@@ -415,6 +415,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                 {% if experimental %}<button type="button" class="review-tab" data-map-name="dialog.settings.tab-ollama" data-tab="ollama" onclick="Dialogs.switchConfigTab('ollama')">Ollama <span style="font-size:9px;opacity:0.6;font-weight:normal;vertical-align:super;">experimental</span></button>{% endif %}
                 <button type="button" class="review-tab" data-map-name="dialog.settings.tab-mcp" data-tab="mcp" onclick="Dialogs.switchConfigTab('mcp')">MCP</button>
                 <button type="button" class="review-tab" data-map-name="dialog.settings.tab-plugins" data-tab="plugins" onclick="Dialogs.switchConfigTab('plugins')">Plugins</button>
+                <button type="button" class="review-tab" data-map-name="dialog.settings.tab-graphify" data-tab="graphify" onclick="Dialogs.switchConfigTab('graphify')">Graphify</button>
                 <button type="button" class="review-tab" data-map-name="dialog.settings.tab-appearance" data-tab="appearance" onclick="Dialogs.switchConfigTab('appearance')">Appearance</button>
             </div>
             <!-- General tab -->
@@ -527,6 +528,46 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                         <input type="text" id="config-plugin-path-input" placeholder="/path/to/plugin or ./relative/path" style="flex:1">
                         <button type="button" class="btn btn-sm" onclick="Dialogs.addPlugin()">+ Add Plugin</button>
                     </div>
+                </div>
+            </div>
+            <!-- Graphify tab -->
+            <div class="config-tab-content" data-map-name="dialog.settings.panel-graphify" data-config-tab="graphify" style="padding:20px;display:none;">
+                <div class="form-group" style="margin:0;padding:12px;background:var(--bg-hover);border-radius:var(--radius-sm);">
+                    <label style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                        <span>Knowledge graph <span class="tooltip" data-tip-html="<b>graphify</b> builds a navigable knowledge graph of this project (code structure + optional semantic layer). The dashboard owns the graph; agents read it.">?</span></span>
+                        <button type="button" class="btn btn-xs" onclick="ConfigDialog.refreshGraphifyStatus()" title="Refresh status" style="font-size:11px;padding:2px 8px;">↻ Refresh</button>
+                    </label>
+                    <div id="graphify-status" style="font-size:12px;color:var(--text-muted);">Loading…</div>
+                    <div id="graphify-upgrade-row" style="margin-top:8px;display:none;">
+                        <button type="button" class="btn btn-sm" onclick="ConfigDialog.installGraphify()">Upgrade graphify</button>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label for="config-graphify-enabled" style="display:flex;align-items:center;gap:8px;">
+                        Enable graphify for agents <span class="tooltip" title="Adds a read-only graph_query tool so agents can orient against the project graph before editing.">?</span>
+                        <input type="checkbox" id="config-graphify-enabled" style="cursor:pointer;">
+                    </label>
+                </div>
+                <div class="form-group" style="margin-top:12px;">
+                    <label for="config-graphify-auto-refresh" style="display:flex;align-items:center;gap:8px;">
+                        Auto-refresh graph after merge <span class="tooltip" title="Re-run the free AST graph build after an item merges to the project root, so the graph tracks mainline.">?</span>
+                        <input type="checkbox" id="config-graphify-auto-refresh" style="cursor:pointer;" checked>
+                    </label>
+                </div>
+                <div class="form-group" style="margin-top:12px;">
+                    <label for="config-graphify-backend">Semantic backend <span class="tooltip" data-tip-html="<b>AST only</b> is free and fast (code structure). <b>Gemini</b> adds an LLM semantic layer (concepts, cross-file links) and costs tokens — requires GEMINI_API_KEY.">?</span></label>
+                    <select id="config-graphify-backend" style="width:100%;">
+                        <option value="ast">AST only (free)</option>
+                        <option value="gemini">Gemini (semantic, costs tokens)</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label style="font-size:12px;font-weight:600;margin-bottom:6px;display:block;">Build</label>
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" class="btn btn-sm" onclick="ConfigDialog.buildGraph(false)">Build / Rebuild (AST)</button>
+                        <button type="button" class="btn btn-sm" onclick="ConfigDialog.buildGraph(true)">Enrich (semantic)</button>
+                    </div>
+                    <p class="text-muted" style="font-size:12px;margin:8px 0 0;">AST build is free and runs in seconds. Semantic enrichment uses an LLM and can cost ~hundreds of thousands of tokens on a large repo.</p>
                 </div>
             </div>
             <!-- Appearance tab -->

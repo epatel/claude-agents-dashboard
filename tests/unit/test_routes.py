@@ -673,6 +673,26 @@ class TestConfig:
         assert resp.status_code == 200
         assert resp.json()["system_prompt"] == "You are helpful."
 
+    @pytest.mark.asyncio
+    async def test_graphify_fields_round_trip(self, client):
+        # Defaults from migration 028
+        data = (await client.get("/api/config")).json()
+        assert data["graphify_enabled"] in (0, False)
+        assert data["graphify_auto_refresh"] in (1, True)
+        assert data["graphify_backend"] == "ast"
+        # Persist new values
+        payload = {
+            "system_prompt": "", "model": "claude-opus-4-8",
+            "graphify_enabled": True, "graphify_auto_refresh": False,
+            "graphify_backend": "gemini",
+        }
+        resp = await client.put("/api/config", json=payload)
+        assert resp.status_code == 200
+        out = resp.json()
+        assert out["graphify_enabled"] in (1, True)
+        assert out["graphify_auto_refresh"] in (0, False)
+        assert out["graphify_backend"] == "gemini"
+
 
 # ---------------------------------------------------------------------------
 # Notifications

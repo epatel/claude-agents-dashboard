@@ -434,6 +434,13 @@ const App = {
                     Board.loadAndRender();
                 }
                 break;
+            case 'graph_build_progress':
+            case 'graph_ready':
+                // Refresh the Graphify settings tab status if the dialog is open
+                if (typeof ConfigDialog !== 'undefined' && document.getElementById('graphify-status')) {
+                    ConfigDialog.refreshGraphifyStatus();
+                }
+                break;
             default:
                 console.log('Unknown event:', type, data);
         }
