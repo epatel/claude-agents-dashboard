@@ -412,8 +412,9 @@ const ConfigDialog = {
         el.innerHTML = skills.map(s => {
             const name = this._escapeHtml(s.name);
             const desc = this._escapeHtml(s.description || '');
-            return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:6px;">
-                <span style="flex:1 1 auto;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${desc}">${name}</span>
+            return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:6px;">
+                <span style="flex:0 0 auto;font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%;" title="${desc}">${name}</span>
+                <span style="flex:1 1 auto;"></span>
                 <button type="button" class="btn btn-xs" title="Remove from library" onclick="ConfigDialog.removeSkill('${name}')" style="flex:0 0 auto;opacity:0.55;min-width:auto;padding:2px 8px;">&#10005;</button>
                 <input type="checkbox" ${s.enabled ? 'checked' : ''} title="Enable for this project" onchange="ConfigDialog.toggleSkill('${name}', this.checked)" style="flex:0 0 auto;cursor:pointer;margin:0;">
             </div>`;
@@ -428,11 +429,12 @@ const ConfigDialog = {
             const desc = this._escapeHtml(s.description || '');
             const spec = this._escapeHtml(s.spec || '');
             const sub = s.path ? this._escapeHtml(s.path) : '';
-            return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:6px;">
-                <div style="flex:1 1 auto;min-width:0;">
-                    <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}${sub ? ` <span style="color:var(--text-muted);font-size:11px;">${sub}</span>` : ''}</div>
+            return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:6px;">
+                <div style="flex:0 0 auto;min-width:0;max-width:80%;">
+                    <div style="font-size:13px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}${sub ? ` <span style="color:var(--text-muted);font-size:11px;">${sub}</span>` : ''}</div>
                     <div style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${desc}">${desc}</div>
                 </div>
+                <span style="flex:1 1 auto;"></span>
                 <button type="button" class="btn btn-xs" onclick="ConfigDialog.installExact('${spec}','${name}')" style="flex:0 0 auto;min-width:auto;">Install</button>
             </div>`;
         }).join('');
