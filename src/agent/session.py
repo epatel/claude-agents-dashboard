@@ -328,6 +328,10 @@ class AgentSession:
                 "\n\nTO FINISH THIS TASK: stop calling tools. Write one short final message, call "
                 "set_commit_message once, and end your turn. Do nothing else. The card moves to Done "
                 "by itself. Never spawn another todo to finish or verify your own work."
+                "\n\nBE DECISIVE: For a simple factual query, run ONE command to get the answer and "
+                "then proceed. Trust the output you see — do not re-run the same command in different "
+                "ways or exhaust every interpretation. State your assumptions clearly instead of "
+                "verifying them repeatedly."
             )
         todo_note = (
             "\n\nIMPORTANT: To create todo items on the board, you MUST use the create_todo MCP tool "
@@ -533,9 +537,19 @@ class AgentSession:
 
         if is_ollama:
             # Ollama models: lighter config to avoid overwhelming small models.
-            # - No thinking budget (models handle thinking natively)
+            # - thinking disabled: Ollama's Anthropic-compatible endpoint returns
+            #   thinking blocks WITHOUT a `signature` field. On the next turn the
+            #   SDK replays them and the endpoint rejects the request with
+            #   "Missing required field in assistant message: 'signature'", which
+            #   crashes the run and forces a costly no-resume restart. Disabling
+            #   thinking stops those unsigned blocks from ever being produced.
             # - bypassPermissions (avoids permission prompt handling issues)
-            # - No setting_sources (skip CLAUDE.md to reduce context size)
+            # - setting_sources=["local"]: do NOT load `user` settings. The
+            #   user-global Claude config can register PreToolUse hooks (e.g. the
+            #   RTK command-rewriter) that mangle plain `find`/`ls`/`wc` output and
+            #   make small models distrust their own observations, triggering
+            #   redundant verification loops. "local" also skips project CLAUDE.md,
+            #   keeping context small for small models (the original intent).
             logger.info(f"Ollama mode: using lightweight SDK options for model {self.model}")
             logger.info(f"Ollama env: {self.ollama_env}")
 
@@ -551,8 +565,10 @@ class AgentSession:
                 allowed_tools=allowed_tools if allowed_tools else None,
                 can_use_tool=can_use_tool_fn,
                 add_dirs=[str(self.worktree_path), *(str(p) for p in self.sibling_repo_paths)],
+                thinking={"type": "disabled"},
                 plugins=plugins if plugins else None,
                 hooks=hooks,
+                setting_sources=["local"],
                 env=self.ollama_env,
                 stderr=_ollama_stderr,
             )

@@ -51,6 +51,12 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
   (each wrapped as a one-skill plugin), enabled per-project via `agent_config.enabled_skills`
   (migration 029), and delivered to agents through the SDK `plugins=` option — NOT as an MCP tool.
   Agents run with `setting_sources=["project"]`, so user `~/.claude/skills` are intentionally not used.
+- 2026-06-07 — Ollama runs must (a) pass `thinking={"type": "disabled"}` — Ollama returns
+  unsigned thinking blocks that crash on replay ("Missing required field … 'signature'") and
+  force costly no-resume restarts; and (b) pass an explicit `setting_sources` that excludes
+  `user` (we use `["local"]`) so global PreToolUse hooks (e.g. the RTK command-rewriter)
+  can't leak in and mangle plain `find`/`ls`/`wc` output. Applies to both `session.py` and
+  `review_agent.py`. Do not revert Ollama to "think natively" or to default setting sources.
 
 ## Current state / handoff
 
