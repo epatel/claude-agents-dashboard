@@ -40,7 +40,12 @@ def _coerce_auto_approve(v: Any) -> Any:
 class ItemCreate(BaseModel):
     title: str
     description: str = ""
-    model: Optional[str] = DEFAULT_MODEL
+    # Default None (NULL in the items table) means "use the global default
+    # model". Resolution at spawn time is `item.model or config.model`, so a
+    # None here correctly falls through to the configured global default
+    # (e.g. an Ollama model). Baking DEFAULT_MODEL in here would shadow the
+    # global default for every item created via the "Default" option.
+    model: Optional[str] = None
     epic_id: Optional[str] = None
     auto_start: bool = False
     start_copy: bool = False

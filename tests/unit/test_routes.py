@@ -1163,12 +1163,17 @@ class TestDefaultValues:
 
     @pytest.mark.asyncio
     async def test_create_item_default_model(self, client):
-        """A new item created without specifying a model should use DEFAULT_MODEL."""
-        from src.constants import DEFAULT_MODEL
+        """A new item created without a model stores NULL ("Default").
+
+        It must NOT bake in DEFAULT_MODEL — that would shadow the configured
+        global default model at spawn time (resolution is
+        `item.model or config.model`). A NULL here means "use the global
+        default", which is what the form's "Default" option intends.
+        """
         resp = await client.post("/api/items", json={"title": "No model specified"})
         assert resp.status_code == 200
         data = resp.json()
-        assert data["model"] == DEFAULT_MODEL
+        assert data["model"] is None
 
     @pytest.mark.asyncio
     async def test_create_item_explicit_model_overrides_default(self, client):
