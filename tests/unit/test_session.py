@@ -952,6 +952,54 @@ class TestStart:
     @patch("src.agent.session.ClaudeSDKClient")
     @patch("src.agent.session.ClaudeAgentOptions")
     @pytest.mark.asyncio
+    async def test_start_ollama_excludes_user_settings(self, mock_options_cls, mock_client_cls, tmp_path):
+        """Ollama runs must NOT load `user` settings, or global PreToolUse hooks
+        (e.g. the RTK command-rewriter) leak in and mangle command output."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        ollama_env = {
+            "ANTHROPIC_AUTH_TOKEN": "ollama",
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_BASE_URL": "http://localhost:11434",
+        }
+        session = make_session(worktree_path=tmp_path, model="qwen3.5", ollama_env=ollama_env)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        kwargs = mock_options_cls.call_args.kwargs
+        sources = kwargs.get("setting_sources")
+        assert sources is not None, "Ollama must pass an explicit setting_sources to exclude user hooks"
+        assert "user" not in sources
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_ollama_disables_thinking(self, mock_options_cls, mock_client_cls, tmp_path):
+        """Ollama returns unsigned thinking blocks that crash on replay, so
+        thinking must be explicitly disabled."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        ollama_env = {
+            "ANTHROPIC_AUTH_TOKEN": "ollama",
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_BASE_URL": "http://localhost:11434",
+        }
+        session = make_session(worktree_path=tmp_path, model="qwen3.5", ollama_env=ollama_env)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        kwargs = mock_options_cls.call_args.kwargs
+        assert kwargs.get("thinking") == {"type": "disabled"}
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
     async def test_start_passes_ollama_env_to_options(self, mock_options_cls, mock_client_cls, tmp_path):
         """Ollama env vars are forwarded to ClaudeAgentOptions.env."""
         mock_client = AsyncMock()

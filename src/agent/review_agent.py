@@ -136,6 +136,10 @@ async def run_auto_review(
 
     is_ollama = bool(ollama_env)
     if is_ollama:
+        # See AgentSession.start() for the rationale: Ollama returns unsigned
+        # thinking blocks (crash on replay) so disable thinking, and exclude
+        # `user` settings so global PreToolUse hooks (e.g. RTK) can't mangle
+        # plain command output.
         options = ClaudeAgentOptions(
             cwd=worktree_path,
             system_prompt=_REVIEW_SYSTEM_PROMPT,
@@ -144,6 +148,8 @@ async def run_auto_review(
             allowed_tools=list(_REVIEWER_ALLOWED_TOOLS),
             can_use_tool=_review_can_use_tool,
             add_dirs=[str(worktree_path)],
+            thinking={"type": "disabled"},
+            setting_sources=["local"],
             env=ollama_env,
         )
     else:

@@ -87,6 +87,29 @@ Ollama is fully integrated into the dashboard as an experimental feature. Enable
 6. **Per-agent env injection** — `session.py` sets `ANTHROPIC_AUTH_TOKEN=ollama`, `ANTHROPIC_API_KEY=""`, and `ANTHROPIC_BASE_URL` in the subprocess environment when an Ollama model is selected
 7. **Model size info** — dropdowns show model file sizes alongside names
 
+### Hardening (lessons from a runaway "count files" run)
+
+The Ollama `ClaudeAgentOptions` in `session.py` (and the one-shot reviewer in
+`review_agent.py`) carry two non-obvious settings, both required for cost-sane runs:
+
+- **`thinking={"type": "disabled"}`** — Ollama's Anthropic-compatible endpoint
+  returns thinking blocks **without** a `signature`. On the next turn the SDK
+  replays them and the endpoint rejects the request with
+  *"Missing required field in assistant message: 'signature'"*, crashing the run
+  and forcing a no-resume restart (doubling cost). Disabling thinking prevents
+  the unsigned blocks. Do **not** revert to "let the model think natively".
+- **`setting_sources=["local"]`** — without an explicit value the CLI defaults to
+  loading `user` settings, which can register PreToolUse hooks (e.g. the global
+  RTK command-rewriter) that rewrite `find`/`ls`/`wc` and mangle their output
+  (mysterious prefixes like `3F 1D:`). Small models then distrust their own
+  observations and loop on redundant verification. `["local"]` excludes `user`
+  (no leaked hooks) and also skips project CLAUDE.md (lean context). The
+  non-Ollama path already excludes `user` via `setting_sources=["project"]`.
+
+The Ollama system-prompt addendum also includes a **decisiveness** note: run one
+command for a factual query, trust the output, and proceed rather than exhausting
+every interpretation.
+
 ### Architecture
 
 - `constants.py` — `AVAILABLE_MODELS` list uses `(model_id, display_name, experimental)` tuples; Ollama models are discovered dynamically at runtime
