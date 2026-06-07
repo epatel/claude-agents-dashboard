@@ -308,6 +308,27 @@ class AgentSession:
             "Use conventional style: start with a verb (Add, Fix, Update, Refactor, Remove). "
             "This is required — do not skip it."
         )
+        # Task lifecycle: weak/local models otherwise invent a manual "close the
+        # card" procedure (TaskUpdate/TaskStop/inloop, or spawning child todos to
+        # mark their own work done) and burn the whole budget flailing. Completion
+        # is automatic — they just need to stop.
+        lifecycle_note = (
+            "\n\nIMPORTANT — how a task finishes: When your work is done, simply write your "
+            "final message and call set_commit_message. That is all. The system AUTOMATICALLY "
+            "moves this card from Doing to Done and merges your worktree when your turn ends — "
+            "you do NOT move, close, approve, or update the card yourself.\n"
+            "- Do NOT use TaskUpdate, TaskGet, TaskStop, TaskList, TaskCreate, or any mcp__inloop__* "
+            "tool to manage your own item — they do not control this board and will fail or do nothing.\n"
+            "- Do NOT create a new todo for the work you are already doing (e.g. a 'verify my own fix' "
+            "item). Use mcp__todo__create_todo ONLY for genuinely new, separate future work.\n"
+            "- If your work is finished, STOP. Do not keep calling tools to confirm completion."
+        )
+        if is_ollama:
+            lifecycle_note += (
+                "\n\nTO FINISH THIS TASK: stop calling tools. Write one short final message, call "
+                "set_commit_message once, and end your turn. Do nothing else. The card moves to Done "
+                "by itself. Never spawn another todo to finish or verify your own work."
+            )
         todo_note = (
             "\n\nIMPORTANT: To create todo items on the board, you MUST use the create_todo MCP tool "
             "(mcp__todo__create_todo). Do NOT use TodoWrite, TaskCreate, or any other built-in tool "
@@ -376,7 +397,7 @@ class AgentSession:
                 "Answers cite source locations you can open."
             )
 
-        full_system_prompt = (self.system_prompt or "") + cwd_note + multi_repo_note + clarify_note + commit_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note
+        full_system_prompt = (self.system_prompt or "") + cwd_note + multi_repo_note + clarify_note + commit_note + lifecycle_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note
 
         # Configure allowed MCP tools
         allowed_tools = []
