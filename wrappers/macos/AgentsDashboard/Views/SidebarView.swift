@@ -95,6 +95,14 @@ struct ProjectRow: View {
 
             Divider()
 
+            Toggle("Experimental (Ollama)", isOn: Binding(
+                get: { project.experimental },
+                set: { projectManager.setExperimental($0, for: project) }
+            ))
+            .help("Launch this project's dashboard with --experimental (enables the Ollama provider). Applies on next start.")
+
+            Divider()
+
             Button("Remove Project", role: .destructive) {
                 showRemoveConfirm = true
             }

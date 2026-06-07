@@ -132,6 +132,30 @@ class ProjectManager: ObservableObject {
         saveProjects()
     }
 
+    /// Toggle the per-entry experimental flag (`--experimental`, enables Ollama UI).
+    /// Persists the change and keeps any open dashboard tab's project snapshot in
+    /// sync so a later restart launches with the new flag. Takes effect on next
+    /// (re)start — it does not restart a running dashboard.
+    func setExperimental(_ enabled: Bool, for project: Project) {
+        guard let i = projects.firstIndex(where: { $0.id == project.id }) else { return }
+        projects[i].experimental = enabled
+        saveProjects()
+        if let d = dashboards.firstIndex(where: { $0.project.id == project.id }) {
+            let old = dashboards[d]
+            dashboards[d] = DashboardInstance(
+                id: old.id,
+                project: projects[i],
+                status: old.status,
+                port: old.port,
+                process: old.process,
+                outputLog: old.outputLog,
+                errorMessage: old.errorMessage,
+                questionsCount: old.questionsCount,
+                reviewsCount: old.reviewsCount
+            )
+        }
+    }
+
     func moveProjects(from source: IndexSet, to destination: Int) {
         projects.move(fromOffsets: source, toOffset: destination)
         saveProjects()
@@ -392,7 +416,11 @@ class ProjectManager: ObservableObject {
         let runShPath = serverManager.serverPath + "/run.sh"
 
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [runShPath, instance.project.path]
+        var arguments = [runShPath, instance.project.path]
+        if instance.project.experimental {
+            arguments.append("--experimental")
+        }
+        process.arguments = arguments
         process.currentDirectoryURL = URL(fileURLWithPath: serverManager.serverPath)
         process.standardOutput = outputPipe
         process.standardError = errorPipe
