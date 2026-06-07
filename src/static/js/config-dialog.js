@@ -39,6 +39,7 @@ const ConfigDialog = {
             // Load Ollama settings
             document.getElementById('config-ollama-enabled').checked = config.ollama_enabled || false;
             document.getElementById('config-ollama-base-url').value = config.ollama_base_url || window.__DEFAULT_OLLAMA_URL__;
+            document.getElementById('config-ollama-load-claude-md').checked = config.ollama_load_claude_md || false;
 
             // Reset connection status
             const statusEl = document.getElementById('ollama-connection-status');
@@ -596,6 +597,7 @@ const ConfigDialog = {
             flame_intensity_multiplier: parseFloat(document.getElementById('config-flame-intensity').value) || 1.0,
             ollama_enabled: document.getElementById('config-ollama-enabled').checked,
             ollama_base_url: document.getElementById('config-ollama-base-url').value || 'http://localhost:11434',
+            ollama_load_claude_md: document.getElementById('config-ollama-load-claude-md').checked,
             wip_limit: parseInt(document.getElementById('config-wip-limit').value, 10) || 0,
             graphify_enabled: document.getElementById('config-graphify-enabled').checked,
             graphify_auto_refresh: document.getElementById('config-graphify-auto-refresh').checked,

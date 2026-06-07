@@ -965,7 +965,7 @@ async def update_config(request: Request, body: AgentConfig):
     db = request.app.state.db
     async with db.connect() as conn:
         await conn.execute(
-            "UPDATE agent_config SET system_prompt = ?, tools = ?, model = ?, project_context = ?, mcp_servers = ?, mcp_enabled = ?, plugins = ?, allowed_commands = ?, bash_yolo = ?, allowed_builtin_tools = ?, flame_enabled = ?, flame_intensity_multiplier = ?, ollama_enabled = ?, ollama_base_url = ?, wip_limit = ?, graphify_enabled = ?, graphify_auto_refresh = ?, graphify_backend = ?, updated_at = datetime('now') WHERE id = 1",
+            "UPDATE agent_config SET system_prompt = ?, tools = ?, model = ?, project_context = ?, mcp_servers = ?, mcp_enabled = ?, plugins = ?, allowed_commands = ?, bash_yolo = ?, allowed_builtin_tools = ?, flame_enabled = ?, flame_intensity_multiplier = ?, ollama_enabled = ?, ollama_base_url = ?, ollama_load_claude_md = ?, wip_limit = ?, graphify_enabled = ?, graphify_auto_refresh = ?, graphify_backend = ?, updated_at = datetime('now') WHERE id = 1",
             (
                 body.system_prompt,
                 json.dumps(body.tools),
@@ -981,6 +981,7 @@ async def update_config(request: Request, body: AgentConfig):
                 body.flame_intensity_multiplier,
                 body.ollama_enabled,
                 body.ollama_base_url,
+                body.ollama_load_claude_md,
                 body.wip_limit,
                 body.graphify_enabled,
                 body.graphify_auto_refresh,

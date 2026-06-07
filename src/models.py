@@ -197,6 +197,7 @@ class AgentConfig(BaseModel):
     flame_intensity_multiplier: float = 1.0
     ollama_enabled: bool = False
     ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
+    ollama_load_claude_md: bool = False
     wip_limit: int = 0
     graphify_enabled: bool = False
     graphify_auto_refresh: bool = True

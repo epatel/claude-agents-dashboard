@@ -508,6 +508,15 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                     <input type="text" id="config-ollama-base-url" placeholder="http://localhost:11434" value="http://localhost:11434">
                 </div>
                 <div class="form-group" style="margin-top:16px;">
+                    <label for="config-ollama-load-claude-md" style="display:flex;align-items:center;gap:8px;">
+                        Load project CLAUDE.md <span class="tooltip" data-tip-html="<b>Inject the target project's CLAUDE.md into the agent's system prompt.</b><br><br>Ollama agents run with <code>setting_sources=[&quot;local&quot;]</code>, which keeps context small by <b>not</b> auto-loading the project <code>CLAUDE.md</code> (unlike Claude agents). Turn this on to feed project conventions to the local model — at the cost of a larger prompt.<br><br>Leave off for small models that struggle with large contexts.">?</span>
+                        <input type="checkbox" id="config-ollama-load-claude-md" style="cursor:pointer;">
+                    </label>
+                    <p class="text-muted" style="font-size:12px;margin:4px 0 0;">
+                        Inject the project's <code>CLAUDE.md</code> into the prompt (Claude agents do this automatically; Ollama agents skip it by default to stay lean).
+                    </p>
+                </div>
+                <div class="form-group" style="margin-top:16px;">
                     <label style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
                         Available Models
                         <button type="button" class="btn btn-xs" onclick="ConfigDialog.refreshOllamaModels()" title="Refresh model list" style="font-size:11px;padding:2px 8px;">↻ Refresh</button>
