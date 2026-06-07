@@ -708,6 +708,20 @@ class TestConfig:
         assert out["graphify_auto_refresh"] in (0, False)
         assert out["graphify_backend"] == "gemini"
 
+    @pytest.mark.asyncio
+    async def test_ollama_load_claude_md_round_trip(self, client):
+        # Default from migration 030: off
+        data = (await client.get("/api/config")).json()
+        assert data["ollama_load_claude_md"] in (0, False)
+        # Persist new value
+        payload = {
+            "system_prompt": "", "model": "claude-opus-4-8",
+            "ollama_load_claude_md": True,
+        }
+        resp = await client.put("/api/config", json=payload)
+        assert resp.status_code == 200
+        assert resp.json()["ollama_load_claude_md"] in (1, True)
+
 
 # ---------------------------------------------------------------------------
 # Notifications

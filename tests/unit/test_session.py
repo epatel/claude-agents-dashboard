@@ -1000,6 +1000,71 @@ class TestStart:
     @patch("src.agent.session.ClaudeSDKClient")
     @patch("src.agent.session.ClaudeAgentOptions")
     @pytest.mark.asyncio
+    async def test_start_ollama_injects_claude_md_when_enabled(self, mock_options_cls, mock_client_cls, tmp_path):
+        """With ollama_load_claude_md on, the worktree CLAUDE.md is injected
+        into the system prompt (the Ollama path's setting_sources=['local']
+        does not auto-load it)."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        (tmp_path / "CLAUDE.md").write_text("PROJECT CONVENTIONS: use tabs.")
+
+        ollama_env = {"ANTHROPIC_AUTH_TOKEN": "ollama", "ANTHROPIC_API_KEY": "",
+                      "ANTHROPIC_BASE_URL": "http://localhost:11434"}
+        session = make_session(worktree_path=tmp_path, model="qwen3.5",
+                               ollama_env=ollama_env, ollama_load_claude_md=True)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        sp = mock_options_cls.call_args.kwargs["system_prompt"]
+        assert "PROJECT CONVENTIONS: use tabs." in sp
+        assert "Project CLAUDE.md" in sp
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_ollama_omits_claude_md_by_default(self, mock_options_cls, mock_client_cls, tmp_path):
+        """Default (toggle off): CLAUDE.md is NOT injected, keeping context lean."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        (tmp_path / "CLAUDE.md").write_text("PROJECT CONVENTIONS: use tabs.")
+
+        ollama_env = {"ANTHROPIC_AUTH_TOKEN": "ollama", "ANTHROPIC_API_KEY": "",
+                      "ANTHROPIC_BASE_URL": "http://localhost:11434"}
+        session = make_session(worktree_path=tmp_path, model="qwen3.5",
+                               ollama_env=ollama_env)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        sp = mock_options_cls.call_args.kwargs["system_prompt"]
+        assert "PROJECT CONVENTIONS: use tabs." not in sp
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_non_ollama_ignores_claude_md_flag(self, mock_options_cls, mock_client_cls, tmp_path):
+        """The flag only affects Ollama runs; Claude runs auto-load CLAUDE.md via
+        setting_sources=['project'] and must not double-inject it."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        (tmp_path / "CLAUDE.md").write_text("PROJECT CONVENTIONS: use tabs.")
+
+        session = make_session(worktree_path=tmp_path, model="claude-opus-4-8",
+                               ollama_load_claude_md=True)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        sp = mock_options_cls.call_args.kwargs["system_prompt"]
+        assert "PROJECT CONVENTIONS: use tabs." not in sp
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
     async def test_start_passes_ollama_env_to_options(self, mock_options_cls, mock_client_cls, tmp_path):
         """Ollama env vars are forwarded to ClaudeAgentOptions.env."""
         mock_client = AsyncMock()

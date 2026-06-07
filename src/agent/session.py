@@ -164,6 +164,7 @@ class AgentSession:
         allowed_builtin_tools: list[str] | None = None,
         use_chrome: bool = False,
         ollama_env: dict[str, str] | None = None,
+        ollama_load_claude_md: bool = False,
         workspace_root: Path | None = None,
         sibling_repo_paths: list[Path] | None = None,
         item_repo_name: str | None = None,
@@ -175,6 +176,10 @@ class AgentSession:
         self.bash_yolo = bash_yolo
         self.allowed_builtin_tools = allowed_builtin_tools or []
         self.ollama_env = ollama_env
+        # When True, inject the worktree CLAUDE.md into the Ollama system prompt
+        # (the Ollama path uses setting_sources=["local"], which does not
+        # auto-load it the way the Claude path's ["project"] does).
+        self.ollama_load_claude_md = ollama_load_claude_md
         # Multi-repo mode fields (all None in single-repo mode).
         self.workspace_root = workspace_root
         self.sibling_repo_paths = sibling_repo_paths or []
@@ -401,7 +406,27 @@ class AgentSession:
                 "Answers cite source locations you can open."
             )
 
-        full_system_prompt = (self.system_prompt or "") + cwd_note + multi_repo_note + clarify_note + commit_note + lifecycle_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note
+        # Ollama agents run with setting_sources=["local"], which does NOT
+        # auto-load the project CLAUDE.md (the Claude path's ["project"] does).
+        # When the Ollama "Load project CLAUDE.md" toggle is on, inject the
+        # worktree CLAUDE.md into the system prompt so project conventions reach
+        # the local model.
+        claude_md_note = ""
+        if is_ollama and self.ollama_load_claude_md:
+            claude_md_path = self.worktree_path / "CLAUDE.md"
+            try:
+                if claude_md_path.is_file():
+                    content = claude_md_path.read_text(errors="replace")
+                    claude_md_note = (
+                        f"\n\n--- Project CLAUDE.md ({claude_md_path}) ---\n{content}"
+                    )
+                    logger.info("Ollama mode: injected project CLAUDE.md into system prompt")
+                else:
+                    logger.info("Ollama 'Load project CLAUDE.md' is on but no CLAUDE.md found in worktree")
+            except Exception as e:
+                logger.warning(f"Could not read project CLAUDE.md at {claude_md_path}: {e}")
+
+        full_system_prompt = (self.system_prompt or "") + cwd_note + multi_repo_note + clarify_note + commit_note + lifecycle_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note + claude_md_note
 
         # Configure allowed MCP tools
         allowed_tools = []

@@ -107,6 +107,7 @@ class SessionService:
             bash_yolo=config.get("bash_yolo", False),
             allowed_builtin_tools=allowed_builtin_tools,
             ollama_env=ollama_env,
+            ollama_load_claude_md=bool(config.get("ollama_load_claude_md", False)),
             workspace_root=workspace_root,
             sibling_repo_paths=sibling_repo_paths,
             item_repo_name=item_repo_name,

@@ -106,6 +106,14 @@ The Ollama `ClaudeAgentOptions` in `session.py` (and the one-shot reviewer in
   (no leaked hooks) and also skips project CLAUDE.md (lean context). The
   non-Ollama path already excludes `user` via `setting_sources=["project"]`.
 
+  Because `["local"]` skips the project `CLAUDE.md`, the **Settings ▸ Ollama**
+  tab has a **"Load project CLAUDE.md"** toggle (`ollama_load_claude_md`,
+  migration 030, default off). When on, `session.py` reads the worktree
+  `CLAUDE.md` and appends it to the system prompt (`claude_md_note`) so project
+  conventions reach the local model. It's off by default to preserve the lean
+  context that small models need; the Claude path auto-loads `CLAUDE.md` via
+  `setting_sources=["project"]` regardless, so this toggle is Ollama-only.
+
 The Ollama system-prompt addendum also includes a **decisiveness** note: run one
 command for a factual query, trust the output, and proceed rather than exhausting
 every interpretation.
