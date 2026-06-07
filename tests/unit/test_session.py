@@ -854,6 +854,50 @@ class TestStart:
         sp = kwargs["system_prompt"]
         assert "Base instructions." in sp
         assert str(tmp_path) in sp  # cwd_note injected
+        # lifecycle_note: tells the agent completion is automatic, so it doesn't
+        # flail trying to "close" the card (the Ollama failure mode).
+        assert "AUTOMATICALLY" in sp
+        assert "mcp__inloop__" in sp
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_ollama_gets_stronger_lifecycle_note(self, mock_options_cls, mock_client_cls, tmp_path):
+        """Ollama runs get the blunt 'stop calling tools to finish' addendum."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        ollama_env = {
+            "ANTHROPIC_AUTH_TOKEN": "ollama",
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_BASE_URL": "http://localhost:11434",
+        }
+        session = make_session(worktree_path=tmp_path, model="qwen3.5", ollama_env=ollama_env)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        sp = mock_options_cls.call_args.kwargs["system_prompt"]
+        assert "TO FINISH THIS TASK" in sp
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_non_ollama_omits_stronger_lifecycle_note(self, mock_options_cls, mock_client_cls, tmp_path):
+        """Non-Ollama runs get the general note but not the blunt Ollama addendum."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        session = make_session(worktree_path=tmp_path)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        sp = mock_options_cls.call_args.kwargs["system_prompt"]
+        assert "AUTOMATICALLY" in sp  # general lifecycle note present
+        assert "TO FINISH THIS TASK" not in sp  # Ollama addendum absent
 
     @patch("src.agent.session.ClaudeSDKClient")
     @patch("src.agent.session.ClaudeAgentOptions")
