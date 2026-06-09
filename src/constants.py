@@ -4,11 +4,22 @@ Constants for the agents dashboard application.
 
 # Available models - centralized to avoid duplication
 # Each entry: (model_id, display_name, experimental)
+# The "[1m]" suffix opts the spawned `claude` CLI into the optional 1M-token
+# context window (no API beta header needed via the Agent SDK; standard pricing).
+# Per Claude Code's model-config docs, the [1m] suffix applies only to
+# Opus 4.6+ and Sonnet 4.6. Fable 5 ALWAYS runs at 1M on the API, so it needs
+# no suffix (and the CLI does not expose a fable[1m] variant). Opus 4.5 and
+# Haiku 4.5 do not support 1M.
 AVAILABLE_MODELS = [
+    ("claude-fable-5", "Claude Fable 5", False),  # always 1M on the API
     ("claude-sonnet-4-6", "Claude Sonnet 4.6", False),
+    ("claude-sonnet-4-6[1m]", "Claude Sonnet 4.6 (1M)", False),
     ("claude-opus-4-8", "Claude Opus 4.8", False),
+    ("claude-opus-4-8[1m]", "Claude Opus 4.8 (1M)", False),
     ("claude-opus-4-7", "Claude Opus 4.7", False),
+    ("claude-opus-4-7[1m]", "Claude Opus 4.7 (1M)", False),
     ("claude-opus-4-6", "Claude Opus 4.6", False),
+    ("claude-opus-4-6[1m]", "Claude Opus 4.6 (1M)", False),
     ("claude-opus-4-5-20251101", "Claude Opus 4.5", False),
     ("claude-haiku-4-5-20251001", "Claude Haiku 4.5", False),
 ]
