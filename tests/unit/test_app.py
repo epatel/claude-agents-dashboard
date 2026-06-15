@@ -248,8 +248,9 @@ class TestCreateApp:
     def test_routes_included(self, tmp_path):
         target, data = self._make_paths(tmp_path)
         app = create_app(target, data)
-        # Verify at least some routes are registered
-        routes = [r.path for r in app.routes]
+        # Verify at least some routes are registered. Some route entries
+        # (e.g. included routers in newer Starlette) have no `.path`, so guard.
+        routes = [p for r in app.routes if (p := getattr(r, "path", None))]
         assert len(routes) > 0
 
     def test_static_mount_registered(self, tmp_path):

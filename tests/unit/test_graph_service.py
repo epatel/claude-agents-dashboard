@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.services.graph_service import GraphService, GRAPH_OUT_DIRNAME
+from src.services.graph_service import GraphService, GRAPH_OUT_DIRNAME, PACKAGE_NAME
 
 
 def _write_graph(proj: Path, nodes=3, edges=2, communities=2, commit="abc123"):
@@ -43,9 +43,15 @@ class _FakeProc:
 
 class TestStatus:
     def test_installed_version_is_real(self, tmp_path):
-        # graphifyy is installed in the test venv
-        assert GraphService(tmp_path).installed_version() == \
-            __import__("importlib.metadata", fromlist=["version"]).version("graphifyy")
+        # Compare against the real metadata for the configured package name;
+        # skip when that package isn't installed in this venv.
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            expected = version(PACKAGE_NAME)
+        except PackageNotFoundError:
+            pytest.skip(f"{PACKAGE_NAME} not installed in this environment")
+        assert GraphService(tmp_path).installed_version() == expected
 
     @pytest.mark.asyncio
     async def test_status_no_graph(self, tmp_path):
