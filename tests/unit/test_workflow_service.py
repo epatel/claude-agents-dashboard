@@ -406,6 +406,31 @@ class TestNotifyAndAutoStartDependents:
         workflow.sessions.create_session.assert_awaited()
 
 
+class TestOnWhoAmICallback:
+    async def test_returns_own_item_with_deps(self, workflow, db_service):
+        parent = await db_service.create_todo_item("Parent", "p")
+        me = await db_service.create_todo_item("Build foundation", "do it")
+        await db_service.set_item_dependencies(me["id"], [parent["id"]])
+
+        cb = workflow._create_on_who_am_i_callback(me["id"])
+        result = await cb()
+
+        assert result["id"] == me["id"]
+        assert result["title"] == "Build foundation"
+        assert result["column_name"] == "todo"
+        assert [d["id"] for d in result["dependencies"]] == [parent["id"]]
+
+    async def test_missing_item_returns_error(self, workflow):
+        cb = workflow._create_on_who_am_i_callback("does-not-exist")
+        result = await cb()
+        assert "error" in result
+
+    async def test_none_item_id_returns_error(self, workflow):
+        cb = workflow._create_on_who_am_i_callback(None)
+        result = await cb()
+        assert "error" in result
+
+
 # ---------------------------------------------------------------------------
 # Callback: _create_on_message_callback
 # ---------------------------------------------------------------------------

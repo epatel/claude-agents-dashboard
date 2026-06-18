@@ -151,6 +151,7 @@ class AgentSession:
         on_request_command=None,
         on_request_tool=None,
         on_view_board=None,
+        on_who_am_i=None,
         on_delete_todo=None,
         on_create_epic=None,
         on_create_shortcut=None,
@@ -168,6 +169,7 @@ class AgentSession:
         workspace_root: Path | None = None,
         sibling_repo_paths: list[Path] | None = None,
         item_repo_name: str | None = None,
+        item_id: str | None = None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
@@ -184,6 +186,9 @@ class AgentSession:
         self.workspace_root = workspace_root
         self.sibling_repo_paths = sibling_repo_paths or []
         self.item_repo_name = item_repo_name
+        # The board item this agent is working on (used to tell the agent its own
+        # ID in the system prompt and to back the who_am_i tool).
+        self.item_id = item_id
         self.on_message = on_message        # async callback(text: str)
         self.on_tool_use = on_tool_use      # async callback(tool_name: str, input: dict)
         self.on_thinking = on_thinking      # async callback(thinking: str)
@@ -195,6 +200,7 @@ class AgentSession:
         self.on_request_command = on_request_command  # async callback(command: str, reason: str) -> str
         self.on_request_tool = on_request_tool      # async callback(tool_name: str, reason: str) -> str
         self.on_view_board = on_view_board          # async callback() -> str
+        self.on_who_am_i = on_who_am_i              # async callback() -> dict (this agent's own item)
         self.on_graph_query = on_graph_query        # async callback(question: str) -> str
         self.graphify_enabled = graphify_enabled    # expose graph_query tool to the agent
         self.on_delete_todo = on_delete_todo        # async callback(item_id: str) -> str
@@ -232,6 +238,9 @@ class AgentSession:
         if self.on_view_board:
             from .board_view import create_board_view_server
             mcp_servers["board_view"] = create_board_view_server(self.on_view_board)
+        if self.on_who_am_i:
+            from .who_am_i import create_who_am_i_server
+            mcp_servers["who_am_i"] = create_who_am_i_server(self.on_who_am_i)
         if self.on_create_shortcut:
             from .shortcut import create_shortcut_server
             mcp_servers["shortcut"] = create_shortcut_server(self.on_create_shortcut)
@@ -301,6 +310,15 @@ class AgentSession:
                         )
                 except Exception as e:
                     logger.warning(f"Could not read workspace {fname} at {fpath}: {e}")
+        board_item_note = ""
+        if self.item_id:
+            board_item_note = (
+                f"\n\nYOUR BOARD ITEM: you are working on board item `{self.item_id}`. "
+                "Call the who_am_i tool (mcp__who_am_i__who_am_i) any time for your full "
+                "item details (title, column, dependencies). Use this ID when a follow-up "
+                "task must wait for you — pass it in the `requires` field of create_todo. "
+                "You never need to guess which card is yours from view_board."
+            )
         clarify_note = (
             "\n\nIMPORTANT: If you need to ask the user a question or need clarification, "
             "you MUST use the ask_user MCP tool (mcp__clarification__ask_user). "
@@ -349,6 +367,8 @@ class AgentSession:
             "'requires' parameter to specify which item IDs must be completed first. "
             "For example, if task B depends on task A, create task A first, note its ID, "
             "then create task B with requires=[\"<task-A-id>\"]. "
+            "To make a task depend on YOU (so it waits for your own work to merge), use "
+            "your own item ID — get it from the who_am_i tool (mcp__who_am_i__who_am_i). "
             "Always think about task ordering \u2014 even in parallel workflows, some tasks "
             "naturally depend on others (e.g., UI components depend on layout structure, "
             "integration tasks depend on the pieces they integrate)."
@@ -426,7 +446,7 @@ class AgentSession:
             except Exception as e:
                 logger.warning(f"Could not read project CLAUDE.md at {claude_md_path}: {e}")
 
-        full_system_prompt = (self.system_prompt or "") + cwd_note + multi_repo_note + clarify_note + commit_note + lifecycle_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note + claude_md_note
+        full_system_prompt = (self.system_prompt or "") + cwd_note + board_item_note + multi_repo_note + clarify_note + commit_note + lifecycle_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note + claude_md_note
 
         # Configure allowed MCP tools
         allowed_tools = []
@@ -444,6 +464,8 @@ class AgentSession:
             allowed_tools.append("mcp__tool_access__request_tool_access")
         if "board_view" in mcp_servers:
             allowed_tools.append("mcp__board_view__view_board")
+        if "who_am_i" in mcp_servers:
+            allowed_tools.append("mcp__who_am_i__who_am_i")
         if "shortcut" in mcp_servers:
             allowed_tools.append("mcp__shortcut__create_shortcut")
         if "graph_query" in mcp_servers:
@@ -451,7 +473,7 @@ class AgentSession:
 
         # Allow all tools from external MCP servers (using wildcard for each server)
         for server_name, server_config in mcp_servers.items():
-            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view", "shortcut", "graph_query"]:  # Skip our built-in servers
+            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view", "who_am_i", "shortcut", "graph_query"]:  # Skip our built-in servers
                 allowed_tools.append(f"mcp__{server_name}__*")
                 logger.info(f"Allowing all tools from external MCP server: {server_name}")
 

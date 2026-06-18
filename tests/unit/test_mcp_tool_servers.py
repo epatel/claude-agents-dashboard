@@ -85,6 +85,69 @@ class TestBoardViewServer:
         assert VIEW_BOARD_SCHEMA["properties"] == {}
 
 
+# ── who_am_i ───────────────────────────────────────────────────────────
+
+class TestWhoAmIServer:
+    def _make(self, cb):
+        from src.agent.who_am_i import create_who_am_i_server
+        return capture_tools("src.agent.who_am_i", create_who_am_i_server, cb)
+
+    def test_server_name_is_who_am_i(self):
+        cap = self._make(AsyncMock(return_value={}))
+        assert cap["name"] == "who_am_i"
+
+    def test_exposes_who_am_i_tool(self):
+        cap = self._make(AsyncMock(return_value={}))
+        tool = get_tool(cap["tools"], "who_am_i")
+        assert tool.name == "who_am_i"
+
+    def test_who_am_i_has_description(self):
+        cap = self._make(AsyncMock(return_value={}))
+        tool = get_tool(cap["tools"], "who_am_i")
+        assert len(tool.description) > 0
+
+    @pytest.mark.asyncio
+    async def test_who_am_i_calls_callback_no_args(self):
+        cb = AsyncMock(return_value={"id": "abc123", "title": "Plan", "column_name": "doing"})
+        cap = self._make(cb)
+        tool = get_tool(cap["tools"], "who_am_i")
+
+        result = await tool.handler({})
+
+        cb.assert_awaited_once_with()
+        assert result["content"][0]["type"] == "text"
+
+    @pytest.mark.asyncio
+    async def test_who_am_i_includes_item_id_and_deps(self):
+        cb = AsyncMock(return_value={
+            "id": "abc123",
+            "title": "Build foundation",
+            "column_name": "doing",
+            "dependencies": [{"id": "dep-1"}, {"id": "dep-2"}],
+        })
+        cap = self._make(cb)
+        tool = get_tool(cap["tools"], "who_am_i")
+
+        text = (await tool.handler({}))["content"][0]["text"]
+        assert "abc123" in text
+        assert "Build foundation" in text
+        assert "dep-1" in text and "dep-2" in text
+
+    @pytest.mark.asyncio
+    async def test_who_am_i_handles_error(self):
+        cb = AsyncMock(return_value={"error": "Board item xyz not found."})
+        cap = self._make(cb)
+        tool = get_tool(cap["tools"], "who_am_i")
+
+        text = (await tool.handler({}))["content"][0]["text"]
+        assert "not found" in text
+
+    def test_who_am_i_schema(self):
+        from src.agent.who_am_i import WHO_AM_I_SCHEMA
+        assert WHO_AM_I_SCHEMA["type"] == "object"
+        assert WHO_AM_I_SCHEMA["properties"] == {}
+
+
 # ── shortcut ───────────────────────────────────────────────────────────
 
 class TestShortcutServer:

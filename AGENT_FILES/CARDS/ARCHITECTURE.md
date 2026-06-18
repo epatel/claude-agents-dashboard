@@ -32,6 +32,7 @@ Claude SDK integration plus built-in MCP tool servers and PreToolUse hooks. One 
 - `clarification.py` — `ask_user`
 - `todo.py` — `create_todo` / `create_epic` / `delete_todo`
 - `board_view.py` — `view_board`
+- `who_am_i.py` — `who_am_i` (returns the agent's OWN item — id, title, column, deps — so it can self-reference in `requires` without guessing from `view_board`)
 - `commit_message.py` — `set_commit_message`
 - `command_access.py` — `request_command_access`
 - `tool_access.py` — `request_tool_access`

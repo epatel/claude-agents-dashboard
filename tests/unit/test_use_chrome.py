@@ -160,7 +160,12 @@ class TestStartConfiguresChrome:
 class TestItemSessionKwargs:
     def _kwargs(self, item):
         # git with no `repos` attr => single-repo mode (no multi-repo kwargs).
-        fake = SimpleNamespace(git=SimpleNamespace())
+        # _item_session_kwargs also builds the who_am_i callback, so the fake
+        # needs that factory method.
+        fake = SimpleNamespace(
+            git=SimpleNamespace(),
+            _create_on_who_am_i_callback=lambda item_id: None,
+        )
         return WorkflowService._item_session_kwargs(fake, item)
 
     def test_true_when_flag_set(self):

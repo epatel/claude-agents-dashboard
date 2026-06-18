@@ -89,6 +89,10 @@ class WorkflowService:
         """
         kwargs: Dict[str, Any] = {
             "use_chrome": bool(item.get("use_chrome")) if item else False,
+            # Self-view tool: lets the agent fetch its own card (incl. its item ID
+            # for `requires`) instead of guessing from view_board. Threaded here so
+            # it reaches every create_session call site in one place.
+            "on_who_am_i": self._create_on_who_am_i_callback(item.get("id") if item else None),
         }
         repos = getattr(self.git, "repos", None)
         if not repos:
@@ -1307,6 +1311,32 @@ class WorkflowService:
             await self.notifications.ws_manager.broadcast("shortcut_created", sc)
             return sc
         return on_create_shortcut
+
+    def _create_on_who_am_i_callback(self, item_id: str):
+        """Callback backing the who_am_i tool — returns the agent's OWN item.
+
+        Closes over the agent's item_id so the agent can fetch its own card
+        (id, title, column, dependencies) without guessing from view_board.
+        """
+        async def on_who_am_i() -> Dict[str, Any]:
+            if not item_id:
+                return {"error": "Could not determine your board item."}
+            item = await self.db.get_item(item_id)
+            if not item:
+                return {"error": f"Board item {item_id} not found."}
+            deps = await self.db.get_item_dependencies(item_id)
+            return {
+                "id": item["id"],
+                "title": item.get("title", ""),
+                "description": item.get("description", ""),
+                "column_name": item.get("column_name", ""),
+                "status": item.get("status"),
+                "epic_id": item.get("epic_id"),
+                "auto_start": item.get("auto_start"),
+                "auto_approve": item.get("auto_approve"),
+                "dependencies": deps or [],
+            }
+        return on_who_am_i
 
     def _create_on_view_board_callback(self):
         async def on_view_board() -> str:

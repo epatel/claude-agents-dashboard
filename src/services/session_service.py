@@ -36,6 +36,7 @@ class SessionService:
                            on_request_command: Optional[Callable] = None,
                            on_request_tool: Optional[Callable] = None,
                            on_view_board: Optional[Callable] = None,
+                           on_who_am_i: Optional[Callable] = None,
                            on_graph_query: Optional[Callable] = None,
                            on_delete_todo: Optional[Callable] = None,
                            on_create_epic: Optional[Callable] = None,
@@ -95,6 +96,7 @@ class SessionService:
             on_request_command=on_request_command,
             on_request_tool=on_request_tool,
             on_view_board=on_view_board,
+            on_who_am_i=on_who_am_i,
             on_graph_query=on_graph_query,
             graphify_enabled=bool(config.get("graphify_enabled", False)),
             on_delete_todo=on_delete_todo,
@@ -112,6 +114,7 @@ class SessionService:
             sibling_repo_paths=sibling_repo_paths,
             item_repo_name=item_repo_name,
             use_chrome=use_chrome,
+            item_id=item_id,
         )
 
         self.sessions[item_id] = session

@@ -862,6 +862,41 @@ class TestStart:
     @patch("src.agent.session.ClaudeSDKClient")
     @patch("src.agent.session.ClaudeAgentOptions")
     @pytest.mark.asyncio
+    async def test_start_injects_own_item_id(self, mock_options_cls, mock_client_cls, tmp_path):
+        """When item_id is set, the system prompt tells the agent its own card."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        session = make_session(worktree_path=tmp_path, item_id="card-42")
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        sp = mock_options_cls.call_args.kwargs["system_prompt"]
+        assert "card-42" in sp
+        assert "who_am_i" in sp
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_omits_item_note_without_item_id(self, mock_options_cls, mock_client_cls, tmp_path):
+        """No item_id → no 'YOUR BOARD ITEM' note (back-compat for callers that don't set it)."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        session = make_session(worktree_path=tmp_path)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        sp = mock_options_cls.call_args.kwargs["system_prompt"]
+        assert "YOUR BOARD ITEM" not in sp
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
     async def test_start_ollama_gets_stronger_lifecycle_note(self, mock_options_cls, mock_client_cls, tmp_path):
         """Ollama runs get the blunt 'stop calling tools to finish' addendum."""
         mock_client = AsyncMock()
