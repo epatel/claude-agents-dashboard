@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from ..agent.review_agent import run_auto_review
 from ..agent.session import AgentResult
+from ..config import epic_plan_relpath
 from ..constants import (
     AUTO_APPROVE_DIRECT,
     AUTO_APPROVE_MODES,
@@ -79,11 +80,12 @@ class WorkflowService:
         """Count how many agents are currently running (not queued)."""
         return len(self.sessions.sessions)
 
-    def _item_session_kwargs(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    async def _item_session_kwargs(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Per-item extra kwargs for SessionService.create_session.
 
         Always carries the item's `use_chrome` flag; adds multi-repo read-scope
-        kwargs when in multi-repo mode. Callers can splat it either way.
+        kwargs when in multi-repo mode, plus the epic's shared-plan path when the
+        item belongs to an epic. Callers splat it: `**(await ...)`.
         Uses getattr so mocks that don't expose `repos` (e.g. MagicMock spec'd
         against GitService before this attribute existed) behave as single-mode.
         """
@@ -94,6 +96,14 @@ class WorkflowService:
             # it reaches every create_session call site in one place.
             "on_who_am_i": self._create_on_who_am_i_callback(item.get("id") if item else None),
         }
+        # Epic-scoped shared plan: tasks are usually created under an epic, so
+        # point the agent at that epic's plan file (derived from the epic title)
+        # in addition to the repo-root project-plan.md.
+        epic_id = item.get("epic_id") if item else None
+        if epic_id:
+            epic = await self.epics.get(epic_id)
+            if epic:
+                kwargs["epic_plan_relpath"] = epic_plan_relpath(epic["title"])
         repos = getattr(self.git, "repos", None)
         if not repos:
             return kwargs
@@ -222,7 +232,7 @@ class WorkflowService:
             on_graph_query=self._create_on_graph_query_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **self._item_session_kwargs(item),
+            **(await self._item_session_kwargs(item)),
         )
 
         # Build prompt and fetch attachments
@@ -369,7 +379,7 @@ class WorkflowService:
             on_graph_query=self._create_on_graph_query_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **self._item_session_kwargs(item),
+            **(await self._item_session_kwargs(item)),
         )
 
         prompt = f"Continue working on your task:\nTask: {item['title']}\n\n{item['description']}"
@@ -452,7 +462,7 @@ class WorkflowService:
             on_graph_query=self._create_on_graph_query_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **self._item_session_kwargs(item),
+            **(await self._item_session_kwargs(item)),
         )
 
         prompt = f"Task: {item['title']}\n\n{item['description']}"
@@ -724,7 +734,7 @@ class WorkflowService:
                     on_view_board=self._create_on_view_board_callback(),
             on_graph_query=self._create_on_graph_query_callback(),
                     on_delete_todo=self._create_on_delete_todo_callback(item_id),
-                    **self._item_session_kwargs(item),
+                    **(await self._item_session_kwargs(item)),
                 )
 
                 conflict_prompt = (
@@ -827,7 +837,7 @@ class WorkflowService:
             on_graph_query=self._create_on_graph_query_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **self._item_session_kwargs(item),
+            **(await self._item_session_kwargs(item)),
         )
 
         # Fetch attachments for context
@@ -1281,7 +1291,14 @@ class WorkflowService:
     def _create_on_create_epic_callback(self, item_id: str):
         async def on_create_epic(title: str, color: str) -> Dict[str, Any]:
             epic = await self.epics.create(title, color)
-            await self._log_and_notify(item_id, "system", f"Created epic: {title}")
+            # Tell the caller the conventional path for this epic's shared plan
+            # so the planner writes it where every task in the epic will look.
+            plan_path = epic_plan_relpath(title)
+            epic["plan_path"] = plan_path
+            await self._log_and_notify(
+                item_id, "system",
+                f"Created epic: {title} — shared plan path: {plan_path}",
+            )
             await self.notifications.broadcast_epic_created(epic)
             return epic
         return on_create_epic
@@ -1712,7 +1729,7 @@ class WorkflowService:
                 on_view_board=self._create_on_view_board_callback(),
             on_graph_query=self._create_on_graph_query_callback(),
                 on_delete_todo=self._create_on_delete_todo_callback(item_id),
-                **self._item_session_kwargs(item or {}),
+                **(await self._item_session_kwargs(item or {})),
             )
 
             # Include original task so agent knows what to do even without resume

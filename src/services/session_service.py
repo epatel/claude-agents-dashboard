@@ -44,6 +44,7 @@ class SessionService:
                            workspace_root: Optional[Path] = None,
                            sibling_repo_paths: Optional[List[Path]] = None,
                            item_repo_name: Optional[str] = None,
+                           epic_plan_relpath: Optional[str] = None,
                            use_chrome: bool = False) -> AgentSession:
         """Create a new agent session with all callbacks."""
         # Use provided model or fall back to config model
@@ -113,6 +114,7 @@ class SessionService:
             workspace_root=workspace_root,
             sibling_repo_paths=sibling_repo_paths,
             item_repo_name=item_repo_name,
+            epic_plan_relpath=epic_plan_relpath,
             use_chrome=use_chrome,
             item_id=item_id,
         )

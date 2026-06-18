@@ -933,6 +933,46 @@ class TestStart:
     @patch("src.agent.session.ClaudeSDKClient")
     @patch("src.agent.session.ClaudeAgentOptions")
     @pytest.mark.asyncio
+    async def test_start_injects_epic_plan_note_when_present(self, mock_options_cls, mock_client_cls, tmp_path):
+        """An item's epic plan file surfaces an EPIC PLAN note alongside the root one."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        (tmp_path / "project-plan.md").write_text("# Plan\n")
+        (tmp_path / "plans").mkdir()
+        (tmp_path / "plans" / "realtime-canvas.md").write_text("# Epic plan\n")
+
+        session = make_session(worktree_path=tmp_path, epic_plan_relpath="plans/realtime-canvas.md")
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        sp = mock_options_cls.call_args.kwargs["system_prompt"]
+        assert "EPIC PLAN" in sp
+        assert "plans/realtime-canvas.md" in sp
+        # Coexists with the project-wide plan note.
+        assert "SHARED PROJECT PLAN" in sp
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_omits_epic_plan_note_when_file_absent(self, mock_options_cls, mock_client_cls, tmp_path):
+        """A configured epic relpath with no file on disk → no EPIC PLAN note."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        session = make_session(worktree_path=tmp_path, epic_plan_relpath="plans/realtime-canvas.md")
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        sp = mock_options_cls.call_args.kwargs["system_prompt"]
+        assert "EPIC PLAN" not in sp
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
     async def test_start_ollama_gets_stronger_lifecycle_note(self, mock_options_cls, mock_client_cls, tmp_path):
         """Ollama runs get the blunt 'stop calling tools to finish' addendum."""
         mock_client = AsyncMock()

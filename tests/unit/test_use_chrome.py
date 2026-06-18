@@ -158,24 +158,25 @@ class TestStartConfiguresChrome:
 
 @pytest.mark.unit
 class TestItemSessionKwargs:
-    def _kwargs(self, item):
+    async def _kwargs(self, item):
         # git with no `repos` attr => single-repo mode (no multi-repo kwargs).
         # _item_session_kwargs also builds the who_am_i callback, so the fake
-        # needs that factory method.
+        # needs that factory method. Items here carry no epic_id, so the epic
+        # lookup is skipped and no `epics` attr is required.
         fake = SimpleNamespace(
             git=SimpleNamespace(),
             _create_on_who_am_i_callback=lambda item_id: None,
         )
-        return WorkflowService._item_session_kwargs(fake, item)
+        return await WorkflowService._item_session_kwargs(fake, item)
 
-    def test_true_when_flag_set(self):
-        assert self._kwargs({"use_chrome": 1})["use_chrome"] is True
+    async def test_true_when_flag_set(self):
+        assert (await self._kwargs({"use_chrome": 1}))["use_chrome"] is True
 
-    def test_false_when_flag_zero(self):
-        assert self._kwargs({"use_chrome": 0})["use_chrome"] is False
+    async def test_false_when_flag_zero(self):
+        assert (await self._kwargs({"use_chrome": 0}))["use_chrome"] is False
 
-    def test_false_when_missing(self):
-        assert self._kwargs({})["use_chrome"] is False
+    async def test_false_when_missing(self):
+        assert (await self._kwargs({}))["use_chrome"] is False
 
-    def test_false_when_item_none(self):
-        assert self._kwargs(None)["use_chrome"] is False
+    async def test_false_when_item_none(self):
+        assert (await self._kwargs(None))["use_chrome"] is False

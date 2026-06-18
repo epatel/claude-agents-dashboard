@@ -170,6 +170,7 @@ class AgentSession:
         sibling_repo_paths: list[Path] | None = None,
         item_repo_name: str | None = None,
         item_id: str | None = None,
+        epic_plan_relpath: str | None = None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
@@ -189,6 +190,8 @@ class AgentSession:
         # The board item this agent is working on (used to tell the agent its own
         # ID in the system prompt and to back the who_am_i tool).
         self.item_id = item_id
+        # Repo-relative path of this item's epic shared plan (None if no epic).
+        self.epic_plan_relpath = epic_plan_relpath
         self.on_message = on_message        # async callback(text: str)
         self.on_tool_use = on_tool_use      # async callback(tool_name: str, input: dict)
         self.on_thinking = on_thinking      # async callback(thinking: str)
@@ -471,7 +474,25 @@ class AgentSession:
             except Exception as e:
                 logger.warning(f"Could not check for shared plan at {plan_root}: {e}")
 
-        full_system_prompt = (self.system_prompt or "") + cwd_note + board_item_note + multi_repo_note + shared_plan_note + clarify_note + commit_note + lifecycle_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note + claude_md_note
+        # Epic-scoped plan: this item belongs to an epic, so point it at that
+        # epic's plan in addition to the project-wide one above.
+        epic_plan_note = ""
+        if self.epic_plan_relpath:
+            for plan_root in plan_roots:
+                try:
+                    epic_plan_path = plan_root / self.epic_plan_relpath
+                    if epic_plan_path.is_file():
+                        epic_plan_note = (
+                            f"\n\nEPIC PLAN: your task belongs to an epic whose shared plan "
+                            f"is at {epic_plan_path}. This is the detailed plan for your "
+                            "workstream — read it first and update its 'Current state' and "
+                            "'Decisions' before you finish, alongside the project-wide plan."
+                        )
+                        break
+                except Exception as e:
+                    logger.warning(f"Could not check for epic plan at {plan_root}: {e}")
+
+        full_system_prompt = (self.system_prompt or "") + cwd_note + board_item_note + multi_repo_note + shared_plan_note + epic_plan_note + clarify_note + commit_note + lifecycle_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note + claude_md_note
 
         # Configure allowed MCP tools
         allowed_tools = []

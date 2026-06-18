@@ -192,11 +192,18 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
             title = input.get("title", "")
             color = input.get("color", "blue")
             epic_info = await on_create_epic(title, color)
+            msg = f"Created epic: {epic_info['title']} (ID: {epic_info['id']}, color: {epic_info['color']})"
+            plan_path = epic_info.get("plan_path")
+            if plan_path:
+                msg += (
+                    f". Create this epic's shared plan at {plan_path} (repo root) — "
+                    "tasks in this epic are automatically told to read and update it."
+                )
             return {
                 "content": [
                     {
                         "type": "text",
-                        "text": f"Created epic: {epic_info['title']} (ID: {epic_info['id']}, color: {epic_info['color']})"
+                        "text": msg,
                     }
                 ]
             }

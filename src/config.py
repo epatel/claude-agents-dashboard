@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from .constants import DEFAULT_MODEL
 
@@ -22,6 +23,21 @@ COLUMN_IDS = [c["id"] for c in COLUMNS]
 
 # Data directory name created in target project
 DATA_DIR_NAME = "agents-lab"
+
+# Per-epic shared plans live as git-committed markdown under this repo-root dir.
+PLANS_DIR_NAME = "plans"
+
+
+def epic_plan_relpath(epic_title: str) -> str:
+    """Repo-relative path of an epic's shared plan file, derived from its title.
+
+    Single source of truth for the convention so the create_epic tool (which
+    tells the planner where to write the plan) and the agent prompt injection
+    (which points tasks at it) always agree, e.g.
+    "Realtime canvas" -> "plans/realtime-canvas.md".
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", (epic_title or "").lower()).strip("-") or "epic"
+    return f"{PLANS_DIR_NAME}/{slug}.md"
 
 # Default host and starting port
 DEFAULT_HOST = "127.0.0.1"

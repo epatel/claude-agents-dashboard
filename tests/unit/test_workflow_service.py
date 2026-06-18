@@ -877,6 +877,25 @@ class TestOnCreateEpicCallback:
         await cb("Epic", "#123456")
         workflow.notifications.broadcast_epic_created.assert_awaited()
 
+    async def test_returns_conventional_plan_path(self, workflow, item):
+        cb = workflow._create_on_create_epic_callback(item["id"])
+        epic = await cb("Realtime Canvas", "blue")
+        # Same convention the prompt injection uses, so they always agree.
+        assert epic["plan_path"] == "plans/realtime-canvas.md"
+
+
+class TestEpicSessionPlan:
+    async def test_item_session_kwargs_sets_epic_plan_relpath(self, workflow, db_service):
+        epic = await workflow.epics.create("Realtime Canvas", "blue")
+        item = await db_service.create_todo_item("Task", "desc", epic_id=epic["id"])
+        kwargs = await workflow._item_session_kwargs(item)
+        assert kwargs["epic_plan_relpath"] == "plans/realtime-canvas.md"
+
+    async def test_item_session_kwargs_no_epic_no_plan(self, workflow, db_service):
+        item = await db_service.create_todo_item("Task", "desc")
+        kwargs = await workflow._item_session_kwargs(item)
+        assert "epic_plan_relpath" not in kwargs
+
 
 # ---------------------------------------------------------------------------
 # Callback: _create_on_delete_todo_callback
