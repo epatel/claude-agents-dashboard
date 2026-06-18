@@ -897,6 +897,42 @@ class TestStart:
     @patch("src.agent.session.ClaudeSDKClient")
     @patch("src.agent.session.ClaudeAgentOptions")
     @pytest.mark.asyncio
+    async def test_start_injects_shared_plan_note_when_present(self, mock_options_cls, mock_client_cls, tmp_path):
+        """A project-plan.md in the worktree surfaces the read-first/update note."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        (tmp_path / "project-plan.md").write_text("# Plan\n")
+
+        session = make_session(worktree_path=tmp_path)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        sp = mock_options_cls.call_args.kwargs["system_prompt"]
+        assert "SHARED PROJECT PLAN" in sp
+        assert "project-plan.md" in sp
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_omits_shared_plan_note_when_absent(self, mock_options_cls, mock_client_cls, tmp_path):
+        """No project-plan.md → no shared-plan note (don't invent a convention)."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        session = make_session(worktree_path=tmp_path)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        sp = mock_options_cls.call_args.kwargs["system_prompt"]
+        assert "SHARED PROJECT PLAN" not in sp
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
     async def test_start_ollama_gets_stronger_lifecycle_note(self, mock_options_cls, mock_client_cls, tmp_path):
         """Ollama runs get the blunt 'stop calling tools to finish' addendum."""
         mock_client = AsyncMock()

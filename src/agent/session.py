@@ -446,7 +446,32 @@ class AgentSession:
             except Exception as e:
                 logger.warning(f"Could not read project CLAUDE.md at {claude_md_path}: {e}")
 
-        full_system_prompt = (self.system_prompt or "") + cwd_note + board_item_note + multi_repo_note + clarify_note + commit_note + lifecycle_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note + claude_md_note
+        # Shared project plan: a fanned-out multi-agent build keeps one source of
+        # truth (project-plan.md at the repo / workspace root). Rather than make
+        # every task description repeat "read the plan first, update it before
+        # finishing", surface that convention here for any agent whose checkout
+        # carries the file. (worktree first, then the workspace root in multi-repo.)
+        shared_plan_note = ""
+        plan_roots = [self.worktree_path]
+        if self.workspace_root:
+            plan_roots.append(self.workspace_root)
+        for plan_root in plan_roots:
+            try:
+                plan_path = plan_root / "project-plan.md"
+                if plan_path.is_file():
+                    shared_plan_note = (
+                        f"\n\nSHARED PROJECT PLAN: this project has a shared plan at "
+                        f"{plan_path}. READ IT FIRST to understand the goal, milestones, "
+                        "decisions, and current state before you start. BEFORE you finish, "
+                        "update its 'Current state' and 'Decisions' sections to reflect what "
+                        "you did. It is the single source of truth shared across every task — "
+                        "keep it accurate so the next agent picks up where you left off."
+                    )
+                    break
+            except Exception as e:
+                logger.warning(f"Could not check for shared plan at {plan_root}: {e}")
+
+        full_system_prompt = (self.system_prompt or "") + cwd_note + board_item_note + multi_repo_note + shared_plan_note + clarify_note + commit_note + lifecycle_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note + claude_md_note
 
         # Configure allowed MCP tools
         allowed_tools = []
