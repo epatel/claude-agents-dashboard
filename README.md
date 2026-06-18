@@ -44,6 +44,27 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 
 Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1137 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
+## Try the demo
+
+Want to see the dashboard build a real application from a single sentence? The [**kanban-demo**](https://github.com/epatel/kanban-demo) repo is a one-file starter that drives the whole pipeline end to end.
+
+```bash
+# 1. Clone the starter repo
+git clone https://github.com/epatel/kanban-demo.git
+
+# 2. Point the dashboard at it
+path/to/claude-agents-dashboard/run.sh /path/to/kanban-demo
+
+# 3. Open the board, create a Todo, and start it:
+#    Lets have some fun. Read @START.md
+```
+
+That single Todo (`Lets have some fun. Read @START.md`) is all you provide. The repo ships with just a `.gitignore` and a [`START.md`](https://github.com/epatel/kanban-demo/blob/main/START.md) brief — the agent reads the brief, scaffolds the project (Makefile, virtualenv, `project-plan.md`), then **breaks the work into chained Todo items** that auto-start as their dependencies resolve. You watch the board fill itself in and build out the app, hands-off.
+
+The brief asks for **"Doodle Together"** — a real-time multiplayer drawing app with a Python + WebSockets backend, accounts, a shared live canvas, chat, and a Pictionary game mode. A finished example of what the agents produce is live at **[ai.memention.net/kanban-demo](https://ai.memention.net/kanban-demo/)**: rooms you can create or join, strokes that sync live for everyone, a color/brush/clear toolbar, a Pictionary mode with a scoreboard, and a side chat panel.
+
+This is a good first run for seeing the [task-breakdown, dependency, and auto-start](#features) features work together on a single prompt.
+
 ## How it works
 
 ```mermaid

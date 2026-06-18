@@ -22,6 +22,7 @@ Common operations and the cards that cover them. Order is suggested reading orde
 | Query / rebuild / upgrade the knowledge graph | [GRAPHIFY](GRAPHIFY.md) only |
 | Work on the skills library / how skills reach agents | [SKILLS](SKILLS.md) → [ARCHITECTURE](ARCHITECTURE.md) (`SessionService`) |
 | Localized bug fix in existing code | None — read the code |
+| Demo the dashboard end-to-end / reproduce the kanban-demo run | [DEMO](DEMO.md) only |
 | About to commit | [COMMIT_POLICY](COMMIT_POLICY.md) |
 
 If your task isn't above, fall through to the **Load when** triggers below.
@@ -87,3 +88,8 @@ If your task isn't above, fall through to the **Load when** triggers below.
 - **Load when**: working on the Agent-Skills library (install/browse/discover/enable), the Settings ▸ Skills tab, or how enabled skills reach agents.
 - **Skip when**: feature work that doesn't touch skills.
 - *`SkillsService`, gitignored `skill-library/`, per-project `enabled_skills`, delivery via SDK `plugins=`, `/api/skills/*`.*
+
+### [DEMO](DEMO.md)
+- **Load when**: explaining how to demo the dashboard end-to-end, or reproducing/updating the `kanban-demo` run.
+- **Skip when**: normal feature work that doesn't touch the demo flow.
+- *One-prompt `kanban-demo` walkthrough → "Doodle Together"; task-breakdown + dependency + auto-start showcase; live reference output.*
