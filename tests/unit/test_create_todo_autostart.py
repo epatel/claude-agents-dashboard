@@ -4,6 +4,7 @@ Each test is annotated with the commit that fixed the bug it covers.
 These serve as regression tests to prevent re-introduction.
 """
 
+import asyncio
 import pytest
 import pytest_asyncio
 from pathlib import Path
@@ -260,6 +261,71 @@ async def test_callback_does_not_immediately_start_with_dependencies(db_service)
     assert result["auto_start"] == 1
 
 
+@pytest.mark.asyncio
+async def test_autostart_empty_requires_anchors_to_creating_card(db_service):
+    """autostart + no requires, created by an in-flight agent, must NOT start
+    immediately. Instead it auto-anchors a dependency on the creating card so it
+    waits for that work to merge (avoids branching off an unmerged main)."""
+    mock_notifications = MagicMock()
+    mock_notifications.broadcast_item_created = AsyncMock()
+    mock_notifications.ws_manager = MagicMock()
+    mock_notifications.ws_manager.broadcast = AsyncMock()
+
+    from src.services.workflow_service import WorkflowService
+
+    with patch.object(WorkflowService, '__init__', lambda self, **kw: None):
+        ws = WorkflowService.__new__(WorkflowService)
+        ws.db = db_service
+        ws.notifications = mock_notifications
+        ws._log_and_notify = AsyncMock()
+        ws.start_agent = AsyncMock()
+
+        # The creating agent's card exists and is in flight (column 'doing').
+        creator = await db_service.create_todo_item("Planner", "lays foundation")
+        await db_service.update_item(creator["id"], column_name="doing")
+
+        callback = ws._create_on_create_todo_callback(creator["id"])
+        result = await callback("First task", "desc", None, None, True)
+
+    # Must not start immediately — it now depends on the creator.
+    ws.start_agent.assert_not_called()
+    assert result["auto_start"] == 1
+    deps = await db_service.get_item_dependencies(result["id"])
+    assert [d["id"] for d in deps] == [creator["id"]]
+
+
+@pytest.mark.asyncio
+async def test_autostart_empty_requires_starts_immediately_when_creator_done(db_service):
+    """If the creating card has already merged (done), its work is on main, so an
+    autostart task with no deps can safely start immediately (no anchor added)."""
+    mock_notifications = MagicMock()
+    mock_notifications.broadcast_item_created = AsyncMock()
+    mock_notifications.ws_manager = MagicMock()
+    mock_notifications.ws_manager.broadcast = AsyncMock()
+
+    from src.services.workflow_service import WorkflowService
+
+    with patch.object(WorkflowService, '__init__', lambda self, **kw: None):
+        ws = WorkflowService.__new__(WorkflowService)
+        ws.db = db_service
+        ws.notifications = mock_notifications
+        ws._log_and_notify = AsyncMock()
+        ws.start_agent = AsyncMock()
+
+        creator = await db_service.create_todo_item("Done card", "already merged")
+        await db_service.update_item(creator["id"], column_name="done")
+
+        callback = ws._create_on_create_todo_callback(creator["id"])
+        result = await callback("Follow-up", "desc", None, None, True)
+        # Let the fire-and-forget autostart task run to completion.
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    ws.start_agent.assert_called_once_with(result["id"])
+    deps = await db_service.get_item_dependencies(result["id"])
+    assert deps == []
+
+
 # ── auto_approve persistence (create_todo MCP tool can request it) ───
 
 
@@ -397,7 +463,13 @@ async def test_callback_auto_approve_default_is_off(db_service):
 
 @pytest.mark.asyncio
 async def test_callback_starts_agent_immediately_without_dependencies(db_service):
-    """When autostart=True and no requires, agent should start immediately."""
+    """When autostart=True and no requires, agent should start immediately.
+
+    Here the creating id ("parent-item-123") is not a real card, so the
+    in-flight auto-anchor does not apply and the immediate-start path runs.
+    The anchored path (creator exists & in flight) is covered separately by
+    test_autostart_empty_requires_anchors_to_creating_card.
+    """
     mock_notifications = MagicMock()
     mock_notifications.broadcast_item_created = AsyncMock()
     mock_notifications.ws_manager = MagicMock()

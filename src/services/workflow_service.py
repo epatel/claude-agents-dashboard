@@ -1232,16 +1232,38 @@ class WorkflowService:
                 title, description, epic_id, autostart, auto_approve=auto_approve_int,
                 use_chrome=bool(use_chrome),
             )
-            if requires:
-                await self.db.set_item_dependencies(item["id"], requires)
+
+            # Safe default for the empty-requires footgun: a task spawned by an
+            # in-flight agent must not start before the creating card's own work
+            # merges, or it branches off a `main` that doesn't have that work yet.
+            # When the agent asks for autostart but gives no deps, anchor the new
+            # task to the creating card so it waits for our merge. Only do this
+            # while the creator is still in flight (not yet merged) — if it's
+            # already done/archived its work is on main and immediate start is fine.
+            effective_requires = list(requires) if requires else []
+            auto_anchored = False
+            if autostart and not effective_requires and item["id"] != item_id:
+                creator = await self.db.get_item(item_id)
+                if creator and creator.get("column_name") not in ("done", "archive"):
+                    effective_requires = [item_id]
+                    auto_anchored = True
+
+            if effective_requires:
+                await self.db.set_item_dependencies(item["id"], effective_requires)
             await self._log_and_notify(item_id, "system", f"Created todo item: {title}")
+            if auto_anchored:
+                await self._log_and_notify(
+                    item_id, "system",
+                    f"'{title}' will wait for this card to merge before it starts "
+                    "(auto-added dependency to avoid branching off an unmerged main).",
+                )
             await self.notifications.broadcast_item_created(item)
-            if requires:
+            if effective_requires:
                 blocked_status = await self.db.get_all_blocked_status()
                 await self.notifications.ws_manager.broadcast("blocked_status_changed", {
                     "blocked": blocked_status,
                 })
-            if autostart and not requires:
+            if autostart and not effective_requires:
                 async def _autostart_agent(new_item_id: str, new_title: str):
                     try:
                         await self.start_agent(new_item_id)

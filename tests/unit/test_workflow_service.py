@@ -834,12 +834,17 @@ class TestOnCreateTodoCallback:
         deps = await db_service.get_item_dependencies(new["id"])
         assert item["id"] in [d["id"] for d in deps]
 
-    async def test_autostart_without_requires_schedules_task(self, workflow, item):
+    async def test_autostart_without_requires_anchors_to_unmerged_creator(self, workflow, db_service, item):
+        # The creating card (`item`) exists and hasn't merged, so an autostart
+        # task with no requires must NOT start immediately — it auto-anchors a
+        # dependency on the creator instead of branching off an unmerged main.
         workflow.sessions.create_session = AsyncMock(return_value=MagicMock())
         workflow.sessions.start_session_task = AsyncMock()
         cb = workflow._create_on_create_todo_callback(item["id"])
         new = await cb("Auto Task", "desc", autostart=True)
-        assert new.get("autostart_scheduled") is True
+        assert not new.get("autostart_scheduled")
+        deps = await db_service.get_item_dependencies(new["id"])
+        assert [d["id"] for d in deps] == [item["id"]]
 
     async def test_autostart_with_requires_does_not_schedule(self, workflow, item):
         cb = workflow._create_on_create_todo_callback(item["id"])
