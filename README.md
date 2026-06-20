@@ -580,6 +580,36 @@ A native macOS wrapper app is available under [Releases](../../releases) as a pr
 
 Requires macOS 14+. Source code is in `wrappers/macos/`.
 
+## Uninstalling / cleaning up leftover data
+
+The dashboard and the macOS wrapper scatter data in a few places outside the repo you cloned. To remove everything:
+
+**Per-project data** — created in every project (or workspace root) you pointed the dashboard at:
+
+```bash
+# Run from each target project / workspace you used
+rm -rf agents-lab/        # SQLite DB, uploaded assets, agent worktrees
+rm -rf graphify-out/      # codebase knowledge graph (only if graphify was used)
+```
+
+`agents-lab/` holds active git worktrees. If any agents are still running, stop the dashboard first. To find every copy:
+
+```bash
+find ~ -type d -name agents-lab 2>/dev/null
+```
+
+**macOS wrapper data** — created by the prebuilt `.app` (not by `run.sh`):
+
+```bash
+rm -rf ~/.agents-dashboard                                      # auto-cloned server repo + Python venv
+rm -f  ~/Library/Preferences/com.agentsdashboard.macos.plist    # saved project list (UserDefaults)
+rm -rf "/Applications/Agents Dashboard.app"                      # the app bundle itself
+```
+
+After editing the preferences plist you may need to run `defaults delete com.agentsdashboard.macos` (or log out) to clear the cached `cfprefsd` copy.
+
+> Nothing above touches the target project's own source — only the dashboard's generated data. The Claude CLI (`~/.claude/`) is shared with Claude Code and is **not** removed by uninstalling the dashboard.
+
 ## Multiple projects
 
 Each project gets its own server instance. Run `run.sh` from different repos — ports auto-increment (8000, 8001, 8002, ...)
