@@ -29,7 +29,7 @@ A dashboard-managed library of [Agent Skills](https://docs.claude.com/en/docs/cl
 ## Notes
 
 - Skills are **not** an agent MCP tool — they ship as plugins, so there's no `mcp__*` surface to whitelist.
-- Separate from the library, everything under the dashboard's `plugins/` directory is auto-discovered and delivered **always-on** to every orchestrated agent (`SessionService`, `src/services/session_service.py:253`). Currently ships `board-workflows` (brainstorm / plan-tasks / debug) and `demo-plugin` (secret-uuid test fixture).
+- Separate from the library, everything under the dashboard's `plugins/` directory is auto-discovered and delivered **always-on** to every orchestrated agent (`SessionService`, `src/services/session_service.py:253`). Currently ships `board-workflows` (brainstorm / plan-tasks / debug).
 - Installing a skill auto-enables it for the current project (the install route adds the name to `enabled_skills`).
 - Tests: `tests/unit/test_skills_service.py` (service), `tests/unit/migrations/test_enabled_skills_029.py` (column), plus route coverage in `tests/unit/test_routes.py`.
 
