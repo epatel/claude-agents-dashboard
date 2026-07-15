@@ -6,13 +6,13 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1137 tests
+./run-tests.sh              # Run all 1171 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 29 migrations (001–029).
+The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 30 migrations (001–030).
 
 ## Test Structure
 

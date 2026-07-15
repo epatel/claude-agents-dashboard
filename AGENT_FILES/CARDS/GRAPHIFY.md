@@ -9,7 +9,7 @@ A persistent knowledge graph of this repo lives in **`graphify-out/`** (`graph.h
 
 graphify is **not on PATH** — it's installed only in the project venv. Always invoke it explicitly:
 ```bash
-venv/bin/graphify version          # → graphify 0.8.33 (package name on PyPI is `graphifyy`)
+venv/bin/graphify version          # prints the installed version (package name on PyPI is `graphifyy`)
 ```
 The pipeline pins its interpreter in `graphify-out/.graphify_python`; every step runs `$(cat graphify-out/.graphify_python)`. If that file is stale/missing, repoint it: `venv/bin/python -c "import sys; open('graphify-out/.graphify_python','w').write(sys.executable)"`.
 

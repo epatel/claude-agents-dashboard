@@ -3,7 +3,7 @@
 > **Load when**: writing or running a DB migration; inspecting the schema; whitelisting a new column.
 > **Skip when**: not touching SQL or migrations.
 
-SQLite with **29 versioned migrations (001–029)** in `src/migrations/versions/`. Auto-migrates on startup (from the FastAPI lifespan). Recent ones: `025` adds `items.use_chrome`, `026` adds `token_usage.api_error_status`, `027` strips the removed `+advisor` model suffix from stored `items`/`agent_config` rows, `028` adds the graphify config columns to `agent_config` (`graphify_enabled`, `graphify_auto_refresh`, `graphify_backend`), and `029` adds `agent_config.enabled_skills` (JSON list of per-project enabled library skills).
+SQLite with **30 versioned migrations (001–030)** in `src/migrations/versions/`. Auto-migrates on startup (from the FastAPI lifespan). Recent ones: `025` adds `items.use_chrome`, `026` adds `token_usage.api_error_status`, `027` strips the removed `+advisor` model suffix from stored `items`/`agent_config` rows, `028` adds the graphify config columns to `agent_config` (`graphify_enabled`, `graphify_auto_refresh`, `graphify_backend`), `029` adds `agent_config.enabled_skills` (JSON list of per-project enabled library skills), and `030` adds `agent_config.ollama_load_claude_md` (Ollama-only opt-in to load the project `CLAUDE.md`, default off).
 
 **CLI**:
 ```bash
