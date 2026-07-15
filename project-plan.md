@@ -64,14 +64,14 @@ Docs reassessed 2026-06-06 (M3). No objective currently in flight. Since the M2 
 refresh the codebase added the **skills library**: a seventh service (`SkillsService`),
 migration 029 (`agent_config.enabled_skills`), the `/api/skills/*` endpoints, a Settings ▸
 Skills tab, and per-project skill delivery via the SDK `plugins=` option. Authoritative
-counts are now **30 migrations (001–030), 1171 tests (unit / integration /
+counts are now **30 migrations (001–030), 1174 tests (unit / integration /
 smoke), 7 services, 8 built-in MCP tools** (skills ship as plugins, not as an MCP tool).
 README, tests/README, CLAUDE.md, and all `AGENT_FILES/CARDS/` were re-audited against the
 code and corrected; a new `CARDS/SKILLS.md` card documents the subsystem and is wired into
 the routing manifest. The dated snapshots in `AGENT_FILES/` root (AUDIT, ASSESSMENT_CODE,
 EVAL_*, PLAN_*, SDK_BUMP_*) are point-in-time records and were intentionally left untouched.
 Re-audit 2026-07-15 (`/review-agentic-setup`): migration `030`
-(`agent_config.ollama_load_claude_md`) landed and tests grew 1137 → 1171 — counts above
+(`agent_config.ollama_load_claude_md`) landed and tests grew 1137 → 1174 — counts above
 refreshed; `src/constants.py` now also offers Claude Fable 5 as a selectable model while
 the default stays `claude-opus-4-8` per the locked decision.
 The next agent to pick up real work should set **Goal**, add an **M4** milestone, and

@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1171 tests
+./run-tests.sh              # Run all 1174 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -31,7 +31,8 @@ tests/
 │   │   ├── test_api_error_status_026.py # Migration 026 api_error_status column (4 tests)
 │   │   ├── test_remove_advisor_027.py  # Migration 027 strip +advisor suffix (5 tests)
 │   │   ├── test_graphify_config_028.py # Migration 028 graphify config (3 tests)
-│   │   └── test_enabled_skills_029.py  # Migration 029 enabled_skills column (3 tests)
+│   │   ├── test_enabled_skills_029.py  # Migration 029 enabled_skills column (3 tests)
+│   │   └── test_ollama_load_claude_md_030.py # Migration 030 ollama_load_claude_md column (3 tests)
 │   ├── test_allowed_commands.py       # Command filter + access MCP (26 tests)
 │   ├── test_annotation_prompt.py      # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py     # Annotation summary generation (2 tests)
@@ -114,7 +115,7 @@ Quick checks that core components work:
 - Migration discovery from files
 - Edge cases: malformed files, concurrent apply, long versions, empty methods
 - Performance: 100-file discovery under 1 second
-- Per-migration data tests: 024 default-model bump (`claude-opus-4-7` → `claude-opus-4-8`), 025 use_chrome, 026 api_error_status, 027 strip `+advisor` suffix, 028 graphify config, 029 enabled_skills
+- Per-migration data tests: 024 default-model bump (`claude-opus-4-7` → `claude-opus-4-8`), 025 use_chrome, 026 api_error_status, 027 strip `+advisor` suffix, 028 graphify config, 029 enabled_skills, 030 ollama_load_claude_md
 
 ### Unit Tests — Infrastructure (72 tests)
 - **Main** (34 tests): Server startup, port discovery, git validation
