@@ -6,7 +6,6 @@ import re
 import signal
 import subprocess as _subprocess
 from pathlib import Path
-from dataclasses import dataclass
 
 from claude_agent_sdk import (
     ClaudeSDKClient,
@@ -27,21 +26,9 @@ from claude_agent_sdk import (
     PermissionResultDeny,
 )
 
+from .base import AbstractAgentSession, AgentResult  # noqa: F401  (AgentResult re-exported)
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class AgentResult:
-    success: bool
-    session_id: str | None = None
-    error: str | None = None
-    cost_usd: float | None = None
-    input_tokens: int | None = None
-    output_tokens: int | None = None
-    total_tokens: int | None = None
-    # HTTP status of a failing API call (429/500/529, etc.) when is_error.
-    # Safe-to-log classifier for API failures vs. agent/task errors.
-    api_error_status: int | None = None
 
 
 def _server_result_text(content) -> str:
@@ -132,7 +119,7 @@ def build_attachment_prompt(attachments: list[dict]) -> str:
     return "\n".join(lines)
 
 
-class AgentSession:
+class AgentSession(AbstractAgentSession):
     """Wraps a ClaudeSDKClient for a single item's agent run."""
 
     def __init__(
