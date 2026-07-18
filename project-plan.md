@@ -114,10 +114,20 @@ coupling, adds session/load pause-resume). Routing in `SessionService` via
 entries, auto-review guard in `workflow_service`, Kimi provider badge in the
 frontend; `kimi-agent-sdk` 0.0.6 installed via requirements.txt from the
 `agentic-setup` fork branch (verified in venv; pulled pydantic 2.13.1 → 2.12.5).
-Tests now **1217** (`tests/unit/test_kimi_session.py` rewritten for ACP);
-`CARDS/KIMI_PROVIDER.md` registered in the manifest. Not yet done: a live smoke run
-(needs `kimi` CLI >= 0.27.0 on PATH + `kimi login`); commit-message / ask_user
-equivalents for Kimi agents.
+Tests now **1218** (`tests/unit/test_kimi_session.py` rewritten for ACP);
+`CARDS/KIMI_PROVIDER.md` registered in the manifest. `AVAILABLE_MODELS` carries the
+real kimi-code aliases (`kimi-code/k3`, `kimi-code/kimi-for-coding[-highspeed]` —
+verified against `kimi provider list`), and model selection goes through ACP
+`session/set_config_option` (as flutter_kimi_sdk does; `kimi acp` has no model flag).
+
+**Live smoke run passed 2026-07-18** (kimi CLI 0.27.0, `kimi login` auth, scratch
+target repo, `--experimental`): a `kimi-code/k3` card routed to `KimiAgentSession`,
+spawned `kimi acp`, model selection accepted, streamed Read/Edit/Bash tool calls +
+final message to the work log, produced a correct minimal diff, and landed in Review
+with the ACP session id stored (pause/resume live). Known cosmetic gap: tool-call log
+entries show an empty input — kimi-code doesn't populate `rawInput` on the initial
+`tool_call` update; surfacing `ToolCallProgress` detail would fix it. Also still open:
+commit-message / ask_user equivalents for Kimi agents.
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.
 
