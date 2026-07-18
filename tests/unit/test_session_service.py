@@ -215,6 +215,23 @@ class TestKimiRouting:
         assert MockKimi.call_args.kwargs["on_clarify"] is on_clarify
 
     @pytest.mark.asyncio
+    async def test_kimi_session_gets_permission_config(self, temp_dir):
+        service = make_service()
+        mock_session = make_mock_session()
+        on_request_command = AsyncMock()
+        config = {"allowed_commands": ["npm", "git"], "bash_yolo": True}
+
+        with patch("src.services.session_service.KimiAgentSession", return_value=mock_session) as MockKimi:
+            await service.create_session(
+                "item-1", temp_dir, config=config, model="kimi-k2",
+                on_request_command=on_request_command,
+            )
+        kwargs = MockKimi.call_args.kwargs
+        assert kwargs["allowed_commands"] == ["npm", "git"]
+        assert kwargs["bash_yolo"] is True
+        assert kwargs["on_request_command"] is on_request_command
+
+    @pytest.mark.asyncio
     async def test_kimi_model_never_gets_ollama_env(self, temp_dir):
         service = make_service()
         mock_session = make_mock_session()

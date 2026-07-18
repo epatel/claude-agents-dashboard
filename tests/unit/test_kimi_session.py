@@ -15,6 +15,7 @@ from src.agent.kimi_session import (
     KimiAgentSession,
     _PendingToolCall,
     _content_text,
+    _decide_permission,
     _extract_ask_user,
     _extract_commit_message,
     _raw_input,
@@ -61,6 +62,13 @@ def make_acp_module(session_id="acp-1", load_raises=None):
     class TurnEnded:
         def __init__(self, stop_reason):
             self.stop_reason = stop_reason
+
+    class PermissionSelected:
+        def __init__(self, option_id):
+            self.option_id = option_id
+
+    class PermissionCancelled:
+        pass
 
     class FakeAcpSession:
         def __init__(self):
@@ -134,7 +142,8 @@ def make_acp_module(session_id="acp-1", load_raises=None):
             return self.session
 
     for cls in (TextContent, AgentMessageChunk, AgentThoughtChunk,
-                ToolCallStart, ToolCallProgress, TurnEnded, AcpClient):
+                ToolCallStart, ToolCallProgress, TurnEnded, AcpClient,
+                PermissionSelected, PermissionCancelled):
         setattr(mod, cls.__name__, cls)
     pkg = types.ModuleType("kimi_agent_sdk")
     pkg.acp = mod
@@ -229,7 +238,8 @@ class TestRun:
         with patch.dict(sys.modules, modules):
             await start_and_wait(session, "fix the bug")
         client = acp.AcpClient.last
-        assert client.connect_kwargs["yolo"] is True
+        assert client.connect_kwargs["yolo"] is False
+        assert callable(client.connect_kwargs["permission_handler"])
         assert client.connect_kwargs["env"]["KIMI_MODEL_NAME"] == "kimi-k2"
         assert client.new_session_calls == [Path("/tmp/test-worktree")]
         assert ("session/set_config_option",
@@ -524,6 +534,103 @@ class TestDeferredToolInput:
         with patch.dict(sys.modules, modules):
             await start_and_wait(session)
         on_tool_use.assert_awaited_once_with("Read", {"path": "a.py", "kind": "read"})
+
+
+class TestDecidePermission:
+    def test_non_execute_kind_allowed(self):
+        assert _decide_permission({"kind": "read", "rawInput": {"path": "a.py"}}, [], False) == ("allow", "")
+
+    def test_bash_yolo_allows_everything(self):
+        decision, cmd = _decide_permission(
+            {"kind": "execute", "rawInput": {"command": "rm -rf build"}}, [], True)
+        assert decision == "allow" and cmd == "rm -rf build"
+
+    def test_allowlisted_first_word_allowed(self):
+        decision, _ = _decide_permission(
+            {"kind": "execute", "rawInput": {"command": "npm install"}}, ["npm"], False)
+        assert decision == "allow"
+
+    def test_shell_operator_escalates_even_when_allowlisted(self):
+        decision, _ = _decide_permission(
+            {"kind": "execute", "rawInput": {"command": "ls && rm -rf /"}}, ["ls"], False)
+        assert decision == "ask"
+
+    def test_unlisted_command_escalates(self):
+        decision, cmd = _decide_permission(
+            {"kind": "execute", "rawInput": {"command": "curl http://x"}}, ["npm"], False)
+        assert decision == "ask" and cmd == "curl http://x"
+
+    def test_execute_without_raw_input_uses_title(self):
+        decision, cmd = _decide_permission(
+            {"kind": "execute", "title": "mystery"}, [], False)
+        assert decision == "ask" and cmd == "mystery"
+
+    def test_none_tool_call_allowed(self):
+        assert _decide_permission(None, [], False) == ("allow", "")
+
+
+def make_permission_request(command="curl http://x", kind="execute", options=None):
+    opts = options if options is not None else [
+        types.SimpleNamespace(option_id="a1", name="Allow", kind="allow_once"),
+        types.SimpleNamespace(option_id="r1", name="Reject", kind="reject_once"),
+    ]
+    return types.SimpleNamespace(
+        session_id="s", options=tuple(opts),
+        tool_call={"kind": kind, "rawInput": {"command": command}, "title": command},
+    )
+
+
+class TestPermissionHandler:
+    async def _get_handler(self, acp_state, **session_kwargs):
+        modules, acp, _ = acp_state
+        session = make_session(**session_kwargs)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        return acp.AcpClient.last.connect_kwargs["permission_handler"], acp
+
+    @pytest.mark.asyncio
+    async def test_allowlisted_command_selects_allow_option(self):
+        handler, acp = await self._get_handler(make_acp_module(), allowed_commands=["npm"])
+        outcome = await handler(make_permission_request("npm test"))
+        assert isinstance(outcome, acp.PermissionSelected) and outcome.option_id == "a1"
+
+    @pytest.mark.asyncio
+    async def test_unlisted_command_asks_user_and_approval_allows(self):
+        on_request_command = AsyncMock(return_value="approved")
+        handler, acp = await self._get_handler(
+            make_acp_module(), allowed_commands=["npm"], on_request_command=on_request_command)
+        outcome = await handler(make_permission_request("curl http://x"))
+        assert isinstance(outcome, acp.PermissionSelected) and outcome.option_id == "a1"
+        assert on_request_command.call_args.args[0] == "curl http://x"
+
+    @pytest.mark.asyncio
+    async def test_user_denial_selects_reject_option(self):
+        on_request_command = AsyncMock(return_value="denied")
+        handler, acp = await self._get_handler(
+            make_acp_module(), on_request_command=on_request_command)
+        outcome = await handler(make_permission_request())
+        assert isinstance(outcome, acp.PermissionSelected) and outcome.option_id == "r1"
+
+    @pytest.mark.asyncio
+    async def test_no_callback_denies_unlisted_command(self):
+        handler, acp = await self._get_handler(make_acp_module())
+        outcome = await handler(make_permission_request())
+        assert isinstance(outcome, acp.PermissionSelected) and outcome.option_id == "r1"
+
+    @pytest.mark.asyncio
+    async def test_non_execute_allowed_without_asking(self):
+        on_request_command = AsyncMock()
+        handler, acp = await self._get_handler(
+            make_acp_module(), on_request_command=on_request_command)
+        outcome = await handler(make_permission_request(kind="read", command=None))
+        assert isinstance(outcome, acp.PermissionSelected) and outcome.option_id == "a1"
+        on_request_command.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_matching_options_cancels(self):
+        handler, acp = await self._get_handler(make_acp_module())
+        outcome = await handler(make_permission_request(options=[]))
+        assert isinstance(outcome, acp.PermissionCancelled)
 
 
 class TestBoardTools:

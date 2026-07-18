@@ -15,9 +15,11 @@ does), with ``KIMI_MODEL_NAME`` on the subprocess env as a fallback.
 
 First-cut scope (deliberately mirrors the lean Ollama feature set):
 
-- ``yolo=True`` — Kimi's permission requests are auto-approved. The
-  dashboard's per-command permission hooks are Claude-SDK constructs and do
-  not apply here.
+- Permission requests are answered by a real handler (no yolo): non-execute
+  tool calls are allowed (acceptEdits-equivalent); shell commands pass the
+  same allowlist semantics as the Claude path (``allowed_commands`` /
+  ``bash_yolo`` / shell-operator escalation), and unlisted commands block on
+  ``on_request_command`` for a user decision — denied when no callback.
 - Board tools (create_todo, delete_todo, create_epic, create_shortcut,
   view_board, who_am_i) are provided via a stdio MCP proxy
   (``kimi_board_mcp.py``) declared in the ACP session's ``mcpServers`` — the
@@ -49,6 +51,7 @@ import sys
 from pathlib import Path
 
 from .base import AbstractAgentSession, AgentResult
+from .command_filter import _contains_shell_operators, _extract_command_name
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +115,32 @@ def _extract_ask_user(text: str) -> tuple[str, str | None]:
     if not matches:
         return text, None
     return _ASK_USER_RE.sub("", text).rstrip(), matches[-1]
+
+
+def _decide_permission(tool_call, allowed_commands, bash_yolo) -> tuple[str, str]:
+    """Decide an ACP permission request: ("allow" | "ask", command).
+
+    Mirrors the Claude path's semantics: non-execute tool calls (read/edit/
+    search/…) are allowed, like permission_mode="acceptEdits"; shell commands
+    are allowed when bash_yolo is on or the first word is allowlisted, and
+    otherwise escalate to the user ("ask"). Commands with shell operators
+    always escalate — they can smuggle unlisted commands past the allowlist.
+    """
+    tool_call = tool_call or {}
+    raw_input = tool_call.get("rawInput")
+    command = raw_input.get("command") if isinstance(raw_input, dict) else None
+    if tool_call.get("kind") != "execute" and not isinstance(command, str):
+        return "allow", ""
+    if not isinstance(command, str):
+        command = str(tool_call.get("title") or "")
+    if bash_yolo:
+        return "allow", command
+    if _contains_shell_operators(command):
+        return "ask", command
+    first_word = _extract_command_name(command)
+    if first_word and first_word in (allowed_commands or []):
+        return "allow", command
+    return "ask", command
 
 
 def _board_mcp_config(item_id: str | None, repo: str | None = None) -> dict | None:
@@ -200,6 +229,9 @@ class KimiAgentSession(AbstractAgentSession):
         on_error=None,
         on_set_commit_message=None,
         on_clarify=None,
+        on_request_command=None,
+        allowed_commands: list[str] | None = None,
+        bash_yolo: bool = False,
         item_id: str | None = None,
         item_repo_name: str | None = None,
     ):
@@ -213,6 +245,9 @@ class KimiAgentSession(AbstractAgentSession):
         self.on_error = on_error            # async callback(error: str)
         self.on_set_commit_message = on_set_commit_message  # async callback(message: str) -> str
         self.on_clarify = on_clarify        # async callback(prompt: str, choices: list|None) -> str
+        self.on_request_command = on_request_command  # async callback(command, reason) -> str
+        self.allowed_commands = allowed_commands or []
+        self.bash_yolo = bash_yolo
         self.item_id = item_id
         self.item_repo_name = item_repo_name  # repo of this item in multi-repo mode
         self._task: asyncio.Task | None = None
@@ -248,6 +283,8 @@ class KimiAgentSession(AbstractAgentSession):
                     AcpClient,
                     AgentMessageChunk,
                     AgentThoughtChunk,
+                    PermissionCancelled,
+                    PermissionSelected,
                     ToolCallProgress,
                     ToolCallStart,
                     TurnEnded,
@@ -268,7 +305,36 @@ class KimiAgentSession(AbstractAgentSession):
             if board_cfg:
                 logger.info("Kimi mode: board tools MCP proxy enabled")
 
-            async with await AcpClient.connect(yolo=True, env=env) as client:
+            def _pick(request, kinds):
+                for kind in kinds:
+                    for option in request.options:
+                        if option.kind == kind:
+                            return PermissionSelected(option_id=option.option_id)
+                return None
+
+            async def permission_handler(request):
+                decision, command = _decide_permission(
+                    request.tool_call, self.allowed_commands, self.bash_yolo
+                )
+                if decision == "ask":
+                    if self.on_request_command:
+                        response = await self.on_request_command(
+                            command,
+                            "Kimi agent wants to run a command that is not in the allowlist",
+                        )
+                        decision = "allow" if str(response).lower().startswith("approv") else "deny"
+                    else:
+                        decision = "deny"
+                if decision == "allow":
+                    outcome = _pick(request, ("allow_once", "allow_always"))
+                else:
+                    logger.info(f"Kimi mode: denied permission for command: {command!r}")
+                    outcome = _pick(request, ("reject_once", "reject_always"))
+                return outcome or PermissionCancelled()
+
+            async with await AcpClient.connect(
+                yolo=False, permission_handler=permission_handler, env=env
+            ) as client:
                 session = None
                 if resume_session_id:
                     try:

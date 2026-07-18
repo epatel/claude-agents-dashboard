@@ -144,10 +144,20 @@ Board tools for Kimi agents landed via a **stdio MCP proxy**
 create_epic / create_shortcut / view_board / who_am_i to the dashboard HTTP API
 (`DASHBOARD_BASE_URL` published by main.py; item id and multi-repo repo via env).
 Live-verified: a K3 agent called `mcp__board__view_board` (correct 6-card count) and
-`mcp__board__create_todo` — the new card appeared in Todo. Tests **1252**. Kimi
-feature set now: streaming text/thinking/tool calls, deferred tool input,
-pause/resume, commit messages, clarifications, board tools. Still open: permission
-hooks (yolo) and create_todo autostart/requires parity with the Claude path.
+`mcp__board__create_todo` — the new card appeared in Todo.
+
+Permission hooks for Kimi agents landed: `yolo=False` + a real ACP
+`permission_handler`. Trust model: **kimi's safety classifier decides WHEN to ask**
+(heuristic/context-dependent; worktree shell usually auto-executes in "default" mode,
+no stricter ACP mode exists), **the dashboard decides the ANSWER** — non-execute
+allowed, shell via `allowed_commands`/`bash_yolo`, operators + unlisted commands
+escalate to the existing `on_request_command` approval flow (ASK state; approval
+saves the command + restarts with resume). Verified at protocol level via a raw ACP
+probe (request arrived for `git push`; reject stopped the tool) + unit tests — no
+deterministic live trigger exists. Tests **1266**. Kimi feature set now: streaming
+text/thinking/tool calls, deferred tool input, pause/resume, commit messages,
+clarifications, board tools, permission hooks. Still open: create_todo
+autostart/requires parity with the Claude path.
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.
 

@@ -86,6 +86,9 @@ class SessionService:
                 on_error=on_error,
                 on_set_commit_message=on_set_commit_message,
                 on_clarify=on_clarify,
+                on_request_command=on_request_command,
+                allowed_commands=allowed_commands,
+                bash_yolo=config.get("bash_yolo", False),
                 item_id=item_id,
                 item_repo_name=item_repo_name,
             )

@@ -78,10 +78,30 @@ the server's own base URL as `DASHBOARD_BASE_URL`; the proxy also gets
 `workflow_service` callback plumbing (so e.g. create_todo has no
 autostart/requires support yet).
 
+**Permission hooks**: the ACP client runs with `yolo=False` and a real
+`permission_handler`. Trust model — **kimi decides WHEN to ask, the
+dashboard decides the ANSWER**:
+
+- kimi-code's own safety classifier raises `session/request_permission`
+  only for operations it deems risky (heuristic and context-dependent —
+  worktree-scoped shell like `touch`/`rm` typically auto-executes in the
+  session's "default" mode; a `git push` triggered a request in one probe
+  but not in another where the task framed it as harmless). There is no
+  ACP mode stricter than "default" (options: default/plan/auto/yolo).
+- When a request arrives, `_decide_permission` applies the Claude path's
+  semantics: non-execute tool calls allowed (acceptEdits-equivalent);
+  shell allowed when `bash_yolo` or the first word is in
+  `allowed_commands`; shell operators and unlisted commands escalate to
+  `on_request_command` — the existing approval flow (item pauses in ASK,
+  approval saves the command to the allowlist and restarts the session
+  with resume; denial rejects inline). Denied without a callback.
+- Verified at the protocol level (raw ACP probe: a request arrived for
+  `git push` and a reject outcome stopped the tool) and fully unit-tested;
+  a deterministic live trigger doesn't exist because the classifier is
+  heuristic.
+
 Remaining limitations (deliberate, mirrors the lean Ollama feature set):
 
-- `yolo=True` — Kimi's permission requests are auto-approved; the dashboard's
-  per-command permission hooks are Claude-SDK constructs and don't apply.
 - No external MCP servers / plugins / chrome / graphify.
 - System prompt is prepended to the user prompt (ACP has no separate
   system-prompt input).
