@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..agent.profiles import is_ollama_model, resolve_ollama_env
 from ..agent.review_agent import run_auto_review
 from ..agent.session import AgentResult
 from ..config import epic_plan_relpath
@@ -213,7 +214,7 @@ class WorkflowService:
 
         # Create session — validate Ollama model availability first
         model = item.get("model") or config.get("model")
-        if model and not model.startswith("claude-") and config.get("ollama_enabled"):
+        if is_ollama_model(model) and config.get("ollama_enabled"):
             model = await self._validate_ollama_model(item_id, model, config)
         session = await self.sessions.create_session(
             item_id, worktree_path, config, model,
@@ -1614,14 +1615,7 @@ class WorkflowService:
             # implementing agent so a Claude/Ollama mix doesn't get mismatched.
             config = await self.db.get_agent_config()
             review_model = item.get("model") or config.get("model")
-            ollama_env: dict[str, str] | None = None
-            if config.get("ollama_enabled") and review_model and not review_model.startswith("claude-"):
-                from ..constants import DEFAULT_OLLAMA_BASE_URL
-                ollama_env = {
-                    "ANTHROPIC_AUTH_TOKEN": "ollama",
-                    "ANTHROPIC_API_KEY": "",
-                    "ANTHROPIC_BASE_URL": config.get("ollama_base_url", DEFAULT_OLLAMA_BASE_URL),
-                }
+            ollama_env = resolve_ollama_env(config, review_model)
 
             await self._log_and_notify(
                 item_id, "system",

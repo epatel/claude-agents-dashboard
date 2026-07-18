@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from ..agent.profiles import resolve_ollama_env
 from ..agent.session import AgentSession
 
 logger = logging.getLogger(__name__)
@@ -69,18 +70,9 @@ class SessionService:
         allowed_commands = list(config.get("allowed_commands") or [])
         allowed_builtin_tools = list(config.get("allowed_builtin_tools") or [])
 
-        # Build Ollama env only if enabled AND the model is actually an Ollama model
-        # (Anthropic/Claude models start with "claude-" and must not be routed to Ollama)
-        ollama_env = None
-        is_ollama_model = session_model and not session_model.startswith("claude-")
-        if config.get("ollama_enabled") and is_ollama_model:
-            from ..constants import DEFAULT_OLLAMA_BASE_URL
-            ollama_base_url = config.get("ollama_base_url", DEFAULT_OLLAMA_BASE_URL)
-            ollama_env = {
-                "ANTHROPIC_AUTH_TOKEN": "ollama",
-                "ANTHROPIC_API_KEY": "",
-                "ANTHROPIC_BASE_URL": ollama_base_url,
-            }
+        # Ollama env only if enabled AND the model is actually an Ollama model
+        # (Claude models must not be routed to Ollama) — see agent/profiles.py.
+        ollama_env = resolve_ollama_env(config, session_model)
 
         session = AgentSession(
             worktree_path=worktree_path,
