@@ -4,6 +4,10 @@ aiosqlite>=0.21.0
 jinja2>=3.1.0
 claude-agent-sdk>=0.2.88
 python-multipart>=0.0.18
+# Kimi runtime (experimental, KimiAgentSession). Installed from the fork branch
+# that carries the ACP client — PyPI (<= 0.0.5) does not have it yet. Note this
+# pins kimi-cli to the minor declared in the SDK's pyproject.
+kimi-agent-sdk @ git+https://github.com/epatel/kimi-agent-sdk@agentic-setup#subdirectory=python
 
 # Testing dependencies
 pytest>=8.0.0
