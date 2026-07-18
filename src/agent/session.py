@@ -27,6 +27,7 @@ from claude_agent_sdk import (
 )
 
 from .base import AbstractAgentSession, AgentResult  # noqa: F401  (AgentResult re-exported)
+from .profiles import profile_options_kwargs, resolve_profile
 
 logger = logging.getLogger(__name__)
 
@@ -235,16 +236,16 @@ class AgentSession(AbstractAgentSession):
             from .shortcut import create_shortcut_server
             mcp_servers["shortcut"] = create_shortcut_server(self.on_create_shortcut)
 
-        # Load MCP servers from agent configuration (database)
-        # Skip external MCP servers for Ollama — their tool definitions flood the
-        # context window and overwhelm small local models.
-        is_ollama = bool(self.ollama_env)
-        # graphify graph_query tool — only when enabled in config (skip for Ollama:
-        # extra tool definitions overwhelm small local models).
-        if self.on_graph_query and self.graphify_enabled and not is_ollama:
+        # Provider profile: which SDK options and features this run gets.
+        # The Ollama profile disables heavy features (graphify, external MCP,
+        # plugins, chrome) whose tool definitions overwhelm small local models.
+        profile = resolve_profile(self.ollama_env, ollama_load_claude_md=self.ollama_load_claude_md)
+        # graphify graph_query tool — only when enabled in config
+        if self.on_graph_query and self.graphify_enabled and profile.graphify:
             from .graph_query import create_graph_query_server
             mcp_servers["graph_query"] = create_graph_query_server(self.on_graph_query)
-        if self.mcp_enabled and self.mcp_servers and not is_ollama:
+        # External MCP servers from agent configuration (database)
+        if self.mcp_enabled and self.mcp_servers and profile.external_mcp:
             # mcp_servers arrives as a parsed dict; tolerate a JSON
             # string for legacy callers.
             agent_mcp_servers = self.mcp_servers
@@ -257,7 +258,7 @@ class AgentSession(AbstractAgentSession):
             if isinstance(agent_mcp_servers, dict) and agent_mcp_servers:
                 mcp_servers.update(agent_mcp_servers)
                 logger.info(f"Loaded {len(agent_mcp_servers)} MCP servers from agent configuration")
-        elif is_ollama and self.mcp_enabled and self.mcp_servers:
+        elif self.mcp_enabled and self.mcp_servers:
             logger.info("Ollama mode: skipping external MCP servers to reduce context size")
 
         # Ensure agent knows to work in the worktree directory
@@ -336,7 +337,7 @@ class AgentSession(AbstractAgentSession):
             "item). Use mcp__todo__create_todo ONLY for genuinely new, separate future work.\n"
             "- If your work is finished, STOP. Do not keep calling tools to confirm completion."
         )
-        if is_ollama:
+        if profile.lifecycle_addendum:
             lifecycle_note += (
                 "\n\nTO FINISH THIS TASK: stop calling tools. Write one short final message, call "
                 "set_commit_message once, and end your turn. Do nothing else. The card moves to Done "
@@ -395,7 +396,7 @@ class AgentSession(AbstractAgentSession):
         # Chrome browser integration is launched via the `claude --chrome` flag
         # below. Skip it in Ollama mode — small local models are overwhelmed by
         # the extra browser tool definitions.
-        chrome_enabled = self.use_chrome and not is_ollama
+        chrome_enabled = self.use_chrome and profile.chrome
         browser_note = ""
         if chrome_enabled:
             browser_note = (
@@ -422,7 +423,7 @@ class AgentSession(AbstractAgentSession):
         # worktree CLAUDE.md into the system prompt so project conventions reach
         # the local model.
         claude_md_note = ""
-        if is_ollama and self.ollama_load_claude_md:
+        if profile.inject_claude_md:
             claude_md_path = self.worktree_path / "CLAUDE.md"
             try:
                 if claude_md_path.is_file():
@@ -522,7 +523,7 @@ class AgentSession(AbstractAgentSession):
         # overwhelm small local models.
         plugins = None
         plugin_prefixes = []
-        if self.plugins and not is_ollama:
+        if self.plugins and profile.plugins:
             plugins = []
             for plugin_config in self.plugins:
                 plugin_path = plugin_config.get("path", "")
@@ -531,7 +532,7 @@ class AgentSession(AbstractAgentSession):
                     plugin_name = Path(plugin_path).name
                     plugin_prefixes.append(f"mcp__plugin_{plugin_name}")
                     logger.info(f"Loading plugin from: {plugin_path}")
-        elif is_ollama and self.plugins:
+        elif self.plugins:
             logger.info("Ollama mode: skipping plugins to reduce context size")
 
         # Always allow Bash in the tool whitelist — permission_mode and the
@@ -612,65 +613,31 @@ class AgentSession(AbstractAgentSession):
                 return PermissionResultDeny()
             can_use_tool_fn = can_use_tool
 
-        # Detect Ollama mode — use lighter SDK options for local models
-        is_ollama = bool(self.ollama_env)
-
-        if is_ollama:
-            # Ollama models: lighter config to avoid overwhelming small models.
-            # - thinking disabled: Ollama's Anthropic-compatible endpoint returns
-            #   thinking blocks WITHOUT a `signature` field. On the next turn the
-            #   SDK replays them and the endpoint rejects the request with
-            #   "Missing required field in assistant message: 'signature'", which
-            #   crashes the run and forces a costly no-resume restart. Disabling
-            #   thinking stops those unsigned blocks from ever being produced.
-            # - bypassPermissions (avoids permission prompt handling issues)
-            # - setting_sources=["local"]: do NOT load `user` settings. The
-            #   user-global Claude config can register PreToolUse hooks (e.g. the
-            #   RTK command-rewriter) that mangle plain `find`/`ls`/`wc` output and
-            #   make small models distrust their own observations, triggering
-            #   redundant verification loops. "local" also skips project CLAUDE.md,
-            #   keeping context small for small models (the original intent).
+        # Provider-divergent SDK options (permission_mode, thinking,
+        # setting_sources, env, stderr) come from the profile — the Ollama
+        # rationale (thinking disabled, no `user` settings) is documented in
+        # profiles.resolve_profile and locked in project-plan.md Decisions.
+        if profile.name == "ollama":
             logger.info(f"Ollama mode: using lightweight SDK options for model {self.model}")
             logger.info(f"Ollama env: {self.ollama_env}")
 
-            def _ollama_stderr(line: str):
-                logger.info(f"[ollama-stderr] {line.rstrip()}")
-
-            options = ClaudeAgentOptions(
-                cwd=self.worktree_path,
-                system_prompt=full_system_prompt,
-                model=self.model,
-                permission_mode="bypassPermissions",
-                mcp_servers=mcp_servers if mcp_servers else None,
-                allowed_tools=allowed_tools if allowed_tools else None,
-                can_use_tool=can_use_tool_fn,
-                add_dirs=[str(self.worktree_path), *(str(p) for p in self.sibling_repo_paths)],
-                thinking={"type": "disabled"},
-                plugins=plugins if plugins else None,
-                hooks=hooks,
-                setting_sources=["local"],
-                env=self.ollama_env,
-                stderr=_ollama_stderr,
-            )
-        else:
-            options = ClaudeAgentOptions(
-                cwd=self.worktree_path,
-                system_prompt=full_system_prompt,
-                model=self.model,
-                permission_mode="acceptEdits",  # More targeted than bypassPermissions
-                mcp_servers=mcp_servers if mcp_servers else None,
-                allowed_tools=allowed_tools if allowed_tools else None,
-                can_use_tool=can_use_tool_fn,
-                add_dirs=[str(self.worktree_path), *(str(p) for p in self.sibling_repo_paths)],
-                thinking={"type": "enabled", "budget_tokens": 32000},
-                plugins=plugins if plugins else None,
-                hooks=hooks,
-                setting_sources=["project"],  # Load CLAUDE.md from target project
-                env={},
-                # `--chrome` registers the Claude-in-Chrome MCP server and its
-                # browser tools. Enabled per-task via the item's use_chrome flag.
-                extra_args=({"chrome": None} if chrome_enabled else {}),
-            )
+        options_kwargs = dict(
+            cwd=self.worktree_path,
+            system_prompt=full_system_prompt,
+            model=self.model,
+            mcp_servers=mcp_servers if mcp_servers else None,
+            allowed_tools=allowed_tools if allowed_tools else None,
+            can_use_tool=can_use_tool_fn,
+            add_dirs=[str(self.worktree_path), *(str(p) for p in self.sibling_repo_paths)],
+            plugins=plugins if plugins else None,
+            hooks=hooks,
+            **profile_options_kwargs(profile),
+        )
+        if profile.allow_chrome_extra_args:
+            # `--chrome` registers the Claude-in-Chrome MCP server and its
+            # browser tools. Enabled per-task via the item's use_chrome flag.
+            options_kwargs["extra_args"] = {"chrome": None} if chrome_enabled else {}
+        options = ClaudeAgentOptions(**options_kwargs)
 
         if resume_session_id:
             options.resume = resume_session_id

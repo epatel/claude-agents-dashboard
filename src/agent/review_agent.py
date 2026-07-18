@@ -28,6 +28,8 @@ from claude_agent_sdk import (
     TextBlock,
 )
 
+from .profiles import resolve_profile
+
 logger = logging.getLogger(__name__)
 
 
@@ -134,12 +136,13 @@ async def run_auto_review(
     """
     prompt = _build_review_prompt(item_title, item_description, diff, last_message)
 
-    is_ollama = bool(ollama_env)
-    if is_ollama:
-        # See AgentSession.start() for the rationale: Ollama returns unsigned
-        # thinking blocks (crash on replay) so disable thinking, and exclude
-        # `user` settings so global PreToolUse hooks (e.g. RTK) can't mangle
-        # plain command output.
+    # Provider-divergent values come from the profile (see profiles.resolve_profile
+    # for the Ollama rationale: thinking disabled, no `user` settings). The
+    # reviewer always runs bypassPermissions — its tool allowlist is the guard —
+    # and the non-Ollama branch deliberately omits thinking/setting_sources
+    # (SDK defaults), so the profile's permission_mode/kwargs helper is not used.
+    profile = resolve_profile(ollama_env)
+    if profile.name == "ollama":
         options = ClaudeAgentOptions(
             cwd=worktree_path,
             system_prompt=_REVIEW_SYSTEM_PROMPT,
@@ -148,9 +151,9 @@ async def run_auto_review(
             allowed_tools=list(_REVIEWER_ALLOWED_TOOLS),
             can_use_tool=_review_can_use_tool,
             add_dirs=[str(worktree_path)],
-            thinking={"type": "disabled"},
-            setting_sources=["local"],
-            env=ollama_env,
+            thinking=profile.thinking,
+            setting_sources=list(profile.setting_sources),
+            env=profile.env,
         )
     else:
         options = ClaudeAgentOptions(
