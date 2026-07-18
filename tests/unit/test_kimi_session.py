@@ -1,4 +1,4 @@
-"""Unit tests for src/agent/kimi_session.py — KimiAgentSession (experimental)."""
+"""Unit tests for src/agent/kimi_session.py — KimiAgentSession over ACP (experimental)."""
 
 import asyncio
 import sys
@@ -12,26 +12,105 @@ from src.agent.base import AbstractAgentSession, AgentResult
 from src.agent.kimi_session import (
     KIMI_SDK_INSTALL_HINT,
     KimiAgentSession,
+    _content_text,
     _tool_call_input,
-    _tool_call_name,
 )
 
 
-class FakeToolCall:
-    def __init__(self, name, arguments):
-        self.id = "tc-1"
-        self.type = "function"
-        self.function = {"name": name, "arguments": arguments}
+def make_acp_module(session_id="acp-1", load_raises=None):
+    """Build a fake `kimi_agent_sdk.acp` module.
 
+    Returns (sys.modules patch dict, module, items list). Append updates to
+    the items list using the module's own classes so isinstance checks in the
+    code under test match. "HANG" sleeps forever; an Exception instance is
+    raised mid-stream.
+    """
+    items = []
+    mod = types.ModuleType("kimi_agent_sdk.acp")
 
-class FakeMessage:
-    def __init__(self, role="assistant", text="", tool_calls=None):
-        self.role = role
-        self._text = text
-        self.tool_calls = tool_calls
+    class TextContent:
+        def __init__(self, text):
+            self.text = text
 
-    def extract_text(self):
-        return self._text
+    class AgentMessageChunk:
+        def __init__(self, content):
+            self.content = content
+
+    class AgentThoughtChunk:
+        def __init__(self, content):
+            self.content = content
+
+    class ToolCallStart:
+        def __init__(self, title, kind=None, raw=None):
+            self.tool_call_id = "tc-1"
+            self.title = title
+            self.kind = kind
+            self.status = None
+            self.raw = raw or {}
+
+    class TurnEnded:
+        def __init__(self, stop_reason):
+            self.stop_reason = stop_reason
+
+    class FakeAcpSession:
+        def __init__(self):
+            self.id = session_id
+            self.prompts = []
+            self.cancelled = False
+
+        async def prompt(self, user_input):
+            self.prompts.append(user_input)
+            for item in items:
+                if item == "HANG":
+                    await asyncio.sleep(30)
+                elif isinstance(item, Exception):
+                    raise item
+                else:
+                    yield item
+
+        async def cancel(self):
+            self.cancelled = True
+
+    class AcpClient:
+        last = None
+
+        def __init__(self):
+            self.connect_kwargs = None
+            self.session = FakeAcpSession()
+            self.new_session_calls = []
+            self.load_session_calls = []
+            self.closed = False
+
+        @classmethod
+        async def connect(cls, **kwargs):
+            client = cls()
+            client.connect_kwargs = kwargs
+            cls.last = client
+            return client
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            self.closed = True
+
+        async def new_session(self, cwd=None, **kwargs):
+            self.new_session_calls.append(cwd)
+            return self.session
+
+        async def load_session(self, sid, cwd=None, **kwargs):
+            self.load_session_calls.append((sid, cwd))
+            if load_raises is not None:
+                raise load_raises
+            self.session.id = sid
+            return self.session
+
+    for cls in (TextContent, AgentMessageChunk, AgentThoughtChunk,
+                ToolCallStart, TurnEnded, AcpClient):
+        setattr(mod, cls.__name__, cls)
+    pkg = types.ModuleType("kimi_agent_sdk")
+    pkg.acp = mod
+    return {"kimi_agent_sdk": pkg, "kimi_agent_sdk.acp": mod}, mod, items
 
 
 def make_session(**kwargs):
@@ -44,29 +123,8 @@ def make_session(**kwargs):
     return KimiAgentSession(**defaults)
 
 
-def install_fake_sdk(messages, raise_after=None):
-    """Return a sys.modules patch dict providing kimi_agent_sdk + kaos.path."""
-
-    async def fake_prompt(user_input, **kwargs):
-        fake_prompt.calls.append((user_input, kwargs))
-        for m in messages:
-            yield m
-        if raise_after is not None:
-            raise raise_after
-
-    fake_prompt.calls = []
-
-    sdk = types.ModuleType("kimi_agent_sdk")
-    sdk.prompt = fake_prompt
-    kaos = types.ModuleType("kaos")
-    kaos_path = types.ModuleType("kaos.path")
-    kaos_path.KaosPath = lambda p: p
-    kaos.path = kaos_path
-    return {"kimi_agent_sdk": sdk, "kaos": kaos, "kaos.path": kaos_path}, fake_prompt
-
-
-async def start_and_wait(session, prompt="do the task"):
-    await session.start(prompt)
+async def start_and_wait(session, prompt="do the task", **start_kwargs):
+    await session.start(prompt, **start_kwargs)
     await session._task
 
 
@@ -80,116 +138,137 @@ class TestContract:
         assert s._task is None
 
 
-class TestToolCallHelpers:
-    def test_name_and_dict_arguments(self):
-        tc = FakeToolCall("read_file", {"path": "a.py"})
-        assert _tool_call_name(tc) == "read_file"
-        assert _tool_call_input(tc) == {"path": "a.py"}
+class TestHelpers:
+    def test_content_text_reads_text_attr(self):
+        assert _content_text(types.SimpleNamespace(text="hi")) == "hi"
 
-    def test_json_string_arguments_parsed(self):
-        tc = FakeToolCall("bash", '{"command": "ls"}')
-        assert _tool_call_input(tc) == {"command": "ls"}
+    def test_content_text_empty_for_non_text_blocks(self):
+        assert _content_text(types.SimpleNamespace(data=b"...")) == ""
 
-    def test_invalid_json_arguments_wrapped_raw(self):
-        tc = FakeToolCall("bash", "not-json{")
-        assert _tool_call_input(tc) == {"raw": "not-json{"}
+    def test_tool_call_input_merges_raw_input_and_kind(self):
+        tc = types.SimpleNamespace(kind="read", raw={"rawInput": {"path": "a.py"}})
+        assert _tool_call_input(tc) == {"path": "a.py", "kind": "read"}
 
-    def test_missing_function_defaults(self):
-        tc = types.SimpleNamespace(id="x", type="function", function=None)
-        assert _tool_call_name(tc) == "unknown"
+    def test_tool_call_input_defaults_empty(self):
+        tc = types.SimpleNamespace(kind=None, raw={})
         assert _tool_call_input(tc) == {}
 
 
 class TestRun:
     @pytest.mark.asyncio
-    async def test_streams_text_and_tool_calls_then_completes(self):
+    async def test_aggregates_chunks_and_completes(self):
         on_message = AsyncMock()
         on_tool_use = AsyncMock()
+        on_thinking = AsyncMock()
         on_complete = AsyncMock()
-        modules, fake_prompt = install_fake_sdk([
-            FakeMessage(text="working on it"),
-            FakeMessage(text="", tool_calls=[FakeToolCall("bash", '{"command": "ls"}')]),
-            FakeMessage(role="tool", text="ls output"),
-            FakeMessage(text="done"),
+        modules, acp, items = make_acp_module()
+        T = acp.TextContent
+        items.extend([
+            acp.AgentThoughtChunk(T("hmm ")), acp.AgentThoughtChunk(T("ok")),
+            acp.AgentMessageChunk(T("Hello ")), acp.AgentMessageChunk(T("world")),
+            acp.ToolCallStart("Read file", kind="read", raw={"rawInput": {"path": "a.py"}}),
+            acp.AgentMessageChunk(T("done")),
+            acp.TurnEnded("end_turn"),
         ])
-        session = make_session(
-            on_message=on_message, on_tool_use=on_tool_use, on_complete=on_complete
-        )
+        session = make_session(on_message=on_message, on_tool_use=on_tool_use,
+                               on_thinking=on_thinking, on_complete=on_complete)
         with patch.dict(sys.modules, modules):
             await start_and_wait(session)
 
-        assert [c.args[0] for c in on_message.call_args_list] == ["working on it", "done"]
-        on_tool_use.assert_awaited_once_with("bash", {"command": "ls"})
+        on_thinking.assert_awaited_once_with("hmm ok")
+        assert [c.args[0] for c in on_message.call_args_list] == ["Hello world", "done"]
+        on_tool_use.assert_awaited_once_with("Read file", {"path": "a.py", "kind": "read"})
         result = on_complete.call_args.args[0]
         assert isinstance(result, AgentResult) and result.success is True
+        assert result.session_id == "acp-1"
+        assert session.current_session_id == "acp-1"
 
     @pytest.mark.asyncio
-    async def test_prompt_includes_system_prompt_and_worktree(self):
-        modules, fake_prompt = install_fake_sdk([])
+    async def test_model_env_and_prompt_composition(self):
+        modules, acp, items = make_acp_module()
         session = make_session()
         with patch.dict(sys.modules, modules):
             await start_and_wait(session, "fix the bug")
-        user_input, kwargs = fake_prompt.calls[0]
-        assert "You are a helpful agent." in user_input
-        assert "/tmp/test-worktree" in user_input
-        assert "fix the bug" in user_input
-        assert kwargs["model"] == "kimi-k2"
-        assert kwargs["yolo"] is True
+        client = acp.AcpClient.last
+        assert client.connect_kwargs["yolo"] is True
+        assert client.connect_kwargs["env"]["KIMI_MODEL_NAME"] == "kimi-k2"
+        assert client.new_session_calls == [Path("/tmp/test-worktree")]
+        sent = client.session.prompts[0]
+        assert "You are a helpful agent." in sent
+        assert "/tmp/test-worktree" in sent
+        assert "fix the bug" in sent
+        assert client.closed is True
 
     @pytest.mark.asyncio
     async def test_missing_sdk_reports_install_hint(self):
         on_error = AsyncMock()
         on_complete = AsyncMock()
         session = make_session(on_error=on_error, on_complete=on_complete)
-        with patch.dict(sys.modules, {"kimi_agent_sdk": None, "kaos": None, "kaos.path": None}):
+        with patch.dict(sys.modules, {"kimi_agent_sdk": None, "kimi_agent_sdk.acp": None}):
             await start_and_wait(session)
         on_error.assert_awaited_once_with(KIMI_SDK_INSTALL_HINT)
         on_complete.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_sdk_error_reported_via_on_error(self):
+    async def test_abnormal_stop_reason_reports_error(self):
         on_error = AsyncMock()
         on_complete = AsyncMock()
-        modules, _ = install_fake_sdk(
-            [FakeMessage(text="partial")], raise_after=RuntimeError("provider exploded")
-        )
+        modules, acp, items = make_acp_module()
+        items.append(acp.TurnEnded("max_tokens"))
         session = make_session(on_error=on_error, on_complete=on_complete)
         with patch.dict(sys.modules, modules):
             await start_and_wait(session)
-        on_error.assert_awaited_once_with("provider exploded")
+        on_error.assert_awaited_once_with("Kimi run stopped early: max_tokens")
         on_complete.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_cancel_stops_run_without_completion(self):
+    async def test_stream_error_reported_via_on_error(self):
+        on_error = AsyncMock()
         on_complete = AsyncMock()
+        modules, acp, items = make_acp_module()
+        items.append(RuntimeError("agent exploded"))
+        session = make_session(on_error=on_error, on_complete=on_complete)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        on_error.assert_awaited_once_with("agent exploded")
+        on_complete.assert_not_awaited()
 
-        async def slow_prompt(user_input, **kwargs):
-            yield FakeMessage(text="starting")
-            await asyncio.sleep(30)
-            yield FakeMessage(text="never reached")
-
-        sdk = types.ModuleType("kimi_agent_sdk")
-        sdk.prompt = slow_prompt
-        kaos = types.ModuleType("kaos")
-        kaos_path = types.ModuleType("kaos.path")
-        kaos_path.KaosPath = lambda p: p
-        kaos.path = kaos_path
-
+    @pytest.mark.asyncio
+    async def test_cancel_requests_acp_cancel_and_stops(self):
+        on_complete = AsyncMock()
+        modules, acp, items = make_acp_module()
+        items.append("HANG")
         session = make_session(on_complete=on_complete)
-        with patch.dict(sys.modules, {"kimi_agent_sdk": sdk, "kaos": kaos, "kaos.path": kaos_path}):
+        with patch.dict(sys.modules, modules):
             await session.start("task")
             await asyncio.sleep(0.05)
             await session.cancel()
-
-        on_complete.assert_not_awaited()
+        client = acp.AcpClient.last
+        assert client.session.cancelled is True
         assert session._task.done()
+        on_complete.assert_not_awaited()
+        assert client.closed is True
 
+
+class TestResume:
     @pytest.mark.asyncio
-    async def test_resume_session_id_ignored_starts_fresh(self):
-        modules, fake_prompt = install_fake_sdk([])
+    async def test_resume_loads_existing_session(self):
+        modules, acp, items = make_acp_module()
         session = make_session()
         with patch.dict(sys.modules, modules):
-            await session.start("task", resume_session_id="old-session")
-            await session._task
-        assert len(fake_prompt.calls) == 1
-        assert session.current_session_id is None
+            await start_and_wait(session, resume_session_id="old-acp-session")
+        client = acp.AcpClient.last
+        assert client.load_session_calls == [("old-acp-session", Path("/tmp/test-worktree"))]
+        assert client.new_session_calls == []
+        assert session.current_session_id == "old-acp-session"
+
+    @pytest.mark.asyncio
+    async def test_resume_falls_back_to_new_session(self):
+        modules, acp, items = make_acp_module(load_raises=RuntimeError("no loadSession capability"))
+        session = make_session()
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session, resume_session_id="old-acp-session")
+        client = acp.AcpClient.last
+        assert len(client.load_session_calls) == 1
+        assert client.new_session_calls == [Path("/tmp/test-worktree")]
+        assert session.current_session_id == "acp-1"

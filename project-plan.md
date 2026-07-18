@@ -68,13 +68,17 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
   still constructed at the call sites (session.py / review_agent.py) so test patch
   targets keep working; the profile supplies kwargs/fields only. Groundwork for a future
   `KimiAgentSession`.
-- 2026-07-18 — Kimi is a **separate runtime** (`src/agent/kimi_session.py`, in-process
-  Kimi Agent SDK), selected purely by model id (`kimi-*` → `is_kimi_model`), gated by the
-  `experimental=True` flag on its `AVAILABLE_MODELS` entries (no DB flag, no migration).
-  v1 runs `yolo=True` with no dashboard MCP tools/plugins/resume, and auto-review is
-  skipped for Kimi models (Claude-SDK reviewer). The `kimi-agent-sdk` package is an
-  optional dependency imported lazily; auth via one-time `kimi login` (OAuth, shared
-  with the Kimi CLI) or `KIMI_API_KEY` for headless use.
+- 2026-07-18 — Kimi is a **separate runtime** (`src/agent/kimi_session.py`), selected
+  purely by model id (`kimi-*` → `is_kimi_model`), gated by the `experimental=True` flag
+  on its `AVAILABLE_MODELS` entries (no DB flag, no migration). Transport is **ACP**:
+  `kimi_agent_sdk.acp.AcpClient` spawns `kimi acp` (CLI >= 0.27.0 on PATH; model via
+  `KIMI_MODEL_NAME` env) — chosen over the in-process `prompt()` API to avoid the
+  `kimi-cli` version coupling at runtime and to get session/load resume. v1 runs
+  `yolo=True` with no dashboard MCP tools/plugins; pause/resume works via the ACP
+  session id; auto-review is skipped for Kimi models (Claude-SDK reviewer).
+  `kimi-agent-sdk` is installed from the `epatel/kimi-agent-sdk@agentic-setup` fork
+  branch in requirements.txt (PyPI lacks the ACP client). Auth via one-time
+  `kimi login` (OAuth, shared with the Kimi CLI) or `KIMI_API_KEY` for headless use.
 
 ## Current state / handoff
 
@@ -103,14 +107,17 @@ onto the profile. No behavior change; tests grew 1174 → 1195 (new
 ARCHITECTURE, OLLAMA_PROVIDER, PROJECT_MAP (flow.agent-start), TESTING.
 
 M4 (same day, merged to main): **KimiAgentSession** landed as the first non-Claude
-runtime — `src/agent/kimi_session.py` (lazy-imported `kimi-agent-sdk`, `yolo=True`,
-no MCP/plugins/resume in v1), routing in `SessionService` via `is_kimi_model`,
-`kimi-k2` / `kimi-k2-turbo` in `AVAILABLE_MODELS` as experimental entries, auto-review
-guard in `workflow_service`, Kimi provider badge in the frontend. Tests now **1215**
-(new `tests/unit/test_kimi_session.py`); new `CARDS/KIMI_PROVIDER.md` registered in the
-manifest. Not yet done: install `kimi-agent-sdk` into the venv and a live smoke run
-(needs `kimi login` or `KIMI_API_KEY`); pause/resume via the SDK's `Session.resume`; commit-message /
-ask_user equivalents for Kimi agents.
+runtime and was then switched to the **ACP transport** — `AcpClient` spawning
+`kimi acp` instead of the in-process `prompt()` API (drops the runtime `kimi-cli`
+coupling, adds session/load pause-resume). Routing in `SessionService` via
+`is_kimi_model`, `kimi-k2` / `kimi-k2-turbo` as experimental `AVAILABLE_MODELS`
+entries, auto-review guard in `workflow_service`, Kimi provider badge in the
+frontend; `kimi-agent-sdk` 0.0.6 installed via requirements.txt from the
+`agentic-setup` fork branch (verified in venv; pulled pydantic 2.13.1 → 2.12.5).
+Tests now **1217** (`tests/unit/test_kimi_session.py` rewritten for ACP);
+`CARDS/KIMI_PROVIDER.md` registered in the manifest. Not yet done: a live smoke run
+(needs `kimi` CLI >= 0.27.0 on PATH + `kimi login`); commit-message / ask_user
+equivalents for Kimi agents.
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.
 

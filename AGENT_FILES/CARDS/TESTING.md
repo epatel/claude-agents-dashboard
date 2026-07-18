@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1215 tests
+./run-tests.sh              # Run all 1217 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -58,7 +58,7 @@ tests/
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
 │   ├── test_routes.py               # HTTP endpoint tests (102 tests)
 │   ├── test_base.py                 # AbstractAgentSession contract (4 tests)
-│   ├── test_kimi_session.py         # KimiAgentSession (experimental runtime) (12 tests)
+│   ├── test_kimi_session.py         # KimiAgentSession over ACP (experimental) (14 tests)
 │   ├── test_profiles.py             # Provider profiles + Kimi/Ollama routing (22 tests)
 │   ├── test_session.py              # ClaudeAgentSession SDK wrapper (96 tests)
 │   ├── test_session_service.py      # SessionService lifecycle + provider routing (52 tests)
@@ -110,11 +110,11 @@ Quick checks that core components work:
 - **Allowed Commands** (26 tests): Command filter hook, shell operator rejection, YOLO mode bypass, runtime approval persistence
 - **graph_query tool** (10 tests): Read-only knowledge-graph MCP tool server
 
-### Unit Tests — Session (134 tests)
+### Unit Tests — Session (136 tests)
 - `ClaudeAgentSession` SDK wrapper, token extraction, event handling (96)
 - `AbstractAgentSession` contract conformance (4)
 - Provider profiles: Kimi/Ollama routing predicates, env builder, profile gate matrix, options kwargs (22)
-- `KimiAgentSession`: message/tool-call mapping, missing-SDK hint, cancel, errors (12)
+- `KimiAgentSession` over ACP: chunk aggregation, tool-call mapping, resume/fallback, cancel, missing-SDK hint, errors (14)
 
 ### Unit Tests — Migrations (51 tests)
 - Apply/rollback single and multiple migrations

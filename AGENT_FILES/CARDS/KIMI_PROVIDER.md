@@ -23,38 +23,54 @@ in-process **Kimi Agent SDK** (`kimi-agent-sdk` on PyPI, embedding the
 
 ## `KimiAgentSession` (`src/agent/kimi_session.py`)
 
-Implements the `AbstractAgentSession` contract (`src/agent/base.py`):
-`start()` spawns a background task that drives the SDK's high-level
-`prompt(...)` async generator; `cancel()` cancels it. Messages map to the
-dashboard callbacks: assistant text → `on_message`, tool calls (name + parsed
-JSON arguments) → `on_tool_use`, normal end of stream →
-`on_complete(AgentResult(success=True))`, exceptions → `on_error`.
+Implements the `AbstractAgentSession` contract (`src/agent/base.py`) over
+**ACP**: `start()` spawns a background task that connects
+`kimi_agent_sdk.acp.AcpClient` — which spawns `kimi acp` (the Kimi Code CLI
+as an Agent Client Protocol server, CLI >= 0.27.0, JSON-RPC over stdio) —
+and streams session updates. The ACP module is stdlib-only and targets
+whatever `kimi` binary is on PATH; the model is passed via the
+`KIMI_MODEL_NAME` env var on the subprocess (ACP has no model param).
 
-First-cut limitations (deliberate, mirrors the lean Ollama feature set):
+Update mapping (partial chunks are aggregated into message-sized entries):
+`AgentMessageChunk` → `on_message`, `AgentThoughtChunk` → `on_thinking`,
+`ToolCallStart` (title + `rawInput`/kind) → `on_tool_use`,
+`TurnEnded("end_turn")` → `on_complete(AgentResult(success=True))`,
+abnormal stop reasons (`max_tokens`/`max_turn_requests`/`refusal`) and
+exceptions → `on_error`. `cancel()` sends ACP `session/cancel`, then tears
+down the task/subprocess.
 
-- `yolo=True` — Kimi's approval requests are auto-approved; the dashboard's
+**Pause/resume works**: the ACP session id is captured in
+`current_session_id`; on restart the session is resumed via ACP
+`session/load` (falls back to a fresh session if the agent lacks the
+capability).
+
+Remaining limitations (deliberate, mirrors the lean Ollama feature set):
+
+- `yolo=True` — Kimi's permission requests are auto-approved; the dashboard's
   per-command permission hooks are Claude-SDK constructs and don't apply.
 - No dashboard MCP tool servers / plugins / chrome / graphify. Consequences:
   no `set_commit_message` (merge uses the default commit message), no
   `ask_user` clarification, no board tools.
-- No pause/resume — `current_session_id` stays `None`; a paused item restarts
-  fresh. The SDK's `Session.resume` can lift this later.
-- System prompt is prepended to the user prompt (the SDK has no separate
-  system-prompt input; an `agent_file` could carry it later).
+- System prompt is prepended to the user prompt (ACP has no separate
+  system-prompt input).
 - **Auto-review**: `workflow_service` skips the one-shot reviewer for Kimi
   models (it runs on the Claude SDK) and leaves the item in Review for a
   human, with a log line.
 
 ## Requirements
 
-- `pip install kimi-agent-sdk` into the dashboard venv (Python >= 3.12; the
-  package hard-pins a `kimi-cli` minor version). The import is lazy — the
-  dashboard runs fine without it; starting a Kimi session without the package
-  reports `KIMI_SDK_INSTALL_HINT` via `on_error`.
+- `kimi-agent-sdk` >= 0.0.6 — installed via `requirements.txt` from the
+  `epatel/kimi-agent-sdk@agentic-setup` fork branch (PyPI <= 0.0.5 lacks the
+  ACP client). The import is lazy — the dashboard runs fine without it;
+  starting a Kimi session without the package reports `KIMI_SDK_INSTALL_HINT`
+  via `on_error`. Note: the *runtime* no longer depends on the package's
+  `kimi-cli` pin (ACP talks to the PATH binary), but pip still installs the
+  pinned `kimi-cli` as a package dependency.
+- Kimi Code CLI (`kimi`) >= 0.27.0 on PATH — it is the execution engine
+  (`kimi acp`).
 - **Auth**: credentials follow the Kimi Code model — a one-time `kimi login`
-  (OAuth tokens stored/refreshed by the CLI runtime, which the SDK embeds
-  in-process) is sufficient; no key to plumb through. `KIMI_API_KEY`
-  (optionally `KIMI_BASE_URL`, `KIMI_MODEL_NAME`) is the headless/CI
+  (OAuth tokens stored/refreshed by the CLI) is sufficient; no key to plumb
+  through. `KIMI_API_KEY` (optionally `KIMI_BASE_URL`) is the headless/CI
   alternative.
 
 ## Frontend
