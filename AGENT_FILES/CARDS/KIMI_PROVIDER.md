@@ -53,13 +53,24 @@ down the task/subprocess.
 `session/load` (falls back to a fresh session if the agent lacks the
 capability).
 
+**Marked-line text protocols** (Kimi agents have no dashboard MCP tools, so
+these travel in the agent's text and are parsed out before it reaches the
+work log — both live-verified):
+
+- `COMMIT_MESSAGE: <msg>` on the last line of the final message →
+  `on_set_commit_message` (labels the merge commit).
+- `ASK_USER: <question>` ends the turn → `on_clarify` blocks in the Clarify
+  ("questions") column; the user's answer is sent as the next prompt turn on
+  the same stateful ACP session (`User's answer: …`). Chains multiple
+  questions. Both instructions are appended to the prompt only when the
+  corresponding callback is wired.
+
 Remaining limitations (deliberate, mirrors the lean Ollama feature set):
 
 - `yolo=True` — Kimi's permission requests are auto-approved; the dashboard's
   per-command permission hooks are Claude-SDK constructs and don't apply.
-- No dashboard MCP tool servers / plugins / chrome / graphify. Consequences:
-  no `set_commit_message` (merge uses the default commit message), no
-  `ask_user` clarification, no board tools.
+- No dashboard MCP tool servers / plugins / chrome / graphify — no board
+  tools (create_todo, view_board, who_am_i, …).
 - System prompt is prepended to the user prompt (ACP has no separate
   system-prompt input).
 - **Auto-review**: `workflow_service` skips the one-shot reviewer for Kimi

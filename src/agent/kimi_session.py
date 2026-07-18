@@ -18,9 +18,12 @@ First-cut scope (deliberately mirrors the lean Ollama feature set):
 - ``yolo=True`` — Kimi's permission requests are auto-approved. The
   dashboard's per-command permission hooks are Claude-SDK constructs and do
   not apply here.
-- No dashboard MCP tool servers, plugins, chrome, or graphify — so agents
-  cannot call ``set_commit_message``/``ask_user``; the merge path falls back
-  to its default commit message and clarification is unavailable.
+- No dashboard MCP tool servers, plugins, chrome, or graphify. Commit
+  messages and clarifications still work via marked lines in the agent's
+  text (no MCP needed): a ``COMMIT_MESSAGE:`` line routes to
+  ``on_set_commit_message``; an ``ASK_USER:`` line ends the turn, blocks on
+  ``on_clarify`` (Clarify column), and the user's answer is sent as the next
+  prompt turn on the same stateful ACP session.
 - Pause/resume: the ACP session id is captured in ``current_session_id``;
   on restart the session is resumed via ACP ``session/load`` when the agent
   supports it (fresh start otherwise).
@@ -37,6 +40,7 @@ session without it reports a clear error.
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 
 from .base import AbstractAgentSession, AgentResult
@@ -53,6 +57,56 @@ KIMI_SDK_INSTALL_HINT = (
 
 # ACP stop reasons that are not a normal end of turn.
 _ABNORMAL_STOP_REASONS = {"max_tokens", "max_turn_requests", "refusal"}
+
+# Commit messages travel as a marked line in the agent's text (Kimi agents
+# have no set_commit_message MCP tool), parsed out before the text reaches
+# the work log — same style as review_agent's DECISION parsing.
+_COMMIT_MESSAGE_RE = re.compile(r"^[ \t]*COMMIT_MESSAGE:[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
+
+_COMMIT_MESSAGE_NOTE = (
+    "\n\nWhen your work is complete, end your FINAL message with a single line in "
+    "exactly this format:\n"
+    "COMMIT_MESSAGE: <one-line imperative summary of the change>\n"
+    "This line is machine-parsed to label the merge commit. Include it exactly once, "
+    "as the last line of your final message."
+)
+
+
+def _extract_commit_message(text: str) -> tuple[str, str | None]:
+    """Split a COMMIT_MESSAGE line out of agent text.
+
+    Returns (text without the line(s), last commit message or None).
+    """
+    matches = _COMMIT_MESSAGE_RE.findall(text)
+    if not matches:
+        return text, None
+    return _COMMIT_MESSAGE_RE.sub("", text).rstrip(), matches[-1]
+
+
+# Clarifications use the same marked-line protocol: ACP has no user-question
+# channel, but sessions are stateful — the agent ends its turn with an
+# ASK_USER line, the dashboard collects the answer (Clarify column), and the
+# answer is sent as the next prompt turn on the same ACP session.
+_ASK_USER_RE = re.compile(r"^[ \t]*ASK_USER:[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
+
+_ASK_USER_NOTE = (
+    "\n\nIf you need to ask the user a question before you can proceed, end your "
+    "message with a single line in exactly this format and then STOP:\n"
+    "ASK_USER: <your question>\n"
+    "The user's answer will arrive as your next message. Use this only when "
+    "genuinely blocked — otherwise make a reasonable assumption and state it."
+)
+
+
+def _extract_ask_user(text: str) -> tuple[str, str | None]:
+    """Split an ASK_USER line out of agent text.
+
+    Returns (text without the line(s), last question or None).
+    """
+    matches = _ASK_USER_RE.findall(text)
+    if not matches:
+        return text, None
+    return _ASK_USER_RE.sub("", text).rstrip(), matches[-1]
 
 
 def _content_text(content) -> str:
@@ -115,6 +169,8 @@ class KimiAgentSession(AbstractAgentSession):
         on_thinking=None,
         on_complete=None,
         on_error=None,
+        on_set_commit_message=None,
+        on_clarify=None,
         item_id: str | None = None,
     ):
         self.worktree_path = worktree_path
@@ -125,6 +181,8 @@ class KimiAgentSession(AbstractAgentSession):
         self.on_thinking = on_thinking      # async callback(thinking: str)
         self.on_complete = on_complete      # async callback(result: AgentResult)
         self.on_error = on_error            # async callback(error: str)
+        self.on_set_commit_message = on_set_commit_message  # async callback(message: str) -> str
+        self.on_clarify = on_clarify        # async callback(prompt: str, choices: list|None) -> str
         self.item_id = item_id
         self._task: asyncio.Task | None = None
         self._cancelled = False
@@ -146,6 +204,10 @@ class KimiAgentSession(AbstractAgentSession):
                 "All file operations must be within this directory.\n\n"
                 f"--- Task ---\n{prompt}"
             )
+        if self.on_set_commit_message:
+            prompt += _COMMIT_MESSAGE_NOTE
+        if self.on_clarify:
+            prompt += _ASK_USER_NOTE
         self._task = asyncio.create_task(self._run(prompt, resume_session_id))
 
     async def _run(self, full_prompt: str, resume_session_id: str | None) -> None:
@@ -211,13 +273,24 @@ class KimiAgentSession(AbstractAgentSession):
                 text_buf: list[str] = []
                 thought_buf: list[str] = []
 
+                state = {"question": None}
+
                 async def flush() -> None:
                     if thought_buf and self.on_thinking:
                         await self.on_thinking("".join(thought_buf))
                     thought_buf.clear()
-                    if text_buf and self.on_message:
-                        await self.on_message("".join(text_buf))
+                    text = "".join(text_buf)
                     text_buf.clear()
+                    if self.on_set_commit_message:
+                        text, commit_message = _extract_commit_message(text)
+                        if commit_message:
+                            await self.on_set_commit_message(commit_message)
+                    if self.on_clarify:
+                        text, question = _extract_ask_user(text)
+                        if question:
+                            state["question"] = question
+                    if text.strip() and self.on_message:
+                        await self.on_message(text)
 
                 pending_tool: _PendingToolCall | None = None
 
@@ -227,38 +300,53 @@ class KimiAgentSession(AbstractAgentSession):
                         await self.on_tool_use(pending_tool.title, pending_tool.input)
                     pending_tool = None
 
-                stop_reason = None
-                async for item in session.prompt(full_prompt):
-                    if self._cancelled:
-                        return
-                    if isinstance(item, AgentMessageChunk):
-                        text_buf.append(_content_text(item.content))
-                    elif isinstance(item, AgentThoughtChunk):
-                        thought_buf.append(_content_text(item.content))
-                    elif isinstance(item, ToolCallStart):
-                        await flush()
-                        await emit_pending()
-                        pending_tool = _PendingToolCall(item)
-                        if pending_tool.raw_input is not None:
+                # Turn loop: normally one turn, but an ASK_USER line chains a
+                # follow-up turn on the same (stateful) ACP session carrying
+                # the user's answer.
+                next_input = full_prompt
+                while True:
+                    state["question"] = None
+                    stop_reason = None
+                    async for item in session.prompt(next_input):
+                        if self._cancelled:
+                            return
+                        if isinstance(item, AgentMessageChunk):
+                            text_buf.append(_content_text(item.content))
+                        elif isinstance(item, AgentThoughtChunk):
+                            thought_buf.append(_content_text(item.content))
+                        elif isinstance(item, ToolCallStart):
+                            await flush()
                             await emit_pending()
-                    elif isinstance(item, ToolCallProgress):
-                        if (pending_tool is not None
-                                and pending_tool.tool_call_id == item.tool_call_id):
-                            pending_tool.merge_progress(item)
-                            if (pending_tool.raw_input is not None
-                                    or item.status in ("completed", "failed")):
+                            pending_tool = _PendingToolCall(item)
+                            if pending_tool.raw_input is not None:
                                 await emit_pending()
-                    elif isinstance(item, TurnEnded):
-                        stop_reason = item.stop_reason
-                await emit_pending()
-                await flush()
+                        elif isinstance(item, ToolCallProgress):
+                            if (pending_tool is not None
+                                    and pending_tool.tool_call_id == item.tool_call_id):
+                                pending_tool.merge_progress(item)
+                                if (pending_tool.raw_input is not None
+                                        or item.status in ("completed", "failed")):
+                                    await emit_pending()
+                        elif isinstance(item, TurnEnded):
+                            stop_reason = item.stop_reason
+                    await emit_pending()
+                    await flush()
 
-                if self._cancelled or stop_reason == "cancelled":
-                    return
-                if stop_reason in _ABNORMAL_STOP_REASONS:
-                    if self.on_error:
-                        await self.on_error(f"Kimi run stopped early: {stop_reason}")
-                    return
+                    if self._cancelled or stop_reason == "cancelled":
+                        return
+                    if stop_reason in _ABNORMAL_STOP_REASONS:
+                        if self.on_error:
+                            await self.on_error(f"Kimi run stopped early: {stop_reason}")
+                        return
+                    if state["question"] and self.on_clarify:
+                        # Blocks until the user answers (Clarify column flow).
+                        answer = await self.on_clarify(state["question"], None)
+                        if self._cancelled:
+                            return
+                        next_input = f"User's answer: {answer}"
+                        continue
+                    break
+
                 if self.on_complete:
                     await self.on_complete(
                         AgentResult(success=True, session_id=self.current_session_id)

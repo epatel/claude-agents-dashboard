@@ -129,8 +129,17 @@ with the ACP session id stored (pause/resume live). The tool-call log gap (empty
 is FIXED: `KimiAgentSession` defers `on_tool_use` until the input arrives via
 `ToolCallProgress` (bounded by completed/failed status, the next tool call, or turn
 end), also picking up the richer progress titles ("Reading app.py"). Verified with a
-second live run; tests 1224. Still open: commit-message / ask_user equivalents for
-Kimi agents.
+second live run.
+
+Commit-message and ask_user support for Kimi agents landed via **marked-line text
+protocols** (no MCP): `COMMIT_MESSAGE:` → `on_set_commit_message`; `ASK_USER:` → ends
+the turn, `on_clarify` blocks in the Clarify column, and the answer continues the SAME
+stateful ACP session as a new prompt turn. Both live-verified end-to-end (the ask_user
+run: agent asked which language, answer "Swedish" produced `farewell_swedish` /
+"Hej då" plus a parsed commit message in one final message). Tests **1239**. Kimi
+feature set now: streaming text/thinking/tool calls, deferred tool input,
+pause/resume, commit messages, clarifications. Still open: board tools
+(create_todo etc.) and permission hooks for Kimi agents.
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.
 

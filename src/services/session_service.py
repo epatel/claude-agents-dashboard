@@ -84,6 +84,8 @@ class SessionService:
                 on_thinking=on_thinking,
                 on_complete=on_complete,
                 on_error=on_error,
+                on_set_commit_message=on_set_commit_message,
+                on_clarify=on_clarify,
                 item_id=item_id,
             )
             self.sessions[item_id] = session

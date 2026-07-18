@@ -199,6 +199,22 @@ class TestKimiRouting:
         assert kwargs["item_id"] == "item-1"
 
     @pytest.mark.asyncio
+    async def test_kimi_session_gets_commit_message_and_clarify_callbacks(self, temp_dir):
+        service = make_service()
+        mock_session = make_mock_session()
+        on_set_commit_message = AsyncMock()
+        on_clarify = AsyncMock()
+
+        with patch("src.services.session_service.KimiAgentSession", return_value=mock_session) as MockKimi:
+            await service.create_session(
+                "item-1", temp_dir, config={}, model="kimi-k2",
+                on_set_commit_message=on_set_commit_message,
+                on_clarify=on_clarify,
+            )
+        assert MockKimi.call_args.kwargs["on_set_commit_message"] is on_set_commit_message
+        assert MockKimi.call_args.kwargs["on_clarify"] is on_clarify
+
+    @pytest.mark.asyncio
     async def test_kimi_model_never_gets_ollama_env(self, temp_dir):
         service = make_service()
         mock_session = make_mock_session()

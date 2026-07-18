@@ -14,6 +14,8 @@ from src.agent.kimi_session import (
     KimiAgentSession,
     _PendingToolCall,
     _content_text,
+    _extract_ask_user,
+    _extract_commit_message,
     _raw_input,
 )
 
@@ -64,10 +66,18 @@ def make_acp_module(session_id="acp-1", load_raises=None):
             self.id = session_id
             self.prompts = []
             self.cancelled = False
+            self._turn = 0
 
         async def prompt(self, user_input):
             self.prompts.append(user_input)
-            for item in items:
+            # Turn mode: when items is a list of lists, each prompt() call
+            # consumes the next sub-list. Flat lists replay every call.
+            if items and isinstance(items[0], list):
+                turn_items = items[self._turn] if self._turn < len(items) else []
+                self._turn += 1
+            else:
+                turn_items = items
+            for item in turn_items:
                 if item == "HANG":
                     await asyncio.sleep(30)
                 elif isinstance(item, Exception):
@@ -278,6 +288,179 @@ class TestRun:
         assert session._task.done()
         on_complete.assert_not_awaited()
         assert client.closed is True
+
+
+class TestExtractCommitMessage:
+    def test_extracts_and_strips_line(self):
+        text, msg = _extract_commit_message("All done.\nCOMMIT_MESSAGE: Add farewell function")
+        assert msg == "Add farewell function"
+        assert text == "All done."
+
+    def test_no_line_returns_text_unchanged(self):
+        text, msg = _extract_commit_message("Just a normal message")
+        assert msg is None
+        assert text == "Just a normal message"
+
+    def test_last_line_wins_when_repeated(self):
+        text, msg = _extract_commit_message(
+            "COMMIT_MESSAGE: first try\nmore work\nCOMMIT_MESSAGE: final version"
+        )
+        assert msg == "final version"
+        assert "COMMIT_MESSAGE" not in text
+
+    def test_indented_line_and_trailing_space(self):
+        _, msg = _extract_commit_message("done\n  COMMIT_MESSAGE:  Fix the bug  ")
+        assert msg == "Fix the bug"
+
+
+class TestCommitMessageFlow:
+    @pytest.mark.asyncio
+    async def test_commit_line_routed_to_callback_and_stripped_from_log(self):
+        on_message = AsyncMock()
+        on_set_commit_message = AsyncMock()
+        modules, acp, items = make_acp_module()
+        T = acp.TextContent
+        items.extend([
+            acp.AgentMessageChunk(T("Added the function.\n")),
+            acp.AgentMessageChunk(T("COMMIT_MESSAGE: Add farewell function")),
+            acp.TurnEnded("end_turn"),
+        ])
+        session = make_session(on_message=on_message,
+                               on_set_commit_message=on_set_commit_message)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        on_set_commit_message.assert_awaited_once_with("Add farewell function")
+        on_message.assert_awaited_once_with("Added the function.")
+
+    @pytest.mark.asyncio
+    async def test_commit_only_message_skips_empty_on_message(self):
+        on_message = AsyncMock()
+        on_set_commit_message = AsyncMock()
+        modules, acp, items = make_acp_module()
+        items.extend([
+            acp.AgentMessageChunk(acp.TextContent("COMMIT_MESSAGE: Tiny fix")),
+            acp.TurnEnded("end_turn"),
+        ])
+        session = make_session(on_message=on_message,
+                               on_set_commit_message=on_set_commit_message)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        on_set_commit_message.assert_awaited_once_with("Tiny fix")
+        on_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_prompt_carries_instruction_only_with_callback(self):
+        modules, acp, items = make_acp_module()
+        session = make_session(on_set_commit_message=AsyncMock())
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        assert "COMMIT_MESSAGE:" in acp.AcpClient.last.session.prompts[0]
+
+        modules2, acp2, _ = make_acp_module()
+        session2 = make_session()
+        with patch.dict(sys.modules, modules2):
+            await start_and_wait(session2)
+        assert "COMMIT_MESSAGE:" not in acp2.AcpClient.last.session.prompts[0]
+
+    @pytest.mark.asyncio
+    async def test_text_without_callback_passes_through_untouched(self):
+        on_message = AsyncMock()
+        modules, acp, items = make_acp_module()
+        items.extend([
+            acp.AgentMessageChunk(acp.TextContent("COMMIT_MESSAGE: not parsed")),
+            acp.TurnEnded("end_turn"),
+        ])
+        session = make_session(on_message=on_message)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        on_message.assert_awaited_once_with("COMMIT_MESSAGE: not parsed")
+
+
+class TestExtractAskUser:
+    def test_extracts_and_strips_line(self):
+        text, q = _extract_ask_user("I need input.\nASK_USER: Which database should I use?")
+        assert q == "Which database should I use?"
+        assert text == "I need input."
+
+    def test_no_line_returns_none(self):
+        text, q = _extract_ask_user("No questions here")
+        assert q is None
+        assert text == "No questions here"
+
+
+class TestAskUserFlow:
+    @pytest.mark.asyncio
+    async def test_question_blocks_on_clarify_then_continues_with_answer(self):
+        on_message = AsyncMock()
+        on_clarify = AsyncMock(return_value="Use SQLite")
+        on_complete = AsyncMock()
+        modules, acp, items = make_acp_module()
+        T = acp.TextContent
+        items.append([  # turn 1: agent asks
+            acp.AgentMessageChunk(T("I checked the repo.\nASK_USER: Which database should I use?")),
+            acp.TurnEnded("end_turn"),
+        ])
+        items.append([  # turn 2: agent finishes with the answer in hand
+            acp.AgentMessageChunk(T("Done, used SQLite.")),
+            acp.TurnEnded("end_turn"),
+        ])
+        session = make_session(on_message=on_message, on_clarify=on_clarify,
+                               on_complete=on_complete)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+
+        on_clarify.assert_awaited_once_with("Which database should I use?", None)
+        client = acp.AcpClient.last
+        assert len(client.session.prompts) == 2
+        assert client.session.prompts[1] == "User's answer: Use SQLite"
+        assert [c.args[0] for c in on_message.call_args_list] == [
+            "I checked the repo.", "Done, used SQLite."]
+        on_complete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_multiple_questions_chain_turns(self):
+        on_clarify = AsyncMock(side_effect=["answer one", "answer two"])
+        on_complete = AsyncMock()
+        modules, acp, items = make_acp_module()
+        T = acp.TextContent
+        items.append([acp.AgentMessageChunk(T("ASK_USER: first?")), acp.TurnEnded("end_turn")])
+        items.append([acp.AgentMessageChunk(T("ASK_USER: second?")), acp.TurnEnded("end_turn")])
+        items.append([acp.AgentMessageChunk(T("done")), acp.TurnEnded("end_turn")])
+        session = make_session(on_clarify=on_clarify, on_complete=on_complete)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        assert on_clarify.await_count == 2
+        assert len(acp.AcpClient.last.session.prompts) == 3
+        on_complete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_prompt_carries_instruction_only_with_callback(self):
+        modules, acp, _ = make_acp_module()
+        session = make_session(on_clarify=AsyncMock(return_value="x"))
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        assert "ASK_USER:" in acp.AcpClient.last.session.prompts[0]
+
+        modules2, acp2, _ = make_acp_module()
+        session2 = make_session()
+        with patch.dict(sys.modules, modules2):
+            await start_and_wait(session2)
+        assert "ASK_USER:" not in acp2.AcpClient.last.session.prompts[0]
+
+    @pytest.mark.asyncio
+    async def test_question_without_callback_passes_through(self):
+        on_message = AsyncMock()
+        on_complete = AsyncMock()
+        modules, acp, items = make_acp_module()
+        items.extend([
+            acp.AgentMessageChunk(acp.TextContent("ASK_USER: ignored?")),
+            acp.TurnEnded("end_turn"),
+        ])
+        session = make_session(on_message=on_message, on_complete=on_complete)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        on_message.assert_awaited_once_with("ASK_USER: ignored?")
+        on_complete.assert_awaited_once()
 
 
 class TestDeferredToolInput:
