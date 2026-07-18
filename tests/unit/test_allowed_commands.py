@@ -194,14 +194,14 @@ class TestCommandFilterHook:
 from unittest.mock import AsyncMock, patch, MagicMock
 from pathlib import Path
 
-from src.agent.session import AgentSession
+from src.agent.session import ClaudeAgentSession
 
 
 class TestAllowedToolsWhitelist:
     """Verify that allowed_tools is built correctly so Bash and plugins aren't blocked."""
 
     def _make_session(self, allowed_commands=None, bash_yolo=False, plugins=None):
-        return AgentSession(
+        return ClaudeAgentSession(
             worktree_path=Path("/tmp/fake-worktree"),
             system_prompt="test",
             allowed_commands=allowed_commands or [],

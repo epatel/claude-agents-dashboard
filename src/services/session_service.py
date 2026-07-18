@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ..agent.profiles import resolve_ollama_env
-from ..agent.session import AgentSession
+from ..agent.session import ClaudeAgentSession
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class SessionService:
     """Manages agent sessions and their lifecycle."""
 
     def __init__(self):
-        self.sessions: Dict[str, AgentSession] = {}
+        self.sessions: Dict[str, ClaudeAgentSession] = {}
         self._agent_tasks: Dict[str, asyncio.Task] = {}  # item_id -> _run_agent task
         self._last_agent_messages: Dict[str, str] = {}  # item_id -> last agent text
         self._commit_messages: Dict[str, str] = {}  # item_id -> commit message from tool
@@ -46,7 +46,7 @@ class SessionService:
                            sibling_repo_paths: Optional[List[Path]] = None,
                            item_repo_name: Optional[str] = None,
                            epic_plan_relpath: Optional[str] = None,
-                           use_chrome: bool = False) -> AgentSession:
+                           use_chrome: bool = False) -> ClaudeAgentSession:
         """Create a new agent session with all callbacks."""
         # Use provided model or fall back to config model
         session_model = model or config.get("model")
@@ -74,7 +74,7 @@ class SessionService:
         # (Claude models must not be routed to Ollama) — see agent/profiles.py.
         ollama_env = resolve_ollama_env(config, session_model)
 
-        session = AgentSession(
+        session = ClaudeAgentSession(
             worktree_path=worktree_path,
             system_prompt=system_prompt,
             model=session_model,
@@ -115,7 +115,7 @@ class SessionService:
         self._update_caffeinate()
         return session
 
-    async def start_session_task(self, item_id: str, session: AgentSession, prompt: str,
+    async def start_session_task(self, item_id: str, session: ClaudeAgentSession, prompt: str,
                                 attachments: Optional[List[Dict[str, Any]]] = None,
                                 resume_session_id: Optional[str] = None):
         """Start an agent session as a background task."""
@@ -185,7 +185,7 @@ class SessionService:
         self.sessions.pop(item_id, None)
         self._update_caffeinate()
 
-    def get_session(self, item_id: str) -> Optional[AgentSession]:
+    def get_session(self, item_id: str) -> Optional[ClaudeAgentSession]:
         """Get session for an item."""
         return self.sessions.get(item_id)
 

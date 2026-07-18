@@ -1,4 +1,4 @@
-"""Unit tests for src/agent/session.py — AgentSession class."""
+"""Unit tests for src/agent/session.py — ClaudeAgentSession class."""
 
 import asyncio
 from pathlib import Path
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 import pytest
 
 from src.agent.session import (
-    AgentSession,
+    ClaudeAgentSession,
     AgentResult,
     build_attachment_prompt,
     _server_result_text,
@@ -24,7 +24,7 @@ def make_session(**kwargs):
         system_prompt="You are a helpful agent.",
     )
     defaults.update(kwargs)
-    return AgentSession(**defaults)
+    return ClaudeAgentSession(**defaults)
 
 
 # ---------------------------------------------------------------------------

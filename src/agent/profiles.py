@@ -9,7 +9,7 @@ profiles of the Claude Agent SDK runtime:
   via env vars. Lighter options so small local models aren't overwhelmed; see
   the field comments and AGENT_FILES/CARDS/OLLAMA_PROVIDER.md.
 
-Both `AgentSession.start()` and `review_agent.run_auto_review()` consume these
+Both `ClaudeAgentSession.start()` and `review_agent.run_auto_review()` consume these
 profiles instead of forking on `is_ollama` locally.
 """
 
@@ -118,7 +118,7 @@ def resolve_profile(
 
 
 def profile_options_kwargs(profile: AgentProfile) -> dict:
-    """Divergent ClaudeAgentOptions kwargs for AgentSession.start().
+    """Divergent ClaudeAgentOptions kwargs for ClaudeAgentSession.start().
 
     Returns kwargs (not an options object) so ClaudeAgentOptions stays
     constructed at the call site — test patch targets depend on that.

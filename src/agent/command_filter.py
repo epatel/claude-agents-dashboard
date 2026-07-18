@@ -39,7 +39,7 @@ def make_command_filter_hook(allowed_commands: list[str], session=None):
             The first word of each bash command is checked against this list.
             Commands containing shell operators (;, &&, ||, |, etc.) are
             rejected outright to prevent filter bypass.
-        session: Optional AgentSession reference to capture session_id from hook input.
+        session: Optional ClaudeAgentSession reference to capture session_id from hook input.
     """
 
     async def hook(hook_input, tool_use_id, context):

@@ -12,7 +12,7 @@ from src.services.session_service import SessionService
 
 
 def make_mock_session(current_session_id=None):
-    """Create a mock AgentSession."""
+    """Create a mock ClaudeAgentSession."""
     session = MagicMock()
     session.current_session_id = current_session_id
     session.on_error = None
@@ -41,7 +41,7 @@ class TestCreateSession:
         service = make_service()
         mock_session = make_mock_session()
 
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAgentSession:
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockAgentSession:
             session = await service.create_session("item-1", temp_dir, config={})
 
         assert session is mock_session
@@ -52,7 +52,7 @@ class TestCreateSession:
         service = make_service()
         mock_session = make_mock_session()
 
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockAS:
             await service.create_session("item-1", temp_dir, config={"model": "config-model"}, model="explicit-model")
             kwargs = MockAS.call_args.kwargs
         assert kwargs["model"] == "explicit-model"
@@ -62,7 +62,7 @@ class TestCreateSession:
         service = make_service()
         mock_session = make_mock_session()
 
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockAS:
             await service.create_session("item-1", temp_dir, config={"model": "config-model"})
             kwargs = MockAS.call_args.kwargs
         assert kwargs["model"] == "config-model"
@@ -73,7 +73,7 @@ class TestCreateSession:
         mock_session = make_mock_session()
         config = {"system_prompt": "You are helpful.", "project_context": "My project."}
 
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockAS:
             await service.create_session("item-1", temp_dir, config=config)
             kwargs = MockAS.call_args.kwargs
         assert "You are helpful." in kwargs["system_prompt"]
@@ -85,7 +85,7 @@ class TestCreateSession:
         mock_session = make_mock_session()
         config = {"system_prompt": "Just a prompt."}
 
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockAS:
             await service.create_session("item-1", temp_dir, config=config)
             kwargs = MockAS.call_args.kwargs
         assert kwargs["system_prompt"] == "Just a prompt."
@@ -95,9 +95,9 @@ class TestCreateSession:
         service = make_service()
         mock_session = make_mock_session()
 
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockAS:
             await service.create_session("item-1", temp_dir, config={})
-            # Extract the on_message callback passed to AgentSession
+            # Extract the on_message callback passed to ClaudeAgentSession
             on_message = MockAS.call_args.kwargs["on_message"]
 
         await on_message("hello world")
@@ -109,7 +109,7 @@ class TestCreateSession:
         mock_session = make_mock_session()
         custom_cb = AsyncMock()
 
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockAS:
             await service.create_session("item-1", temp_dir, config={}, on_message=custom_cb)
             on_message = MockAS.call_args.kwargs["on_message"]
 
@@ -126,7 +126,7 @@ class TestCreateSession:
         mock_session = make_mock_session()
         config = {"allowed_commands": ["git", "make"]}
 
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockAS:
             await service.create_session("item-1", temp_dir, config=config)
             kwargs = MockAS.call_args.kwargs
         assert kwargs["allowed_commands"] == ["git", "make"]
@@ -137,7 +137,7 @@ class TestCreateSession:
         mock_session = make_mock_session()
         config = {"allowed_builtin_tools": ["WebSearch"]}
 
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockAS:
             await service.create_session("item-1", temp_dir, config=config)
             kwargs = MockAS.call_args.kwargs
         assert kwargs["allowed_builtin_tools"] == ["WebSearch"]
@@ -147,7 +147,7 @@ class TestCreateSession:
         service = make_service()
         mock_session = make_mock_session()
 
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockAS:
             await service.create_session("item-1", temp_dir, config={"bash_yolo": True})
             kwargs = MockAS.call_args.kwargs
         assert kwargs["bash_yolo"] is True
@@ -172,7 +172,7 @@ class TestCreateSession:
             "on_create_shortcut": AsyncMock(),
         }
 
-        with patch("src.services.session_service.AgentSession", return_value=mock_session) as MockAS:
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockAS:
             await service.create_session("item-1", temp_dir, config={}, **cbs)
             kwargs = MockAS.call_args.kwargs
 

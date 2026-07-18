@@ -3,12 +3,12 @@
 import pytest
 
 from src.agent.base import AbstractAgentSession
-from src.agent.session import AgentSession
+from src.agent.session import ClaudeAgentSession
 
 
 class TestAbstractAgentSession:
     def test_agent_session_implements_contract(self):
-        assert issubclass(AgentSession, AbstractAgentSession)
+        assert issubclass(ClaudeAgentSession, AbstractAgentSession)
 
     def test_abstract_base_not_instantiable(self):
         with pytest.raises(TypeError):

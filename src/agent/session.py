@@ -120,7 +120,7 @@ def build_attachment_prompt(attachments: list[dict]) -> str:
     return "\n".join(lines)
 
 
-class AgentSession(AbstractAgentSession):
+class ClaudeAgentSession(AbstractAgentSession):
     """Wraps a ClaudeSDKClient for a single item's agent run."""
 
     def __init__(
@@ -907,3 +907,8 @@ class AgentSession(AbstractAgentSession):
         if self.client:
             await self.client.disconnect()
         self._force_kill_subprocess()
+
+
+# Backwards-compat alias — prefer ClaudeAgentSession. Remove when the second
+# runtime (KimiAgentSession) lands and all callers are provider-aware.
+AgentSession = ClaudeAgentSession

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.agent.graph_query import create_graph_query_server
-from src.agent.session import AgentSession
+from src.agent.session import ClaudeAgentSession
 from src.services.workflow_service import WorkflowService
 
 
@@ -29,13 +29,13 @@ class TestGraphQueryServer:
 class TestAgentSessionWiring:
     def test_session_stores_graphify_fields(self, tmp_path):
         cb = AsyncMock(return_value="ans")
-        s = AgentSession(worktree_path=tmp_path, system_prompt="",
+        s = ClaudeAgentSession(worktree_path=tmp_path, system_prompt="",
                          on_graph_query=cb, graphify_enabled=True)
         assert s.graphify_enabled is True
         assert s.on_graph_query is cb
 
     def test_defaults_off(self, tmp_path):
-        s = AgentSession(worktree_path=tmp_path, system_prompt="")
+        s = ClaudeAgentSession(worktree_path=tmp_path, system_prompt="")
         assert s.graphify_enabled is False
         assert s.on_graph_query is None
 

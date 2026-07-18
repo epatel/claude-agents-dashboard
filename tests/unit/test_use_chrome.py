@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.agent.session import AgentSession
+from src.agent.session import ClaudeAgentSession
 from src.models import ItemCreate, ItemUpdate
 from src.services.session_service import SessionService
 from src.services.workflow_service import WorkflowService
@@ -42,7 +42,7 @@ class TestUseChromeModels:
 
 
 # ---------------------------------------------------------------------------
-# SessionService threads use_chrome through to AgentSession
+# SessionService threads use_chrome through to ClaudeAgentSession
 # ---------------------------------------------------------------------------
 
 @pytest.mark.unit
@@ -63,20 +63,20 @@ class TestSessionServiceThreadsUseChrome:
 
 
 # ---------------------------------------------------------------------------
-# AgentSession storage
+# ClaudeAgentSession storage
 # ---------------------------------------------------------------------------
 
 @pytest.mark.unit
 class TestAgentSessionStoresUseChrome:
     def test_stored(self):
-        session = AgentSession(
+        session = ClaudeAgentSession(
             worktree_path=Path("/tmp/test"), system_prompt="x",
             model="claude-sonnet-4-6", use_chrome=True,
         )
         assert session.use_chrome is True
 
     def test_off_by_default(self):
-        session = AgentSession(
+        session = ClaudeAgentSession(
             worktree_path=Path("/tmp/test"), system_prompt="x",
             model="claude-sonnet-4-6",
         )
@@ -84,12 +84,12 @@ class TestAgentSessionStoresUseChrome:
 
 
 # ---------------------------------------------------------------------------
-# AgentSession.start() — how use_chrome shapes ClaudeAgentOptions
+# ClaudeAgentSession.start() — how use_chrome shapes ClaudeAgentOptions
 # ---------------------------------------------------------------------------
 
 async def _start_and_capture_options(mock_options_cls, mock_client_cls, **session_kwargs):
     mock_client_cls.return_value = AsyncMock()
-    session = AgentSession(
+    session = ClaudeAgentSession(
         system_prompt="base prompt",
         model="claude-sonnet-4-6",
         on_complete=AsyncMock(),
