@@ -3,6 +3,7 @@
 from src.agent.profiles import (
     AgentProfile,
     build_ollama_env,
+    is_kimi_model,
     is_ollama_model,
     ollama_stderr_handler,
     profile_options_kwargs,
@@ -22,8 +23,27 @@ class TestIsOllamaModel:
     def test_claude_model_is_not_ollama(self):
         assert is_ollama_model("claude-opus-4-8") is False
 
+    def test_kimi_model_is_not_ollama(self):
+        assert is_ollama_model("kimi-k2") is False
+
     def test_local_model_is_ollama(self):
         assert is_ollama_model("qwen3.5:9b") is True
+
+
+class TestIsKimiModel:
+    def test_kimi_model(self):
+        assert is_kimi_model("kimi-k2") is True
+
+    def test_claude_model_is_not_kimi(self):
+        assert is_kimi_model("claude-opus-4-8") is False
+
+    def test_none_and_empty_are_not_kimi(self):
+        assert is_kimi_model(None) is False
+        assert is_kimi_model("") is False
+
+    def test_kimi_model_gets_no_ollama_env(self):
+        config = {"ollama_enabled": True, "ollama_base_url": "http://box:11434"}
+        assert resolve_ollama_env(config, "kimi-k2") is None
 
 
 class TestBuildOllamaEnv:

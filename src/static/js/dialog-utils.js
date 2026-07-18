@@ -19,8 +19,9 @@ const DialogUtils = {
         if (this._ollamaCache.fetched && this._ollamaCache.models.some(m => m.name === modelId)) {
             return true;
         }
-        // Anthropic models always start with "claude-"
-        if (modelId.startsWith('claude-')) return false;
+        // Anthropic models always start with "claude-"; Kimi models ("kimi-*")
+        // run on the Kimi Agent SDK runtime, not Ollama.
+        if (modelId.startsWith('claude-') || this._isKimiModel(modelId)) return false;
         // If it's in the server-rendered list, it's Anthropic
         const serverModels = window.__MODEL_NAMES__ || {};
         // Models that were in the initial server render are Anthropic
@@ -30,9 +31,17 @@ const DialogUtils = {
     },
 
     /**
+     * Determine if a model ID is a Kimi model (Kimi Agent SDK runtime, experimental).
+     */
+    _isKimiModel(modelId) {
+        return !!modelId && modelId.startsWith('kimi-');
+    },
+
+    /**
      * Get provider label for a model.
      */
     _getModelProvider(modelId) {
+        if (this._isKimiModel(modelId)) return 'Kimi';
         return this._isOllamaModel(modelId) ? 'Ollama' : 'Anthropic';
     },
 
@@ -41,7 +50,9 @@ const DialogUtils = {
      */
     _getProviderBadgeHtml(modelId) {
         const provider = this._getModelProvider(modelId);
-        const cls = provider === 'Ollama' ? 'provider-badge-ollama' : 'provider-badge-anthropic';
+        const cls = provider === 'Ollama' ? 'provider-badge-ollama'
+            : provider === 'Kimi' ? 'provider-badge-kimi'
+            : 'provider-badge-anthropic';
         return `<span class="provider-badge ${cls}">${provider}</span>`;
     },
 

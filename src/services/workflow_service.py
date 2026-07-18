@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..agent.profiles import is_ollama_model, resolve_ollama_env
+from ..agent.profiles import is_kimi_model, is_ollama_model, resolve_ollama_env
 from ..agent.review_agent import run_auto_review
 from ..agent.session import AgentResult
 from ..config import epic_plan_relpath
@@ -1615,6 +1615,16 @@ class WorkflowService:
             # implementing agent so a Claude/Ollama mix doesn't get mismatched.
             config = await self.db.get_agent_config()
             review_model = item.get("model") or config.get("model")
+            # The one-shot reviewer runs on the Claude Agent SDK; Kimi models
+            # (separate runtime, experimental) are not supported there yet.
+            # Leave the item in Review for a human rather than mis-routing.
+            if is_kimi_model(review_model):
+                await self._log_and_notify(
+                    item_id, "system",
+                    "Auto-review is not yet supported for Kimi models — "
+                    "leaving item in Review for manual approval."
+                )
+                return
             ollama_env = resolve_ollama_env(config, review_model)
 
             await self._log_and_notify(

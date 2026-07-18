@@ -180,6 +180,50 @@ class TestCreateSession:
             assert kwargs[name] is cb, f"Expected {name} to be forwarded"
 
 
+class TestKimiRouting:
+    @pytest.mark.asyncio
+    async def test_kimi_model_creates_kimi_session(self, temp_dir):
+        service = make_service()
+        mock_session = make_mock_session()
+
+        with patch("src.services.session_service.KimiAgentSession", return_value=mock_session) as MockKimi, \
+             patch("src.services.session_service.ClaudeAgentSession") as MockClaude:
+            session = await service.create_session("item-1", temp_dir, config={}, model="kimi-k2")
+
+        assert session is mock_session
+        assert service.sessions["item-1"] is mock_session
+        MockClaude.assert_not_called()
+        kwargs = MockKimi.call_args.kwargs
+        assert kwargs["model"] == "kimi-k2"
+        assert kwargs["worktree_path"] == temp_dir
+        assert kwargs["item_id"] == "item-1"
+
+    @pytest.mark.asyncio
+    async def test_kimi_model_never_gets_ollama_env(self, temp_dir):
+        service = make_service()
+        mock_session = make_mock_session()
+        config = {"ollama_enabled": True, "ollama_base_url": "http://box:11434"}
+
+        with patch("src.services.session_service.KimiAgentSession", return_value=mock_session) as MockKimi, \
+             patch("src.services.session_service.ClaudeAgentSession") as MockClaude:
+            await service.create_session("item-1", temp_dir, config=config, model="kimi-k2")
+
+        MockClaude.assert_not_called()
+        assert "ollama_env" not in MockKimi.call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_claude_model_still_creates_claude_session(self, temp_dir):
+        service = make_service()
+        mock_session = make_mock_session()
+
+        with patch("src.services.session_service.ClaudeAgentSession", return_value=mock_session) as MockClaude, \
+             patch("src.services.session_service.KimiAgentSession") as MockKimi:
+            await service.create_session("item-1", temp_dir, config={}, model="claude-opus-4-8")
+
+        MockKimi.assert_not_called()
+        MockClaude.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
 # start_session_task
 # ---------------------------------------------------------------------------

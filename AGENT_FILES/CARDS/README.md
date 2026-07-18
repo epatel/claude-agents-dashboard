@@ -19,6 +19,7 @@ Common operations and the cards that cover them. Order is suggested reading orde
 | Trace an existing flow end-to-end | [PROJECT_MAP](PROJECT_MAP.md) only |
 | Introduce a new named flow / UI vocabulary | [PROJECT_MAP_STRATEGY](PROJECT_MAP_STRATEGY.md) → [PROJECT_MAP](PROJECT_MAP.md) |
 | Modify Ollama integration / model selection | [OLLAMA_PROVIDER](OLLAMA_PROVIDER.md) → [ARCHITECTURE](ARCHITECTURE.md) (`SessionService`) |
+| Work on the Kimi runtime / add a new agent runtime | [KIMI_PROVIDER](KIMI_PROVIDER.md) → [ARCHITECTURE](ARCHITECTURE.md) (agent runtime) |
 | Query / rebuild / upgrade the knowledge graph | [GRAPHIFY](GRAPHIFY.md) only |
 | Work on the skills library / how skills reach agents | [SKILLS](SKILLS.md) → [ARCHITECTURE](ARCHITECTURE.md) (`SessionService`) |
 | Localized bug fix in existing code | None — read the code |
@@ -78,6 +79,11 @@ If your task isn't above, fall through to the **Load when** triggers below.
 - **Load when**: working on Ollama integration, model selection, or the `--experimental` flag.
 - **Skip when**: changes don't touch model providers.
 - *Ollama setup; how the SDK routes requests when `ollama_enabled`.*
+
+### [KIMI_PROVIDER](KIMI_PROVIDER.md)
+- **Load when**: working on the Kimi Agent SDK integration, `KimiAgentSession`, or provider routing beyond Claude/Ollama.
+- **Skip when**: changes don't touch model providers.
+- *The first non-Claude runtime: `kimi-*` model routing, session contract implementation, experimental gating, v1 limitations.*
 
 ### [GRAPHIFY](GRAPHIFY.md)
 - **Load when**: querying the `graphify-out/` knowledge graph, rebuilding it, or upgrading the graphify tool/skill.

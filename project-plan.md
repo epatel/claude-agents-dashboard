@@ -31,7 +31,8 @@ Replace this with the specific objective the moment one is in flight.
 - [x] M1 — Graphify knowledge graph shipped (GraphService + `/api/graphify` + Settings ▸ Graphify tab + `graph_query` MCP tool + post-merge auto-refresh, migration 028); `+advisor` model removed (migration 027); per-task Chrome (025) and `api_error_status` (026) landed (2026-06-06)
 - [x] M2 — Docs reassessed and refreshed: README / tests/README / CLAUDE / AGENT_FILES cards updated to 28 migrations (001–028), 1115 tests, 6 services, 8 MCP tools (2026-06-06)
 - [x] M3 — Skills library shipped (`SkillsService` + `/api/skills/*` + Settings ▸ Skills tab + migration 029 `enabled_skills` + delivery via SDK `plugins=`); docs reassessed and refreshed to 29 migrations (001–029), 1137 tests, 7 services, 8 MCP tools, new `CARDS/SKILLS.md` (2026-06-06)
-- [ ] M4 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
+- [x] M4 — Kimi Agent SDK runtime (experimental): session-layer refactor (AbstractAgentSession contract + ClaudeAgentSession + provider profiles) then `KimiAgentSession` for `kimi-*` models behind `--experimental`; 1215 tests, new `CARDS/KIMI_PROVIDER.md` (2026-07-18)
+- [ ] M5 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
 
 ## Decisions
 
@@ -67,6 +68,12 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
   still constructed at the call sites (session.py / review_agent.py) so test patch
   targets keep working; the profile supplies kwargs/fields only. Groundwork for a future
   `KimiAgentSession`.
+- 2026-07-18 — Kimi is a **separate runtime** (`src/agent/kimi_session.py`, in-process
+  Kimi Agent SDK), selected purely by model id (`kimi-*` → `is_kimi_model`), gated by the
+  `experimental=True` flag on its `AVAILABLE_MODELS` entries (no DB flag, no migration).
+  v1 runs `yolo=True` with no dashboard MCP tools/plugins/resume, and auto-review is
+  skipped for Kimi models (Claude-SDK reviewer). The `kimi-agent-sdk` package is an
+  optional dependency imported lazily; `KIMI_API_KEY` must be in the server env.
 
 ## Current state / handoff
 
@@ -90,10 +97,20 @@ prepared for a second agent runtime (Kimi Agent SDK, not yet started). New
 (provider routing + `AgentProfile`); `AgentSession` renamed to `ClaudeAgentSession`;
 the scattered `is_ollama` conditionals and duplicated env builders/predicates in
 `session.py`, `review_agent.py`, `session_service.py`, `workflow_service.py` collapsed
-onto the profile. No behavior change; tests grew 1174 → **1195** (new
+onto the profile. No behavior change; tests grew 1174 → 1195 (new
 `tests/unit/test_base.py`, `tests/unit/test_profiles.py`). Cards updated:
 ARCHITECTURE, OLLAMA_PROVIDER, PROJECT_MAP (flow.agent-start), TESTING.
-The next agent to pick up real work should set **Goal**, add an **M4** milestone, and
+
+M4 (same day, merged to main): **KimiAgentSession** landed as the first non-Claude
+runtime — `src/agent/kimi_session.py` (lazy-imported `kimi-agent-sdk`, `yolo=True`,
+no MCP/plugins/resume in v1), routing in `SessionService` via `is_kimi_model`,
+`kimi-k2` / `kimi-k2-turbo` in `AVAILABLE_MODELS` as experimental entries, auto-review
+guard in `workflow_service`, Kimi provider badge in the frontend. Tests now **1215**
+(new `tests/unit/test_kimi_session.py`); new `CARDS/KIMI_PROVIDER.md` registered in the
+manifest. Not yet done: install `kimi-agent-sdk` into the venv and a live smoke run
+(needs `KIMI_API_KEY`); pause/resume via the SDK's `Session.resume`; commit-message /
+ask_user equivalents for Kimi agents.
+The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.
 
 ## Open questions

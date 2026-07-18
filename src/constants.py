@@ -22,6 +22,11 @@ AVAILABLE_MODELS = [
     ("claude-opus-4-6[1m]", "Claude Opus 4.6 (1M)", False),
     ("claude-opus-4-5-20251101", "Claude Opus 4.5", False),
     ("claude-haiku-4-5-20251001", "Claude Haiku 4.5", False),
+    # Kimi models run through the Kimi Agent SDK (KimiAgentSession), not the
+    # Claude Agent SDK. Experimental — only offered when --experimental is on.
+    # Requires the kimi-agent-sdk package and KIMI_API_KEY in the server env.
+    ("kimi-k2", "Kimi K2", True),
+    ("kimi-k2-turbo", "Kimi K2 Turbo", True),
 ]
 
 # Default model to use when none specified

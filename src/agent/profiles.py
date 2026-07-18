@@ -39,9 +39,14 @@ class AgentProfile:
     inject_claude_md: bool            # ollama + ollama_load_claude_md opt-in
 
 
+def is_kimi_model(model: str | None) -> bool:
+    """True when a model id routes to the Kimi Agent SDK runtime (kimi-*)."""
+    return bool(model) and model.startswith("kimi-")
+
+
 def is_ollama_model(model: str | None) -> bool:
-    """True when a model id routes to Ollama (anything not claude-*)."""
-    return bool(model) and not model.startswith("claude-")
+    """True when a model id routes to Ollama (anything not claude-*/kimi-*)."""
+    return bool(model) and not model.startswith(("claude-", "kimi-"))
 
 
 def build_ollama_env(base_url: str) -> dict[str, str]:

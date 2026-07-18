@@ -528,6 +528,11 @@ body {
     color: #64b464;
 }
 
+.provider-badge-kimi {
+    background: rgba(90, 130, 240, 0.15);
+    color: #5a82f0;
+}
+
 .card-model-badge {
     font-size: 10px;
     color: var(--text-muted);
