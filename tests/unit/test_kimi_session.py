@@ -12,8 +12,9 @@ from src.agent.base import AbstractAgentSession, AgentResult
 from src.agent.kimi_session import (
     KIMI_SDK_INSTALL_HINT,
     KimiAgentSession,
+    _PendingToolCall,
     _content_text,
-    _tool_call_input,
+    _raw_input,
 )
 
 
@@ -41,11 +42,17 @@ def make_acp_module(session_id="acp-1", load_raises=None):
             self.content = content
 
     class ToolCallStart:
-        def __init__(self, title, kind=None, raw=None):
-            self.tool_call_id = "tc-1"
+        def __init__(self, title, kind=None, raw=None, tool_call_id="tc-1"):
+            self.tool_call_id = tool_call_id
             self.title = title
             self.kind = kind
             self.status = None
+            self.raw = raw or {}
+
+    class ToolCallProgress:
+        def __init__(self, tool_call_id="tc-1", status=None, raw=None):
+            self.tool_call_id = tool_call_id
+            self.status = status
             self.raw = raw or {}
 
     class TurnEnded:
@@ -115,7 +122,7 @@ def make_acp_module(session_id="acp-1", load_raises=None):
             return self.session
 
     for cls in (TextContent, AgentMessageChunk, AgentThoughtChunk,
-                ToolCallStart, TurnEnded, AcpClient):
+                ToolCallStart, ToolCallProgress, TurnEnded, AcpClient):
         setattr(mod, cls.__name__, cls)
     pkg = types.ModuleType("kimi_agent_sdk")
     pkg.acp = mod
@@ -154,13 +161,24 @@ class TestHelpers:
     def test_content_text_empty_for_non_text_blocks(self):
         assert _content_text(types.SimpleNamespace(data=b"...")) == ""
 
-    def test_tool_call_input_merges_raw_input_and_kind(self):
-        tc = types.SimpleNamespace(kind="read", raw={"rawInput": {"path": "a.py"}})
-        assert _tool_call_input(tc) == {"path": "a.py", "kind": "read"}
+    def test_raw_input_extracts_dict(self):
+        assert _raw_input(types.SimpleNamespace(raw={"rawInput": {"path": "a.py"}})) == {"path": "a.py"}
 
-    def test_tool_call_input_defaults_empty(self):
-        tc = types.SimpleNamespace(kind=None, raw={})
-        assert _tool_call_input(tc) == {}
+    def test_raw_input_none_when_absent(self):
+        assert _raw_input(types.SimpleNamespace(raw={})) is None
+
+    def test_pending_tool_call_input_merges_kind(self):
+        start = types.SimpleNamespace(tool_call_id="tc", title="Read", kind="read",
+                                      raw={"rawInput": {"path": "a.py"}})
+        assert _PendingToolCall(start).input == {"path": "a.py", "kind": "read"}
+
+    def test_pending_tool_call_merge_progress_takes_input_and_title(self):
+        start = types.SimpleNamespace(tool_call_id="tc", title="Tool", kind=None, raw={})
+        pending = _PendingToolCall(start)
+        pending.merge_progress(types.SimpleNamespace(
+            raw={"title": "Edit app.py", "rawInput": {"path": "app.py"}}))
+        assert pending.title == "Edit app.py"
+        assert pending.input == {"path": "app.py"}
 
 
 class TestRun:
@@ -260,6 +278,67 @@ class TestRun:
         assert session._task.done()
         on_complete.assert_not_awaited()
         assert client.closed is True
+
+
+class TestDeferredToolInput:
+    @pytest.mark.asyncio
+    async def test_input_from_later_progress_update(self):
+        on_tool_use = AsyncMock()
+        modules, acp, items = make_acp_module()
+        items.extend([
+            acp.ToolCallStart("Edit", kind="edit"),  # kimi-code: no rawInput here
+            acp.ToolCallProgress(raw={"rawInput": {"path": "app.py"}}),
+            acp.TurnEnded("end_turn"),
+        ])
+        session = make_session(on_tool_use=on_tool_use)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        on_tool_use.assert_awaited_once_with("Edit", {"path": "app.py", "kind": "edit"})
+
+    @pytest.mark.asyncio
+    async def test_completed_status_emits_even_without_input(self):
+        on_tool_use = AsyncMock()
+        modules, acp, items = make_acp_module()
+        items.extend([
+            acp.ToolCallStart("Bash", kind="execute"),
+            acp.ToolCallProgress(status="completed"),
+            acp.TurnEnded("end_turn"),
+        ])
+        session = make_session(on_tool_use=on_tool_use)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        on_tool_use.assert_awaited_once_with("Bash", {"kind": "execute"})
+
+    @pytest.mark.asyncio
+    async def test_pending_flushed_by_next_tool_and_turn_end(self):
+        on_tool_use = AsyncMock()
+        modules, acp, items = make_acp_module()
+        items.extend([
+            acp.ToolCallStart("Read", kind="read", tool_call_id="tc-1"),
+            acp.ToolCallStart("Grep", kind="search", tool_call_id="tc-2"),
+            acp.TurnEnded("end_turn"),
+        ])
+        session = make_session(on_tool_use=on_tool_use)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        assert [c.args for c in on_tool_use.call_args_list] == [
+            ("Read", {"kind": "read"}),
+            ("Grep", {"kind": "search"}),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_no_duplicate_emission_when_start_has_input(self):
+        on_tool_use = AsyncMock()
+        modules, acp, items = make_acp_module()
+        items.extend([
+            acp.ToolCallStart("Read", kind="read", raw={"rawInput": {"path": "a.py"}}),
+            acp.ToolCallProgress(status="completed", raw={"rawInput": {"path": "a.py"}}),
+            acp.TurnEnded("end_turn"),
+        ])
+        session = make_session(on_tool_use=on_tool_use)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        on_tool_use.assert_awaited_once_with("Read", {"path": "a.py", "kind": "read"})
 
 
 class TestResume:

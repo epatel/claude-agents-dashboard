@@ -39,7 +39,10 @@ whatever `kimi` binary is on PATH; the model is passed via the
 
 Update mapping (partial chunks are aggregated into message-sized entries):
 `AgentMessageChunk` → `on_message`, `AgentThoughtChunk` → `on_thinking`,
-`ToolCallStart` (title + `rawInput`/kind) → `on_tool_use`,
+tool calls → `on_tool_use` — deferred: kimi-code sends `rawInput` (and richer
+titles like "Reading app.py") on `tool_call_update`/`ToolCallProgress`, not the
+initial `tool_call`, so `_PendingToolCall` holds the call until input arrives
+(bounded by completed/failed status, the next tool call, or turn end),
 `TurnEnded("end_turn")` → `on_complete(AgentResult(success=True))`,
 abnormal stop reasons (`max_tokens`/`max_turn_requests`/`refusal`) and
 exceptions → `on_error`. `cancel()` sends ACP `session/cancel`, then tears

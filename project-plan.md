@@ -124,10 +124,13 @@ verified against `kimi provider list`), and model selection goes through ACP
 target repo, `--experimental`): a `kimi-code/k3` card routed to `KimiAgentSession`,
 spawned `kimi acp`, model selection accepted, streamed Read/Edit/Bash tool calls +
 final message to the work log, produced a correct minimal diff, and landed in Review
-with the ACP session id stored (pause/resume live). Known cosmetic gap: tool-call log
-entries show an empty input — kimi-code doesn't populate `rawInput` on the initial
-`tool_call` update; surfacing `ToolCallProgress` detail would fix it. Also still open:
-commit-message / ask_user equivalents for Kimi agents.
+with the ACP session id stored (pause/resume live). The tool-call log gap (empty input
+— kimi-code populates `rawInput` on `tool_call_update`, not the initial `tool_call`)
+is FIXED: `KimiAgentSession` defers `on_tool_use` until the input arrives via
+`ToolCallProgress` (bounded by completed/failed status, the next tool call, or turn
+end), also picking up the richer progress titles ("Reading app.py"). Verified with a
+second live run; tests 1224. Still open: commit-message / ask_user equivalents for
+Kimi agents.
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.
 

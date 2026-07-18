@@ -60,14 +60,46 @@ def _content_text(content) -> str:
     return getattr(content, "text", "") or ""
 
 
-def _tool_call_input(tool_call_start) -> dict:
-    """Best-effort input dict for a ToolCallStart update."""
-    raw = getattr(tool_call_start, "raw", None) or {}
+def _raw_input(update) -> dict | None:
+    """The `rawInput` dict of an ACP tool-call update, or None if absent."""
+    raw = getattr(update, "raw", None)
     raw_input = raw.get("rawInput") if isinstance(raw, dict) else None
-    input_dict = dict(raw_input) if isinstance(raw_input, dict) else {}
-    if tool_call_start.kind:
-        input_dict.setdefault("kind", tool_call_start.kind)
-    return input_dict
+    return dict(raw_input) if isinstance(raw_input, dict) else None
+
+
+class _PendingToolCall:
+    """A tool call seen but not yet reported to on_tool_use.
+
+    kimi-code's initial `tool_call` update usually has no `rawInput` — the
+    input arrives on a later `tool_call_update` (ToolCallProgress). Holding
+    the call until input shows up (or a boundary forces emission) keeps the
+    work log from rendering empty tool entries.
+    """
+
+    __slots__ = ("tool_call_id", "title", "kind", "raw_input")
+
+    def __init__(self, start):
+        self.tool_call_id = start.tool_call_id
+        self.title = start.title
+        self.kind = start.kind
+        self.raw_input = _raw_input(start)
+
+    def merge_progress(self, progress) -> None:
+        raw = getattr(progress, "raw", None)
+        raw = raw if isinstance(raw, dict) else {}
+        title = raw.get("title")
+        if isinstance(title, str) and title:
+            self.title = title
+        new_input = _raw_input(progress)
+        if new_input:
+            self.raw_input = new_input
+
+    @property
+    def input(self) -> dict:
+        input_dict = dict(self.raw_input or {})
+        if self.kind:
+            input_dict.setdefault("kind", self.kind)
+        return input_dict
 
 
 class KimiAgentSession(AbstractAgentSession):
@@ -123,6 +155,7 @@ class KimiAgentSession(AbstractAgentSession):
                     AcpClient,
                     AgentMessageChunk,
                     AgentThoughtChunk,
+                    ToolCallProgress,
                     ToolCallStart,
                     TurnEnded,
                 )
@@ -186,6 +219,14 @@ class KimiAgentSession(AbstractAgentSession):
                         await self.on_message("".join(text_buf))
                     text_buf.clear()
 
+                pending_tool: _PendingToolCall | None = None
+
+                async def emit_pending() -> None:
+                    nonlocal pending_tool
+                    if pending_tool is not None and self.on_tool_use:
+                        await self.on_tool_use(pending_tool.title, pending_tool.input)
+                    pending_tool = None
+
                 stop_reason = None
                 async for item in session.prompt(full_prompt):
                     if self._cancelled:
@@ -196,10 +237,20 @@ class KimiAgentSession(AbstractAgentSession):
                         thought_buf.append(_content_text(item.content))
                     elif isinstance(item, ToolCallStart):
                         await flush()
-                        if self.on_tool_use:
-                            await self.on_tool_use(item.title, _tool_call_input(item))
+                        await emit_pending()
+                        pending_tool = _PendingToolCall(item)
+                        if pending_tool.raw_input is not None:
+                            await emit_pending()
+                    elif isinstance(item, ToolCallProgress):
+                        if (pending_tool is not None
+                                and pending_tool.tool_call_id == item.tool_call_id):
+                            pending_tool.merge_progress(item)
+                            if (pending_tool.raw_input is not None
+                                    or item.status in ("completed", "failed")):
+                                await emit_pending()
                     elif isinstance(item, TurnEnded):
                         stop_reason = item.stop_reason
+                await emit_pending()
                 await flush()
 
                 if self._cancelled or stop_reason == "cancelled":
