@@ -71,12 +71,21 @@ def make_acp_module(session_id="acp-1", load_raises=None):
         async def cancel(self):
             self.cancelled = True
 
+    class FakeConnection:
+        def __init__(self):
+            self.requests = []
+
+        async def request(self, method, params):
+            self.requests.append((method, params))
+            return {}
+
     class AcpClient:
         last = None
 
         def __init__(self):
             self.connect_kwargs = None
             self.session = FakeAcpSession()
+            self.connection = FakeConnection()
             self.new_session_calls = []
             self.load_session_calls = []
             self.closed = False
@@ -193,6 +202,9 @@ class TestRun:
         assert client.connect_kwargs["yolo"] is True
         assert client.connect_kwargs["env"]["KIMI_MODEL_NAME"] == "kimi-k2"
         assert client.new_session_calls == [Path("/tmp/test-worktree")]
+        assert ("session/set_config_option",
+                {"sessionId": "acp-1", "configId": "model", "value": "kimi-k2"}
+                ) in client.connection.requests
         sent = client.session.prompts[0]
         assert "You are a helpful agent." in sent
         assert "/tmp/test-worktree" in sent

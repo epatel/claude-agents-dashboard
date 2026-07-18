@@ -7,10 +7,11 @@ whatever ``kimi`` binary is on PATH and does NOT pin a ``kimi-cli`` version
 the way the in-process ``kimi_agent_sdk.prompt`` API does.
 
 Selected by model id: anything starting with ``kimi-`` (see
-`profiles.is_kimi_model`); such models are only offered in the UI when the
-server runs with --experimental. The model reaches the CLI via the
-``KIMI_MODEL_NAME`` env var on the spawned subprocess (the ACP session API has
-no model parameter).
+`profiles.is_kimi_model`) — the ids are kimi-code model *aliases* such as
+``kimi-code/k3``; such models are only offered in the UI when the server runs
+with --experimental. The model is selected per session via the ACP
+``session/set_config_option`` request (configId "model", as flutter_kimi_sdk
+does), with ``KIMI_MODEL_NAME`` on the subprocess env as a fallback.
 
 First-cut scope (deliberately mirrors the lean Ollama feature set):
 
@@ -153,6 +154,24 @@ class KimiAgentSession(AbstractAgentSession):
                     session = await client.new_session(cwd=self.worktree_path)
                 self._acp_session = session
                 self.current_session_id = session.id
+
+                # Select the model the way the ACP ecosystem does (see
+                # flutter_kimi_sdk): session/set_config_option. The env var is
+                # kept as a fallback for kimi-cli-era servers; kimi-code has
+                # no ACP model flag. Best-effort — an unsupported option must
+                # not kill the run (the CLI default model is used instead).
+                if self.model:
+                    try:
+                        await client.connection.request(
+                            "session/set_config_option",
+                            {"sessionId": session.id, "configId": "model",
+                             "value": self.model},
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Kimi mode: could not select model {self.model} via ACP "
+                            f"({e}) — the CLI default model will be used"
+                        )
 
                 # ACP streams partial chunks; aggregate them so the work log
                 # gets message-sized entries (like ClaudeAgentSession's blocks).
