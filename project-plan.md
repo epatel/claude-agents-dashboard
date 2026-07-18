@@ -73,7 +73,8 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
   `experimental=True` flag on its `AVAILABLE_MODELS` entries (no DB flag, no migration).
   v1 runs `yolo=True` with no dashboard MCP tools/plugins/resume, and auto-review is
   skipped for Kimi models (Claude-SDK reviewer). The `kimi-agent-sdk` package is an
-  optional dependency imported lazily; `KIMI_API_KEY` must be in the server env.
+  optional dependency imported lazily; auth via one-time `kimi login` (OAuth, shared
+  with the Kimi CLI) or `KIMI_API_KEY` for headless use.
 
 ## Current state / handoff
 
@@ -108,7 +109,7 @@ no MCP/plugins/resume in v1), routing in `SessionService` via `is_kimi_model`,
 guard in `workflow_service`, Kimi provider badge in the frontend. Tests now **1215**
 (new `tests/unit/test_kimi_session.py`); new `CARDS/KIMI_PROVIDER.md` registered in the
 manifest. Not yet done: install `kimi-agent-sdk` into the venv and a live smoke run
-(needs `KIMI_API_KEY`); pause/resume via the SDK's `Session.resume`; commit-message /
+(needs `kimi login` or `KIMI_API_KEY`); pause/resume via the SDK's `Session.resume`; commit-message /
 ask_user equivalents for Kimi agents.
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.

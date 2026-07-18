@@ -19,9 +19,11 @@ First-cut scope (deliberately mirrors the lean Ollama feature set):
 - The dashboard system prompt is prepended to the user prompt — the SDK has
   no separate system-prompt input (an ``agent_file`` could carry it later).
 
-Requires ``KIMI_API_KEY`` (and optionally ``KIMI_BASE_URL``) in the server
-environment. The SDK is imported lazily so the dashboard runs without it
-installed; starting a Kimi session without the package reports a clear error.
+Auth follows the Kimi Code model: a one-time ``kimi login`` (OAuth tokens
+stored and refreshed by the CLI runtime) is enough; ``KIMI_API_KEY`` /
+``KIMI_BASE_URL`` env vars are the headless alternative. The SDK is imported
+lazily so the dashboard runs without it installed; starting a Kimi session
+without the package reports a clear error.
 """
 
 import asyncio
@@ -35,8 +37,9 @@ logger = logging.getLogger(__name__)
 
 KIMI_SDK_INSTALL_HINT = (
     "Kimi Agent SDK is not installed in the dashboard environment. "
-    "Install it with: pip install kimi-agent-sdk (requires Python >= 3.12), "
-    "and set KIMI_API_KEY in the server environment."
+    "Install it with: pip install kimi-agent-sdk (requires Python >= 3.12). "
+    "Authenticate once with `kimi login` (OAuth, shared with the Kimi CLI) "
+    "or set KIMI_API_KEY in the server environment for headless use."
 )
 
 

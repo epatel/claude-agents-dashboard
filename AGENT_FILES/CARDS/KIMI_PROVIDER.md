@@ -51,8 +51,11 @@ First-cut limitations (deliberate, mirrors the lean Ollama feature set):
   package hard-pins a `kimi-cli` minor version). The import is lazy — the
   dashboard runs fine without it; starting a Kimi session without the package
   reports `KIMI_SDK_INSTALL_HINT` via `on_error`.
-- `KIMI_API_KEY` (optionally `KIMI_BASE_URL`, `KIMI_MODEL_NAME`) in the
-  server environment.
+- **Auth**: credentials follow the Kimi Code model — a one-time `kimi login`
+  (OAuth tokens stored/refreshed by the CLI runtime, which the SDK embeds
+  in-process) is sufficient; no key to plumb through. `KIMI_API_KEY`
+  (optionally `KIMI_BASE_URL`, `KIMI_MODEL_NAME`) is the headless/CI
+  alternative.
 
 ## Frontend
 
