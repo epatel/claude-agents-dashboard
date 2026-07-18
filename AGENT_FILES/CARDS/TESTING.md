@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1217 tests
+./run-tests.sh              # Run all 1224 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
