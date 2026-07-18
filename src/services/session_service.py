@@ -87,6 +87,7 @@ class SessionService:
                 on_set_commit_message=on_set_commit_message,
                 on_clarify=on_clarify,
                 item_id=item_id,
+                item_repo_name=item_repo_name,
             )
             self.sessions[item_id] = session
             self._update_caffeinate()

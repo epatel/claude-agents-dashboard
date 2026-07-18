@@ -136,10 +136,18 @@ protocols** (no MCP): `COMMIT_MESSAGE:` → `on_set_commit_message`; `ASK_USER:`
 the turn, `on_clarify` blocks in the Clarify column, and the answer continues the SAME
 stateful ACP session as a new prompt turn. Both live-verified end-to-end (the ask_user
 run: agent asked which language, answer "Swedish" produced `farewell_swedish` /
-"Hej då" plus a parsed commit message in one final message). Tests **1239**. Kimi
+"Hej då" plus a parsed commit message in one final message).
+
+Board tools for Kimi agents landed via a **stdio MCP proxy**
+(`src/agent/kimi_board_mcp.py`, stdlib-only): declared in the ACP session's
+`mcpServers`, spawned by the Kimi runtime, proxying create_todo / delete_todo /
+create_epic / create_shortcut / view_board / who_am_i to the dashboard HTTP API
+(`DASHBOARD_BASE_URL` published by main.py; item id and multi-repo repo via env).
+Live-verified: a K3 agent called `mcp__board__view_board` (correct 6-card count) and
+`mcp__board__create_todo` — the new card appeared in Todo. Tests **1252**. Kimi
 feature set now: streaming text/thinking/tool calls, deferred tool input,
-pause/resume, commit messages, clarifications. Still open: board tools
-(create_todo etc.) and permission hooks for Kimi agents.
+pause/resume, commit messages, clarifications, board tools. Still open: permission
+hooks (yolo) and create_todo autostart/requires parity with the Claude path.
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.
 

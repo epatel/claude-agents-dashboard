@@ -18,12 +18,16 @@ First-cut scope (deliberately mirrors the lean Ollama feature set):
 - ``yolo=True`` — Kimi's permission requests are auto-approved. The
   dashboard's per-command permission hooks are Claude-SDK constructs and do
   not apply here.
-- No dashboard MCP tool servers, plugins, chrome, or graphify. Commit
-  messages and clarifications still work via marked lines in the agent's
-  text (no MCP needed): a ``COMMIT_MESSAGE:`` line routes to
-  ``on_set_commit_message``; an ``ASK_USER:`` line ends the turn, blocks on
-  ``on_clarify`` (Clarify column), and the user's answer is sent as the next
-  prompt turn on the same stateful ACP session.
+- Board tools (create_todo, delete_todo, create_epic, create_shortcut,
+  view_board, who_am_i) are provided via a stdio MCP proxy
+  (``kimi_board_mcp.py``) declared in the ACP session's ``mcpServers`` — the
+  Kimi runtime spawns it, and it calls back into the dashboard HTTP API
+  (``DASHBOARD_BASE_URL``, published by main.py). No other dashboard MCP
+  servers, plugins, chrome, or graphify. Commit messages and clarifications
+  work via marked lines in the agent's text: a ``COMMIT_MESSAGE:`` line
+  routes to ``on_set_commit_message``; an ``ASK_USER:`` line ends the turn,
+  blocks on ``on_clarify`` (Clarify column), and the user's answer is sent
+  as the next prompt turn on the same stateful ACP session.
 - Pause/resume: the ACP session id is captured in ``current_session_id``;
   on restart the session is resumed via ACP ``session/load`` when the agent
   supports it (fresh start otherwise).
@@ -41,6 +45,7 @@ import asyncio
 import logging
 import os
 import re
+import sys
 from pathlib import Path
 
 from .base import AbstractAgentSession, AgentResult
@@ -109,6 +114,30 @@ def _extract_ask_user(text: str) -> tuple[str, str | None]:
     return _ASK_USER_RE.sub("", text).rstrip(), matches[-1]
 
 
+def _board_mcp_config(item_id: str | None, repo: str | None = None) -> dict | None:
+    """ACP mcpServers entry for the board-tools proxy, or None when unavailable.
+
+    The Kimi runtime spawns `kimi_board_mcp.py` itself (ACP client-spawns-agent,
+    agent-spawns-MCP); the proxy calls back into the dashboard HTTP API, whose
+    base URL main.py publishes via DASHBOARD_BASE_URL.
+    """
+    base_url = os.environ.get("DASHBOARD_BASE_URL")
+    if not (base_url and item_id):
+        return None
+    env = [
+        {"name": "DASHBOARD_BASE_URL", "value": base_url},
+        {"name": "DASHBOARD_ITEM_ID", "value": item_id},
+    ]
+    if repo:
+        env.append({"name": "DASHBOARD_REPO", "value": repo})
+    return {
+        "name": "board",
+        "command": sys.executable,
+        "args": [str(Path(__file__).resolve().parent / "kimi_board_mcp.py")],
+        "env": env,
+    }
+
+
 def _content_text(content) -> str:
     """Text of an ACP content block ('' for non-text blocks)."""
     return getattr(content, "text", "") or ""
@@ -172,6 +201,7 @@ class KimiAgentSession(AbstractAgentSession):
         on_set_commit_message=None,
         on_clarify=None,
         item_id: str | None = None,
+        item_repo_name: str | None = None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
@@ -184,6 +214,7 @@ class KimiAgentSession(AbstractAgentSession):
         self.on_set_commit_message = on_set_commit_message  # async callback(message: str) -> str
         self.on_clarify = on_clarify        # async callback(prompt: str, choices: list|None) -> str
         self.item_id = item_id
+        self.item_repo_name = item_repo_name  # repo of this item in multi-repo mode
         self._task: asyncio.Task | None = None
         self._cancelled = False
         self._acp_session = None
@@ -232,12 +263,18 @@ class KimiAgentSession(AbstractAgentSession):
                 env["KIMI_MODEL_NAME"] = self.model
 
             logger.info(f"Kimi mode: spawning `kimi acp` for model {self.model}")
+            board_cfg = _board_mcp_config(self.item_id, self.item_repo_name)
+            mcp_servers = [board_cfg] if board_cfg else None
+            if board_cfg:
+                logger.info("Kimi mode: board tools MCP proxy enabled")
+
             async with await AcpClient.connect(yolo=True, env=env) as client:
                 session = None
                 if resume_session_id:
                     try:
                         session = await client.load_session(
-                            resume_session_id, cwd=self.worktree_path
+                            resume_session_id, cwd=self.worktree_path,
+                            mcp_servers=mcp_servers,
                         )
                         logger.info(f"Kimi mode: resumed ACP session {resume_session_id}")
                     except Exception as e:
@@ -246,7 +283,9 @@ class KimiAgentSession(AbstractAgentSession):
                             f"({e}) — starting fresh"
                         )
                 if session is None:
-                    session = await client.new_session(cwd=self.worktree_path)
+                    session = await client.new_session(
+                        cwd=self.worktree_path, mcp_servers=mcp_servers
+                    )
                 self._acp_session = session
                 self.current_session_id = session.id
 

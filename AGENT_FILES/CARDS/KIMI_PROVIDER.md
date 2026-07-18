@@ -65,12 +65,24 @@ work log — both live-verified):
   questions. Both instructions are appended to the prompt only when the
   corresponding callback is wired.
 
+**Board tools** (live-verified): `src/agent/kimi_board_mcp.py` is a
+stdlib-only stdio MCP server declared in the ACP session's `mcpServers` —
+the Kimi runtime spawns it (with the venv's `sys.executable`), and it
+proxies `create_todo` / `delete_todo` / `create_epic` / `create_shortcut` /
+`view_board` / `who_am_i` to the dashboard's HTTP API. `main.py` publishes
+the server's own base URL as `DASHBOARD_BASE_URL`; the proxy also gets
+`DASHBOARD_ITEM_ID` (for who_am_i) and `DASHBOARD_REPO` in multi-repo mode
+(create_todo's required repo field). Tools surface to the agent as
+`mcp__board__*`. Unlike the Claude path's in-process
+`create_sdk_mcp_server` objects, this goes through HTTP — no
+`workflow_service` callback plumbing (so e.g. create_todo has no
+autostart/requires support yet).
+
 Remaining limitations (deliberate, mirrors the lean Ollama feature set):
 
 - `yolo=True` — Kimi's permission requests are auto-approved; the dashboard's
   per-command permission hooks are Claude-SDK constructs and don't apply.
-- No dashboard MCP tool servers / plugins / chrome / graphify — no board
-  tools (create_todo, view_board, who_am_i, …).
+- No external MCP servers / plugins / chrome / graphify.
 - System prompt is prepended to the user prompt (ACP has no separate
   system-prompt input).
 - **Auto-review**: `workflow_service` skips the one-shot reviewer for Kimi

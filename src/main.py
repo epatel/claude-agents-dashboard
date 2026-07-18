@@ -189,6 +189,9 @@ def main():
     project_name = get_project_name(target_project)
 
     display_host = "127.0.0.1" if host == "0.0.0.0" else host
+    # The dashboard's own base URL, for out-of-process tool proxies (e.g. the
+    # Kimi board-tools MCP server) that call back into the HTTP API.
+    os.environ["DASHBOARD_BASE_URL"] = f"http://{display_host}:{port}"
     print(f"Agents Dashboard for: {project_name}")
     print(f"Target project: {target_project}")
     if repos:

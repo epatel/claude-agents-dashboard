@@ -1,6 +1,7 @@
 """Unit tests for src/agent/kimi_session.py — KimiAgentSession over ACP (experimental)."""
 
 import asyncio
+import os
 import sys
 import types
 from pathlib import Path
@@ -122,6 +123,7 @@ def make_acp_module(session_id="acp-1", load_raises=None):
 
         async def new_session(self, cwd=None, **kwargs):
             self.new_session_calls.append(cwd)
+            self.new_session_kwargs = kwargs
             return self.session
 
         async def load_session(self, sid, cwd=None, **kwargs):
@@ -522,6 +524,52 @@ class TestDeferredToolInput:
         with patch.dict(sys.modules, modules):
             await start_and_wait(session)
         on_tool_use.assert_awaited_once_with("Read", {"path": "a.py", "kind": "read"})
+
+
+class TestBoardTools:
+    @pytest.mark.asyncio
+    async def test_board_mcp_config_passed_when_base_url_set(self):
+        modules, acp, _ = make_acp_module()
+        session = make_session(item_id="item-9")
+        with patch.dict(sys.modules, modules), \
+             patch.dict(os.environ, {"DASHBOARD_BASE_URL": "http://127.0.0.1:8001"}):
+            await start_and_wait(session)
+        cfg = acp.AcpClient.last.new_session_kwargs["mcp_servers"][0]
+        assert cfg["name"] == "board"
+        assert cfg["args"][0].endswith("kimi_board_mcp.py")
+        env = {e["name"]: e["value"] for e in cfg["env"]}
+        assert env["DASHBOARD_BASE_URL"] == "http://127.0.0.1:8001"
+        assert env["DASHBOARD_ITEM_ID"] == "item-9"
+        assert "DASHBOARD_REPO" not in env
+
+    @pytest.mark.asyncio
+    async def test_repo_env_included_in_multi_repo_mode(self):
+        modules, acp, _ = make_acp_module()
+        session = make_session(item_id="item-9", item_repo_name="backend")
+        with patch.dict(sys.modules, modules), \
+             patch.dict(os.environ, {"DASHBOARD_BASE_URL": "http://127.0.0.1:8001"}):
+            await start_and_wait(session)
+        cfg = acp.AcpClient.last.new_session_kwargs["mcp_servers"][0]
+        env = {e["name"]: e["value"] for e in cfg["env"]}
+        assert env["DASHBOARD_REPO"] == "backend"
+
+    @pytest.mark.asyncio
+    async def test_no_board_mcp_without_base_url(self):
+        modules, acp, _ = make_acp_module()
+        session = make_session(item_id="item-9")
+        with patch.dict(sys.modules, modules), patch.dict(os.environ):
+            os.environ.pop("DASHBOARD_BASE_URL", None)
+            await start_and_wait(session)
+        assert acp.AcpClient.last.new_session_kwargs["mcp_servers"] is None
+
+    @pytest.mark.asyncio
+    async def test_no_board_mcp_without_item_id(self):
+        modules, acp, _ = make_acp_module()
+        session = make_session()  # item_id defaults to None
+        with patch.dict(sys.modules, modules), \
+             patch.dict(os.environ, {"DASHBOARD_BASE_URL": "http://127.0.0.1:8001"}):
+            await start_and_wait(session)
+        assert acp.AcpClient.last.new_session_kwargs["mcp_servers"] is None
 
 
 class TestResume:
