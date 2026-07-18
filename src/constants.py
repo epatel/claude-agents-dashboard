@@ -24,9 +24,11 @@ AVAILABLE_MODELS = [
     ("claude-haiku-4-5-20251001", "Claude Haiku 4.5", False),
     # Kimi models run through the Kimi Agent SDK (KimiAgentSession), not the
     # Claude Agent SDK. Experimental — only offered when --experimental is on.
-    # Requires the kimi-agent-sdk package; auth via `kimi login` (or KIMI_API_KEY).
-    ("kimi-k2", "Kimi K2", True),
-    ("kimi-k2-turbo", "Kimi K2 Turbo", True),
+    # Ids are kimi-code model ALIASES (see `kimi provider list` / config.toml);
+    # auth via `kimi login` (or KIMI_API_KEY).
+    ("kimi-code/k3", "Kimi K3", True),
+    ("kimi-code/kimi-for-coding", "Kimi K2.7 Coding", True),
+    ("kimi-code/kimi-for-coding-highspeed", "Kimi K2.7 Coding Highspeed", True),
 ]
 
 # Default model to use when none specified

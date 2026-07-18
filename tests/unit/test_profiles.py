@@ -34,6 +34,10 @@ class TestIsKimiModel:
     def test_kimi_model(self):
         assert is_kimi_model("kimi-k2") is True
 
+    def test_kimi_code_aliases_are_kimi(self):
+        assert is_kimi_model("kimi-code/k3") is True
+        assert is_kimi_model("kimi-code/kimi-for-coding") is True
+
     def test_claude_model_is_not_kimi(self):
         assert is_kimi_model("claude-opus-4-8") is False
 

@@ -20,6 +20,12 @@ in-process **Kimi Agent SDK** (`kimi-agent-sdk` on PyPI, embedding the
   so they only appear in model dropdowns when the server runs with
   `--experimental` (template-level gating in `board.html`). No DB migration or
   config flag — selection is purely by model id.
+- The ids are **kimi-code model aliases** (the CLI's `-m` values), not raw
+  API model names: `kimi-code/k3` (K3, the CLI default),
+  `kimi-code/kimi-for-coding` (K2.7 Coding),
+  `kimi-code/kimi-for-coding-highspeed`. Check what an install actually
+  offers with `kimi provider list` / `~/.kimi-code/config.toml` — aliases are
+  per-install configuration, not a fixed catalog.
 
 ## `KimiAgentSession` (`src/agent/kimi_session.py`)
 
