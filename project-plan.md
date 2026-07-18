@@ -58,6 +58,16 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
   can't leak in and mangle plain `find`/`ls`/`wc` output. Applies to both `session.py` and
   `review_agent.py`. Do not revert Ollama to "think natively" or to default setting sources.
 
+- 2026-07-18 — Session layer is contract-based: `AbstractAgentSession` (minimal ABC in
+  `src/agent/base.py`, chosen over a Protocol for runtime enforcement + conformance tests)
+  with `ClaudeAgentSession` (`src/agent/session.py`; `AgentSession` remains as a compat
+  alias until a second runtime lands). Ollama is a **profile of the Claude runtime**
+  (`src/agent/profiles.py`), not a separate runtime — provider detection, env building,
+  and the divergent `ClaudeAgentOptions` values live only there. `ClaudeAgentOptions` is
+  still constructed at the call sites (session.py / review_agent.py) so test patch
+  targets keep working; the profile supplies kwargs/fields only. Groundwork for a future
+  `KimiAgentSession`.
+
 ## Current state / handoff
 
 Docs reassessed 2026-06-06 (M3). No objective currently in flight. Since the M2 docs
@@ -74,6 +84,15 @@ Re-audit 2026-07-15 (`/review-agentic-setup`): migration `030`
 (`agent_config.ollama_load_claude_md`) landed and tests grew 1137 → 1174 — counts above
 refreshed; `src/constants.py` now also offers Claude Fable 5 as a selectable model while
 the default stays `claude-opus-4-8` per the locked decision.
+Refactor 2026-07-18 (branch `refactor/agent-session-contract`): the session layer was
+prepared for a second agent runtime (Kimi Agent SDK, not yet started). New
+`src/agent/base.py` (`AbstractAgentSession` + `AgentResult`) and `src/agent/profiles.py`
+(provider routing + `AgentProfile`); `AgentSession` renamed to `ClaudeAgentSession`;
+the scattered `is_ollama` conditionals and duplicated env builders/predicates in
+`session.py`, `review_agent.py`, `session_service.py`, `workflow_service.py` collapsed
+onto the profile. No behavior change; tests grew 1174 → **1195** (new
+`tests/unit/test_base.py`, `tests/unit/test_profiles.py`). Cards updated:
+ARCHITECTURE, OLLAMA_PROVIDER, PROJECT_MAP (flow.agent-start), TESTING.
 The next agent to pick up real work should set **Goal**, add an **M4** milestone, and
 update this note as the running handoff.
 

@@ -84,13 +84,15 @@ Ollama is fully integrated into the dashboard as an experimental feature. Enable
 3. **Dynamic model discovery** — the dashboard queries Ollama's REST API (`/api/tags`) to populate model dropdowns with available local models and their sizes
 4. **Connection status indicator** — the header shows Ollama connection status (connected/disconnected)
 5. **Provider badges** — cards display provider badges (Claude vs Ollama) based on the selected model
-6. **Per-agent env injection** — `session.py` sets `ANTHROPIC_AUTH_TOKEN=ollama`, `ANTHROPIC_API_KEY=""`, and `ANTHROPIC_BASE_URL` in the subprocess environment when an Ollama model is selected
+6. **Per-agent env injection** — `agent/profiles.py` (`resolve_ollama_env`) builds `ANTHROPIC_AUTH_TOKEN=ollama`, `ANTHROPIC_API_KEY=""`, and `ANTHROPIC_BASE_URL`, which `session.py` passes into the subprocess environment when an Ollama model is selected
 7. **Model size info** — dropdowns show model file sizes alongside names
 
 ### Hardening (lessons from a runaway "count files" run)
 
-The Ollama `ClaudeAgentOptions` in `session.py` (and the one-shot reviewer in
-`review_agent.py`) carry two non-obvious settings, both required for cost-sane runs:
+The Ollama-divergent `ClaudeAgentOptions` values now live in one place —
+`agent/profiles.py` (`resolve_profile`, the "ollama" `AgentProfile`) — consumed by
+both `session.py` and the one-shot reviewer in `review_agent.py`. Two of these
+settings are non-obvious and required for cost-sane runs:
 
 - **`thinking={"type": "disabled"}`** — Ollama's Anthropic-compatible endpoint
   returns thinking blocks **without** a `signature`. On the next turn the SDK
@@ -121,8 +123,9 @@ every interpretation.
 ### Architecture
 
 - `constants.py` — `AVAILABLE_MODELS` list uses `(model_id, display_name, experimental)` tuples; Ollama models are discovered dynamically at runtime
-- `session.py` — Ollama env passthrough via subprocess environment override
-- `session_service.py` — Reads Ollama config from agent_config and passes to session creation
+- `agent/profiles.py` — single source of truth for provider routing (`is_ollama_model`: any model not starting with `claude-`), the env builder (`resolve_ollama_env`), and the per-provider `AgentProfile` (SDK options + feature gates: graphify/external MCP/plugins/chrome disabled for Ollama)
+- `session.py` — `ClaudeAgentSession` consumes the profile; Ollama env passthrough via subprocess environment override
+- `session_service.py` — Reads Ollama config from agent_config, resolves the env via `profiles.resolve_ollama_env`, and passes it to session creation
 - `routes.py` — `/api/ollama/models` endpoint for dynamic model discovery (with optional `?force=true` to bust the cache); connection-status checks are derived from this endpoint succeeding/failing
 
 ## Test Script

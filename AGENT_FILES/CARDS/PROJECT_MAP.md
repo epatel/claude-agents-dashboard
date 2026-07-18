@@ -22,7 +22,7 @@ Backend processes and lifecycle paths. Each entry: purpose · entry-point · WS 
 > Subsystem context for the flows below lives in [`ARCHITECTURE.md`](ARCHITECTURE.md) (services, agent runtime, hooks, frontend). Migrations are documented in [`DATABASE.md`](DATABASE.md).
 
 ### `flow.agent-start`
-Spawns a Claude session in a fresh worktree (`agents-lab/worktrees/agent-{item_id}`), non-blocking via `asyncio.create_task`.
+Spawns a Claude session in a fresh worktree (`agents-lab/worktrees/agent-{item_id}`), non-blocking via `asyncio.create_task`. The session is a `ClaudeAgentSession` (`src/agent/session.py`, implements the `AbstractAgentSession` contract in `src/agent/base.py`); provider routing + divergent SDK options come from `src/agent/profiles.py`.
 - **Entry:** `src/services/workflow_service.py:160` `start_agent` → `:169` `_start_agent_internal`
 - **HTTP:** `POST /api/items/{id}/start` (`src/web/routes.py:685`)
 - **WS events:** `item_updated`, `agent_log`

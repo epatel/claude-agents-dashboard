@@ -45,7 +45,9 @@ Claude SDK integration plus built-in MCP tool servers and PreToolUse hooks. One 
 - `path_guard.py` — denies Read/Edit/Write outside the worktree
 
 **Plus**:
-- `session.py` — system prompt + tool wiring
+- `base.py` — `AbstractAgentSession` contract (start/cancel + `current_session_id`/`on_error`) and the `AgentResult` dataclass; a future non-Claude runtime implements this
+- `profiles.py` — provider profiles: `is_ollama_model` / `resolve_ollama_env` routing plus the `AgentProfile` that carries the divergent SDK options and feature gates (Ollama = a profile of the Claude runtime, not a separate runtime)
+- `session.py` — `ClaudeAgentSession` (Claude Agent SDK wrapper): system prompt + tool wiring
 - `orchestrator.py` — the public facade
 
 External MCP servers get wildcard tool permissions (`mcp__{server_name}__*`).
