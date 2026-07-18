@@ -47,8 +47,11 @@ class StubDashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = self._record()
-        if self.path == "/api/items":
-            self._reply({"id": "new-3", "title": body["title"]})
+        if self.path == "/api/items/self-1/agent-todos":
+            reply = {"id": "new-3", "title": body["title"]}
+            if body.get("autostart") and not body.get("requires"):
+                reply["autostart_scheduled"] = True
+            self._reply(reply)
         elif self.path == "/api/epics":
             self._reply({"id": "epic-1", "title": body["title"]})
         elif self.path == "/api/shortcuts":
@@ -121,25 +124,30 @@ class TestBoardMcpServer:
             "create_shortcut", "view_board", "who_am_i",
         }
 
-    def test_create_todo_posts_to_api(self, mcp):
+    def test_create_todo_posts_to_agent_todos_endpoint(self, mcp):
         resp = mcp.call("create_todo", {"title": "New task", "description": "details"})
         assert "Created todo new-3" in resp["result"]["content"][0]["text"]
         method, path, body = StubDashboardHandler.requests[-1]
-        assert (method, path) == ("POST", "/api/items")
-        assert body == {"title": "New task", "description": "details"}
+        assert (method, path) == ("POST", "/api/items/self-1/agent-todos")
+        assert body == {"title": "New task", "description": "details",
+                        "requires": [], "autostart": False,
+                        "auto_approve": 0, "use_chrome": False}
 
-    def test_create_todo_includes_repo_when_set(self, stub_dashboard):
-        proc = McpProc({
-            "DASHBOARD_BASE_URL": stub_dashboard,
-            "DASHBOARD_ITEM_ID": "self-1",
-            "DASHBOARD_REPO": "backend",
+    def test_create_todo_passes_requires_and_flags(self, mcp):
+        resp = mcp.call("create_todo", {
+            "title": "Dependent task", "requires": ["dep-1", "dep-2"],
+            "autostart": True, "auto_approve": 2, "use_chrome": True,
         })
-        try:
-            proc.call("create_todo", {"title": "T"})
-            _, _, body = StubDashboardHandler.requests[-1]
-            assert body["repo"] == "backend"
-        finally:
-            proc.close()
+        _, _, body = StubDashboardHandler.requests[-1]
+        assert body["requires"] == ["dep-1", "dep-2"]
+        assert body["autostart"] is True
+        assert body["auto_approve"] == 2
+        assert body["use_chrome"] is True
+        assert "starts after its dependencies merge" in resp["result"]["content"][0]["text"]
+
+    def test_create_todo_autostart_note(self, mcp):
+        resp = mcp.call("create_todo", {"title": "Solo task", "autostart": True})
+        assert "agent auto-starting" in resp["result"]["content"][0]["text"]
 
     def test_delete_todo(self, mcp):
         resp = mcp.call("delete_todo", {"item_id": "other-2"})

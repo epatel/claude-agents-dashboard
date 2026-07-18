@@ -90,7 +90,6 @@ class SessionService:
                 allowed_commands=allowed_commands,
                 bash_yolo=config.get("bash_yolo", False),
                 item_id=item_id,
-                item_repo_name=item_repo_name,
             )
             self.sessions[item_id] = session
             self._update_caffeinate()

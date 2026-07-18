@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Any, Optional
+from typing import Any, List, Optional
 from datetime import datetime
 import json
 import uuid
@@ -56,6 +56,27 @@ class ItemCreate(BaseModel):
     # Multi-repo mode: name of the subrepo this item targets. Must be one of the
     # workspace's known repos. None in single-repo mode.
     repo: Optional[str] = None
+
+    @field_validator("auto_approve", mode="before")
+    @classmethod
+    def _validate_auto_approve(cls, v: Any) -> Any:
+        return _coerce_auto_approve(v)
+
+
+class AgentTodoCreate(BaseModel):
+    """A todo created on behalf of a running agent (POST /api/items/{id}/agent-todos).
+
+    Mirrors the create_todo MCP tool's inputs — including `requires`
+    (dependency item ids) and `autostart` — and runs through the same
+    workflow callback, unlike the plain board POST /api/items.
+    """
+    title: str
+    description: str = ""
+    epic_id: Optional[str] = None
+    requires: List[str] = []
+    autostart: bool = False
+    auto_approve: int = AUTO_APPROVE_OFF
+    use_chrome: bool = False
 
     @field_validator("auto_approve", mode="before")
     @classmethod

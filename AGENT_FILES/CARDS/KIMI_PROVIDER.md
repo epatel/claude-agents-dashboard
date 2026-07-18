@@ -71,12 +71,14 @@ the Kimi runtime spawns it (with the venv's `sys.executable`), and it
 proxies `create_todo` / `delete_todo` / `create_epic` / `create_shortcut` /
 `view_board` / `who_am_i` to the dashboard's HTTP API. `main.py` publishes
 the server's own base URL as `DASHBOARD_BASE_URL`; the proxy also gets
-`DASHBOARD_ITEM_ID` (for who_am_i) and `DASHBOARD_REPO` in multi-repo mode
-(create_todo's required repo field). Tools surface to the agent as
-`mcp__board__*`. Unlike the Claude path's in-process
-`create_sdk_mcp_server` objects, this goes through HTTP — no
-`workflow_service` callback plumbing (so e.g. create_todo has no
-autostart/requires support yet).
+`DASHBOARD_ITEM_ID` (who_am_i + creator attribution). Tools surface to the
+agent as `mcp__board__*`. `create_todo` has **full Claude-path parity**: it
+posts to `POST /api/items/{creator_id}/agent-todos` (route →
+`orchestrator.create_agent_todo` → the same `workflow_service` callback the
+Claude MCP tool uses), so `requires` dependencies, `autostart` with the
+unmerged-creator auto-anchor, `auto_approve`, and `use_chrome` all behave
+identically (live-verified: a Kimi-created autostart todo was auto-anchored
+to its creator card).
 
 **Permission hooks**: the ACP client runs with `yolo=False` and a real
 `permission_handler`. Trust model — **kimi decides WHEN to ask, the

@@ -172,7 +172,7 @@ def _project_context_note(worktree_path: Path) -> str:
     return ""
 
 
-def _board_mcp_config(item_id: str | None, repo: str | None = None) -> dict | None:
+def _board_mcp_config(item_id: str | None) -> dict | None:
     """ACP mcpServers entry for the board-tools proxy, or None when unavailable.
 
     The Kimi runtime spawns `kimi_board_mcp.py` itself (ACP client-spawns-agent,
@@ -182,17 +182,14 @@ def _board_mcp_config(item_id: str | None, repo: str | None = None) -> dict | No
     base_url = os.environ.get("DASHBOARD_BASE_URL")
     if not (base_url and item_id):
         return None
-    env = [
-        {"name": "DASHBOARD_BASE_URL", "value": base_url},
-        {"name": "DASHBOARD_ITEM_ID", "value": item_id},
-    ]
-    if repo:
-        env.append({"name": "DASHBOARD_REPO", "value": repo})
     return {
         "name": "board",
         "command": sys.executable,
         "args": [str(Path(__file__).resolve().parent / "kimi_board_mcp.py")],
-        "env": env,
+        "env": [
+            {"name": "DASHBOARD_BASE_URL", "value": base_url},
+            {"name": "DASHBOARD_ITEM_ID", "value": item_id},
+        ],
     }
 
 
@@ -262,7 +259,6 @@ class KimiAgentSession(AbstractAgentSession):
         allowed_commands: list[str] | None = None,
         bash_yolo: bool = False,
         item_id: str | None = None,
-        item_repo_name: str | None = None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
@@ -278,7 +274,6 @@ class KimiAgentSession(AbstractAgentSession):
         self.allowed_commands = allowed_commands or []
         self.bash_yolo = bash_yolo
         self.item_id = item_id
-        self.item_repo_name = item_repo_name  # repo of this item in multi-repo mode
         self._task: asyncio.Task | None = None
         self._cancelled = False
         self._acp_session = None
@@ -330,7 +325,7 @@ class KimiAgentSession(AbstractAgentSession):
                 env["KIMI_MODEL_NAME"] = self.model
 
             logger.info(f"Kimi mode: spawning `kimi acp` for model {self.model}")
-            board_cfg = _board_mcp_config(self.item_id, self.item_repo_name)
+            board_cfg = _board_mcp_config(self.item_id)
             mcp_servers = [board_cfg] if board_cfg else None
             if board_cfg:
                 logger.info("Kimi mode: board tools MCP proxy enabled")

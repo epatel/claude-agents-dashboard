@@ -1230,6 +1230,23 @@ class WorkflowService:
 
         return on_request_tool
 
+    async def create_agent_todo(self, creator_item_id: str, title: str, description: str = "",
+                                epic_id: str = None, requires: list[str] = None,
+                                autostart: bool = False, auto_approve: int = 0,
+                                use_chrome: bool = False) -> Dict[str, Any]:
+        """Create a todo on behalf of an agent, with full callback semantics.
+
+        Same code path as the Claude agents' create_todo MCP tool (dependency
+        wiring, autostart with the unmerged-creator auto-anchor, broadcasts).
+        Used by out-of-process tool proxies (e.g. the Kimi board MCP server)
+        via POST /api/items/{item_id}/agent-todos.
+        """
+        callback = self._create_on_create_todo_callback(creator_item_id)
+        return await callback(
+            title, description, epic_id=epic_id, requires=requires,
+            autostart=autostart, auto_approve=auto_approve, use_chrome=use_chrome,
+        )
+
     def _create_on_create_todo_callback(self, item_id: str):
         async def on_create_todo(title: str, description: str, epic_id: str = None, requires: list[str] = None, autostart: bool = False, auto_approve: int = 0, use_chrome: bool = False) -> Dict[str, Any]:
             # Coerce auto_approve to a known mode (0/1/2). Anything else falls back to OFF.

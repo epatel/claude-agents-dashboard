@@ -103,6 +103,10 @@ class AgentOrchestrator:
         """Retry a failed agent — restart from scratch in existing worktree."""
         return await self.workflow_service.retry_agent(item_id)
 
+    async def create_agent_todo(self, creator_item_id: str, **kwargs) -> Dict[str, Any]:
+        """Create a todo on behalf of an agent (full create_todo semantics)."""
+        return await self.workflow_service.create_agent_todo(creator_item_id, **kwargs)
+
     async def approve_item(self, item_id: str) -> Dict[str, Any]:
         """Approve a reviewed item — merge back into the base branch."""
         return await self.workflow_service.approve_item(item_id)

@@ -1463,3 +1463,24 @@ class TestAutoReviewBadgeTracking:
             call.args[1] == {"item_id": review_item["id"], "active": False}
             for call in review_calls
         ), "expected an active=False broadcast on failure"
+
+
+class TestCreateAgentTodo:
+    @pytest.mark.asyncio
+    async def test_delegates_to_create_todo_callback(self):
+        """create_agent_todo runs the exact same callback the MCP tool uses."""
+        svc = MagicMock()
+        inner = AsyncMock(return_value={"id": "new1", "title": "T"})
+        svc._create_on_create_todo_callback = MagicMock(return_value=inner)
+
+        result = await WorkflowService.create_agent_todo(
+            svc, "creator-1", title="T", description="d",
+            requires=["dep1"], autostart=True, auto_approve=2, use_chrome=True,
+        )
+
+        svc._create_on_create_todo_callback.assert_called_once_with("creator-1")
+        inner.assert_awaited_once_with(
+            "T", "d", epic_id=None, requires=["dep1"],
+            autostart=True, auto_approve=2, use_chrome=True,
+        )
+        assert result == {"id": "new1", "title": "T"}

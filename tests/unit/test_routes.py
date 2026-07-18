@@ -196,6 +196,41 @@ async def client_with_item(app_and_db):
 # Items CRUD
 # ---------------------------------------------------------------------------
 
+class TestCreateAgentTodo:
+    @pytest.mark.asyncio
+    async def test_delegates_to_orchestrator_with_full_kwargs(self, client_with_item):
+        client, app = client_with_item
+        app.state.orchestrator.create_agent_todo = AsyncMock(
+            return_value={"id": "new1", "title": "Follow-up", "autostart_scheduled": True})
+        resp = await client.post("/api/items/item001/agent-todos", json={
+            "title": "Follow-up", "description": "d", "requires": ["dep1"],
+            "autostart": True, "auto_approve": 1, "use_chrome": True,
+        })
+        assert resp.status_code == 200
+        assert resp.json()["id"] == "new1"
+        app.state.orchestrator.create_agent_todo.assert_awaited_once_with(
+            "item001", title="Follow-up", description="d", epic_id=None,
+            requires=["dep1"], autostart=True, auto_approve=1, use_chrome=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_unknown_creator_item_404s(self, client):
+        resp = await client.post("/api/items/nope/agent-todos", json={"title": "X"})
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_minimal_body_uses_defaults(self, client_with_item):
+        client, app = client_with_item
+        app.state.orchestrator.create_agent_todo = AsyncMock(
+            return_value={"id": "new2", "title": "Simple"})
+        resp = await client.post("/api/items/item001/agent-todos", json={"title": "Simple"})
+        assert resp.status_code == 200
+        kwargs = app.state.orchestrator.create_agent_todo.await_args.kwargs
+        assert kwargs["requires"] == []
+        assert kwargs["autostart"] is False
+        assert kwargs["auto_approve"] == 0
+
+
 class TestListItems:
     @pytest.mark.asyncio
     async def test_list_items_empty(self, client):

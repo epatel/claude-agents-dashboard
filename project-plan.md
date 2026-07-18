@@ -161,8 +161,17 @@ debug env var escalates every arriving execute permission request to the user (d
 aid for the ASK flow — cannot make kimi ask more often); and project-context files —
 kimi-cli natively merges AGENTS.md (incl. `.kimi/AGENTS.md`) but never CLAUDE.md, so
 `KimiAgentSession` injects the worktree CLAUDE.md into the prompt when no AGENTS.md
-variant exists (always on, no flag). Tests **1273**. Still open: create_todo
-autostart/requires parity with the Claude path.
+variant exists (always on, no flag).
+
+create_todo autostart/requires parity landed: new `POST /api/items/{id}/agent-todos`
+endpoint (`AgentTodoCreate` model) delegates via `orchestrator.create_agent_todo` to
+the SAME `workflow_service` create_todo callback the Claude MCP tool uses — requires
+dependencies, autostart with the unmerged-creator auto-anchor, auto_approve,
+use_chrome. The Kimi board proxy's create_todo now posts there (richer schema);
+DASHBOARD_REPO plumbing removed (agent-created todos never set repo, matching the
+Claude path). Live-verified: a Kimi-created autostart todo was auto-anchored to its
+creator card with the dependency visible on the board. Tests **1277**.
+**Kimi parity roadmap complete** — no open Kimi items.
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.
 

@@ -9,7 +9,6 @@ it with the venv's ``sys.executable`` but it must not import dashboard code.
 Configuration via environment variables (set by ``KimiAgentSession``):
 - ``DASHBOARD_BASE_URL``  — e.g. http://127.0.0.1:8001 (required)
 - ``DASHBOARD_ITEM_ID``   — the calling agent's own board item id (required)
-- ``DASHBOARD_REPO``      — item's repo name in multi-repo mode (optional)
 
 Protocol: newline-delimited JSON-RPC 2.0 over stdio (same shape as
 ``examples/mini-mcp/server.py``): initialize / notifications/initialized /
@@ -23,7 +22,6 @@ import urllib.request
 
 BASE_URL = os.environ.get("DASHBOARD_BASE_URL", "").rstrip("/")
 ITEM_ID = os.environ.get("DASHBOARD_ITEM_ID", "")
-REPO = os.environ.get("DASHBOARD_REPO", "")
 
 TOOLS = [
     {
@@ -38,6 +36,22 @@ TOOLS = [
                 "title": {"type": "string", "description": "Short todo title"},
                 "description": {"type": "string", "description": "What needs to be done"},
                 "epic_id": {"type": "string", "description": "Optional epic to group under"},
+                "requires": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Item ids this todo depends on (it starts only after they merge)",
+                },
+                "autostart": {
+                    "type": "boolean",
+                    "description": (
+                        "Start an agent for the new todo automatically. With no "
+                        "requires given, it waits for YOUR card to merge first."
+                    ),
+                },
+                "auto_approve": {
+                    "type": "integer",
+                    "description": "0=manual review, 1=auto review agent, 2=merge directly",
+                },
+                "use_chrome": {"type": "boolean", "description": "Give the new agent browser tools"},
             },
             "required": ["title"],
         },
@@ -110,13 +124,24 @@ def _items():
 def call_tool(name, args):
     """Run a board tool; returns the text result (raises on failure)."""
     if name == "create_todo":
-        body = {"title": args["title"], "description": args.get("description", "")}
+        body = {
+            "title": args["title"],
+            "description": args.get("description", ""),
+            "requires": args.get("requires") or [],
+            "autostart": bool(args.get("autostart", False)),
+            "auto_approve": args.get("auto_approve", 0),
+            "use_chrome": bool(args.get("use_chrome", False)),
+        }
         if args.get("epic_id"):
             body["epic_id"] = args["epic_id"]
-        if REPO:
-            body["repo"] = REPO
-        item = _http("POST", "/api/items", body)
-        return f"Created todo {item['id']}: {item['title']}"
+        item = _http("POST", f"/api/items/{ITEM_ID}/agent-todos", body)
+        if item.get("autostart_scheduled"):
+            note = " (agent auto-starting)"
+        elif body["requires"] or body["autostart"]:
+            note = " (starts after its dependencies merge)"
+        else:
+            note = ""
+        return f"Created todo {item['id']}: {item['title']}{note}"
     if name == "delete_todo":
         _http("DELETE", f"/api/items/{args['item_id']}")
         return f"Deleted todo {args['item_id']}"

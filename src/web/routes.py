@@ -15,7 +15,7 @@ from ..config import COLUMNS
 from ..constants import AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_OLLAMA_BASE_URL, EPIC_COLORS
 from ..domain.item_state import Event
 from ..repositories.epic_repository import EpicNotFound
-from ..models import ItemCreate, ItemUpdate, ItemMove, ClarificationResponse, AgentConfig, EpicCreate, EpicUpdate, new_id
+from ..models import AgentTodoCreate, ItemCreate, ItemUpdate, ItemMove, ClarificationResponse, AgentConfig, EpicCreate, EpicUpdate, new_id
 from ..git.operations import get_diff, get_changed_files, get_file_content, get_current_branch
 
 router = APIRouter()
@@ -308,6 +308,35 @@ async def create_item(request: Request, body: ItemCreate):
 
     await request.app.state.ws_manager.broadcast("item_created", item)
     _invalidate_stats_cache()  # New item affects stats
+    return item
+
+
+@router.post("/api/items/{item_id}/agent-todos")
+async def create_agent_todo(request: Request, item_id: str, body: AgentTodoCreate):
+    """Create a todo on behalf of a running agent (out-of-process tool proxies).
+
+    Runs through the same workflow callback as the Claude agents' create_todo
+    MCP tool — dependency wiring (`requires`), autostart with the
+    unmerged-creator auto-anchor, and board broadcasts included.
+    """
+    db = request.app.state.db
+    async with db.connect() as conn:
+        cursor = await conn.execute("SELECT id FROM items WHERE id = ?", (item_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Creator item not found")
+
+    orchestrator = request.app.state.orchestrator
+    item = await orchestrator.create_agent_todo(
+        item_id,
+        title=body.title,
+        description=body.description,
+        epic_id=body.epic_id,
+        requires=body.requires,
+        autostart=body.autostart,
+        auto_approve=body.auto_approve,
+        use_chrome=body.use_chrome,
+    )
+    _invalidate_stats_cache()
     return item
 
 

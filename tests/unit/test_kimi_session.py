@@ -690,18 +690,6 @@ class TestBoardTools:
         env = {e["name"]: e["value"] for e in cfg["env"]}
         assert env["DASHBOARD_BASE_URL"] == "http://127.0.0.1:8001"
         assert env["DASHBOARD_ITEM_ID"] == "item-9"
-        assert "DASHBOARD_REPO" not in env
-
-    @pytest.mark.asyncio
-    async def test_repo_env_included_in_multi_repo_mode(self):
-        modules, acp, _ = make_acp_module()
-        session = make_session(item_id="item-9", item_repo_name="backend")
-        with patch.dict(sys.modules, modules), \
-             patch.dict(os.environ, {"DASHBOARD_BASE_URL": "http://127.0.0.1:8001"}):
-            await start_and_wait(session)
-        cfg = acp.AcpClient.last.new_session_kwargs["mcp_servers"][0]
-        env = {e["name"]: e["value"] for e in cfg["env"]}
-        assert env["DASHBOARD_REPO"] == "backend"
 
     @pytest.mark.asyncio
     async def test_no_board_mcp_without_base_url(self):
