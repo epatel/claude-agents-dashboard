@@ -132,7 +132,8 @@ class ProjectManager: ObservableObject {
         saveProjects()
     }
 
-    /// Toggle the per-entry experimental flag (`--experimental`, enables Ollama UI).
+    /// Toggle the per-entry experimental flag (`--experimental`, enables the
+    /// Ollama UI and Kimi models).
     /// Persists the change and keeps any open dashboard tab's project snapshot in
     /// sync so a later restart launches with the new flag. Takes effect on next
     /// (re)start — it does not restart a running dashboard.

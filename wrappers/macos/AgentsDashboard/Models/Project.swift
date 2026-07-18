@@ -5,7 +5,8 @@ struct Project: Identifiable, Codable, Hashable {
     var name: String
     var path: String
     /// When true, this project's dashboard is launched with `--experimental`,
-    /// which unlocks experimental features (e.g. the Ollama provider UI).
+    /// which unlocks experimental features (the Ollama provider UI and the
+    /// Kimi model entries backed by the Kimi Agent SDK runtime).
     /// Configured per-entry from the sidebar context menu.
     var experimental: Bool
 

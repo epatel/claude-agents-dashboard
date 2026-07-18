@@ -95,11 +95,11 @@ struct ProjectRow: View {
 
             Divider()
 
-            Toggle("Experimental (Ollama)", isOn: Binding(
+            Toggle("Experimental (Ollama, Kimi)", isOn: Binding(
                 get: { project.experimental },
                 set: { projectManager.setExperimental($0, for: project) }
             ))
-            .help("Launch this project's dashboard with --experimental (enables the Ollama provider). Applies on next start.")
+            .help("Launch this project's dashboard with --experimental (enables experimental providers: Ollama, and Kimi models via the Kimi Agent SDK). Applies on next start.")
 
             Divider()
 
