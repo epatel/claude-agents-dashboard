@@ -133,6 +133,11 @@ def _decide_permission(tool_call, allowed_commands, bash_yolo) -> tuple[str, str
         return "allow", ""
     if not isinstance(command, str):
         command = str(tool_call.get("title") or "")
+    if os.environ.get("KIMI_FORCE_PERMISSION_ASK"):
+        # Debug aid: escalate every execute permission request that kimi
+        # raises to the user, regardless of allowlist/bash_yolo. Repeatable
+        # way to demo the ASK approval flow (kimi still decides WHEN to ask).
+        return "ask", command
     if bash_yolo:
         return "allow", command
     if _contains_shell_operators(command):
@@ -141,6 +146,30 @@ def _decide_permission(tool_call, allowed_commands, bash_yolo) -> tuple[str, str
     if first_word and first_word in (allowed_commands or []):
         return "allow", command
     return "ask", command
+
+
+def _project_context_note(worktree_path: Path) -> str:
+    """Worktree CLAUDE.md content for the prompt, or "".
+
+    kimi-cli natively discovers and merges AGENTS.md (root ``AGENTS.md`` /
+    ``agents.md`` and ``.kimi/AGENTS.md``) but never reads CLAUDE.md. Inject
+    CLAUDE.md only when no AGENTS.md variant exists, so conventions written
+    for Claude agents still reach Kimi without duplicating natively-loaded
+    content.
+    """
+    try:
+        if any((worktree_path / name).is_file() for name in ("AGENTS.md", "agents.md")):
+            return ""
+        if (worktree_path / ".kimi" / "AGENTS.md").is_file():
+            return ""
+        claude_md = worktree_path / "CLAUDE.md"
+        if claude_md.is_file():
+            logger.info("Kimi mode: no AGENTS.md found — injecting project CLAUDE.md")
+            content = claude_md.read_text(errors="replace")
+            return f"\n\n--- Project CLAUDE.md ({claude_md}) ---\n{content}"
+    except Exception as e:
+        logger.warning(f"Could not read project context file: {e}")
+    return ""
 
 
 def _board_mcp_config(item_id: str | None, repo: str | None = None) -> dict | None:
@@ -267,7 +296,8 @@ class KimiAgentSession(AbstractAgentSession):
             prompt = (
                 f"{self.system_prompt}\n\n"
                 f"IMPORTANT: Your working directory is {self.worktree_path}. "
-                "All file operations must be within this directory.\n\n"
+                "All file operations must be within this directory."
+                f"{_project_context_note(self.worktree_path)}\n\n"
                 f"--- Task ---\n{prompt}"
             )
         if self.on_set_commit_message:

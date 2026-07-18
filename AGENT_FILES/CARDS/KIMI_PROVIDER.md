@@ -99,6 +99,19 @@ dashboard decides the ANSWER**:
   `git push` and a reject outcome stopped the tool) and fully unit-tested;
   a deterministic live trigger doesn't exist because the classifier is
   heuristic.
+- **Debug**: `KIMI_FORCE_PERMISSION_ASK=1` in the server env escalates
+  every execute permission request that kimi raises to the user
+  (bypassing allowlist/bash_yolo) — a repeatable way to demo the ASK
+  approval flow. It cannot make kimi ask more often; it only changes the
+  answer side.
+
+**Project context files**: kimi-cli natively discovers and merges
+`AGENTS.md` (root `AGENTS.md`/`agents.md` + `.kimi/AGENTS.md`, project
+root down to workdir) — nothing to do when the target project has one.
+It never reads `CLAUDE.md`, so `KimiAgentSession` injects the worktree
+`CLAUDE.md` into the prompt **only when no AGENTS.md variant exists**
+(always on, no config flag — unlike Ollama's opt-in, context size isn't a
+concern at 262k).
 
 Remaining limitations (deliberate, mirrors the lean Ollama feature set):
 

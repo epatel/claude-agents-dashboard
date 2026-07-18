@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1266 tests
+./run-tests.sh              # Run all 1273 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -59,7 +59,7 @@ tests/
 │   ├── test_routes.py               # HTTP endpoint tests (102 tests)
 │   ├── test_base.py                 # AbstractAgentSession contract (4 tests)
 │   ├── test_kimi_board_mcp.py       # Kimi board-tools stdio MCP proxy (9 tests)
-│   ├── test_kimi_session.py         # KimiAgentSession over ACP (experimental) (51 tests)
+│   ├── test_kimi_session.py         # KimiAgentSession over ACP (experimental) (58 tests)
 │   ├── test_profiles.py             # Provider profiles + Kimi/Ollama routing (22 tests)
 │   ├── test_session.py              # ClaudeAgentSession SDK wrapper (96 tests)
 │   ├── test_session_service.py      # SessionService lifecycle + provider routing (54 tests)
@@ -112,11 +112,11 @@ Quick checks that core components work:
 - **graph_query tool** (10 tests): Read-only knowledge-graph MCP tool server
 - **Kimi board-tools MCP proxy** (9 tests): stdio subprocess against a stub dashboard API — tools list, HTTP proxying, repo env, error resilience
 
-### Unit Tests — Session (173 tests)
+### Unit Tests — Session (180 tests)
 - `ClaudeAgentSession` SDK wrapper, token extraction, event handling (96)
 - `AbstractAgentSession` contract conformance (4)
 - Provider profiles: Kimi/Ollama routing predicates, env builder, profile gate matrix, options kwargs (22)
-- `KimiAgentSession` over ACP: chunk aggregation, tool-call mapping, deferred tool input, commit-message + ask_user text protocols, resume/fallback, cancel, missing-SDK hint, permission decisions + handler, board-tools MCP config, errors (51)
+- `KimiAgentSession` over ACP: chunk aggregation, tool-call mapping, deferred tool input, commit-message + ask_user text protocols, resume/fallback, cancel, missing-SDK hint, permission decisions + handler + force-ask env, CLAUDE.md/AGENTS.md context, board-tools MCP config, errors (58)
 
 ### Unit Tests — Migrations (51 tests)
 - Apply/rollback single and multiple migrations

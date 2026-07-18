@@ -156,7 +156,12 @@ saves the command + restarts with resume). Verified at protocol level via a raw 
 probe (request arrived for `git push`; reject stopped the tool) + unit tests — no
 deterministic live trigger exists. Tests **1266**. Kimi feature set now: streaming
 text/thinking/tool calls, deferred tool input, pause/resume, commit messages,
-clarifications, board tools, permission hooks. Still open: create_todo
+clarifications, board tools, permission hooks. Follow-up: `KIMI_FORCE_PERMISSION_ASK=1`
+debug env var escalates every arriving execute permission request to the user (demo
+aid for the ASK flow — cannot make kimi ask more often); and project-context files —
+kimi-cli natively merges AGENTS.md (incl. `.kimi/AGENTS.md`) but never CLAUDE.md, so
+`KimiAgentSession` injects the worktree CLAUDE.md into the prompt when no AGENTS.md
+variant exists (always on, no flag). Tests **1273**. Still open: create_todo
 autostart/requires parity with the Claude path.
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.

@@ -18,6 +18,7 @@ from src.agent.kimi_session import (
     _decide_permission,
     _extract_ask_user,
     _extract_commit_message,
+    _project_context_note,
     _raw_input,
 )
 
@@ -567,6 +568,48 @@ class TestDecidePermission:
 
     def test_none_tool_call_allowed(self):
         assert _decide_permission(None, [], False) == ("allow", "")
+
+    def test_force_ask_env_escalates_even_allowlisted_and_yolo(self):
+        tc = {"kind": "execute", "rawInput": {"command": "npm test"}}
+        with patch.dict(os.environ, {"KIMI_FORCE_PERMISSION_ASK": "1"}):
+            assert _decide_permission(tc, ["npm"], False)[0] == "ask"
+            assert _decide_permission(tc, [], True)[0] == "ask"
+
+    def test_force_ask_env_leaves_non_execute_allowed(self):
+        tc = {"kind": "read", "rawInput": {"path": "a.py"}}
+        with patch.dict(os.environ, {"KIMI_FORCE_PERMISSION_ASK": "1"}):
+            assert _decide_permission(tc, [], False) == ("allow", "")
+
+
+class TestProjectContextNote:
+    def test_injects_claude_md_when_no_agents_md(self, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text("Use tabs, always.")
+        note = _project_context_note(tmp_path)
+        assert "Use tabs, always." in note
+        assert "Project CLAUDE.md" in note
+
+    def test_skipped_when_agents_md_exists(self, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text("claude conventions")
+        (tmp_path / "AGENTS.md").write_text("agents conventions")
+        assert _project_context_note(tmp_path) == ""
+
+    def test_skipped_when_dot_kimi_agents_md_exists(self, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text("claude conventions")
+        (tmp_path / ".kimi").mkdir()
+        (tmp_path / ".kimi" / "AGENTS.md").write_text("kimi conventions")
+        assert _project_context_note(tmp_path) == ""
+
+    def test_empty_when_no_context_files(self, tmp_path):
+        assert _project_context_note(tmp_path) == ""
+
+    @pytest.mark.asyncio
+    async def test_claude_md_reaches_the_prompt(self, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text("Use tabs, always.")
+        modules, acp, _ = make_acp_module()
+        session = make_session(worktree_path=tmp_path)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        assert "Use tabs, always." in acp.AcpClient.last.session.prompts[0]
 
 
 def make_permission_request(command="curl http://x", kind="execute", options=None):
