@@ -42,7 +42,7 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1137 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1277 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## Try the demo
 
@@ -157,6 +157,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Standalone item detail page** — each item has a shareable URL; Done detail dialog includes a copy-link button for sharing
 - **Animated flame background** — optional animated flame effect behind board columns with activity-driven intensity; configurable via agent config (flame_enabled setting)
 - **Ollama provider** (experimental) — run agents against local Ollama models via Claude Code's env override mechanism; dynamic model discovery, connection status indicator, provider badges on cards; enable with `--experimental` flag
+- **Kimi provider** (experimental) — run agents on Kimi models (`kimi-code/k3`, K2.7) via the Kimi Agent SDK's ACP client (`kimi acp` subprocess); full feature parity: streaming, pause/resume, commit messages, clarifications, board tools (stdio MCP proxy), permission hooks; auth via one-time `kimi login`; enable with `--experimental` flag
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture
@@ -231,7 +232,7 @@ graph TB
 
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite, 7-service architecture (Workflow, Database, Notification, Git, Session, Graph, Skills) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~9,900 lines across 43 source files (excluding migrations)
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~9,600 lines JS + ~3,850 lines CSS
-- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, Claude Haiku 4.5, 8 built-in MCP tools (incl. read-only `graph_query`); installable Agent Skills delivered via `plugins=`; optional Ollama provider (experimental)
+- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, Claude Haiku 4.5, 8 built-in MCP tools (incl. read-only `graph_query`); installable Agent Skills delivered via `plugins=`; optional Ollama and Kimi providers (experimental — Kimi runs on a separate runtime: `kimi-agent-sdk` ACP client driving the `kimi` CLI)
 - **Database**: SQLite with 29 versioned migrations (auto-runs on startup)
 - **Security**: Localhost only, no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
 
@@ -506,6 +507,7 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `POST` | `/api/shortcuts/{id}/reset` | Reset shortcut |
 | `GET` | `/api/websocket/stats` | WebSocket connection stats |
 | `GET` | `/api/ollama/models` | Discover local Ollama models (experimental; `?force=true` busts cache) |
+| `POST` | `/api/items/{id}/agent-todos` | Create a todo on behalf of a running agent (full create_todo semantics: requires/autostart) |
 | `GET` | `/api/graphify/status` | Knowledge-graph status: installed/latest version, build-in-progress, graph stats |
 | `POST` | `/api/graphify/build` | Build the graph (`semantic` flag for the LLM layer) |
 | `POST` | `/api/graphify/install` | Upgrade the graphify package in the dashboard venv |
@@ -626,6 +628,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 - [`CARDS/TESTING.md`](AGENT_FILES/CARDS/TESTING.md) — test layout (unit / integration / smoke / e2e) and per-suite conventions
 - [`CARDS/COMMIT_POLICY.md`](AGENT_FILES/CARDS/COMMIT_POLICY.md) — commit policies (e.g. excluding annotation images)
 - [`CARDS/OLLAMA_PROVIDER.md`](AGENT_FILES/CARDS/OLLAMA_PROVIDER.md) — Ollama as a local model provider via Claude Agent SDK + dashboard wiring
+- [`CARDS/KIMI_PROVIDER.md`](AGENT_FILES/CARDS/KIMI_PROVIDER.md) — the Kimi runtime (experimental): ACP transport, board-tools MCP proxy, text protocols, permission trust model
 - [`CARDS/GRAPHIFY.md`](AGENT_FILES/CARDS/GRAPHIFY.md) — using and maintaining the codebase knowledge graph (`graphify-out/`)
 - [`CARDS/SKILLS.md`](AGENT_FILES/CARDS/SKILLS.md) — the Agent-Skills library: install/enable skills and how enabled ones reach agents via `plugins=`
 

@@ -13,7 +13,7 @@ FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin
 - `DatabaseService` (~570 LOC) — all DB operations (parameterized; column whitelists live in the repositories)
 - `NotificationService` — WebSocket broadcasting + tool formatting; the single fan-out point on every state change (incl. graphify `graph_build_progress` / `graph_ready` events)
 - `GitService` — worktree management, merge operations, repo path resolution
-- `SessionService` — Claude SDK session lifecycle, commit messages, plugin parsing, Ollama config
+- `SessionService` — agent session lifecycle + provider routing (`ClaudeAgentSession` vs `KimiAgentSession` by model id), commit messages, plugin parsing, Ollama config
 - `GraphService` — graphify knowledge graph: build/refresh/query/status, version detection, cost tracking; shells out to the `graphify` venv binary and owns `graphify-out/`
 - `SkillsService` — dashboard-managed library of Agent Skills: install/list/remove, browse Anthropic's public repo, discover skills in any GitHub repo/path; installs into a gitignored `skill-library/<name>/` (each wrapped as a one-skill plugin). Per-project enable lives in `agent_config.enabled_skills`; `SessionService._parse_plugins` resolves enabled names to plugin paths and merges them into the SDK `plugins=` list (so skills load regardless of git/worktree/`setting_sources`)
 
@@ -46,8 +46,8 @@ Claude SDK integration plus built-in MCP tool servers and PreToolUse hooks. One 
 
 **Plus**:
 - `base.py` — `AbstractAgentSession` contract (start/cancel + `current_session_id`/`on_error`) and the `AgentResult` dataclass
-- `kimi_session.py` — `KimiAgentSession` (experimental): the first non-Claude runtime, drives the in-process Kimi Agent SDK for `kimi-*` models; see [KIMI_PROVIDER](KIMI_PROVIDER.md)
-- `profiles.py` — provider profiles: `is_ollama_model` / `resolve_ollama_env` routing plus the `AgentProfile` that carries the divergent SDK options and feature gates (Ollama = a profile of the Claude runtime, not a separate runtime)
+- `kimi_session.py` — `KimiAgentSession` (experimental): the first non-Claude runtime, drives `kimi acp` (Kimi Code CLI as an ACP server) for `kimi-*` models; `kimi_board_mcp.py` is its stdio board-tools proxy; see [KIMI_PROVIDER](KIMI_PROVIDER.md)
+- `profiles.py` — provider routing (`is_kimi_model` / `is_ollama_model` / `resolve_ollama_env`) plus the `AgentProfile` that carries the divergent SDK options and feature gates (Ollama = a profile of the Claude runtime, not a separate runtime; Kimi = a separate runtime)
 - `session.py` — `ClaudeAgentSession` (Claude Agent SDK wrapper): system prompt + tool wiring
 - `orchestrator.py` — the public facade
 
