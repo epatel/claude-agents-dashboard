@@ -6,13 +6,13 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1277 tests
+./run-tests.sh              # Run all 1281 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 30 migrations (001–030).
+The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 31 migrations (001–031).
 
 ## Test Structure
 
@@ -123,7 +123,7 @@ Quick checks that core components work:
 - Migration discovery from files
 - Edge cases: malformed files, concurrent apply, long versions, empty methods
 - Performance: 100-file discovery under 1 second
-- Per-migration data tests: 024 default-model bump (`claude-opus-4-7` → `claude-opus-4-8`), 025 use_chrome, 026 api_error_status, 027 strip `+advisor` suffix, 028 graphify config, 029 enabled_skills, 030 ollama_load_claude_md
+- Per-migration data tests: 024 default-model bump (`claude-opus-4-7` → `claude-opus-4-8`), 025 use_chrome, 026 api_error_status, 027 strip `+advisor` suffix, 028 graphify config, 029 enabled_skills, 030 ollama_load_claude_md, 031 default-model bump (`claude-opus-4-8` → `claude-opus-5`, incl. the `[1m]` variant)
 
 ### Unit Tests — Infrastructure (72 tests)
 - **Main** (34 tests): Server startup, port discovery, git validation

@@ -39,7 +39,9 @@ Replace this with the specific objective the moment one is in flight.
 Settled, still-relevant choices no agent should reopen without flagging here. Long-lived
 architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
-- 2026-05-28 — Default model is `claude-opus-4-8` (migration 024). Locked.
+- 2026-07-25 — Default model is `claude-opus-5` (migration 031); Claude Opus 5, Opus 5 (1M)
+  and Claude Sonnet 5 added to `AVAILABLE_MODELS`. Supersedes the 2026-05-28 `claude-opus-4-8`
+  decision (that model stays selectable). Locked.
 - 2026-05-28 — Extended-thinking budget is 32000 tokens (`src/agent/session.py`). Locked.
 - 2026-05-28 — All item state transitions go through the `ItemState` FSM
   (`src/domain/item_state.py`); raw `(column_name, status)` writes outside the SM are a regression. Locked.
@@ -86,7 +88,7 @@ Docs reassessed 2026-06-06 (M3). No objective currently in flight. Since the M2 
 refresh the codebase added the **skills library**: a seventh service (`SkillsService`),
 migration 029 (`agent_config.enabled_skills`), the `/api/skills/*` endpoints, a Settings ▸
 Skills tab, and per-project skill delivery via the SDK `plugins=` option. Authoritative
-counts are now **30 migrations (001–030), 1174 tests (unit / integration /
+counts are now **31 migrations (001–031), 1174 tests (unit / integration /
 smoke), 7 services, 8 built-in MCP tools** (skills ship as plugins, not as an MCP tool).
 README, tests/README, CLAUDE.md, and all `AGENT_FILES/CARDS/` were re-audited against the
 code and corrected; a new `CARDS/SKILLS.md` card documents the subsystem and is wired into
@@ -96,6 +98,11 @@ Re-audit 2026-07-15 (`/review-agentic-setup`): migration `030`
 (`agent_config.ollama_load_claude_md`) landed and tests grew 1137 → 1174 — counts above
 refreshed; `src/constants.py` now also offers Claude Fable 5 as a selectable model while
 the default stays `claude-opus-4-8` per the locked decision.
+Model refresh 2026-07-25: **Claude Opus 5** (`claude-opus-5`, plus the `[1m]` variant) and
+**Claude Sonnet 5** (`claude-sonnet-5`, always 1M on the API — no `[1m]` variant exists) added
+to `AVAILABLE_MODELS`; `DEFAULT_MODEL` is now `claude-opus-5`, with migration `031` bumping
+existing `items` / `agent_config` rows off `claude-opus-4-8` (and its `[1m]` variant). Counts:
+**31 migrations (001–031), 1281 tests**.
 Refactor 2026-07-18 (branch `refactor/agent-session-contract`): the session layer was
 prepared for a second agent runtime (Kimi Agent SDK, not yet started). New
 `src/agent/base.py` (`AbstractAgentSession` + `AgentResult`) and `src/agent/profiles.py`
@@ -170,7 +177,7 @@ dependencies, autostart with the unmerged-creator auto-anchor, auto_approve,
 use_chrome. The Kimi board proxy's create_todo now posts there (richer schema);
 DASHBOARD_REPO plumbing removed (agent-created todos never set repo, matching the
 Claude path). Live-verified: a Kimi-created autostart todo was auto-anchored to its
-creator card with the dependency visible on the board. Tests **1277**.
+creator card with the dependency visible on the board. Tests **1281**.
 **Kimi parity roadmap complete** — no open Kimi items.
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.

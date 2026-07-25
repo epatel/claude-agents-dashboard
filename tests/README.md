@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (1277 tests across 47 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (30 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1281 tests across 47 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (31 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -99,7 +99,7 @@ tests/
 - **Annotation Summary** (2 tests) — Summary text generation
 
 ### 7. Infrastructure (143 tests)
-- **Migrations** (51 tests) — Runner, up/down, discovery, edge cases; per-migration data tests for 024 (default-model bump), 025 (use_chrome), 026 (api_error_status), 027 (remove +advisor), 028 (graphify config), 029 (enabled_skills)
+- **Migrations** (58 tests) — Runner, up/down, discovery, edge cases; per-migration data tests for 024 (default-model bump), 025 (use_chrome), 026 (api_error_status), 027 (remove +advisor), 028 (graphify config), 029 (enabled_skills), 031 (default-model bump to Opus 5)
 - **Main** (34 tests) — Server startup, port discovery, git validation
 - **Manage** (24 tests) — Migration CLI commands
 - **Path Validation** (14 tests) — Traversal prevention, null bytes, symlinks
@@ -135,7 +135,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 1277 tests
+# Run all 1281 tests
 ./run-tests.sh
 
 # Run specific test categories

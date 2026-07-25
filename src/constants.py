@@ -7,11 +7,14 @@ Constants for the agents dashboard application.
 # The "[1m]" suffix opts the spawned `claude` CLI into the optional 1M-token
 # context window (no API beta header needed via the Agent SDK; standard pricing).
 # Per Claude Code's model-config docs, the [1m] suffix applies only to
-# Opus 4.6+ and Sonnet 4.6. Fable 5 ALWAYS runs at 1M on the API, so it needs
-# no suffix (and the CLI does not expose a fable[1m] variant). Opus 4.5 and
-# Haiku 4.5 do not support 1M.
+# Opus 4.6+ and Sonnet 4.6. Fable 5 and Sonnet 5 ALWAYS run at 1M on the API, so
+# they need no suffix (and the CLI exposes no fable[1m]/sonnet-5[1m] variant).
+# Opus 4.5 and Haiku 4.5 do not support 1M.
 AVAILABLE_MODELS = [
     ("claude-fable-5", "Claude Fable 5", False),  # always 1M on the API
+    ("claude-opus-5", "Claude Opus 5", False),
+    ("claude-opus-5[1m]", "Claude Opus 5 (1M)", False),
+    ("claude-sonnet-5", "Claude Sonnet 5", False),  # always 1M on the API
     ("claude-sonnet-4-6", "Claude Sonnet 4.6", False),
     ("claude-sonnet-4-6[1m]", "Claude Sonnet 4.6 (1M)", False),
     ("claude-opus-4-8", "Claude Opus 4.8", False),
@@ -32,7 +35,7 @@ AVAILABLE_MODELS = [
 ]
 
 # Default model to use when none specified
-DEFAULT_MODEL = "claude-opus-4-8"
+DEFAULT_MODEL = "claude-opus-5"
 
 # Default Ollama base URL
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"

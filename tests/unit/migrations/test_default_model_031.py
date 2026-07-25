@@ -1,11 +1,12 @@
 """
-Unit tests for the Opus 4.8 default-model change.
+Unit tests for the Opus 5 default-model change.
 
 Covers:
-- claude-opus-4-8 stays selectable in the centralized constants (it is no longer
-  the default — see test_default_model_031.py).
-- Migration 024 bumps items / agent_config rows off the previous default
-  (claude-opus-4-7) to the new default, leaves other models alone, and reverts.
+- The centralized constants pin claude-opus-5 as the default and list it
+  (alongside the new Opus 5 1M and Sonnet 5 entries).
+- Migration 031 bumps items / agent_config rows off the previous default
+  (claude-opus-4-8, plus its [1m] variant) to the new default, leaves other
+  models alone, and reverts.
 """
 
 import importlib.util
@@ -16,29 +17,38 @@ import aiosqlite
 import pytest
 import pytest_asyncio
 
-from src.constants import AVAILABLE_MODELS
+from src.constants import AVAILABLE_MODELS, DEFAULT_MODEL
 
-OLD_DEFAULT = "claude-opus-4-7"
-NEW_DEFAULT = "claude-opus-4-8"
+OLD_DEFAULT = "claude-opus-4-8"
+NEW_DEFAULT = "claude-opus-5"
 
 
-def _load_migration_024():
-    """Import the real migration 024 module by file path and return its instance."""
+def _load_migration_031():
+    """Import the real migration 031 module by file path and return its instance."""
     versions = Path(__file__).resolve().parents[3] / "src" / "migrations" / "versions"
-    path = versions / "024_update_default_model_to_opus_4_8.py"
-    spec = importlib.util.spec_from_file_location("migration_024", path)
+    path = versions / "031_update_default_model_to_opus_5.py"
+    spec = importlib.util.spec_from_file_location("migration_031", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.UpdateDefaultModelToOpus48Migration()
+    return module.UpdateDefaultModelToOpus5Migration()
 
 
 @pytest.mark.unit
-class TestOpus48Constants:
-    """Opus 4.8 is still offered in the picker (the default moved on to Opus 5)."""
+class TestOpus5Constants:
+    """The default model points at Opus 5 and the new models are offered."""
 
-    def test_opus_4_8_is_available(self):
+    def test_default_model_is_opus_5(self):
+        assert DEFAULT_MODEL == NEW_DEFAULT
+
+    def test_new_models_are_available(self):
         ids = [m[0] for m in AVAILABLE_MODELS]
         assert NEW_DEFAULT in ids
+        assert "claude-opus-5[1m]" in ids
+        assert "claude-sonnet-5" in ids
+
+    def test_previous_default_stays_selectable(self):
+        ids = [m[0] for m in AVAILABLE_MODELS]
+        assert OLD_DEFAULT in ids
 
 
 @pytest_asyncio.fixture
@@ -49,9 +59,11 @@ async def seeded_db():
         conn.row_factory = aiosqlite.Row
         await conn.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, model TEXT)")
         await conn.execute("CREATE TABLE agent_config (id INTEGER PRIMARY KEY, model TEXT)")
-        # id 1: on the old default (should move). id 2: an explicit other model (untouched).
+        # id 1: old default (moves). id 2: explicit other model (untouched).
+        # id 3: old default's 1M variant (moves to the new 1M variant).
         await conn.execute("INSERT INTO items (id, model) VALUES (1, ?)", (OLD_DEFAULT,))
         await conn.execute("INSERT INTO items (id, model) VALUES (2, 'claude-sonnet-4-6')")
+        await conn.execute("INSERT INTO items (id, model) VALUES (3, 'claude-opus-4-8[1m]')")
         await conn.execute("INSERT INTO agent_config (id, model) VALUES (1, ?)", (OLD_DEFAULT,))
         await conn.execute("INSERT INTO agent_config (id, model) VALUES (2, 'claude-haiku-4-5-20251001')")
         await conn.commit()
@@ -65,22 +77,25 @@ async def _model(db, table, row_id):
 
 
 @pytest.mark.unit
-class TestMigration024:
-    """Migration 024 moves old-default rows forward and reverts cleanly."""
+class TestMigration031:
+    """Migration 031 moves old-default rows forward and reverts cleanly."""
 
     async def test_up_bumps_old_default_only(self, seeded_db):
-        await _load_migration_024().up(seeded_db)
+        await _load_migration_031().up(seeded_db)
         assert await _model(seeded_db, "items", 1) == NEW_DEFAULT
         assert await _model(seeded_db, "agent_config", 1) == NEW_DEFAULT
+        # The 1M opt-in is preserved across the bump.
+        assert await _model(seeded_db, "items", 3) == "claude-opus-5[1m]"
         # Explicit non-default choices are left alone.
         assert await _model(seeded_db, "items", 2) == "claude-sonnet-4-6"
         assert await _model(seeded_db, "agent_config", 2) == "claude-haiku-4-5-20251001"
 
     async def test_down_reverts(self, seeded_db):
-        migration = _load_migration_024()
+        migration = _load_migration_031()
         await migration.up(seeded_db)
         await migration.down(seeded_db)
         assert await _model(seeded_db, "items", 1) == OLD_DEFAULT
         assert await _model(seeded_db, "agent_config", 1) == OLD_DEFAULT
+        assert await _model(seeded_db, "items", 3) == "claude-opus-4-8[1m]"
         # Untouched rows stay untouched.
         assert await _model(seeded_db, "items", 2) == "claude-sonnet-4-6"

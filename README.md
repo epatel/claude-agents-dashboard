@@ -42,7 +42,7 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1277 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1281 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
 
 ## Try the demo
 
@@ -121,7 +121,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Cancel & cancel review** — cancel a running agent or discard review changes, clean up worktree/branch
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
-- **Per-item model selection** — choose between Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, and Claude Haiku 4.5 per item (falls back to global config)
+- **Per-item model selection** — choose between Claude Opus 5 (default), Claude Fable 5, Claude Sonnet 5, Opus 4.8/4.7/4.6/4.5, Claude Sonnet 4.6, and Claude Haiku 4.5 per item (falls back to global config)
 - **Auto-approve modes** — per-item setting to skip the manual review gate: OFF (lands in Review for a human), REVIEW (spawns a read-only review agent that auto-merges on approval or sends comments back to the original agent, capped at 3 round-trips), or DIRECT (auto-merge as soon as the agent finishes)
 - **Knowledge graph (graphify)** — the dashboard owns a navigable AST + optional semantic graph of the target project (`graphify-out/`); when enabled in Settings ▸ Graphify, agents get a read-only `graph_query` MCP tool to orient before editing, and the graph auto-refreshes after a merge (free AST build); managed via `/api/graphify/*` with live build-progress over WebSocket
 - **Skills library** — a dashboard-managed library of [Agent Skills](https://docs.claude.com/en/docs/claude-code/skills): browse Anthropic's public skills repo, or install any skill from a GitHub repo/path/URL via Settings ▸ Skills. Installed skills are stored in a gitignored `skill-library/` (each wrapped as a one-skill plugin) and enabled **per project**; enabled skills are delivered to agents through the SDK `plugins=` option so they load regardless of git/worktree/`setting_sources`. Managed via `/api/skills/*`
@@ -232,7 +232,7 @@ graph TB
 
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite, 7-service architecture (Workflow, Database, Notification, Git, Session, Graph, Skills) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~9,900 lines across 43 source files (excluding migrations)
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~9,600 lines JS + ~3,850 lines CSS
-- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 4.8 (default), Opus 4.7/4.6/4.5, Claude Sonnet 4.6, Claude Haiku 4.5, 8 built-in MCP tools (incl. read-only `graph_query`); installable Agent Skills delivered via `plugins=`; optional Ollama and Kimi providers (experimental — Kimi runs on a separate runtime: `kimi-agent-sdk` ACP client driving the `kimi` CLI)
+- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 5 (default), Claude Fable 5, Claude Sonnet 5, Opus 4.8/4.7/4.6/4.5, Claude Sonnet 4.6, Claude Haiku 4.5, 8 built-in MCP tools (incl. read-only `graph_query`); installable Agent Skills delivered via `plugins=`; optional Ollama and Kimi providers (experimental — Kimi runs on a separate runtime: `kimi-agent-sdk` ACP client driving the `kimi` CLI)
 - **Database**: SQLite with 29 versioned migrations (auto-runs on startup)
 - **Security**: Localhost only, no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
 
