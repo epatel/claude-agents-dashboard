@@ -29,6 +29,12 @@ logger = logging.getLogger(__name__)
 # Hard cap on auto-review return-trips before falling back to manual review.
 _MAX_AUTO_APPROVE_RETRIES = 3
 
+# Caps for the peek_worktree tool — a peek must stay cheap enough that an
+# agent can afford to call it before every shared-file edit.
+_PEEK_MAX_FILES_PER_ITEM = 40
+_PEEK_MAX_FILES_DETAIL = 200
+_PEEK_MAX_DIFF_LINES = 400
+
 
 class WorkflowService:
     """Coordinates workflows and state transitions between services."""
@@ -96,6 +102,10 @@ class WorkflowService:
             # for `requires`) instead of guessing from view_board. Threaded here so
             # it reaches every create_session call site in one place.
             "on_who_am_i": self._create_on_who_am_i_callback(item.get("id") if item else None),
+            # Peek tool: lets this agent read what the other running agents have
+            # changed in their worktrees, so parallel work converges instead of
+            # colliding at merge time.
+            "on_peek_worktree": self._create_on_peek_worktree_callback(item.get("id") if item else None),
         }
         # Epic-scoped shared plan: tasks are usually created under an epic, so
         # point the agent at that epic's plan file (derived from the epic title)
@@ -1440,6 +1450,142 @@ class WorkflowService:
                 lines.append("")
             return "\n".join(lines)
         return on_view_board
+
+    def _create_on_peek_worktree_callback(self, item_id: str):
+        """Callback backing the peek_worktree tool.
+
+        Closes over the caller's item_id so the peek can flag which of the
+        other agents' in-flight files collide with the caller's own.
+        """
+        async def on_peek_worktree(target_item_id: Optional[str] = None,
+                                   path: Optional[str] = None) -> str:
+            return await self.peek_worktree(item_id, target_item_id, path)
+        return on_peek_worktree
+
+    async def _active_worktree_items(self) -> List[Dict[str, Any]]:
+        """Board items whose worktree still exists on disk."""
+        items = await self.db.get_items_with_worktrees()
+        return [i for i in items if Path(i["worktree_path"]).exists()]
+
+    async def _changed_paths(self, item: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Changed files for one item's worktree; [] when git can't answer."""
+        try:
+            return await self.git.worktree_changes(
+                Path(item["worktree_path"]),
+                item.get("branch_name") or "HEAD",
+                base_branch=item.get("base_branch"),
+                base_commit=item.get("base_commit"),
+            )
+        except Exception as e:
+            logger.warning(f"peek_worktree: could not read {item.get('id')}: {e}")
+            return []
+
+    def _peek_item_header(self, item: Dict[str, Any]) -> str:
+        status = f" [{item['status']}]" if item.get("status") else ""
+        repo = f" repo={item['repo']}" if item.get("repo") else ""
+        branch = item.get("branch_name") or "?"
+        return (
+            f"## [{item.get('id')}] {item.get('title', '')}"
+            f" ({item.get('column_name')}{status}) branch={branch}{repo}"
+        )
+
+    async def peek_worktree(self, self_item_id: Optional[str],
+                            target_item_id: Optional[str] = None,
+                            path: Optional[str] = None) -> str:
+        """Render another agent's in-flight worktree changes as text."""
+        active = await self._active_worktree_items()
+        by_id = {i["id"]: i for i in active}
+
+        own_paths: set = set()
+        if self_item_id and self_item_id in by_id:
+            own_paths = {f["path"] for f in await self._changed_paths(by_id[self_item_id])}
+
+        if target_item_id:
+            item = by_id.get(target_item_id)
+            if not item:
+                known = ", ".join(i["id"] for i in active if i["id"] != self_item_id)
+                return (
+                    f"No active worktree for item {target_item_id}. "
+                    f"Worktrees on disk right now: {known or '(none)'}."
+                )
+            if path:
+                return await self._peek_file_diff(item, path)
+            files = await self._changed_paths(item)
+            lines = [self._peek_item_header(item), f"{len(files)} changed file(s)"]
+            for f in files[:_PEEK_MAX_FILES_DETAIL]:
+                mark = "  <-- YOU ARE ALSO CHANGING THIS" if f["path"] in own_paths else ""
+                lines.append(f"  {f['status']} {f['path']}{mark}")
+            if len(files) > _PEEK_MAX_FILES_DETAIL:
+                lines.append(f"  ... and {len(files) - _PEEK_MAX_FILES_DETAIL} more")
+            lines.append("")
+            lines.append(
+                f"For the actual diff of one file: peek_worktree(item_id=\"{item['id']}\", "
+                "path=\"<file>\")."
+            )
+            return "\n".join(lines)
+
+        others = [i for i in active if i["id"] != self_item_id]
+        if not others:
+            return (
+                "No other agent has a worktree on disk right now — nothing in "
+                "flight to collide with."
+            )
+
+        lines: List[str] = []
+        overlaps: Dict[str, List[str]] = {}
+        for item in others:
+            files = await self._changed_paths(item)
+            shared = [f["path"] for f in files if f["path"] in own_paths]
+            if shared:
+                overlaps[item["id"]] = shared
+            lines.append(self._peek_item_header(item))
+            if not files:
+                lines.append("  (no changes yet)")
+            for f in files[:_PEEK_MAX_FILES_PER_ITEM]:
+                mark = "  <-- YOU ARE ALSO CHANGING THIS" if f["path"] in shared else ""
+                lines.append(f"  {f['status']} {f['path']}{mark}")
+            if len(files) > _PEEK_MAX_FILES_PER_ITEM:
+                lines.append(f"  ... and {len(files) - _PEEK_MAX_FILES_PER_ITEM} more")
+            lines.append("")
+
+        header = [f"Active worktrees besides yours: {len(others)}"]
+        if overlaps:
+            header.append("")
+            header.append("CONFLICT RISK - files you and another agent are both changing:")
+            for other_id, shared in overlaps.items():
+                header.append(f"  [{other_id}] {', '.join(shared)}")
+            header.append(
+                "Read their version before you edit further (peek_worktree with "
+                "item_id + path), and keep your change compatible or narrow it."
+            )
+        header.append("")
+        return "\n".join(header + lines).rstrip() + (
+            "\n\nFull file list: peek_worktree(item_id=\"<id>\"). "
+            "One file's diff: peek_worktree(item_id=\"<id>\", path=\"<file>\")."
+        )
+
+    async def _peek_file_diff(self, item: Dict[str, Any], path: str) -> str:
+        """One file's diff from another agent's worktree, capped."""
+        try:
+            diff = await self.git.worktree_path_diff(
+                Path(item["worktree_path"]), path,
+                base_branch=item.get("base_branch"),
+                base_commit=item.get("base_commit"),
+            )
+        except ValueError as e:
+            return f"Invalid path {path!r}: {e}"
+        except Exception as e:
+            logger.warning(f"peek_worktree: diff failed for {item.get('id')}/{path}: {e}")
+            return f"Could not read {path} from item {item['id']}: {e}"
+
+        header = f"{self._peek_item_header(item)}\nFile: {path}\n"
+        if not diff.strip():
+            return header + "(no changes to this file in that worktree)"
+        diff_lines = diff.split("\n")
+        if len(diff_lines) > _PEEK_MAX_DIFF_LINES:
+            diff = "\n".join(diff_lines[:_PEEK_MAX_DIFF_LINES])
+            diff += f"\n... diff truncated ({len(diff_lines) - _PEEK_MAX_DIFF_LINES} more lines)"
+        return header + diff
 
     def _create_on_graph_query_callback(self):
         async def on_graph_query(question: str) -> str:

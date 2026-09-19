@@ -140,6 +140,7 @@ class ClaudeAgentSession(AbstractAgentSession):
         on_request_tool=None,
         on_view_board=None,
         on_who_am_i=None,
+        on_peek_worktree=None,
         on_delete_todo=None,
         on_create_epic=None,
         on_create_shortcut=None,
@@ -192,6 +193,7 @@ class ClaudeAgentSession(AbstractAgentSession):
         self.on_request_tool = on_request_tool      # async callback(tool_name: str, reason: str) -> str
         self.on_view_board = on_view_board          # async callback() -> str
         self.on_who_am_i = on_who_am_i              # async callback() -> dict (this agent's own item)
+        self.on_peek_worktree = on_peek_worktree    # async callback(item_id, path) -> str (other agents' worktrees)
         self.on_graph_query = on_graph_query        # async callback(question: str) -> str
         self.graphify_enabled = graphify_enabled    # expose graph_query tool to the agent
         self.on_delete_todo = on_delete_todo        # async callback(item_id: str) -> str
@@ -232,6 +234,9 @@ class ClaudeAgentSession(AbstractAgentSession):
         if self.on_who_am_i:
             from .who_am_i import create_who_am_i_server
             mcp_servers["who_am_i"] = create_who_am_i_server(self.on_who_am_i)
+        if self.on_peek_worktree:
+            from .peek_worktree import create_peek_worktree_server
+            mcp_servers["peek_worktree"] = create_peek_worktree_server(self.on_peek_worktree)
         if self.on_create_shortcut:
             from .shortcut import create_shortcut_server
             mcp_servers["shortcut"] = create_shortcut_server(self.on_create_shortcut)
@@ -309,6 +314,21 @@ class ClaudeAgentSession(AbstractAgentSession):
                 "item details (title, column, dependencies). Use this ID when a follow-up "
                 "task must wait for you — pass it in the `requires` field of create_todo. "
                 "You never need to guess which card is yours from view_board."
+            )
+        peek_note = ""
+        if "peek_worktree" in mcp_servers:
+            peek_note = (
+                "\n\nOTHER AGENTS ARE WORKING IN PARALLEL, each in its own git worktree "
+                "forked from the same base. You cannot read their files directly, but "
+                "mcp__peek_worktree__peek_worktree shows you what they have changed so "
+                "far: call it with no arguments for every active worktree (files that "
+                "collide with yours are flagged), with item_id for one agent's full file "
+                "list, and with item_id + path for that agent's diff of a single file. "
+                "Peek BEFORE you start editing a file that is likely shared (config, "
+                "router, schema, shared module) and again before you finish. If another "
+                "agent is already changing a file you need, match their direction, keep "
+                "your edit narrow, or ask the user via mcp__clarification__ask_user — a "
+                "merge conflict found now is far cheaper than one found at merge time."
             )
         clarify_note = (
             "\n\nIMPORTANT: If you need to ask the user a question or need clarification, "
@@ -480,7 +500,7 @@ class ClaudeAgentSession(AbstractAgentSession):
                 except Exception as e:
                     logger.warning(f"Could not check for epic plan at {plan_root}: {e}")
 
-        full_system_prompt = (self.system_prompt or "") + cwd_note + board_item_note + multi_repo_note + shared_plan_note + epic_plan_note + clarify_note + commit_note + lifecycle_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note + claude_md_note
+        full_system_prompt = (self.system_prompt or "") + cwd_note + board_item_note + peek_note + multi_repo_note + shared_plan_note + epic_plan_note + clarify_note + commit_note + lifecycle_note + todo_note + brainstorm_note + debug_note + command_note + tool_note + browser_note + graph_note + claude_md_note
 
         # Configure allowed MCP tools
         allowed_tools = []
@@ -500,6 +520,8 @@ class ClaudeAgentSession(AbstractAgentSession):
             allowed_tools.append("mcp__board_view__view_board")
         if "who_am_i" in mcp_servers:
             allowed_tools.append("mcp__who_am_i__who_am_i")
+        if "peek_worktree" in mcp_servers:
+            allowed_tools.append("mcp__peek_worktree__peek_worktree")
         if "shortcut" in mcp_servers:
             allowed_tools.append("mcp__shortcut__create_shortcut")
         if "graph_query" in mcp_servers:
@@ -507,7 +529,7 @@ class ClaudeAgentSession(AbstractAgentSession):
 
         # Allow all tools from external MCP servers (using wildcard for each server)
         for server_name, server_config in mcp_servers.items():
-            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view", "who_am_i", "shortcut", "graph_query"]:  # Skip our built-in servers
+            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view", "who_am_i", "peek_worktree", "shortcut", "graph_query"]:  # Skip our built-in servers
                 allowed_tools.append(f"mcp__{server_name}__*")
                 logger.info(f"Allowing all tools from external MCP server: {server_name}")
 
@@ -588,7 +610,7 @@ class ClaudeAgentSession(AbstractAgentSession):
         # Collect external MCP server prefixes (SDK wildcards don't work)
         external_mcp_prefixes = []
         for server_name, server_config in mcp_servers.items():
-            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view", "shortcut"]:
+            if server_name not in ["clarification", "todo", "commit_message", "command_access", "tool_access", "board_view", "who_am_i", "peek_worktree", "shortcut", "graph_query"]:
                 external_mcp_prefixes.append(f"mcp__{server_name}__")
 
         # Build can_use_tool callback to allow plugin and external MCP tools

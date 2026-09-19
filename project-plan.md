@@ -42,6 +42,10 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 - 2026-07-25 — Default model is `claude-opus-5` (migration 031); Claude Opus 5, Opus 5 (1M)
   and Claude Sonnet 5 added to `AVAILABLE_MODELS`. Supersedes the 2026-05-28 `claude-opus-4-8`
   decision (that model stays selectable). Locked.
+- 2026-09-19 — Agents peek at each other's worktrees through the dashboard, never the
+  filesystem: the `peek_worktree` MCP tool calls back into `WorkflowService.peek_worktree`,
+  which runs the git reads via `GitService`. The `path_guard` hook stays as strict as it
+  was — no agent is granted read access outside its own worktree. Locked.
 - 2026-05-28 — Extended-thinking budget is 32000 tokens (`src/agent/session.py`). Locked.
 - 2026-05-28 — All item state transitions go through the `ItemState` FSM
   (`src/domain/item_state.py`); raw `(column_name, status)` writes outside the SM are a regression. Locked.
@@ -179,6 +183,9 @@ DASHBOARD_REPO plumbing removed (agent-created todos never set repo, matching th
 Claude path). Live-verified: a Kimi-created autostart todo was auto-anchored to its
 creator card with the dependency visible on the board. Tests **1281**.
 **Kimi parity roadmap complete** — no open Kimi items.
+
+2026-09-19 — **Cross-worktree peek** landed: a `peek_worktree` MCP tool (`src/agent/peek_worktree.py`) lets a running agent see what the other agents have changed before their work merges. Three shapes: no args → every active worktree with files that overlap the caller's own flagged under a CONFLICT RISK header; `item_id` → that agent's full file list; `item_id` + `path` → that file's diff (capped at 400 lines). Rendering lives in `WorkflowService.peek_worktree`, the git reads in `GitService.worktree_changes` / `worktree_path_diff`, and the rows come from the new `DatabaseService.get_items_with_worktrees` (`get_all_items` projects away the git columns). Threaded to every spawn site through `_item_session_kwargs`; the system prompt tells agents to peek before editing likely-shared files. Kimi parity via `GET /api/items/{id}/peek` → `orchestrator.peek_worktree`. Tests **1308**.
+
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.
 

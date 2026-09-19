@@ -160,12 +160,13 @@ class TestStartConfiguresChrome:
 class TestItemSessionKwargs:
     async def _kwargs(self, item):
         # git with no `repos` attr => single-repo mode (no multi-repo kwargs).
-        # _item_session_kwargs also builds the who_am_i callback, so the fake
-        # needs that factory method. Items here carry no epic_id, so the epic
+        # _item_session_kwargs also builds the who_am_i and peek_worktree
+        # callbacks, so the fake needs those factory methods. Items here carry no epic_id, so the epic
         # lookup is skipped and no `epics` attr is required.
         fake = SimpleNamespace(
             git=SimpleNamespace(),
             _create_on_who_am_i_callback=lambda item_id: None,
+            _create_on_peek_worktree_callback=lambda item_id: None,
         )
         return await WorkflowService._item_session_kwargs(fake, item)
 

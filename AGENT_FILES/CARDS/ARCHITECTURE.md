@@ -33,6 +33,7 @@ Claude SDK integration plus built-in MCP tool servers and PreToolUse hooks. One 
 - `todo.py` — `create_todo` / `create_epic` / `delete_todo`
 - `board_view.py` — `view_board`
 - `who_am_i.py` — `who_am_i` (returns the agent's OWN item — id, title, column, deps — so it can self-reference in `requires` without guessing from `view_board`)
+- `peek_worktree.py` — `peek_worktree` (read-only look at what the OTHER running agents have changed in their worktrees — summary with overlap flags, one agent's file list, or one file's diff; backed by `GitService.worktree_changes` / `worktree_path_diff` so the agent never reads outside its own worktree)
 - `commit_message.py` — `set_commit_message`
 - `command_access.py` — `request_command_access`
 - `tool_access.py` — `request_tool_access`

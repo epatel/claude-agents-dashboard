@@ -111,6 +111,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items; supports `requires` parameter to declare dependencies between items and `auto_start` to automatically launch agents when dependencies are resolved
 - **Custom commit messages** — agents set meaningful commit messages via MCP tool, used when merging
 - **Board introspection** — agents can view the current board state (all items by column) via the `view_board` MCP tool to understand project context
+- **Cross-worktree peek** — agents running in parallel can see what the others are changing *before* it merges, via the read-only `peek_worktree` MCP tool: a summary of every active worktree with the files that collide with the caller's own flagged, one agent's full file list, or one file's diff. Cuts merge conflicts in fan-out runs
 - **Tool access requests** — agents can request permission to use optional built-in tools (WebSearch, WebFetch) at runtime via the `request_tool_access` MCP tool with user approval prompt
 - **Done column day grouping** — completed items grouped by day (Today, Yesterday, etc.) with collapsible sections, compact title lists, and bulk archive per day group
 - **Stats dashboard** — real-time header bar showing total cost, token usage, active agents, and items completed today; auto-refreshes every 10 seconds and on WebSocket events
@@ -194,6 +195,8 @@ graph TB
         CommitTool["set_commit_message"]
         CmdAccess["request_command_access"]
         BoardView["view_board"]
+        WhoAmI["who_am_i"]
+        Peek["peek_worktree"]
         ToolAccess["request_tool_access"]
         ShortcutTool["create_shortcut"]
         GraphQuery["graph_query"]
@@ -232,7 +235,7 @@ graph TB
 
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite, 7-service architecture (Workflow, Database, Notification, Git, Session, Graph, Skills) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~9,900 lines across 43 source files (excluding migrations)
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~9,600 lines JS + ~3,850 lines CSS
-- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 5 (default), Claude Fable 5, Claude Sonnet 5, Opus 4.8/4.7/4.6/4.5, Claude Sonnet 4.6, Claude Haiku 4.5, 8 built-in MCP tools (incl. read-only `graph_query`); installable Agent Skills delivered via `plugins=`; optional Ollama and Kimi providers (experimental — Kimi runs on a separate runtime: `kimi-agent-sdk` ACP client driving the `kimi` CLI)
+- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 5 (default), Claude Fable 5, Claude Sonnet 5, Opus 4.8/4.7/4.6/4.5, Claude Sonnet 4.6, Claude Haiku 4.5, 10 built-in MCP tools (incl. read-only `graph_query` and `peek_worktree`); installable Agent Skills delivered via `plugins=`; optional Ollama and Kimi providers (experimental — Kimi runs on a separate runtime: `kimi-agent-sdk` ACP client driving the `kimi` CLI)
 - **Database**: SQLite with 29 versioned migrations (auto-runs on startup)
 - **Security**: Localhost only, no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
 

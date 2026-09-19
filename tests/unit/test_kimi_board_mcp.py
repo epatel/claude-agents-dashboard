@@ -42,6 +42,8 @@ class StubDashboardHandler(BaseHTTPRequestHandler):
         self._record()
         if self.path == "/api/items":
             self._reply(ITEMS)
+        elif self.path.startswith("/api/items/self-1/peek"):
+            self._reply({"text": "peek result"})
         else:
             self._reply({"detail": "Not Found"}, status=404)
 
@@ -121,8 +123,19 @@ class TestBoardMcpServer:
         tools = mcp.request("tools/list")["result"]["tools"]
         assert {t["name"] for t in tools} == {
             "create_todo", "delete_todo", "create_epic",
-            "create_shortcut", "view_board", "who_am_i",
+            "create_shortcut", "view_board", "who_am_i", "peek_worktree",
         }
+
+    def test_peek_worktree_without_args_hits_the_peek_endpoint(self, mcp):
+        resp = mcp.call("peek_worktree")
+        assert resp["result"]["content"][0]["text"] == "peek result"
+        method, path, _ = StubDashboardHandler.requests[-1]
+        assert (method, path) == ("GET", "/api/items/self-1/peek")
+
+    def test_peek_worktree_forwards_item_id_and_path(self, mcp):
+        mcp.call("peek_worktree", {"item_id": "other-2", "path": "src/a.py"})
+        _, path, _ = StubDashboardHandler.requests[-1]
+        assert path == "/api/items/self-1/peek?target_item_id=other-2&path=src%2Fa.py"
 
     def test_create_todo_posts_to_agent_todos_endpoint(self, mcp):
         resp = mcp.call("create_todo", {"title": "New task", "description": "details"})
@@ -184,6 +197,6 @@ class TestBoardMcpServer:
             assert resp["result"]["isError"] is True
             assert "Board tool failed" in resp["result"]["content"][0]["text"]
             follow_up = proc.request("tools/list")  # server still alive
-            assert len(follow_up["result"]["tools"]) == 6
+            assert len(follow_up["result"]["tools"]) == 7
         finally:
             proc.close()

@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1281 tests
+./run-tests.sh              # Run all 1308 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -56,7 +56,8 @@ tests/
 │   ├── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
 │   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
-│   ├── test_routes.py               # HTTP endpoint tests (114 tests)
+│   ├── test_peek_worktree.py        # peek_worktree tool, git reads, rendering (23 tests)
+│   ├── test_routes.py               # HTTP endpoint tests (116 tests)
 │   ├── test_base.py                 # AbstractAgentSession contract (4 tests)
 │   ├── test_kimi_board_mcp.py       # Kimi board-tools stdio MCP proxy (10 tests)
 │   ├── test_kimi_session.py         # KimiAgentSession over ACP (experimental) (57 tests)

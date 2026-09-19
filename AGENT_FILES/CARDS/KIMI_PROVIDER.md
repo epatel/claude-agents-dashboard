@@ -69,7 +69,8 @@ work log — both live-verified):
 stdlib-only stdio MCP server declared in the ACP session's `mcpServers` —
 the Kimi runtime spawns it (with the venv's `sys.executable`), and it
 proxies `create_todo` / `delete_todo` / `create_epic` / `create_shortcut` /
-`view_board` / `who_am_i` to the dashboard's HTTP API. `main.py` publishes
+`view_board` / `who_am_i` / `peek_worktree` (via `GET
+/api/items/{id}/peek`) to the dashboard's HTTP API. `main.py` publishes
 the server's own base URL as `DASHBOARD_BASE_URL`; the proxy also gets
 `DASHBOARD_ITEM_ID` (who_am_i + creator attribution). Tools surface to the
 agent as `mcp__board__*`. `create_todo` has **full Claude-path parity**: it

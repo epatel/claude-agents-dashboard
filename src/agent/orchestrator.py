@@ -107,6 +107,11 @@ class AgentOrchestrator:
         """Create a todo on behalf of an agent (full create_todo semantics)."""
         return await self.workflow_service.create_agent_todo(creator_item_id, **kwargs)
 
+    async def peek_worktree(self, item_id: str, target_item_id: str | None = None,
+                            path: str | None = None) -> str:
+        """Read-only view of what other agents changed in their worktrees."""
+        return await self.workflow_service.peek_worktree(item_id, target_item_id, path)
+
     async def approve_item(self, item_id: str) -> Dict[str, Any]:
         """Approve a reviewed item — merge back into the base branch."""
         return await self.workflow_service.approve_item(item_id)

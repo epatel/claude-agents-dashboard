@@ -231,6 +231,30 @@ class TestCreateAgentTodo:
         assert kwargs["auto_approve"] == 0
 
 
+class TestPeekWorktrees:
+    @pytest.mark.asyncio
+    async def test_delegates_to_orchestrator(self, client_with_item):
+        client, app = client_with_item
+        app.state.orchestrator.peek_worktree = AsyncMock(return_value="peek text")
+        resp = await client.get(
+            "/api/items/item001/peek",
+            params={"target_item_id": "other1", "path": "src/a.py"},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"text": "peek text"}
+        app.state.orchestrator.peek_worktree.assert_awaited_once_with(
+            "item001", "other1", "src/a.py"
+        )
+
+    @pytest.mark.asyncio
+    async def test_params_default_to_none(self, client_with_item):
+        client, app = client_with_item
+        app.state.orchestrator.peek_worktree = AsyncMock(return_value="summary")
+        resp = await client.get("/api/items/item001/peek")
+        assert resp.status_code == 200
+        app.state.orchestrator.peek_worktree.assert_awaited_once_with("item001", None, None)
+
+
 class TestListItems:
     @pytest.mark.asyncio
     async def test_list_items_empty(self, client):

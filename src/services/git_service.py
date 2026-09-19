@@ -2,11 +2,19 @@
 
 import asyncio
 import logging
+import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
 
 from ..git.worktree import create_worktree, cleanup_worktree
-from ..git.operations import merge_branch, rebase_branch, run_git
+from ..git.operations import (
+    merge_branch,
+    rebase_branch,
+    run_git,
+    get_changed_files,
+    get_main_branch,
+    validate_file_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -146,3 +154,57 @@ class GitService:
             except Exception as e:
                 logger.warning(f"Failed to clean up git resources: {e}")
                 # Don't re-raise - we want to continue with other cleanup
+
+    # --- Read-only inspection (backs the agents' peek_worktree tool) ---
+
+    async def worktree_changes(self, worktree_path: Path, branch_name: str,
+                               base_branch: Optional[str] = None,
+                               base_commit: Optional[str] = None) -> list[dict]:
+        """Changed files in a worktree vs. the commit it was forked from.
+
+        Committed and uncommitted changes both count — an agent that has not
+        committed yet is still holding those files. Same shape as the review
+        dialog's file list: [{"status", "status_label", "path"}].
+        """
+        return await get_changed_files(
+            worktree_path, branch_name, base=base_branch,
+            worktree_path=worktree_path, base_commit=base_commit,
+        )
+
+    async def worktree_path_diff(self, worktree_path: Path, rel_path: str,
+                                 base_branch: Optional[str] = None,
+                                 base_commit: Optional[str] = None) -> str:
+        """Diff of a single file in a worktree, base vs. working tree.
+
+        `git diff <base> -- <path>` compares the base commit against the working
+        directory, so committed and uncommitted edits show up together. Raises
+        ValueError for paths that fail validation.
+        """
+        rel = validate_file_path(rel_path)
+        diff_base = base_commit or base_branch
+        if diff_base is None:
+            diff_base = await get_main_branch(worktree_path)
+        try:
+            diff = await run_git(worktree_path, "diff", diff_base, "--", rel)
+        except subprocess.CalledProcessError:
+            diff = ""
+        if diff.strip():
+            return diff
+
+        # Untracked file: git diff says nothing about it, so synthesize an add.
+        full_path = (worktree_path / rel).resolve()
+        root = worktree_path.resolve()
+        if not str(full_path).startswith(str(root) + "/"):
+            return ""
+        try:
+            if full_path.is_file():
+                content = await asyncio.to_thread(full_path.read_text, errors="replace")
+                lines = content.split("\n")
+                body = "\n".join(f"+{line}" for line in lines)
+                return (
+                    f"diff --git a/{rel} b/{rel}\nnew file mode 100644\n"
+                    f"--- /dev/null\n+++ b/{rel}\n@@ -0,0 +1,{len(lines)} @@\n{body}"
+                )
+        except Exception as e:
+            logger.warning(f"Could not read untracked file {full_path}: {e}")
+        return ""

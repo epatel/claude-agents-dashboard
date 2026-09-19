@@ -69,6 +69,22 @@ class DatabaseService:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
+    async def get_items_with_worktrees(self) -> List[Dict[str, Any]]:
+        """Full rows for every item that has a worktree recorded.
+
+        get_all_items() projects only the board columns; the peek_worktree tool
+        needs the git fields (worktree_path, branch_name, base_branch,
+        base_commit), so it reads through here instead.
+        """
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT * FROM items"
+                " WHERE worktree_path IS NOT NULL AND worktree_path != ''"
+                " ORDER BY column_name, position"
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
     async def shift_positions_in_column(
         self, column_name: str, from_position: int, exclude_id: str
     ) -> None:

@@ -18,6 +18,7 @@ tools/list / tools/call.
 import json
 import os
 import sys
+import urllib.parse
 import urllib.request
 
 BASE_URL = os.environ.get("DASHBOARD_BASE_URL", "").rstrip("/")
@@ -102,6 +103,23 @@ TOOLS = [
         "description": "Return the board card this agent is working on (your own item).",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "peek_worktree",
+        "description": (
+            "See what OTHER agents are changing in their worktrees before their work "
+            "is merged. No arguments: every active worktree, with files that collide "
+            "with yours flagged. item_id: that agent's full file list. item_id + path: "
+            "that agent's diff for one file."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "item_id": {"type": "string"},
+                "path": {"type": "string"},
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -160,6 +178,15 @@ def call_tool(name, args):
             for i in _items()
         ]
         return "\n".join(lines) if lines else "(board is empty)"
+    if name == "peek_worktree":
+        query = {}
+        if args.get("item_id"):
+            query["target_item_id"] = args["item_id"]
+        if args.get("path"):
+            query["path"] = args["path"]
+        qs = f"?{urllib.parse.urlencode(query)}" if query else ""
+        data = _http("GET", f"/api/items/{ITEM_ID}/peek{qs}")
+        return (data or {}).get("text") or "(no worktree information available)"
     if name == "who_am_i":
         for i in _items():
             if i.get("id") == ITEM_ID:

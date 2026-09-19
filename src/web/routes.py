@@ -802,6 +802,21 @@ async def get_item_diff(request: Request, item_id: str):
     return {"diff": diff, "files": files}
 
 
+@router.get("/api/items/{item_id}/peek")
+async def peek_worktrees(request: Request, item_id: str,
+                         target_item_id: Optional[str] = None,
+                         path: Optional[str] = None):
+    """Read-only peek at other agents' in-flight worktree changes.
+
+    Backs the Kimi runtime's `peek_worktree` board tool (which reaches the
+    dashboard over HTTP rather than through an in-process MCP server); the
+    Claude runtime calls the same code directly via the SDK tool.
+    """
+    orchestrator = request.app.state.orchestrator
+    text = await orchestrator.peek_worktree(item_id, target_item_id, path)
+    return {"text": text}
+
+
 @router.get("/api/items/{item_id}/files/{file_path:path}")
 async def get_item_file(request: Request, item_id: str, file_path: str):
     db = request.app.state.db
