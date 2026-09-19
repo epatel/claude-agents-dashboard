@@ -12,7 +12,7 @@
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed and runs `pytest`. Tests use `pytest-asyncio` in auto mode. Database has 31 migrations (001–031).
+The script creates a venv if needed, installs **both** `requirements.txt` (runtime) and `requirements-test.txt` (pytest, pytest-asyncio, pytest-cov, httpx), then runs `pytest`. Running the dashboard via `run.sh` installs only the runtime file, so test deps stay out of an app-only venv — a new test dependency goes in `requirements-test.txt`. Tests use `pytest-asyncio` in auto mode. Database has 31 migrations (001–031).
 
 ## Test Structure
 

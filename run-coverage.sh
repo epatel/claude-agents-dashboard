@@ -11,6 +11,7 @@ fi
 
 # Install/update dependencies
 "$VENV_DIR/bin/pip" install -q -r "$SCRIPT_DIR/requirements.txt"
+"$VENV_DIR/bin/pip" install -q -r "$SCRIPT_DIR/requirements-test.txt"
 
 cd "$SCRIPT_DIR"
 

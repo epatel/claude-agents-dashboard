@@ -160,18 +160,26 @@ class TestConfigurationAndEnvironment:
     """Test basic configuration and environment setup."""
 
     def test_requirements_consistency(self):
-        """Test that requirements.txt exists and contains expected packages."""
+        """Runtime deps in requirements.txt, test deps in requirements-test.txt.
+
+        The split is deliberate: running the dashboard should not install
+        pytest. The test/coverage runners install both files.
+        """
         requirements_file = Path("requirements.txt")
         assert requirements_file.exists()
 
         content = requirements_file.read_text()
-        required_packages = [
-            "fastapi", "uvicorn", "aiosqlite", "claude-agent-sdk",
-            "pytest", "pytest-asyncio"
-        ]
-
-        for package in required_packages:
+        for package in ["fastapi", "uvicorn", "aiosqlite", "claude-agent-sdk"]:
             assert package in content, f"Required package {package} not found in requirements.txt"
+
+        test_requirements_file = Path("requirements-test.txt")
+        assert test_requirements_file.exists()
+
+        test_content = test_requirements_file.read_text()
+        for package in ["pytest", "pytest-asyncio", "httpx"]:
+            assert package in test_content, (
+                f"Test package {package} not found in requirements-test.txt"
+            )
 
     def test_test_directory_structure(self):
         """Test that test directories are properly structured."""

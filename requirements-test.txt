@@ -1,46 +1,13 @@
-# Testing Dependencies for Claude Agents Dashboard
+# Test dependencies for the Claude Agents Dashboard.
+#
+# Installed on top of requirements.txt by run-tests.sh / run-coverage.sh /
+# run-e2e-coverage.sh (and `make setup`). Running the dashboard itself does
+# not need any of these, which is why they live in their own file.
+#
+# Keep this list to what the suite actually imports or loads — an entry no
+# test uses is an entry that rots.
 
-# Core testing framework
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-pytest-cov>=4.1.0
-pytest-mock>=3.11.0
-pytest-xdist>=3.3.0  # For parallel test execution
-
-# HTTP testing
-httpx>=0.24.0  # For async HTTP client testing
-requests>=2.31.0  # For sync HTTP testing
-
-# WebSocket testing
-websockets>=11.0.0
-pytest-websockets>=0.1.0
-
-# Database testing
-aiosqlite>=0.19.0
-
-# Mock and fixtures
-factory-boy>=3.3.0  # For creating test data
-faker>=19.0.0  # For generating fake data
-responses>=0.23.0  # For mocking HTTP requests
-
-# Performance testing
-pytest-benchmark>=4.0.0
-memory-profiler>=0.61.0
-
-# Code quality
-flake8>=6.0.0
-black>=23.7.0
-isort>=5.12.0
-mypy>=1.5.0
-
-# Security testing
-bandit>=1.7.0
-safety>=2.3.0
-
-# Coverage reporting
-coverage[toml]>=7.3.0
-
-# Test utilities
-freezegun>=1.2.0  # For mocking time
-pytest-timeout>=2.1.0  # For test timeouts
-pytest-randomly>=3.13.0  # For randomizing test order
+pytest>=8.0.0
+pytest-asyncio>=0.23.0   # asyncio_mode=auto (pytest.ini)
+pytest-cov>=4.0.0        # --cov in run-coverage.sh / run-e2e-coverage.sh
+httpx>=0.24.0            # AsyncClient + ASGITransport in the route tests
