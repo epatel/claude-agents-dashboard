@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
-<script>window.__MODEL_NAMES__ = { {% for model_id, display_name, _ in available_models %}'{{ model_id }}': '{{ display_name }}'{% if not loop.last %}, {% endif %}{% endfor %} };
-window.__ANTHROPIC_MODEL_IDS__ = new Set([{% for model_id, _, _ in available_models %}'{{ model_id }}'{% if not loop.last %}, {% endif %}{% endfor %}]);
+<script>window.__MODEL_NAMES__ = { {% for model_id, display_name, _ in available_models %}{{ model_id|tojson }}: {{ display_name|tojson }}{% if not loop.last %}, {% endif %}{% endfor %} };
+window.__ANTHROPIC_MODEL_IDS__ = new Set([{% for model_id, _, _ in available_models %}{{ model_id|tojson }}{% if not loop.last %}, {% endif %}{% endfor %}]);
 window.__EXPERIMENTAL__ = {{ 'true' if experimental else 'false' }};
 window.__DEFAULT_MODEL__ = '{{ default_model }}';
 window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>

@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..config import TEMPLATES_DIR, STATIC_DIR, DEFAULT_HOST, DEFAULT_PORT, MAX_PORT_TRIES
+from .. import model_catalog
 from ..database import Database
 from ..domain.item_state import UnknownStateEncoding, from_columns
 from ..agent.orchestrator import AgentOrchestrator
@@ -136,6 +137,9 @@ async def lifespan(app: FastAPI):
     # Start periodic stale worktree checker
     check_task = asyncio.create_task(_periodic_stale_check(app.state.orchestrator))
 
+    # Keep the selectable model list in sync with the published feed
+    models_task = asyncio.create_task(model_catalog.periodic_refresh())
+
     # Start WebSocket heartbeat to detect and clean up dead connections
     app.state.ws_manager.start_heartbeat()
 
@@ -143,6 +147,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown: cancel periodic task, stop heartbeat, and stop all agents
     check_task.cancel()
+    models_task.cancel()
     app.state.ws_manager.stop_heartbeat()
     await app.state.orchestrator.shutdown()
 

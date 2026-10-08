@@ -122,7 +122,7 @@ every interpretation.
 
 ### Architecture
 
-- `constants.py` — `AVAILABLE_MODELS` list uses `(model_id, display_name, experimental)` tuples; Ollama models are discovered dynamically at runtime
+- `model_catalog.py` — `get_available_models()` returns `(model_id, display_name, experimental)` tuples: Claude and Kimi entries refreshed from the published feed (`constants.MODEL_LIST_URL`; bundled `FALLBACK_CLAUDE_MODELS` / `KIMI_MODELS` offline); Ollama models are discovered dynamically at runtime
 - `agent/profiles.py` — single source of truth for provider routing (`is_ollama_model`: any model not starting with `claude-`), the env builder (`resolve_ollama_env`), and the per-provider `AgentProfile` (SDK options + feature gates: graphify/external MCP/plugins/chrome disabled for Ollama)
 - `session.py` — `ClaudeAgentSession` consumes the profile; Ollama env passthrough via subprocess environment override
 - `session_service.py` — Reads Ollama config from agent_config, resolves the env via `profiles.resolve_ollama_env`, and passes it to session creation

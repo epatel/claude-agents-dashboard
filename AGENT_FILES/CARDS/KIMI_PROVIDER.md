@@ -16,7 +16,7 @@ in-process **Kimi Agent SDK** (`kimi-agent-sdk` on PyPI, embedding the
   excludes `kimi-*` so an Ollama-enabled workspace never captures them).
 - `SessionService.create_session` (`src/services/session_service.py`) branches
   to `KimiAgentSession` before any Ollama/Claude handling.
-- Kimi entries in `constants.AVAILABLE_MODELS` are marked `experimental=True`,
+- Kimi entries (the model feed's `kimi-code-plan-global` provider, ids prefixed `kimi-code/` by `model_catalog`; bundled `constants.KIMI_MODELS` offline) are marked `experimental=True`,
   so they only appear in model dropdowns when the server runs with
   `--experimental` (template-level gating in `board.html`). No DB migration or
   config flag — selection is purely by model id.

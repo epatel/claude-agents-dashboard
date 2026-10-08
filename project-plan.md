@@ -42,6 +42,15 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 - 2026-07-25 — Default model is `claude-opus-5` (migration 031); Claude Opus 5, Opus 5 (1M)
   and Claude Sonnet 5 added to `AVAILABLE_MODELS`. Supersedes the 2026-05-28 `claude-opus-4-8`
   decision (that model stays selectable). Locked.
+- 2026-10-08 — The selectable Claude and Kimi model lists are **fetched**, not hand-edited:
+  `src/model_catalog.py` refreshes it from `constants.MODEL_LIST_URL`
+  (`https://epatel.github.io/model-lists/models.json`, non-deprecated entries of providers
+  `anthropic` and `kimi-code-plan-global` — the latter prefixed `kimi-code/` to form the Kimi
+  CLI alias) at startup and every 6h, serving the bundled `FALLBACK_CLAUDE_MODELS` /
+  `KIMI_MODELS` per provider when offline. Ollama (local `/api/tags`) stays local.
+  `[1m]` variants come from the local `CLAUDE_1M_OPT_IN_MODELS` set — the feed can't tell
+  opt-in from always-1M. Adding a feed provider = a `model_catalog.FEED_PROVIDERS` entry plus a
+  runtime/profile for it. `DEFAULT_MODEL` stays a local constant (changing it needs a migration).
 - 2026-09-19 — Agents peek at each other's worktrees through the dashboard, never the
   filesystem: the `peek_worktree` MCP tool calls back into `WorkflowService.peek_worktree`,
   which runs the git reads via `GitService`. The `path_guard` hook stays as strict as it
@@ -185,6 +194,13 @@ creator card with the dependency visible on the board. Tests **1281**.
 **Kimi parity roadmap complete** — no open Kimi items.
 
 2026-09-19 — **Cross-worktree peek** landed: a `peek_worktree` MCP tool (`src/agent/peek_worktree.py`) lets a running agent see what the other agents have changed before their work merges. Three shapes: no args → every active worktree with files that overlap the caller's own flagged under a CONFLICT RISK header; `item_id` → that agent's full file list; `item_id` + `path` → that file's diff (capped at 400 lines). Rendering lives in `WorkflowService.peek_worktree`, the git reads in `GitService.worktree_changes` / `worktree_path_diff`, and the rows come from the new `DatabaseService.get_items_with_worktrees` (`get_all_items` projects away the git columns). Threaded to every spawn site through `_item_session_kwargs`; the system prompt tells agents to peek before editing likely-shared files. Kimi parity via `GET /api/items/{id}/peek` → `orchestrator.peek_worktree`. Tests **1308**.
+
+2026-10-08 — **Feed-backed model list** landed: new `src/model_catalog.py` (fetch + parse +
+in-memory cache, `periodic_refresh` task started in the app lifespan), `routes.py` renders
+`get_available_models()`, `board.html` emits model ids/names via `tojson`. Bundled fallback
+gained Haiku 5.5 / Sonnet 5.5 / Opus 5.5 / Fable 5.1. Open: whether any 5.5-family model needs
+a `[1m]` opt-in entry (none added). Kimi entries come from the feed too (adds `kimi-code/k3-256k`).
+Tests **1322** (`tests/unit/test_model_catalog.py`).
 
 The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
 update this note as the running handoff.

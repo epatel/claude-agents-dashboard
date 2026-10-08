@@ -12,7 +12,8 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from ..config import COLUMNS
-from ..constants import AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_OLLAMA_BASE_URL, EPIC_COLORS
+from ..constants import DEFAULT_MODEL, DEFAULT_OLLAMA_BASE_URL, EPIC_COLORS
+from ..model_catalog import get_available_models
 from ..domain.item_state import Event
 from ..repositories.epic_repository import EpicNotFound
 from ..models import AgentTodoCreate, ItemCreate, ItemUpdate, ItemMove, ClarificationResponse, AgentConfig, EpicCreate, EpicUpdate, new_id
@@ -223,7 +224,7 @@ async def board_page(request: Request):
             "current_branch": current_branch,
             "experimental": getattr(request.app.state, "experimental", False),
             "ui_map": getattr(request.app.state, "ui_map", False),
-            "available_models": AVAILABLE_MODELS,
+            "available_models": get_available_models(),
             "default_model": DEFAULT_MODEL,
             "default_ollama_url": DEFAULT_OLLAMA_BASE_URL,
             "workspace_repos": sorted(repos) if repos else [],
