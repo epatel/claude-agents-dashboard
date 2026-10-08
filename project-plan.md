@@ -32,7 +32,11 @@ Replace this with the specific objective the moment one is in flight.
 - [x] M2 — Docs reassessed and refreshed: README / tests/README / CLAUDE / AGENT_FILES cards updated to 28 migrations (001–028), 1115 tests, 6 services, 8 MCP tools (2026-06-06)
 - [x] M3 — Skills library shipped (`SkillsService` + `/api/skills/*` + Settings ▸ Skills tab + migration 029 `enabled_skills` + delivery via SDK `plugins=`); docs reassessed and refreshed to 29 migrations (001–029), 1137 tests, 7 services, 8 MCP tools, new `CARDS/SKILLS.md` (2026-06-06)
 - [x] M4 — Kimi Agent SDK runtime (experimental): session-layer refactor (AbstractAgentSession contract + ClaudeAgentSession + provider profiles) then `KimiAgentSession` for `kimi-*` models behind `--experimental`; 1215 tests, new `CARDS/KIMI_PROVIDER.md` (2026-07-18)
-- [ ] M5 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
+- [x] M5 — Kimi parity: commit messages + `ask_user` (marked-line text protocols), board tools (stdio MCP proxy), permission hooks, `create_todo` autostart/requires parity; live-verified (2026-07-18)
+- [x] M6 — Claude Opus 5 / Sonnet 5 added, Opus 5 the default (migration 031) (2026-07-25)
+- [x] M7 — Cross-worktree peek: `peek_worktree` MCP tool + `GET /api/items/{id}/peek` for Kimi (2026-09-19)
+- [x] M8 — Feed-backed model list: `src/model_catalog.py` fetches Claude + Kimi models from the published feed (2026-10-08)
+- [ ] M9 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
 
 ## Decisions
 
@@ -86,8 +90,8 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 - 2026-07-18 — Kimi is a **separate runtime** (`src/agent/kimi_session.py`), selected
   purely by model id (`kimi-*` → `is_kimi_model`), gated by the `experimental=True` flag
   on its `AVAILABLE_MODELS` entries (no DB flag, no migration). Transport is **ACP**:
-  `kimi_agent_sdk.acp.AcpClient` spawns `kimi acp` (CLI >= 0.27.0 on PATH; model via
-  `KIMI_MODEL_NAME` env) — chosen over the in-process `prompt()` API to avoid the
+  `kimi_agent_sdk.acp.AcpClient` spawns `kimi acp` (CLI >= 0.27.0 on PATH; model via ACP
+  `session/set_config_option` — `kimi acp` has no model flag) — chosen over the in-process `prompt()` API to avoid the
   `kimi-cli` version coupling at runtime and to get session/load resume. v1 runs
   `yolo=True` with no dashboard MCP tools/plugins; pause/resume works via the ACP
   session id; auto-review is skipped for Kimi models (Claude-SDK reviewer).
@@ -97,115 +101,25 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-Docs reassessed 2026-06-06 (M3). No objective currently in flight. Since the M2 docs
-refresh the codebase added the **skills library**: a seventh service (`SkillsService`),
-migration 029 (`agent_config.enabled_skills`), the `/api/skills/*` endpoints, a Settings ▸
-Skills tab, and per-project skill delivery via the SDK `plugins=` option. Authoritative
-counts are now **31 migrations (001–031), 1174 tests (unit / integration /
-smoke), 7 services, 8 built-in MCP tools** (skills ship as plugins, not as an MCP tool).
-README, tests/README, CLAUDE.md, and all `AGENT_FILES/CARDS/` were re-audited against the
-code and corrected; a new `CARDS/SKILLS.md` card documents the subsystem and is wired into
-the routing manifest. The dated snapshots in `AGENT_FILES/` root (AUDIT, ASSESSMENT_CODE,
-EVAL_*, PLAN_*, SDK_BUMP_*) are point-in-time records and were intentionally left untouched.
-Re-audit 2026-07-15 (`/review-agentic-setup`): migration `030`
-(`agent_config.ollama_load_claude_md`) landed and tests grew 1137 → 1174 — counts above
-refreshed; `src/constants.py` now also offers Claude Fable 5 as a selectable model while
-the default stays `claude-opus-4-8` per the locked decision.
-Model refresh 2026-07-25: **Claude Opus 5** (`claude-opus-5`, plus the `[1m]` variant) and
-**Claude Sonnet 5** (`claude-sonnet-5`, always 1M on the API — no `[1m]` variant exists) added
-to `AVAILABLE_MODELS`; `DEFAULT_MODEL` is now `claude-opus-5`, with migration `031` bumping
-existing `items` / `agent_config` rows off `claude-opus-4-8` (and its `[1m]` variant). Counts:
-**31 migrations (001–031), 1281 tests**.
-Refactor 2026-07-18 (branch `refactor/agent-session-contract`): the session layer was
-prepared for a second agent runtime (Kimi Agent SDK, not yet started). New
-`src/agent/base.py` (`AbstractAgentSession` + `AgentResult`) and `src/agent/profiles.py`
-(provider routing + `AgentProfile`); `AgentSession` renamed to `ClaudeAgentSession`;
-the scattered `is_ollama` conditionals and duplicated env builders/predicates in
-`session.py`, `review_agent.py`, `session_service.py`, `workflow_service.py` collapsed
-onto the profile. No behavior change; tests grew 1174 → 1195 (new
-`tests/unit/test_base.py`, `tests/unit/test_profiles.py`). Cards updated:
-ARCHITECTURE, OLLAMA_PROVIDER, PROJECT_MAP (flow.agent-start), TESTING.
+No objective in flight. Last change (2026-10-08): the feed-backed model list (M8, see
+Decisions) and an agentic-setup refresh — cards and READMEs re-synced, this note trimmed,
+project skills now committed under `.claude/skills/`.
 
-M4 (same day, merged to main): **KimiAgentSession** landed as the first non-Claude
-runtime and was then switched to the **ACP transport** — `AcpClient` spawning
-`kimi acp` instead of the in-process `prompt()` API (drops the runtime `kimi-cli`
-coupling, adds session/load pause-resume). Routing in `SessionService` via
-`is_kimi_model`, `kimi-k2` / `kimi-k2-turbo` as experimental `AVAILABLE_MODELS`
-entries, auto-review guard in `workflow_service`, Kimi provider badge in the
-frontend; `kimi-agent-sdk` 0.0.6 installed via requirements.txt from the
-`agentic-setup` fork branch (verified in venv; pulled pydantic 2.13.1 → 2.12.5).
-Tests now **1218** (`tests/unit/test_kimi_session.py` rewritten for ACP);
-`CARDS/KIMI_PROVIDER.md` registered in the manifest. `AVAILABLE_MODELS` carries the
-real kimi-code aliases (`kimi-code/k3`, `kimi-code/kimi-for-coding[-highspeed]` —
-verified against `kimi provider list`), and model selection goes through ACP
-`session/set_config_option` (as flutter_kimi_sdk does; `kimi acp` has no model flag).
+Authoritative counts: **31 migrations (001–031), 1322 tests (unit / integration / smoke),
+7 services, 10 built-in MCP tools** (skills ship as plugins, not as an MCP tool).
 
-**Live smoke run passed 2026-07-18** (kimi CLI 0.27.0, `kimi login` auth, scratch
-target repo, `--experimental`): a `kimi-code/k3` card routed to `KimiAgentSession`,
-spawned `kimi acp`, model selection accepted, streamed Read/Edit/Bash tool calls +
-final message to the work log, produced a correct minimal diff, and landed in Review
-with the ACP session id stored (pause/resume live). The tool-call log gap (empty input
-— kimi-code populates `rawInput` on `tool_call_update`, not the initial `tool_call`)
-is FIXED: `KimiAgentSession` defers `on_tool_use` until the input arrives via
-`ToolCallProgress` (bounded by completed/failed status, the next tool call, or turn
-end), also picking up the richer progress titles ("Reading app.py"). Verified with a
-second live run.
+How earlier work landed is not repeated here: see Milestones for the sequence, the cards
+for how things work now ([`KIMI_PROVIDER`](AGENT_FILES/CARDS/KIMI_PROVIDER.md) for the Kimi
+runtime, [`ARCHITECTURE`](AGENT_FILES/CARDS/ARCHITECTURE.md) for the session layer and
+`peek_worktree`), and `git log` for the detail. The dated snapshots in `AGENT_FILES/` root
+are point-in-time records and stay untouched.
 
-Commit-message and ask_user support for Kimi agents landed via **marked-line text
-protocols** (no MCP): `COMMIT_MESSAGE:` → `on_set_commit_message`; `ASK_USER:` → ends
-the turn, `on_clarify` blocks in the Clarify column, and the answer continues the SAME
-stateful ACP session as a new prompt turn. Both live-verified end-to-end (the ask_user
-run: agent asked which language, answer "Swedish" produced `farewell_swedish` /
-"Hej då" plus a parsed commit message in one final message).
-
-Board tools for Kimi agents landed via a **stdio MCP proxy**
-(`src/agent/kimi_board_mcp.py`, stdlib-only): declared in the ACP session's
-`mcpServers`, spawned by the Kimi runtime, proxying create_todo / delete_todo /
-create_epic / create_shortcut / view_board / who_am_i to the dashboard HTTP API
-(`DASHBOARD_BASE_URL` published by main.py; item id and multi-repo repo via env).
-Live-verified: a K3 agent called `mcp__board__view_board` (correct 6-card count) and
-`mcp__board__create_todo` — the new card appeared in Todo.
-
-Permission hooks for Kimi agents landed: `yolo=False` + a real ACP
-`permission_handler`. Trust model: **kimi's safety classifier decides WHEN to ask**
-(heuristic/context-dependent; worktree shell usually auto-executes in "default" mode,
-no stricter ACP mode exists), **the dashboard decides the ANSWER** — non-execute
-allowed, shell via `allowed_commands`/`bash_yolo`, operators + unlisted commands
-escalate to the existing `on_request_command` approval flow (ASK state; approval
-saves the command + restarts with resume). Verified at protocol level via a raw ACP
-probe (request arrived for `git push`; reject stopped the tool) + unit tests — no
-deterministic live trigger exists. Tests **1266**. Kimi feature set now: streaming
-text/thinking/tool calls, deferred tool input, pause/resume, commit messages,
-clarifications, board tools, permission hooks. Follow-up: `KIMI_FORCE_PERMISSION_ASK=1`
-debug env var escalates every arriving execute permission request to the user (demo
-aid for the ASK flow — cannot make kimi ask more often); and project-context files —
-kimi-cli natively merges AGENTS.md (incl. `.kimi/AGENTS.md`) but never CLAUDE.md, so
-`KimiAgentSession` injects the worktree CLAUDE.md into the prompt when no AGENTS.md
-variant exists (always on, no flag).
-
-create_todo autostart/requires parity landed: new `POST /api/items/{id}/agent-todos`
-endpoint (`AgentTodoCreate` model) delegates via `orchestrator.create_agent_todo` to
-the SAME `workflow_service` create_todo callback the Claude MCP tool uses — requires
-dependencies, autostart with the unmerged-creator auto-anchor, auto_approve,
-use_chrome. The Kimi board proxy's create_todo now posts there (richer schema);
-DASHBOARD_REPO plumbing removed (agent-created todos never set repo, matching the
-Claude path). Live-verified: a Kimi-created autostart todo was auto-anchored to its
-creator card with the dependency visible on the board. Tests **1281**.
-**Kimi parity roadmap complete** — no open Kimi items.
-
-2026-09-19 — **Cross-worktree peek** landed: a `peek_worktree` MCP tool (`src/agent/peek_worktree.py`) lets a running agent see what the other agents have changed before their work merges. Three shapes: no args → every active worktree with files that overlap the caller's own flagged under a CONFLICT RISK header; `item_id` → that agent's full file list; `item_id` + `path` → that file's diff (capped at 400 lines). Rendering lives in `WorkflowService.peek_worktree`, the git reads in `GitService.worktree_changes` / `worktree_path_diff`, and the rows come from the new `DatabaseService.get_items_with_worktrees` (`get_all_items` projects away the git columns). Threaded to every spawn site through `_item_session_kwargs`; the system prompt tells agents to peek before editing likely-shared files. Kimi parity via `GET /api/items/{id}/peek` → `orchestrator.peek_worktree`. Tests **1308**.
-
-2026-10-08 — **Feed-backed model list** landed: new `src/model_catalog.py` (fetch + parse +
-in-memory cache, `periodic_refresh` task started in the app lifespan), `routes.py` renders
-`get_available_models()`, `board.html` emits model ids/names via `tojson`. Bundled fallback
-gained Haiku 5.5 / Sonnet 5.5 / Opus 5.5 / Fable 5.1. Open: whether any 5.5-family model needs
-a `[1m]` opt-in entry (none added). Kimi entries come from the feed too (adds `kimi-code/k3-256k`).
-Tests **1322** (`tests/unit/test_model_catalog.py`).
-
-The next agent to pick up real work should set **Goal**, add an **M5** milestone, and
-update this note as the running handoff.
+The next agent to pick up real work should set **Goal**, fill in **M9**, and rewrite this
+note as the running handoff — keep it a short handoff, not a log.
 
 ## Open questions
 
-- None currently. An agent that hits a blocker or undecided choice adds it here rather
-  than guessing.
+- Does any 5.5-family model (or Fable 5.1) need a `[1m]` opt-in entry? None is in
+  `CLAUDE_1M_OPT_IN_MODELS` today.
+
+An agent that hits a blocker or undecided choice adds it here rather than guessing.

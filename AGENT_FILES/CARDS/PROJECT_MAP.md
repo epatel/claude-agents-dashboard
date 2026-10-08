@@ -24,14 +24,14 @@ Backend processes and lifecycle paths. Each entry: purpose · entry-point · WS 
 ### `flow.agent-start`
 Spawns a Claude session in a fresh worktree (`agents-lab/worktrees/agent-{item_id}`), non-blocking via `asyncio.create_task`. The session is a `ClaudeAgentSession` (`src/agent/session.py`, implements the `AbstractAgentSession` contract in `src/agent/base.py`); provider routing + divergent SDK options come from `src/agent/profiles.py`.
 - **Entry:** `src/services/workflow_service.py:160` `start_agent` → `:169` `_start_agent_internal`
-- **HTTP:** `POST /api/items/{id}/start` (`src/web/routes.py:685`)
+- **HTTP:** `POST /api/items/{id}/start` (`src/web/routes.py:715`)
 - **WS events:** `item_updated`, `agent_log`
 - **Tables:** `items`, `notifications`
 
 ### `flow.merge`
 Commits uncommitted worktree changes, merges into base. On conflict: captures diff, resets worktree to latest base, restarts agent with conflict prompt.
 - **Entry:** `src/services/workflow_service.py:474` `approve_item`
-- **HTTP:** `POST /api/items/{id}/approve` (`src/web/routes.py:879`)
+- **HTTP:** `POST /api/items/{id}/approve` (`src/web/routes.py:924`)
 - **WS events:** `item_updated`, `merge_blocked`, `agent_log`
 - **Tables:** `items`
 
@@ -40,14 +40,14 @@ MCP `ask_user` moves item to "Clarify" column, awaits `asyncio.Event`. HTTP endp
 - **MCP tool:** `src/agent/clarification.py:55` `ask_user`
 - **Callback:** `src/services/workflow_service.py:1061` `_create_on_clarify_callback`
 - **Resume:** `src/services/workflow_service.py:871` `submit_clarification`
-- **HTTP:** `POST /api/items/{id}/clarify` (`src/web/routes.py:929`)
+- **HTTP:** `POST /api/items/{id}/clarify` (`src/web/routes.py:974`)
 - **WS events:** `clarification_requested`, `item_updated`
 - **Tables:** `items`
 
 ### `flow.pause-resume`
 Captures `session_id`, kills process. Resume builds `ClaudeAgentOptions(resume=session_id, continue_conversation=True)`.
 - **Entry:** `src/services/workflow_service.py:288` `pause_agent` / `:314` `resume_agent`
-- **HTTP:** `POST /api/items/{id}/pause` (`src/web/routes.py:712`), `POST /api/items/{id}/resume` (`:727`)
+- **HTTP:** `POST /api/items/{id}/pause` (`src/web/routes.py:742`), `POST /api/items/{id}/resume` (`:757`)
 - **Session ops:** `src/services/session_service.py:136` `pause_session`
 - **WS events:** `item_updated`, `agent_log`
 - **Tables:** `items` (stores `session_id`)
@@ -95,7 +95,7 @@ PreToolUse hook denies shell commands not in the allowlist. Agent calls `request
 - **Access MCP:** `src/agent/command_access.py:36` `request_command_access`
 - **Callback:** `src/services/workflow_service.py:1099` `_create_on_request_command_callback`
 - **Restart:** `src/services/workflow_service.py:1693` `_restart_session_with_new_permissions`
-- **HTTP:** `POST /api/items/{id}/approve-command` (`src/web/routes.py:935`)
+- **HTTP:** `POST /api/items/{id}/approve-command` (`src/web/routes.py:980`)
 - **WS events:** `item_updated`, `agent_log`
 - **Tables:** `items` (`allowed_commands` from migration 003)
 
@@ -116,7 +116,7 @@ PreToolUse hook resolves Read/Edit/Write paths and denies any access outside the
 ### `flow.notify-broadcast`
 Single fan-out point to WebSocket clients on every state change.
 - **Service:** `src/services/notification_service.py:18` `broadcast_item_updated` (and `_created` / `_deleted` / `agent_log` / `clarification_requested` / `epic_*`)
-- **WS endpoint:** `/ws` (`src/web/routes.py:1692` `websocket_endpoint`)
+- **WS endpoint:** `/ws` (`src/web/routes.py:1738` `websocket_endpoint`)
 - **Event types emitted:** `item_updated`, `item_created`, `item_deleted`, `agent_log`, `clarification_requested`, `epic_created`, `epic_updated`, `epic_deleted`, `merge_blocked`, `graph_build_progress`, `graph_ready`
 - **Tables:** `items`, `epics`, `notifications`
 
@@ -126,7 +126,7 @@ Graphify knowledge graph. The dashboard owns `graphify-out/`; agents get a read-
 - **Callback:** `src/services/workflow_service.py:1426` `_create_on_graph_query_callback`
 - **Auto-refresh:** `src/services/workflow_service.py:1436` `_maybe_refresh_graph_after_merge` (called from `approve_item` success paths)
 - **Service:** `src/services/graph_service.py:37` `GraphService` (`:226` `build` · `:263` `refresh` · `:298` `query` · `:178` `status`)
-- **HTTP:** `GET /api/graphify/status` (`src/web/routes.py:1009`), `POST /api/graphify/build` (`:1015`), `POST /api/graphify/install` (`:1028`), `GET /api/graphify/query` (`:1034`)
+- **HTTP:** `GET /api/graphify/status` (`src/web/routes.py:1055`), `POST /api/graphify/build` (`:1061`), `POST /api/graphify/install` (`:1074`), `GET /api/graphify/query` (`:1080`)
 - **WS events:** `graph_build_progress`, `graph_ready`
 - **Tables:** `agent_config` (`graphify_enabled` / `graphify_auto_refresh` / `graphify_backend` from migration 028)
 
@@ -134,7 +134,7 @@ Graphify knowledge graph. The dashboard owns `graphify-out/`; agents get a read-
 Agent-Skills library. Installed skills live in a gitignored `skill-library/<name>/` (each a one-skill plugin); the enabled set is per-project and delivered to agents via the SDK `plugins=` option (not as an MCP tool).
 - **Service:** `src/services/skills_service.py` `SkillsService` (`browse` · `discover` · `install` · `list_installed` · `plugin_path` · `remove`)
 - **Delivery:** `src/services/session_service.py` `_parse_plugins(plugins, enabled_skills)` resolves enabled names → `skill-library/<name>` and merges into `plugins=`
-- **HTTP:** `GET /api/skills` (`src/web/routes.py:1067`), `GET /api/skills/browse` (`:1075`), `POST /api/skills/discover` (`:1085`), `POST /api/skills/install` (`:1097`), `POST /api/skills/{name}/enabled` (`:1113`), `DELETE /api/skills/{name}` (`:1125`)
+- **HTTP:** `GET /api/skills` (`src/web/routes.py:1113`), `GET /api/skills/browse` (`:1121`), `POST /api/skills/discover` (`:1131`), `POST /api/skills/install` (`:1143`), `POST /api/skills/{name}/enabled` (`:1159`), `DELETE /api/skills/{name}` (`:1171`)
 - **Frontend:** Settings ▸ Skills tab in `src/static/js/config-dialog.js`
 - **WS events:** none
 - **Tables:** `agent_config` (`enabled_skills` from migration 029)

@@ -19,10 +19,11 @@ FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin
 
 ## Web layer (`src/web/`)
 
-- `app.py` — FastAPI app + lifespan (runs DB migrations, the startup state-encoding audit `_audit_item_state_encodings`, and the periodic stale-worktree scanner)
+- `app.py` — FastAPI app + lifespan (runs DB migrations, the startup state-encoding audit `_audit_item_state_encodings`, the periodic stale-worktree scanner, and the periodic model-list refresh)
 - `routes.py` — board/item/epic/clarification/shortcut/notifications/stats/graphify HTTP endpoints (~1650 LOC)
 - `file_routes.py` — attachments + file browser
 - `websocket.py` — WS connection manager
+- `src/model_catalog.py` (one level up) — the selectable model list rendered into the board: Claude and Kimi entries fetched from the published feed (`constants.MODEL_LIST_URL`), with bundled per-provider fallbacks in `constants.py`; Ollama models are discovered separately via `/api/ollama/models`
 
 ## Agent runtime (`src/agent/`)
 
