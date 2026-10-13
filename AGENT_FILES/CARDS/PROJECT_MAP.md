@@ -23,14 +23,14 @@ Backend processes and lifecycle paths. Each entry: purpose · entry-point · WS 
 
 ### `flow.agent-start`
 Spawns a Claude session in a fresh worktree (`agents-lab/worktrees/agent-{item_id}`), non-blocking via `asyncio.create_task`. The session is a `ClaudeAgentSession` (`src/agent/session.py`, implements the `AbstractAgentSession` contract in `src/agent/base.py`); provider routing + divergent SDK options come from `src/agent/profiles.py`.
-- **Entry:** `src/services/workflow_service.py:160` `start_agent` → `:169` `_start_agent_internal`
+- **Entry:** `src/services/workflow_service.py:171` `start_agent` → `:180` `_start_agent_internal`
 - **HTTP:** `POST /api/items/{id}/start` (`src/web/routes.py:715`)
 - **WS events:** `item_updated`, `agent_log`
 - **Tables:** `items`, `notifications`
 
 ### `flow.merge`
 Commits uncommitted worktree changes, merges into base. On conflict: captures diff, resets worktree to latest base, restarts agent with conflict prompt.
-- **Entry:** `src/services/workflow_service.py:474` `approve_item`
+- **Entry:** `src/services/workflow_service.py:485` `approve_item`
 - **HTTP:** `POST /api/items/{id}/approve` (`src/web/routes.py:924`)
 - **WS events:** `item_updated`, `merge_blocked`, `agent_log`
 - **Tables:** `items`
@@ -38,54 +38,54 @@ Commits uncommitted worktree changes, merges into base. On conflict: captures di
 ### `flow.clarify`
 MCP `ask_user` moves item to "Clarify" column, awaits `asyncio.Event`. HTTP endpoint sets the event with the user's answer, agent resumes.
 - **MCP tool:** `src/agent/clarification.py:55` `ask_user`
-- **Callback:** `src/services/workflow_service.py:1061` `_create_on_clarify_callback`
-- **Resume:** `src/services/workflow_service.py:871` `submit_clarification`
+- **Callback:** `src/services/workflow_service.py:1072` `_create_on_clarify_callback`
+- **Resume:** `src/services/workflow_service.py:882` `submit_clarification`
 - **HTTP:** `POST /api/items/{id}/clarify` (`src/web/routes.py:974`)
 - **WS events:** `clarification_requested`, `item_updated`
 - **Tables:** `items`
 
 ### `flow.pause-resume`
 Captures `session_id`, kills process. Resume builds `ClaudeAgentOptions(resume=session_id, continue_conversation=True)`.
-- **Entry:** `src/services/workflow_service.py:288` `pause_agent` / `:314` `resume_agent`
+- **Entry:** `src/services/workflow_service.py:299` `pause_agent` / `:325` `resume_agent`
 - **HTTP:** `POST /api/items/{id}/pause` (`src/web/routes.py:742`), `POST /api/items/{id}/resume` (`:757`)
-- **Session ops:** `src/services/session_service.py:136` `pause_session`
+- **Session ops:** `src/services/session_service.py:161` `pause_session`
 - **WS events:** `item_updated`, `agent_log`
 - **Tables:** `items` (stores `session_id`)
 
 ### `flow.stale-scan`
 Compares `git worktree list` against DB on startup and every 5 min. Emits cleanup notifications with action buttons.
-- **Entry:** `src/services/workflow_service.py:1753` `find_stale_worktrees` / `:1812` `cleanup_stale_worktree`
+- **Entry:** `src/services/workflow_service.py:1920` `find_stale_worktrees` / `:1979` `cleanup_stale_worktree`
 - **Scheduler:** registered from the FastAPI lifespan in `src/web/app.py`
 - **WS events:** `item_updated`, notification with `action` dict
 - **Tables:** `items`, `notifications`
 
 ### `flow.wip-queue`
 Caps concurrent running agents. Items started beyond the limit get `status='queued'` in `doing` column; auto-start in position order when a slot opens.
-- **Entry:** `src/services/workflow_service.py:123` `_is_at_wip_limit` · `:132` `_enqueue_item` · `:140` `process_queue`
+- **Entry:** `src/services/workflow_service.py:134` `_is_at_wip_limit` · `:143` `_enqueue_item` · `:151` `process_queue`
 - **Triggered from:** `start_agent` and every slot-free path (cancel / complete / merge / dependency-resolve)
 - **WS events:** `item_updated`
 - **Tables:** `items` (`status='queued'`, `column_name='doing'`)
 
 ### `flow.multi-repo-start`
 When target is a workspace folder of sibling repos, worktree is rooted in the chosen subrepo and other siblings are added read-only via `add_dirs`.
-- **Entry:** `src/services/workflow_service.py:83` `_item_session_kwargs` (handles both single- and multi-repo session kwargs)
+- **Entry:** `src/services/workflow_service.py:90` `_item_session_kwargs` (handles both single- and multi-repo session kwargs)
 - **Subrepo discovery:** `src/main.py:108` `_discover_subrepos`
 - **WS events:** `item_updated`
 - **Tables:** `items` (`repo` column from migration 020)
 
 ### `flow.dependency-autostart`
 When a prerequisite item finishes (merged or manually moved to done/archive), auto-starts dependents whose `requires` are now satisfied.
-- **Entry:** `src/services/workflow_service.py:755` `notify_and_auto_start_dependents`
+- **Entry:** `src/services/workflow_service.py:766` `notify_and_auto_start_dependents`
 - **Invoked from:** the merge pipeline (`approve_item` → all three success paths) and the drag-and-drop move endpoint (`web/routes.py::move_item` when target column is `done`/`archive`)
-- **Todo creation w/ deps:** `src/services/workflow_service.py:1232` `_create_on_create_todo_callback` (handles `requires`, `auto_start`)
+- **Todo creation w/ deps:** `src/services/workflow_service.py:1260` `_create_on_create_todo_callback` (handles `requires`, `auto_start`)
 - **WS events:** `dependencies_resolved`, `blocked_status_changed`, `item_updated`, `agent_log`
 - **Tables:** `items` (deps stored via migration 011)
 
 ### `flow.commit`
 MCP `set_commit_message` stores message on session. Merge path commits any uncommitted worktree changes first using that message.
-- **MCP tool:** `src/agent/commit_message.py:44` `set_commit_message` (delegates to `SessionService.set_commit_message` at `src/services/session_service.py:198`)
-- **Callback:** `src/services/workflow_service.py:1322` `_create_on_set_commit_message_callback`
-- **Commit-on-uncommitted:** inside `approve_item` (~`src/services/workflow_service.py:631`)
+- **MCP tool:** `src/agent/commit_message.py:44` `set_commit_message` (delegates to `SessionService.set_commit_message` at `src/services/session_service.py:223`)
+- **Callback:** `src/services/workflow_service.py:1350` `_create_on_set_commit_message_callback`
+- **Commit-on-uncommitted:** inside `approve_item` (~`src/services/workflow_service.py:642`)
 - **WS events:** `item_updated`, `agent_log`
 - **Tables:** `items` (`merge_commit` from migration 008)
 
@@ -93,8 +93,8 @@ MCP `set_commit_message` stores message on session. Merge path commits any uncom
 PreToolUse hook denies shell commands not in the allowlist. Agent calls `request_command_access` MCP to prompt the user; on approval, session restarts with new permissions.
 - **Filter hook:** `src/agent/command_filter.py:34` `make_command_filter_hook` / `:45` `hook`
 - **Access MCP:** `src/agent/command_access.py:36` `request_command_access`
-- **Callback:** `src/services/workflow_service.py:1099` `_create_on_request_command_callback`
-- **Restart:** `src/services/workflow_service.py:1693` `_restart_session_with_new_permissions`
+- **Callback:** `src/services/workflow_service.py:1110` `_create_on_request_command_callback`
+- **Restart:** `src/services/workflow_service.py:1860` `_restart_session_with_new_permissions`
 - **HTTP:** `POST /api/items/{id}/approve-command` (`src/web/routes.py:980`)
 - **WS events:** `item_updated`, `agent_log`
 - **Tables:** `items` (`allowed_commands` from migration 003)
@@ -103,7 +103,7 @@ PreToolUse hook denies shell commands not in the allowlist. Agent calls `request
 Same shape as `flow.command-gate` but for built-in tools (WebSearch, WebFetch).
 - **Filter hook:** `src/agent/tool_filter.py:9` `make_tool_filter_hook` / `:16` `hook`
 - **Access MCP:** `src/agent/tool_access.py:36` `request_tool_access`
-- **Callback:** `src/services/workflow_service.py:1168` `_create_on_request_tool_callback`
+- **Callback:** `src/services/workflow_service.py:1179` `_create_on_request_tool_callback`
 - **WS events:** `item_updated`, `agent_log`
 - **Tables:** `items` (`allowed_builtin_tools` from migration 006)
 
@@ -123,8 +123,8 @@ Single fan-out point to WebSocket clients on every state change.
 ### `flow.graph`
 Graphify knowledge graph. The dashboard owns `graphify-out/`; agents get a read-only `graph_query` MCP tool only when `graphify_enabled`. The graph auto-refreshes (free AST build) after a successful merge.
 - **MCP tool:** `src/agent/graph_query.py:41` `graph_query` (server factory `:25` `create_graph_query_server`)
-- **Callback:** `src/services/workflow_service.py:1426` `_create_on_graph_query_callback`
-- **Auto-refresh:** `src/services/workflow_service.py:1436` `_maybe_refresh_graph_after_merge` (called from `approve_item` success paths)
+- **Callback:** `src/services/workflow_service.py:1590` `_create_on_graph_query_callback`
+- **Auto-refresh:** `src/services/workflow_service.py:1600` `_maybe_refresh_graph_after_merge` (called from `approve_item` success paths)
 - **Service:** `src/services/graph_service.py:37` `GraphService` (`:226` `build` · `:263` `refresh` · `:298` `query` · `:178` `status`)
 - **HTTP:** `GET /api/graphify/status` (`src/web/routes.py:1055`), `POST /api/graphify/build` (`:1061`), `POST /api/graphify/install` (`:1074`), `GET /api/graphify/query` (`:1080`)
 - **WS events:** `graph_build_progress`, `graph_ready`
@@ -140,7 +140,7 @@ Agent-Skills library. Installed skills live in a gitignored `skill-library/<name
 - **Tables:** `agent_config` (`enabled_skills` from migration 029)
 
 ### `flow.migration`
-Versioned schema migrations (`001`–`030` in `src/migrations/versions/`). Auto-runs pending migrations on startup.
+Versioned schema migrations (`001`–`031` in `src/migrations/versions/`). Auto-runs pending migrations on startup.
 - **Trigger:** auto-migrate from the FastAPI lifespan in `src/web/app.py`
 - **CLI:** `python -m src.manage [status|migrate|rollback|init]`
 - **Note:** any new `items`/`epics` columns must also be added to the repo-level whitelists — `src/repositories/item_repository.py` (`_WRITABLE_ITEM_COLUMNS`) and `src/repositories/epic_repository.py` (`_WRITABLE_EPIC_COLUMNS`)

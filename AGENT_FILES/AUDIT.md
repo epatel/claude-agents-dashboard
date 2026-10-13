@@ -1,7 +1,9 @@
 # Security Audit Report
 
 **Date**: 2026-04-10
-**Last updated**: 2026-05-28 (rev 11 — re-confirmed against migration 024 (`024_update_default_model_to_opus_4_8.py`) and the extended-thinking budget increase (10,000 → 32,000 tokens) in `src/agent/session.py`. **No new security findings.** Migration 024 is a pure data migration (parameterized `UPDATE` of the `model` column across `items`/`agent_config`, with a reversible `down()`) — no shell or SQL-construction surface. Raising the thinking budget changes only token allocation, not the agent-containment boundary, the path guard, or the command filter; all prior remediations stand. Rev 10 notes remain accurate: re-confirmed against migrations 022 (`auto_approve`) and 023 (`pause_message`), plus the auto-review agent at `src/agent/review_agent.py`. The auto-review agent runs as a strictly read-only Claude session — its `can_use_tool` allowlist is `Read`/`Glob`/`Grep` only, with `Edit`/`Write`/`Bash` denied via `PermissionResultDeny`, so the review-agent path does not widen the agent-containment surface; cycle bookkeeping (max 3 retries) lives in `WorkflowService` outside the SDK call. The `pause_message` column is plain user text prepended to the resume prompt — no shell or SQL surface added (parameterized writes via the repo). Finding #5 (dynamic SQL column names) remains remediated and the whitelist constants are `_WRITABLE_*_COLUMNS` (private to each repository module — `_WRITABLE_ITEM_COLUMNS` in `repositories/item_repository.py`, `_WRITABLE_EPIC_COLUMNS` in `repositories/epic_repository.py`). The `AgentConfig` Phase 3 refactor is unchanged.)
+**Last updated**: 2026-10-08 (rev 12 — first review of the subsystems added since rev 11: the **Kimi runtime** (`src/agent/kimi_session.py`, `kimi_board_mcp.py`), **`peek_worktree`**, the **skills library** (`src/services/skills_service.py`), the **graphify** surface (`GraphService` + `graph_query`), and the **model feed** (`src/model_catalog.py`). **Three new findings — #15 (Medium), #16 (Low), #17 (Info)** — all open; see "Findings added in rev 12". The headline is #15: Kimi agents are confined to their worktree by `cwd` plus a prompt instruction, with no enforcing `path_guard` equivalent, so the containment guarantee that holds for Claude agents does **not** hold for Kimi agents. It is gated behind `--experimental`. Migrations 025–031 were reviewed and add no shell or SQL-construction surface: 025/026/028/029/030 are column adds, 027 and 031 are parameterized `UPDATE`s (027 uses `REPLACE(model, '+advisor', '')`, 031 rewrites the default model including the `[1m]` variant). All prior remediations still stand; no previously-fixed finding regressed.)
+
+**Rev 11 note**: 2026-05-28 (re-confirmed against migration 024 (`024_update_default_model_to_opus_4_8.py`) and the extended-thinking budget increase (10,000 → 32,000 tokens) in `src/agent/session.py`. **No new security findings.** Migration 024 is a pure data migration (parameterized `UPDATE` of the `model` column across `items`/`agent_config`, with a reversible `down()`) — no shell or SQL-construction surface. Raising the thinking budget changes only token allocation, not the agent-containment boundary, the path guard, or the command filter; all prior remediations stand. Rev 10 notes remain accurate: re-confirmed against migrations 022 (`auto_approve`) and 023 (`pause_message`), plus the auto-review agent at `src/agent/review_agent.py`. The auto-review agent runs as a strictly read-only Claude session — its `can_use_tool` allowlist is `Read`/`Glob`/`Grep` only, with `Edit`/`Write`/`Bash` denied via `PermissionResultDeny`, so the review-agent path does not widen the agent-containment surface; cycle bookkeeping (max 3 retries) lives in `WorkflowService` outside the SDK call. The `pause_message` column is plain user text prepended to the resume prompt — no shell or SQL surface added (parameterized writes via the repo). Finding #5 (dynamic SQL column names) remains remediated and the whitelist constants are `_WRITABLE_*_COLUMNS` (private to each repository module — `_WRITABLE_ITEM_COLUMNS` in `repositories/item_repository.py`, `_WRITABLE_EPIC_COLUMNS` in `repositories/epic_repository.py`). The `AgentConfig` Phase 3 refactor is unchanged.)
 **Scope**: Full codebase review of Claude Agents Dashboard
 **Threat model**: Localhost single-user developer tool. The server binds to `127.0.0.1` only, is operated by the local developer, and is not designed for network exposure or multi-user access. In multi-repo workspace mode the same threat model applies — agents work in a worktree inside one chosen sibling repo and have read-only access to the other siblings via `add_dirs`, with the path guard hook (`path_guard.py`) preventing writes outside the assigned worktree.
 
@@ -9,9 +11,11 @@
 
 ## Executive Summary
 
-This audit identified **14 security findings** relevant to a localhost developer tool: 2 High, 5 Medium, and 7 Low/Info. Since the initial audit, **all 9 actionable findings have been remediated**, bringing the application's security posture to **strong for its intended use case**.
+This audit has identified **17 security findings** relevant to a localhost developer tool: 2 High, 6 Medium, and 9 Low/Info. Of the 10 actionable findings, **9 are remediated**; the outstanding one is **#15 (Kimi path confinement)**, added in rev 12.
 
-The two original high-severity findings (command filter bypass and YOLO mode) have both been addressed with robust fixes. All five medium-severity findings have been resolved, including `.browserhidden` support for project-specific secret patterns. Two low-severity findings (epic color validation and security headers) have also been fixed. The remaining open items are informational or accepted-risk.
+The two original high-severity findings (command filter bypass and YOLO mode) have both been addressed with robust fixes. The five original medium-severity findings have been resolved, including `.browserhidden` support for project-specific secret patterns. Two low-severity findings (epic color validation and security headers) have also been fixed.
+
+**Posture**: strong for the default Claude-only configuration, which is what the containment design was built around. The experimental providers are weaker: enabling `--experimental` and running a Kimi agent drops the enforced worktree-write boundary (#15). Treat `--experimental` as a trust decision, not just a feature flag.
 
 Traditional web security concerns (authentication, CORS, rate limiting) are largely irrelevant since the server only listens on `127.0.0.1` for a single local user. This audit focuses on the risks that actually matter: **agent containment**, **file system boundary enforcement**, and **defensive coding practices**.
 
@@ -155,6 +159,43 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 
 ---
 
+## Findings added in rev 12
+
+These cover the subsystems that landed after rev 11 and had never been reviewed.
+
+### 15. Kimi Agents Are Not Confined to Their Worktree by an Enforcing Hook
+
+- **Severity**: Medium (High class, reduced by the `--experimental` gate)
+- **Status**: ⚠️ **OPEN**
+- **Files**: `src/agent/kimi_session.py:120-148` (`_decide_permission`), `:293` (prompt), `:367,378` (`cwd=self.worktree_path`)
+- **Description**: For Claude agents, worktree confinement is **enforced**: the `path_guard.py` PreToolUse hook denies `Edit`/`Write` outside the agent's worktree and limits `Read`/`Glob`/`Grep` to the workspace root. The Kimi runtime wires no equivalent. Its ACP permission callback returns `"allow"` for every non-execute tool call (`kimi_session.py:132-133` — "like `permission_mode="acceptEdits"`"), and the only things keeping a Kimi agent inside its worktree are the `cwd` passed to the ACP session and a natural-language instruction in the prompt ("IMPORTANT: Your working directory is …").
+- **Exploitation / failure scenario**: A Kimi agent that writes an **absolute path** — whether through model error, a confused multi-repo task, or prompt injection from a file it read — edits files outside its worktree. Nothing denies the call, nothing logs it as a boundary violation, and the write lands in the user's real working tree or home directory rather than in the isolated worktree the review-and-merge model assumes. The dashboard's whole safety story is "agent changes are quarantined until you approve them"; for Kimi that is a convention, not a boundary.
+- **What *is* enforced for Kimi**: shell commands reach parity — `_decide_permission` escalates any command containing shell operators, honours the `allowed_commands` allowlist, and respects `bash_yolo` (`kimi_session.py:141-148`). The gap is specific to **file paths**, not commands.
+- **Mitigating factors**: Kimi models are only offered with `--experimental` (`src/constants.py` marks `KIMI_MODELS` experimental, `board.html` gates them). Single-user localhost, so there is no privilege boundary being crossed — the agent runs as the user who started it. Auto-review is skipped for Kimi models, so no second agent compounds the write.
+- **Recommendation**: Give the Kimi path a real guard. Either (a) extend `_decide_permission` to inspect the tool call's path arguments and return `"ask"` / deny for paths outside `self.worktree_path`, reusing the predicate logic from `path_guard.py`; or (b) if ACP cannot surface paths reliably for every file tool, document the gap prominently in `CARDS/KIMI_PROVIDER.md` and the `--experimental` help text so enabling it is an informed choice. Until one of those lands, the honest statement is the one now in the Executive Summary: enabling Kimi trades away the enforced write boundary.
+
+### 16. Skills Install Writes Remote Tree Paths Without Local Validation
+
+- **Severity**: Low
+- **Status**: ⚠️ **OPEN** (defense-in-depth)
+- **File**: `src/services/skills_service.py` (`_install_sync`)
+- **Description**: Installing a skill walks the GitHub tree API and writes each blob to `skill_dir / rel`, where `rel` is derived from the remote `node["path"]`. `rel` is checked only for emptiness and a trailing slash — it is never validated for traversal before being joined and written. The skill **name** is properly validated (`_valid_name` = regex match plus an explicit `".." not in name`), so the containing directory is safe; the per-file paths inside it are not.
+- **Why it is Low and not High**: git tree objects cannot contain `..` as a path component — git refuses to create them and `git fsck` flags them — so GitHub's API will not return such a path for a well-formed repository. The protection is real, but it is **borrowed from an upstream invariant** rather than asserted locally, which is exactly the pattern finding #4 was raised about for diff paths.
+- **Failure scenario**: Any future change that makes the file list attacker-influenced — a different source backend, a local-directory or archive install path, a tarball fast-path to avoid per-file HTTP — turns an unvalidated join into a write outside `skill-library/`. The fix costs one line today and is easy to forget later.
+- **Recommendation**: Run `rel` through the codebase's existing `validate_file_path()` (`src/git/operations.py`) before the join, and skip any entry it rejects. That function already blocks absolute paths, `..`, null bytes, `~/`, `//` and backslashes, and is the same guard used on diff and file-browser paths — reuse it rather than writing a second check.
+- **Related, not separately numbered**: installed skills are **third-party instructions executed in the agent's context** (each is wrapped as a plugin and delivered via SDK `plugins=`), and installing one auto-enables it for the project. The command filter and path guard still apply, so a hostile skill cannot exceed the agent's permissions — but it can steer the agent within them. Review a skill's `SKILL.md` before enabling it, the same way you would review a dependency. `_get` also applies no response size cap, so a hostile repo can make an install write arbitrarily large files.
+
+### 17. `peek_worktree` Reads Peer Worktrees Without Secret-File Hiding
+
+- **Severity**: Info (by design)
+- **Status**: ⚠️ **OPEN** (accepted — inherent to the feature)
+- **Files**: `src/agent/peek_worktree.py`, `WorkflowService.peek_worktree` / `_peek_file_diff`, `GitService.worktree_path_diff`
+- **Description**: `peek_worktree` deliberately crosses the one-agent-one-worktree boundary so agents can see in-flight work before it merges. The implementation is tightly scoped and holds up: `item_id` is resolved against the set of **active board items** (an unknown id returns a harmless message, and it is never used as a path), `path` goes through `validate_file_path()`, git runs as an argument list via `run_git` with no shell, the untracked-file fallback re-checks containment with `full_path.resolve()` against the worktree root (which also catches symlink escape), and output is capped. The residual point is that the file browser's secret-hiding (`.env`, keys, certificates, `.browserhidden` patterns — finding #7) does **not** apply to this path, so an agent can request the diff of a secret file another agent created inside its worktree.
+- **Why Info**: this is the same exposure class as finding #8 (work log may contain secrets) and rests on the same reasoning — single local user, who already owns every one of these files. No privilege boundary is crossed. It is recorded so the asymmetry with the file browser is deliberate and visible rather than surprising.
+- **Recommendation**: none required. If `.browserhidden` handling is ever factored into a reusable predicate, applying it to `_peek_file_diff` would be a cheap consistency win.
+
+---
+
 ## Summary Table
 
 | # | Finding | Severity | Status | Primary Risk |
@@ -173,12 +214,15 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 | 12 | No authentication | Info | ⚠️ Open | By design for localhost |
 | 13 | HTTP only | Info | ⚠️ Open | By design for localhost |
 | 14 | Missing security headers | Info | ✅ Fixed | Minimal risk on localhost |
+| 15 | Kimi agents not confined by an enforcing hook | **Medium** | ⚠️ Open | Agent writes outside its worktree (experimental only) |
+| 16 | Skills install writes remote tree paths unvalidated | Low | ⚠️ Open | Defense-in-depth; relies on a git invariant |
+| 17 | `peek_worktree` has no secret-file hiding | Info | ⚠️ Open | Peer-worktree secrets readable (by design) |
 
 ---
 
 ## Remediation Progress
 
-**9 of 9 actionable findings fixed** (100% remediation rate):
+**9 of 10 actionable findings fixed**. The open one is #15, added in rev 12:
 
 | Priority | Finding | Status |
 |----------|---------|--------|
@@ -191,6 +235,8 @@ Traditional web security concerns (authentication, CORS, rate limiting) are larg
 | Consider | #7 `.browserhidden` config — project-specific secret patterns | ✅ Done |
 | Low | #10 Epic color validation — Pydantic field_validator on EpicCreate/EpicUpdate | ✅ Done |
 | Low | #14 Security headers — SecurityHeadersMiddleware (nosniff + DENY) | ✅ Done |
+| **Do Now** | **#15 Kimi path confinement — add a path check to `_decide_permission`** | ⚠️ **Open** |
+| Low | #16 Skills install — run `rel` through `validate_file_path()` | ⚠️ Open |
 
 ### Not Needed for Localhost
 
@@ -212,7 +258,10 @@ The codebase has several good security practices worth noting:
 - **Worktree isolation**: Each agent gets its own git worktree, preventing agents from interfering with each other's work.
 - **Secret file hiding**: The file browser proactively hides common secret files (`.env`, keys, certificates) and supports project-specific `.browserhidden` config files for custom patterns, with mtime-based caching for performance.
 - **Command access workflow**: The `request_command_access` MCP tool provides a controlled way for agents to ask permission for new commands, with user approval required.
-- **Tool filtering**: The `PreToolUse` hook architecture for command filtering, built-in tool filtering, and path guarding is well-designed and extensible.
+- **Tool filtering**: The `PreToolUse` hook architecture for command filtering, built-in tool filtering, and path guarding is well-designed and extensible — but note it is a **Claude-runtime** mechanism; the Kimi runtime does not share it (#15).
+- **No shell invocation anywhere**: `grep -rn "shell=True" src` returns nothing. Every subprocess — git, graphify, the Kimi CLI, the board MCP proxy — is spawned as an argument list, so there is no shell-metacharacter surface in the process-spawning layer at all. This is the single strongest structural property in the codebase.
+- **Feed input is validated, not trusted** (rev 12): `model_catalog.parse_model_list` type-checks every field, enforces a provider allowlist (`FEED_PROVIDERS`), regex-validates each model id against `_MODEL_ID_RE`, de-duplicates, and falls back to a display name — so a malformed or hostile feed response cannot inject an arbitrary model id into provider routing or toward a command line. The fetch verifies TLS (default `urllib` behaviour, not weakened), has a 10s timeout, and `refresh()` never raises — a failed fetch keeps the previous list. The one gap is that `resp.read()` applies no size cap.
+- **Config via environment, not argv** (rev 12): the Kimi board MCP proxy receives `DASHBOARD_BASE_URL` / `DASHBOARD_ITEM_ID` through the subprocess environment rather than the command line, so they do not appear in `ps` output. Note that `DASHBOARD_ITEM_ID` is an *advisory* identity — the dashboard API is unauthenticated by design (#12), so any agent with shell access could call it as another item. That is a consequence of #12, not a separate finding.
 - **Path guard**: `PreToolUse` hook (`path_guard.py`) prevents agents from editing files outside their assigned worktree, blocking accidental writes to the main repo or other agents' worktrees.
 - **Shell operator rejection**: The command filter comprehensively blocks shell metacharacters before checking allowed prefixes, using `shlex.split()` for robust parsing.
 - **CORS protection**: Localhost-only origin restriction prevents cross-origin attacks from malicious websites.

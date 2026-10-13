@@ -9,8 +9,8 @@ Tour of the major subsystems. For named flows with line-numbered entry points se
 
 FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin facade delegating to 7 services in `src/services/`:
 
-- `WorkflowService` (~1800 LOC) — agent lifecycle, state transitions (driven by `ItemState` FSM in `src/domain/item_state.py`), merge conflict auto-resolution, dependency auto-start, WIP limit queueing, single/multi-repo session kwargs (`_item_session_kwargs`), pause/resume with session capture, post-merge graph refresh
-- `DatabaseService` (~570 LOC) — all DB operations (parameterized; column whitelists live in the repositories)
+- `WorkflowService` (~2000 LOC) — agent lifecycle, state transitions (driven by `ItemState` FSM in `src/domain/item_state.py`), merge conflict auto-resolution, dependency auto-start, WIP limit queueing, single/multi-repo session kwargs (`_item_session_kwargs`), pause/resume with session capture, post-merge graph refresh
+- `DatabaseService` (~590 LOC) — all DB operations (parameterized; column whitelists live in the repositories)
 - `NotificationService` — WebSocket broadcasting + tool formatting; the single fan-out point on every state change (incl. graphify `graph_build_progress` / `graph_ready` events)
 - `GitService` — worktree management, merge operations, repo path resolution
 - `SessionService` — agent session lifecycle + provider routing (`ClaudeAgentSession` vs `KimiAgentSession` by model id), commit messages, plugin parsing, Ollama config
@@ -20,7 +20,7 @@ FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin
 ## Web layer (`src/web/`)
 
 - `app.py` — FastAPI app + lifespan (runs DB migrations, the startup state-encoding audit `_audit_item_state_encodings`, the periodic stale-worktree scanner, and the periodic model-list refresh)
-- `routes.py` — board/item/epic/clarification/shortcut/notifications/stats/graphify HTTP endpoints (~1650 LOC)
+- `routes.py` — board/item/epic/clarification/shortcut/notifications/stats/graphify HTTP endpoints (~1750 LOC)
 - `file_routes.py` — attachments + file browser
 - `websocket.py` — WS connection manager
 - `src/model_catalog.py` (one level up) — the selectable model list rendered into the board: Claude and Kimi entries fetched from the published feed (`constants.MODEL_LIST_URL`), with bundled per-provider fallbacks in `constants.py`; Ollama models are discovered separately via `/api/ollama/models`
@@ -39,26 +39,34 @@ Claude SDK integration plus built-in MCP tool servers and PreToolUse hooks. One 
 - `command_access.py` — `request_command_access`
 - `tool_access.py` — `request_tool_access`
 - `shortcut.py` — `create_shortcut`
-- `graph_query.py` — `graph_query` (read-only knowledge-graph query; only wired in when `graphify_enabled`)
+- `graph_query.py` — `graph_query` (read-only knowledge-graph query; wired in only when `graphify_enabled` **and** the provider profile allows it — `session.py:249`, so Ollama/Kimi profiles with `graphify=False` also suppress it)
 
 **PreToolUse hooks**:
 - `command_filter.py` — denies shell commands not in the allowlist
 - `tool_filter.py` — denies built-in tools (WebSearch, WebFetch) not allowed
-- `path_guard.py` — denies Read/Edit/Write outside the worktree
+- `path_guard.py` — confines Edit/Write to the agent's own worktree, and Read/Glob/Grep to the workspace root (two tool sets: `FILE_PATH_TOOLS` = Read/Edit/Write, `PATH_TOOLS` = Glob/Grep)
 
 **Plus**:
 - `base.py` — `AbstractAgentSession` contract (start/cancel + `current_session_id`/`on_error`) and the `AgentResult` dataclass
 - `kimi_session.py` — `KimiAgentSession` (experimental): the first non-Claude runtime, drives `kimi acp` (Kimi Code CLI as an ACP server) for `kimi-*` models; `kimi_board_mcp.py` is its stdio board-tools proxy; see [KIMI_PROVIDER](KIMI_PROVIDER.md)
 - `profiles.py` — provider routing (`is_kimi_model` / `is_ollama_model` / `resolve_ollama_env`) plus the `AgentProfile` that carries the divergent SDK options and feature gates (Ollama = a profile of the Claude runtime, not a separate runtime; Kimi = a separate runtime)
 - `session.py` — `ClaudeAgentSession` (Claude Agent SDK wrapper): system prompt + tool wiring
+- `review_agent.py` — the read-only reviewer session spawned for `auto_approve=REVIEW`; its tool allowlist is `_REVIEWER_ALLOWED_TOOLS = {Read, Glob, Grep}`, so APPROVE auto-merges and anything else routes comments back to the original agent (retry bookkeeping lives in `WorkflowService`)
 - `orchestrator.py` — the public facade
 
 External MCP servers get wildcard tool permissions (`mcp__{server_name}__*`).
 
+## Entry points & plumbing
+
+- `src/main.py` — CLI entry (`run.sh` calls it): resolves the target project / workspace, picks a free port (`127.0.0.1:8000`, 20 tries), handles `--host` / `--port` / `--experimental` / `--ui-map`
+- `src/config.py` — runtime config resolved from the target path (`DATA_DIR_NAME = "agents-lab"`, `DEFAULT_HOST`, `DEFAULT_PORT`, `MAX_PORT_TRIES`)
+- `src/database.py` — the `Database` holder; runs pending migrations on startup via the lifespan in `web/app.py`
+- `src/migrations/runner.py` — discovers and applies `src/migrations/versions/NNN_*.py`; driven by the `src/manage.py` CLI (see [DATABASE](DATABASE.md))
+
 ## Domain & repositories
 
 - `src/domain/item_state.py` — explicit `ItemState` finite state machine over the 13 reachable states (encoded in DB as the `(column_name, status)` pair). All workflow transitions go through `transition(state, event)`; storage encoding stays unchanged via `from_columns` / `to_columns`. **Raw `column_name` / `status` writes outside the SM are a regression.**
-- `src/repositories/item_repository.py` — facade over `DatabaseService` for items; owns `_WRITABLE_ITEM_COLUMNS` and exposes intent-named operations (`get_or_raise`, `transition()`, `update_fields()`, `move_item`).
+- `src/repositories/item_repository.py` — facade over `DatabaseService` for items; owns `_WRITABLE_ITEM_COLUMNS` and exposes intent-named operations (`get_or_raise`, `transition()`, `update_fields()`, `move_to_column()`). (`move_item` is the *route* in `web/routes.py`, which calls `move_to_column`.)
 - `src/repositories/epic_repository.py` — equivalent facade for epics; the `_WRITABLE_EPIC_COLUMNS` whitelist lives here.
 - `src/models.py::AgentConfig` — JSON-string fields (`tools`, `mcp_servers`, `plugins`, `allowed_commands`, `allowed_builtin_tools`) are real Python types; validators tolerate raw JSON strings on input so DB rows still load.
 
@@ -68,7 +76,7 @@ Vanilla JS in `src/static/js/`, **no build step**.
 
 - Jinja2 server-renders the initial board (`templates/base.html`, `templates/board.html`, `templates/partials/card.html`)
 - JS handles updates via WebSocket + fetch
-- `dialogs.js` coordinates the specialized dialog modules (clarification, config, detail, item, notification, request-changes, review, search, file-browser, attachments, shortcuts, annotate)
+- `dialogs.js` coordinates the specialized dialog modules (clarification, config, detail, item, notification, request-changes, review, attachments, annotation-canvas); `search-dialog.js`, `file-browser.js` and `shortcuts.js` are standalone namespaces wired directly from `base.html`, not routed through `Dialogs`
 - `dialog-core.js` + `dialog-utils.js` are the shared infrastructure
 - **Sync requirement**: JavaScript-rendered cards (in `board.js`) and the server-rendered Jinja2 `partials/card.html` partial must stay in sync.
 
@@ -80,4 +88,4 @@ Vanilla JS in `src/static/js/`, **no build step**.
 
 ---
 
-**See also**: [CONVENTIONS](CONVENTIONS.md) (how to write the code once you know where), [PROJECT_MAP](PROJECT_MAP.md) (line-numbered entry points for each named flow).
+**See also**: [CONVENTIONS](CONVENTIONS.md) (how to write the code once you know where), [PROJECT_MAP](PROJECT_MAP.md) (line-numbered entry points for each named flow), [`docs/item-states.md`](../../docs/item-states.md) (the 13 `ItemState` values, their DB encoding, and the transition diagram).
