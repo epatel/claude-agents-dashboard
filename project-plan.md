@@ -46,6 +46,15 @@ Replace this with the specific objective the moment one is in flight.
 Settled, still-relevant choices no agent should reopen without flagging here. Long-lived
 architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
+- 2026-10-14 — The `claude-agent-sdk` floor in `requirements.txt` is kept at the **latest
+  published release** (now `>=0.2.165`), not at a merely-working version. Rationale: token
+  pricing data lives in the SDK and the dashboard reads `total_cost_usd` straight from it —
+  there is no rate table in this repo, so a stale floor silently means stale prices on a fresh
+  `pip install`. Each bump appends a dated **rev note** to
+  `AGENT_FILES/SDK_BUMP_2026-06-03.md` (changelog review + suite result) rather than rewriting
+  that snapshot, and updates the two places that state the floor in prose: `README.md` tech
+  stack and `AGENT_FILES/README.md`. This is the one exception to the don't-touch policy for
+  `SDK_BUMP_*`, and it is append-only.
 - 2026-10-08 — `AGENT_FILES/AUDIT.md` is **revised in place with a new rev** when agent-facing
   surface is added, rather than left as a frozen snapshot like the other root files. Rationale:
   a security doc that says "posture strong, 9 of 9 remediated" while five unreviewed subsystems
@@ -129,9 +138,13 @@ Claude agents get `path_guard.py`; Kimi's `_decide_permission` allows every non-
 tool call, so confinement is `cwd` plus a prompt instruction. Shell commands *do* reach
 parity (allowlist + shell-operator escalation). Fix tracked as board item `d36331e6bccf`.
 
-Two other follow-ups filed, both code not docs: `27bc0bcbbed4` (the `claude-agent-sdk`
-floor is `>=0.2.88` from June while latest is 0.2.164 — and the SDK carries the pricing
-table) and `89698a379b59` (`run.sh` treats `--port 8100`'s value as the target path).
+Of the two follow-ups filed that pass, `27bc0bcbbed4` is **done** (2026-10-14): the
+`claude-agent-sdk` floor went `>=0.2.88` → `>=0.2.165` (latest), suite green at
+1321 passed / 1 skipped, no code changes needed — the 0.2.89→0.2.165 range is almost all
+bundled-CLI bumps, and neither of its two surface changes touches us (details and the
+list of still-unadopted SDK features in the rev note appended to
+`AGENT_FILES/SDK_BUMP_2026-06-03.md`). Still open: `89698a379b59` (`run.sh` treats
+`--port 8100`'s value as the target path).
 
 Docs discipline learned this pass, worth keeping: the per-file and per-category test counts
 in `tests/README.md` / `CARDS/TESTING.md` drift silently and were wrong in ~45 places. The
