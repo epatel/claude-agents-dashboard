@@ -4,7 +4,7 @@
 > **Skip when**: changes don't touch model providers or `AgentConfig.model`.
 
 **Date tested**: 2026-04-12
-**Last reviewed**: 2026-06-06 (doc reassessment — no functional changes; `ollama_enabled` / `ollama_base_url` columns and the `/api/ollama/models` route still present; the removed `+advisor` experimental model is unrelated to the Ollama provider, which remains the only thing gated behind `--experimental`)
+**Last reviewed**: 2026-10-08 (doc reassessment — no functional changes; `ollama_enabled` / `ollama_base_url` columns and the `/api/ollama/models` route still present. Ollama is **no longer the only** `--experimental` feature: the Kimi provider is gated behind the same flag — see [KIMI_PROVIDER](KIMI_PROVIDER.md). The local-model table below is from the 2026-04-12 test and is not re-verified.)
 **Status**: Working ✓
 
 ## Overview
@@ -81,11 +81,11 @@ Ollama is fully integrated into the dashboard as an experimental feature. Enable
 
 1. **Migration 016** adds `ollama_enabled` and `ollama_base_url` columns to `agent_config`
 2. **Agent config dialog** exposes Ollama toggle and base URL setting
-3. **Dynamic model discovery** — the dashboard queries Ollama's REST API (`/api/tags`) to populate model dropdowns with available local models and their sizes
-4. **Connection status indicator** — the header shows Ollama connection status (connected/disconnected)
+3. **Dynamic model discovery** — the dashboard queries Ollama's REST API (`/api/tags`) to populate model dropdowns with available local models, their parameter size and quantization
+4. **Connection status indicator** — the Settings ▸ Ollama tab shows connection status next to the base-URL field (`#ollama-connection-status`, driven by `config-dialog.js`); there is no header indicator
 5. **Provider badges** — cards display provider badges (Claude vs Ollama) based on the selected model
-6. **Per-agent env injection** — `agent/profiles.py` (`resolve_ollama_env`) builds `ANTHROPIC_AUTH_TOKEN=ollama`, `ANTHROPIC_API_KEY=""`, and `ANTHROPIC_BASE_URL`, which `session.py` passes into the subprocess environment when an Ollama model is selected
-7. **Model size info** — dropdowns show model file sizes alongside names
+6. **Per-agent env injection** — `agent/profiles.py` — `build_ollama_env` builds `ANTHROPIC_AUTH_TOKEN=ollama`, `ANTHROPIC_API_KEY=""` and `ANTHROPIC_BASE_URL`; `resolve_ollama_env` gates and delegates to it. `session.py` `session.py` passes into the subprocess environment when an Ollama model is selected
+7. **Model size info** — dropdowns show parameter size and quantization level alongside names (e.g. `qwen3.5:9b (9B) [Q4_K_M]`); the raw byte size is in the API payload but not the display name
 
 ### Hardening (lessons from a runaway "count files" run)
 
@@ -123,7 +123,7 @@ every interpretation.
 ### Architecture
 
 - `model_catalog.py` — `get_available_models()` returns `(model_id, display_name, experimental)` tuples: Claude and Kimi entries refreshed from the published feed (`constants.MODEL_LIST_URL`; bundled `FALLBACK_CLAUDE_MODELS` / `KIMI_MODELS` offline); Ollama models are discovered dynamically at runtime
-- `agent/profiles.py` — single source of truth for provider routing (`is_ollama_model`: any model not starting with `claude-`), the env builder (`resolve_ollama_env`), and the per-provider `AgentProfile` (SDK options + feature gates: graphify/external MCP/plugins/chrome disabled for Ollama)
+- `agent/profiles.py` — single source of truth for provider routing (`is_ollama_model`: any model not starting with `claude-` or `kimi-`), the env builder (`resolve_ollama_env`), and the per-provider `AgentProfile` (SDK options + feature gates: graphify/external MCP/plugins/chrome disabled for Ollama)
 - `session.py` — `ClaudeAgentSession` consumes the profile; Ollama env passthrough via subprocess environment override
 - `session_service.py` — Reads Ollama config from agent_config, resolves the env via `profiles.resolve_ollama_env`, and passes it to session creation
 - `routes.py` — `/api/ollama/models` endpoint for dynamic model discovery (with optional `?force=true` to bust the cache); connection-status checks are derived from this endpoint succeeding/failing

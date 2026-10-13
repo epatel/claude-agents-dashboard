@@ -26,11 +26,40 @@ The server starts at `http://127.0.0.1:8000` (auto-increments ports 8000-8019 if
 open http://127.0.0.1:8000
 ```
 
+### Command-line options
+
+```
+run.sh [target] [options]
+
+  target           Project directory, or a parent folder of sibling repos
+                   (default: current directory)
+  --host HOST      Bind address (default: 127.0.0.1). 0.0.0.0 accepts
+                   connections from any interface — see Security below
+  --port PORT      Fixed port instead of auto-selecting 8000-8019
+  --experimental   Enable the Ollama and Kimi providers
+  --ui-map         Enable PROJECT_MAP overlays (Cmd+Shift+M)
+```
+
+Note: `run.sh` treats the first argument that does not start with `--` as the target path, so put the target **first** when you combine it with options (`run.sh /path/to/project --port 8100`).
+
+### Make targets
+
+A `Makefile` wraps the common commands — run `make` with no arguments for an interactive menu:
+
+```bash
+make start                  # run against the current directory
+make start_at TARGET=/path  # run against another project
+make test                   # full suite
+make test_unit              # one tier (also test_smoke, test_integration, test_e2e)
+make test_filter F=cancel   # pytest -k
+make setup                  # create the venv and install dependencies
+```
+
 Your project must be a git repository, **or** a parent folder containing one or more sibling git repos (multi-repo workspace mode). Requires Python 3.12+.
 
 ### Multi-repo workspaces
 
-Point `run.sh` at a folder that contains several sibling git repos, and the dashboard runs in **multi-repo mode**: each board item carries a `repo` field selecting which sibling repo it targets, and worktrees are created inside that subrepo. Agents have read-only access to the other sibling repos for cross-repo context.
+Point `run.sh` at a folder that contains several sibling git repos, and the dashboard runs in **multi-repo mode**: each board item carries a `repo` field selecting which sibling repo it targets, and worktrees are created under the workspace-level `agents-lab/worktrees/` (named `<repo>-<item-id>`), branched from the chosen subrepo. Agents have read-only access to the other sibling repos for cross-repo context.
 
 ```bash
 path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
@@ -42,7 +71,19 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1322 tests across smoke, unit, and integration tiers, plus E2E tests via `./run-e2e-tests.sh`.
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1322 tests across smoke, unit, and integration tiers (`run-tests.sh` creates the venv and installs both `requirements.txt` and `requirements-test.txt` on first run).
+
+E2E tests run separately and **spawn real agents, which costs tokens**:
+
+```bash
+./run-e2e-tests.sh                 # all E2E tests
+./run-e2e-tests.sh --verbose       # stream server and agent output
+./run-e2e-tests.sh --model <id>    # override the model under test
+```
+
+They need **Node.js and npm** (the runner `npm install`s Playwright on demand) and operate on a scratch project, `./claude-agents-dashboard-e2e-test`, created next to the current directory. `E2E_RESET=yes|no|ask` controls whether that scratch project is reset between runs (it defaults to keeping it when stdin is not a TTY); `E2E_PORT` points the tests at an already-running server.
+
+Coverage has its own runners: `./run-coverage.sh` (unit/integration/smoke, writes `htmlcov/`) and `./run-e2e-coverage.sh` (combined coverage across an E2E run). A bare `pytest` collects no coverage — `pytest.ini` sets no `--cov` and enforces no threshold.
 
 ## Try the demo
 
@@ -85,16 +126,34 @@ graph LR
 4. **Review changes** — browse the diff, approve to merge into main, or request changes
 5. **Agent remembers** — when you request changes, it resumes its session with full context
 
+## Settings
+
+The Settings dialog has eight tabs:
+
+| Tab | Covers |
+|---|---|
+| General | Default model, WIP limit, allowed commands + Bash YOLO, optional built-in tools (Web Search / Web Fetch) |
+| Prompts | System prompt and project context given to every agent |
+| Ollama | Local-model provider: enable toggle, base URL, connection status, model discovery (only shown with `--experimental`) |
+| MCP | External MCP servers handed to agents |
+| Plugins | User-configured Claude Code plugins |
+| Graphify | Knowledge-graph enable, auto-refresh, backend, build/upgrade controls |
+| Skills | The Agent-Skills library: browse, discover, install, enable per project, remove |
+| Appearance | Theme and the flame-effect controls |
+
 ## What it creates
 
-An `agents-lab/` directory in your project (auto-added to `.gitignore`):
+An `agents-lab/` directory in your project:
 
 ```
 your-project/agents-lab/
   dashboard.db        # SQLite database
+  shortcuts.json      # Quick-launch bash commands
   assets/             # Uploaded images/attachments
   worktrees/          # Git worktrees for active agent tasks
 ```
+
+In single-repo mode the dashboard adds `agents-lab/` to the project's `.gitignore` on first run and commits that change. In multi-repo mode nothing is added — the workspace root is not itself a git repo, and each sibling repo's git scope does not reach the workspace-level directory.
 
 The SQLite database uses a versioned migration system to manage schema changes safely.
 
@@ -106,7 +165,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Agent orchestration** via Claude Agent SDK — multiple agents can run simultaneously
 - **Git worktrees** — each agent works in isolation, branched off main
 - **Live work log** — streaming agent output via WebSocket (messages, thinking, tool use)
-- **Review & merge** — tabbed dialog with description, diff viewer, and work log; approve or request changes
+- **Review & merge** — tabbed dialog (Description, Result, Diff, Files, Work Log); approve or request changes
 - **Clarification flow** — agents can ask the user questions mid-task via custom MCP tool; the optional `context` field on `ask_user` is rendered as a panel above the prompt so the user sees relevant background before answering
 - **Todo creation** — agents can create new todo items while working, breaking down complex tasks into smaller actionable items; supports `requires` parameter to declare dependencies between items and `auto_start` to automatically launch agents when dependencies are resolved
 - **Custom commit messages** — agents set meaningful commit messages via MCP tool, used when merging
@@ -122,7 +181,8 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Cancel & cancel review** — cancel a running agent or discard review changes, clean up worktree/branch
 - **Annotation canvas** — drop images, scale/move them, draw arrows, circles, rectangles, and text; saved as PNG attachments
 - **Attachments** — attach annotated screenshots and reference images to items
-- **Per-item model selection** — choose a Claude model per item (falls back to global config; Claude Opus 5 is the default). The list is fetched from a [published model feed](https://epatel.github.io/model-lists/models.json) at startup, with a bundled list used offline
+- **Per-item model selection** — choose a Claude model per item (falls back to global config; Claude Opus 5 is the default). The Claude **and** Kimi lists are fetched from a [published model feed](https://epatel.github.io/model-lists/models.json) at startup and refreshed every 6 hours, with bundled per-provider lists used offline. Ollama models are discovered separately from the local Ollama server
+- **1M-context variants** — some models appear twice, e.g. `Claude Opus 5` and `Claude Opus 5 (1M)`. The `(1M)` entry carries a `[1m]` id suffix that opts the spawned `claude` CLI into the optional 1M-token context window at standard pricing. Only models that treat 1M as opt-in get a paired entry; models that always run at 1M (Fable 5, Sonnet 5) have a single entry, and models without 1M support have none
 - **Auto-approve modes** — per-item setting to skip the manual review gate: OFF (lands in Review for a human), REVIEW (spawns a read-only review agent that auto-merges on approval or sends comments back to the original agent, capped at 3 round-trips), or DIRECT (auto-merge as soon as the agent finishes)
 - **Knowledge graph (graphify)** — the dashboard owns a navigable AST + optional semantic graph of the target project (`graphify-out/`); when enabled in Settings ▸ Graphify, agents get a read-only `graph_query` MCP tool to orient before editing, and the graph auto-refreshes after a merge (free AST build); managed via `/api/graphify/*` with live build-progress over WebSocket
 - **Skills library** — a dashboard-managed library of [Agent Skills](https://docs.claude.com/en/docs/claude-code/skills): browse Anthropic's public skills repo, or install any skill from a GitHub repo/path/URL via Settings ▸ Skills. Installed skills are stored in a gitignored `skill-library/` (each wrapped as a one-skill plugin) and enabled **per project**; enabled skills are delivered to agents through the SDK `plugins=` option so they load regardless of git/worktree/`setting_sources`. Managed via `/api/skills/*`
@@ -132,14 +192,14 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **WIP limit** — configurable cap on concurrent running agents; items started beyond the limit are queued and auto-started when a slot opens
 - **Agent config** — set system prompt, model, project context, MCP servers, and plugins
 - **MCP support** — connect external tools and data sources via Model Context Protocol; includes an example stdio server (`examples/mini-mcp/`) for reference
-- **Plugin support** — load local Claude Code plugins via directory paths
+- **Plugin support** — load local Claude Code plugins via directory paths. Anything under the dashboard's own `plugins/` directory is auto-discovered and delivered **always-on** to every agent; it currently ships `board-workflows` (the `brainstorm`, `plan-tasks` and `debug` skills that shape how agents handle those kinds of task)
 - **Merge conflict auto-resolution** — on merge conflict, captures the agent's diff, resets the worktree to the latest base branch, and restarts the agent with the previous diff as context for automated recovery
 - **Item cleanup** — deleting an item stops running agents, removes worktrees and branches, and cleans up attachment files
 - **WebSocket reconnection** — automatic reconnection with exponential backoff, visibility-aware, manual reconnect via status indicator
 - **WebSocket rate limiting** — per-IP connection limits (5 concurrent, 10 per 60s window) prevent resource exhaustion
 - **Stats caching** — server-side stats caching with 30s TTL, invalidated on mutations for fresh data
 - **Git operation timeouts** — configurable timeouts for git operations (5min), merges (10min), and HTTP requests (11min)
-- **File browser** — browse the target project's source code in a full-featured dialog with directory tree, tabbed file viewer, Prism.js syntax highlighting, rendered markdown with mermaid diagrams, inline image previews, secret file hiding, file filter, keyboard navigation, and breadcrumb navigation
+- **File browser** — browse the target project's source code in a full-featured dialog with directory tree, tabbed file viewer, Prism.js syntax highlighting, rendered markdown with mermaid diagrams, inline image previews, 3D model previews (`.stl`/`.obj` via three.js), `.zip` archive content listing, secret file hiding, file filter, keyboard navigation, and breadcrumb navigation
 - **Allowed commands** — configure which shell commands agents can run (e.g., flutter, npm, cargo); agents can request access at runtime via MCP tool with user approval prompt
 - **Bash YOLO mode** — optional mode that grants agents unrestricted bash access (configurable per project via agent config)
 - **Base branch tracking** — worktrees record which branch they were created from for reliable merge targeting
@@ -148,7 +208,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Dirty repo detection** — blocks merge if your working tree has uncommitted changes overlapping with the agent's files; moves the item to the Questions column with guidance to commit or stash first
 - **Epic grouping** — organize items into epics with a collapsible progress panel above the board, colored badges on cards, Todo column grouping by epic, board filtering by epic, inline epic creation in the item dialog, and agent integration via MCP tools; 8 preset colors with light/dark theme variants
 - **Auto-start pipelines** — items with `auto_start` enabled automatically launch an agent when all their dependency items are completed, enabling pipeline-style workflows
-- **Search** — spotlight-style search dialog (Cmd/Ctrl+K) to find items across all columns and search work log entries
+- **Search** — spotlight-style search dialog (toolbar button) to find items across all columns and search work log entries
 - **Archive cleanup** — archiving items automatically cleans up their worktree and session resources
 - **Shortcut creation** — agents can add quick-launch bash command shortcuts to the board via the `create_shortcut` MCP tool (e.g., test runners, build commands)
 - **Shortcuts bar** — quick-launch bash commands from a bar at the bottom of the board; commands run as subprocesses with streaming output, stop (preserves output log), reset, auto-reset mode, and cleanup
@@ -158,7 +218,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Standalone item detail page** — each item has a shareable URL; Done detail dialog includes a copy-link button for sharing
 - **Animated flame background** — optional animated flame effect behind board columns with activity-driven intensity; configurable via agent config (flame_enabled setting)
 - **Ollama provider** (experimental) — run agents against local Ollama models via Claude Code's env override mechanism; dynamic model discovery, connection status indicator, provider badges on cards; enable with `--experimental` flag
-- **Kimi provider** (experimental) — run agents on Kimi models (`kimi-code/k3`, K2.7) via the Kimi Agent SDK's ACP client (`kimi acp` subprocess); full feature parity: streaming, pause/resume, commit messages, clarifications, board tools (stdio MCP proxy), permission hooks; auth via one-time `kimi login`; enable with `--experimental` flag
+- **Kimi provider** (experimental) — run agents on Kimi models (`kimi-code/k3`, `k3-256k`, `kimi-for-coding`, `kimi-for-coding-highspeed`) via the Kimi Agent SDK's ACP client (`kimi acp` subprocess); full feature parity: streaming, pause/resume, commit messages, clarifications, board tools (stdio MCP proxy), permission hooks; auth via one-time `kimi login`; enable with `--experimental` flag
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture
@@ -191,7 +251,7 @@ graph TB
 
     subgraph MCP["Built-in MCP Tools"]
         Ask["ask_user"]
-        TodoTool["create_todo"]
+        TodoTool["create_todo<br/>delete_todo<br/>create_epic"]
         CommitTool["set_commit_message"]
         CmdAccess["request_command_access"]
         BoardView["view_board"]
@@ -233,11 +293,11 @@ graph TB
 
 ### Technology stack
 
-- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 7-service architecture (Workflow, Database, Notification, Git, Session, Graph, Skills) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~9,900 lines across 43 source files (excluding migrations)
+- **Backend**: Python, FastAPI, uvicorn, aiosqlite, 7-service architecture (Workflow, Database, Notification, Git, Session, Graph, Skills) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~11,700 lines across 43 source files (excluding migrations)
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~9,600 lines JS + ~3,850 lines CSS
-- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 5 (default) plus the current Claude list from the published model feed, 10 built-in MCP tools (incl. read-only `graph_query` and `peek_worktree`); installable Agent Skills delivered via `plugins=`; optional Ollama and Kimi providers (experimental — Kimi runs on a separate runtime: `kimi-agent-sdk` ACP client driving the `kimi` CLI)
-- **Database**: SQLite with 29 versioned migrations (auto-runs on startup)
-- **Security**: Localhost only, no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
+- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 5 (default) plus the current Claude list from the published model feed, 12 built-in MCP tools across 10 servers (incl. read-only `graph_query` and `peek_worktree`); installable Agent Skills delivered via `plugins=`; optional Ollama and Kimi providers (experimental — Kimi runs on a separate runtime: `kimi-agent-sdk` ACP client driving the `kimi` CLI)
+- **Database**: SQLite with 31 versioned migrations (auto-runs on startup)
+- **Security**: Localhost by default (`--host 0.0.0.0` opts out and prints a warning), no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
 
 ### Item lifecycle
 
@@ -263,7 +323,10 @@ stateDiagram-v2
 - **Python 3.12+** (tested on macOS, Linux, and Windows with WSL)
 - **Git** (any modern version)
 - **Claude Code** - must be installed and logged in (`claude` CLI). The dashboard uses the Claude Agent SDK which authenticates through your Claude Code session — no API key needed
-- **Internet connection** - for Claude API calls
+- **Internet connection** - for Claude API calls, the published model feed, and the CDN-hosted frontend libraries (Prism, marked, DOMPurify, mermaid, three.js); the UI degrades without the CDN
+- **Node.js and npm** - only for the E2E test suite
+- **GitHub access on install** - `requirements.txt` pulls `kimi-agent-sdk` from a git fork (the ACP client is not on PyPI), so `run.sh` needs to reach GitHub even if you never use the Kimi provider
+- **`kimi` CLI >= 0.27.0 on PATH** - only for the experimental Kimi provider, plus a one-time `kimi login`
 
 ## Example use cases
 
@@ -276,7 +339,7 @@ stateDiagram-v2
 
 ## Database Management
 
-The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–029) adding columns and tables incrementally. Migrations run automatically on startup.
+The project uses a SQLite database with a versioned migration system for safe schema updates. The schema starts with `001_initial_schema.py` that creates all core tables, with subsequent migrations (002–031) adding columns and tables incrementally. Migrations run automatically on startup.
 
 ### Database schema
 
@@ -357,6 +420,7 @@ erDiagram
         text system_prompt
         text model
         text project_context
+        text tools
         text mcp_servers
         bool mcp_enabled
         text plugins
@@ -372,6 +436,7 @@ erDiagram
         bool graphify_auto_refresh
         text graphify_backend
         text enabled_skills
+        bool ollama_load_claude_md
         text updated_at
     }
 
@@ -380,6 +445,7 @@ erDiagram
         text item_id FK
         text prompt
         text choices
+        int allow_text
         text context
         text response
         text created_at
@@ -437,7 +503,7 @@ python -m src.manage init
 The SQLite database is created at `your-project/agents-lab/dashboard.db`. You can specify a different location:
 
 ```bash
-python -m src.manage status --db-path /path/to/custom/database.db
+python -m src.manage --db-path /path/to/custom/database.db status
 ```
 
 ### Creating Migrations
@@ -523,6 +589,14 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `DELETE` | `/api/skills/{name}` | Remove a skill from the library |
 | `GET` | `/api/files/tree` | Directory tree (lazy, depth-limited) |
 | `GET` | `/api/files/content` | File content (text, image, binary) |
+| `GET` | `/api/workspace` | Workspace info (single- vs multi-repo, sibling repos) |
+| `GET` | `/api/items/{id}` | Standalone HTML detail page for one item (what the copy-link button yields) |
+| `GET` | `/api/items/{id}/peek` | What other running agents changed in their worktrees (backs `peek_worktree` for Kimi) |
+| `GET` | `/api/yolo-items` | Items currently running with Bash YOLO mode on |
+| `GET` | `/api/auto-reviewing-items` | Items currently under an auto-review pass |
+| `POST` | `/api/cleanup/worktree/{id}` | Remove a stale worktree |
+| `PUT` | `/api/shortcuts/{id}` | Update a shortcut |
+| `POST` | `/api/shutdown` | Shut the server down (used by the E2E coverage runner) |
 | `WebSocket` | `/ws` | Real-time event stream |
 
 ### WebSocket Events
@@ -541,6 +615,16 @@ python -m src.manage status --db-path /path/to/custom/database.db
 | `epic_deleted` | Server → Client | Epic removed |
 | `graph_build_progress` | Server → Client | Graphify build phase updates |
 | `graph_ready` | Server → Client | Graphify build finished (or failed) |
+| `permission_requested` | Server → Client | Agent asked to run a command outside its allowlist |
+| `tool_permission_requested` | Server → Client | Agent asked for an optional built-in tool |
+| `merge_blocked` | Server → Client | Merge blocked; asking the user how to proceed |
+| `dependencies_changed` | Server → Client | An item's dependency set was edited |
+| `dependencies_resolved` | Server → Client | An item's blockers all completed |
+| `blocked_status_changed` | Server → Client | Blocked/unblocked state changed for one or more items |
+| `shortcut_created` | Server → Client | A shortcut was created (incl. by an agent) |
+| `yolo_mode_changed` | Server → Client | Bash YOLO mode toggled for an item |
+| `auto_review_changed` | Server → Client | Auto-review started or finished for an item |
+| `ping` | Server → Client | Heartbeat keeping the connection alive |
 
 ## Troubleshooting
 
@@ -634,8 +718,11 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 - [`CARDS/KIMI_PROVIDER.md`](AGENT_FILES/CARDS/KIMI_PROVIDER.md) — the Kimi runtime (experimental): ACP transport, board-tools MCP proxy, text protocols, permission trust model
 - [`CARDS/GRAPHIFY.md`](AGENT_FILES/CARDS/GRAPHIFY.md) — using and maintaining the codebase knowledge graph (`graphify-out/`)
 - [`CARDS/SKILLS.md`](AGENT_FILES/CARDS/SKILLS.md) — the Agent-Skills library: install/enable skills and how enabled ones reach agents via `plugins=`
+- [`CARDS/DEMO.md`](AGENT_FILES/CARDS/DEMO.md) — the one-prompt `kanban-demo` walkthrough, for demoing the dashboard end to end
 
-Point-in-time snapshots (**not maintained**) sit in the AGENT_FILES root: `ASSESSMENT_CODE.md` (module-by-module quality ratings), `AUDIT.md` (security audit, 14 findings, 9 of 9 actionable remediated), and dated decision/eval records (`EVAL_*`, `PLAN_*`, `SDK_BUMP_*`).
+One living reference sits outside `CARDS/`: [`docs/item-states.md`](docs/item-states.md) — the 13 `ItemState` values, their `(column_name, status)` encoding, and the transition diagram.
+
+Point-in-time snapshots (**not maintained**) sit in the AGENT_FILES root: `ASSESSMENT_CODE.md` (module-by-module quality ratings), `AUDIT.md` (security audit, rev 12 — 17 findings, 9 of 10 actionable remediated; the open one is Kimi worktree confinement under `--experimental`), and dated decision/eval records (`EVAL_*`, `PLAN_*`, `SDK_BUMP_*`).
 
 ## License
 

@@ -36,13 +36,22 @@ Replace this with the specific objective the moment one is in flight.
 - [x] M6 — Claude Opus 5 / Sonnet 5 added, Opus 5 the default (migration 031) (2026-07-25)
 - [x] M7 — Cross-worktree peek: `peek_worktree` MCP tool + `GET /api/items/{id}/peek` for Kimi (2026-09-19)
 - [x] M8 — Feed-backed model list: `src/model_catalog.py` fetches Claude + Kimi models from the published feed (2026-10-08)
-- [ ] M9 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
+- [x] M9 — Docs reassessment + first security audit of the post-rev-11 subsystems: living docs
+  re-verified against code (≈45 wrong test counts, 22 drifted `PROJECT_MAP` anchors, and a set of
+  wrong names/flags/claims fixed); `AUDIT.md` rev 12 adds findings #15–#17 (2026-10-08)
+- [ ] M10 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
 
 ## Decisions
 
 Settled, still-relevant choices no agent should reopen without flagging here. Long-lived
 architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
+- 2026-10-08 — `AGENT_FILES/AUDIT.md` is **revised in place with a new rev** when agent-facing
+  surface is added, rather than left as a frozen snapshot like the other root files. Rationale:
+  a security doc that says "posture strong, 9 of 9 remediated" while five unreviewed subsystems
+  have landed is worse than no doc. Every other root file (`ASSESSMENT_CODE.md`, `PLAN_*`,
+  `EVAL_*`, `SDK_BUMP_*`) keeps the don't-touch snapshot policy. A rev must state what it
+  reviewed *and* record negative results, so the next reviewer knows what was already cleared.
 - 2026-07-25 — Default model is `claude-opus-5` (migration 031); Claude Opus 5, Opus 5 (1M)
   and Claude Sonnet 5 added to `AVAILABLE_MODELS`. Supersedes the 2026-05-28 `claude-opus-4-8`
   decision (that model stays selectable). Locked.
@@ -98,28 +107,61 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
   `kimi-agent-sdk` is installed from the `epatel/kimi-agent-sdk@agentic-setup` fork
   branch in requirements.txt (PyPI lacks the ACP client). Auth via one-time
   `kimi login` (OAuth, shared with the Kimi CLI) or `KIMI_API_KEY` for headless use.
+  **Superseded in part by M5**: Kimi no longer runs `yolo=True` — it has a real
+  `permission_handler` (`kimi_session.py:340`) plus board tools via the stdio MCP
+  proxy. Auto-review is still skipped for Kimi models (the reviewer is a Claude SDK
+  session).
 
 ## Current state / handoff
 
-No objective in flight. Last change (2026-10-08): the feed-backed model list (M8, see
-Decisions) and an agentic-setup refresh — cards and READMEs re-synced, this note trimmed,
-project skills now committed under `.claude/skills/`.
+No objective in flight. Last change (2026-10-08, M9): a docs reassessment plus the first
+security review of everything added since `AUDIT.md` rev 11.
 
-Authoritative counts: **31 migrations (001–031), 1322 tests (unit / integration / smoke),
-7 services, 10 built-in MCP tools** (skills ship as plugins, not as an MCP tool).
+Authoritative counts, all re-verified by collection/grep this pass — trust these over any
+number you find in prose: **31 migrations (001–031)**; **1322 tests = 20 smoke + 1288 unit
++ 14 integration** (plus 7 Node E2E tests, counted separately); **7 services**; **10 MCP
+tool servers exposing 12 tools** (`todo.py` serves three); skills ship as plugins, not as
+an MCP tool.
+
+**One thing to know before touching the Kimi runtime or `--experimental`**: `AUDIT.md`
+finding **#15** (new in rev 12) — Kimi agents have **no enforcing worktree-write guard**.
+Claude agents get `path_guard.py`; Kimi's `_decide_permission` allows every non-execute
+tool call, so confinement is `cwd` plus a prompt instruction. Shell commands *do* reach
+parity (allowlist + shell-operator escalation). Fix tracked as board item `d36331e6bccf`.
+
+Two other follow-ups filed, both code not docs: `27bc0bcbbed4` (the `claude-agent-sdk`
+floor is `>=0.2.88` from June while latest is 0.2.164 — and the SDK carries the pricing
+table) and `89698a379b59` (`run.sh` treats `--port 8100`'s value as the target path).
+
+Docs discipline learned this pass, worth keeping: the per-file and per-category test counts
+in `tests/README.md` / `CARDS/TESTING.md` drift silently and were wrong in ~45 places. The
+category buckets now partition the 1288 unit tests exactly, so the totals reconcile — if you
+add a test file, put it in a bucket and update both numbers. Likewise `PROJECT_MAP.md` line
+anchors: all 22 `workflow_service.py` / `session_service.py` ones had drifted (worst by 167
+lines) while every `routes.py` / `agent/*` one was still correct. Re-grep anchors rather than
+trusting them.
 
 How earlier work landed is not repeated here: see Milestones for the sequence, the cards
 for how things work now ([`KIMI_PROVIDER`](AGENT_FILES/CARDS/KIMI_PROVIDER.md) for the Kimi
 runtime, [`ARCHITECTURE`](AGENT_FILES/CARDS/ARCHITECTURE.md) for the session layer and
-`peek_worktree`), and `git log` for the detail. The dated snapshots in `AGENT_FILES/` root
-are point-in-time records and stay untouched.
+`peek_worktree`), and `git log` for the detail. The dated `PLAN_*`/`EVAL_*`/`SDK_BUMP_*`
+snapshots in `AGENT_FILES/` root stay untouched; `AUDIT.md` is the exception — it is
+revised in place and is now at rev 12.
 
-The next agent to pick up real work should set **Goal**, fill in **M9**, and rewrite this
+The next agent to pick up real work should set **Goal**, fill in **M10**, and rewrite this
 note as the running handoff — keep it a short handoff, not a log.
 
 ## Open questions
 
-- Does any 5.5-family model (or Fable 5.1) need a `[1m]` opt-in entry? None is in
-  `CLAUDE_1M_OPT_IN_MODELS` today.
+- **Do the 5.5-family models need `[1m]` opt-in entries?** The feed now serves
+  `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` and `claude-fable-5-1`,
+  and they are already in `FALLBACK_CLAUDE_MODELS`. None is in
+  `CLAUDE_1M_OPT_IN_MODELS`, so none gets a paired `(1M)` entry. For Fable 5.1 that
+  is **correct** — it is always 1M on the API, like Fable 5 and Sonnet 5, so the CLI
+  exposes no `[1m]` variant. For Opus/Sonnet/Haiku 5.5 it is **unverified**: if any
+  of them treats 1M as opt-in the way Opus 5 does, it needs a
+  `CLAUDE_1M_OPT_IN_MODELS` entry. Check Claude Code's model-config docs before
+  adding one — the feed's `context_window` cannot distinguish opt-in from always-on,
+  which is exactly why that set stays a local constant.
 
 An agent that hits a blocker or undecided choice adds it here rather than guessing.

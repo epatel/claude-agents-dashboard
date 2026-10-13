@@ -40,11 +40,11 @@ Sibling names like `flow.merge` and `card.btn-merge` make the connection obvious
 
 ## Live overlay (the discovery surface for UI names)
 
-A `?map=1` query param (or Cmd+Shift+M toggle) injects a small debug script:
+The `--ui-map` server flag loads a small debug script, which Cmd+Shift+M then cycles through its modes:
 - Hover any element with `data-map-name` → tooltip showing the name.
 - Click → copy name to clipboard.
-- Lives at `static/js/map_overlay.js`, only loaded when the param is present, zero cost in normal use.
-- ~50 lines of vanilla JS, fits the no-build-step architecture.
+- Lives at `src/static/js/map_overlay.js` plus `spacing_overlay.js` and `map_coordinator.js` (~640 lines of vanilla JS total), loaded only when `--ui-map` is passed, so there is zero cost in normal use.
+- No build step, in keeping with the rest of the frontend.
 
 **Why overlay-on-real-app over a clickable mockup:** mockups go stale instantly, can't capture dialogs or hover/drag states, and need separate maintenance. The overlay always shows real state.
 
@@ -55,7 +55,7 @@ Overlay reads agent state and badges cards mid-flow — e.g., a card currently m
 ## Order of operations
 
 1. **Draft PROJECT_MAP.md with the flows section first** (~10–15 entries from CLAUDE.md). Pure doc, no code change, immediately useful as a vocabulary check.
-2. **Build the overlay** (`static/js/map_overlay.js` + `?map=1` toggle). Lets the user click around and see/propose names live.
+2. **Build the overlay** (`src/static/js/map_overlay.js` behind the `--ui-map` flag, Cmd+Shift+M to cycle modes). Lets the user click around and see/propose names live.
 3. **Tag UI elements** with `data-map-name` as the user points them out via the overlay, batch by batch.
 4. **Add the auto-gen script** that greps `data-map-name` and rewrites the UI section of PROJECT_MAP.md.
 

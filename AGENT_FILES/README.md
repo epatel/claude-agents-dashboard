@@ -2,9 +2,9 @@
 
 Project documentation for agents and humans. Two layers:
 
-- **`CARDS/`** — living docs (architecture, conventions, flows, testing, migrations, …). Start at [`CARDS/README.md`](CARDS/README.md) — it's a routing manifest with **Load when / Skip when** triggers per card.
+- **`CARDS/`** — living docs (architecture, conventions, flows, testing, migrations, …). Start at [`CARDS/README.md`](CARDS/README.md) — it's a routing manifest with **Load when / Skip when** triggers per card. One further living reference sits outside this tree: [`docs/item-states.md`](../docs/item-states.md), the `ItemState` FSM.
 - **Root files** — point-in-time snapshots and dated decision records, **not maintained** (kept as historical context — don't edit them to reflect current state; that's what `CARDS/` is for):
-  - `AUDIT.md` — point-in-time security/codebase audit (14 findings).
+  - `AUDIT.md` — security audit, rev 12 (17 findings; 9 of 10 actionable remediated). The one open actionable finding is **#15 — Kimi agents have no enforcing worktree-write guard**, so read it before working on the Kimi runtime or the `--experimental` flag.
   - `ASSESSMENT_CODE.md` — point-in-time module-by-module code assessment.
   - `SDK_BUMP_2026-06-03.md` — record of the `claude-agent-sdk` floor bump (>=0.2.88).
   - `EVAL_file_checkpointing_2026-06-03.md` — eval of SDK file checkpointing for review→reject (decision: no).

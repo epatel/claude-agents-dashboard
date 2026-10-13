@@ -74,19 +74,19 @@ Workflow state changes go through `ItemState.transition(state, event)` in `src/d
 
 - aiosqlite, raw SQL (no ORM). All writes parameterized with `?`.
 - `items` and `epics` writes go through their repository facade (column allowlist `_WRITABLE_ITEM_COLUMNS` lives at the repo boundary).
-- Other tables (`clarifications`, `reviews`, `work_log`, `attachments`, `tokens`, `item_dependencies`, agent config) still go through `DatabaseService` directly. **Policy**: tables graduate to a dedicated repo only when a third writer shows up or a typing pain point makes the boundary obvious. Don't pre-emptively add repos.
+- Other tables (`clarifications`, `review_comments`, `work_log`, `attachments`, `token_usage`, `item_dependencies`, `agent_config`) still go through `DatabaseService` directly. **Policy**: tables graduate to a dedicated repo only when a third writer shows up or a typing pain point makes the boundary obvious. Don't pre-emptively add repos.
 - Migrations are numbered (`NNN_*`), implement `up()` and `down()`. For column-add migrations, leaving `down()` as a no-op is acceptable — match the comment style in `021_add_context_to_clarifications.py`.
 
 ### Logging
 
-- `import logging` at module top, `logger = logging.getLogger(__name__)` immediately after imports. ~19 modules follow this exactly.
+- `import logging` at module top, `logger = logging.getLogger(__name__)` immediately after imports. ~22 modules follow this exactly.
 - `logger.warning(...)` for recoverable problems, `logger.info(...)` for state transitions, `logger.error(...)` for caught exceptions you don't re-raise. Don't reach for `print()`.
 
 ### Frontend
 
 - One namespace per file: `const ReviewFileBrowser = { ... }`. No imports, no exports.
 - API calls go through the `Api` namespace (`Api.getItems()`, `Api.request(method, url, body)`). Don't `fetch()` directly from a dialog or board module.
-- Dialogs go through `Dialogs.confirm/prompt/...` — never browser `confirm()` / `prompt()` (they block the event loop and don't theme).
+- Dialogs go through `Dialogs.confirm(...)` / `DialogCore.open|close` (the four re-exports are `autoScroll`, `open`, `close`, `confirm`) — never browser `confirm()` / `prompt()` (they block the event loop and don't theme).
 - WebSocket events fan out from `app.js`.
 - The Jinja2 `templates/partials/card.html` and the JS `Board.renderCard` builder both render cards. They must stay in sync — when you add a card field, edit both. The repo-color hash (`_repo_hue` in `app.py` ↔ `Board.repoHue` in `board.js`) is a deliberate parallel implementation; preserve the algorithm.
 

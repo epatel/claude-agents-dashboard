@@ -6,8 +6,9 @@
 The dashboard's first **non-Claude agent runtime**. Unlike Ollama (which is a
 *profile* of the Claude Agent SDK redirected via env vars — see
 [OLLAMA_PROVIDER](OLLAMA_PROVIDER.md)), Kimi models run through the separate
-in-process **Kimi Agent SDK** (`kimi-agent-sdk` on PyPI, embedding the
-`kimi-cli` runtime).
+in-process **Kimi Agent SDK** (`kimi-agent-sdk`, installed from a git fork —
+see Requirements; its ACP client drives whatever `kimi` binary is on PATH
+rather than an embedded runtime).
 
 ## Routing
 
@@ -22,7 +23,7 @@ in-process **Kimi Agent SDK** (`kimi-agent-sdk` on PyPI, embedding the
   config flag — selection is purely by model id.
 - The ids are **kimi-code model aliases** (the CLI's `-m` values), not raw
   API model names: `kimi-code/k3` (K3, the CLI default),
-  `kimi-code/kimi-for-coding` (K2.7 Coding),
+  `kimi-code/k3-256k` (K3-256K), `kimi-code/kimi-for-coding`,
   `kimi-code/kimi-for-coding-highspeed`. Check what an install actually
   offers with `kimi provider list` / `~/.kimi-code/config.toml` — aliases are
   per-install configuration, not a fixed catalog.
@@ -34,8 +35,9 @@ Implements the `AbstractAgentSession` contract (`src/agent/base.py`) over
 `kimi_agent_sdk.acp.AcpClient` — which spawns `kimi acp` (the Kimi Code CLI
 as an Agent Client Protocol server, CLI >= 0.27.0, JSON-RPC over stdio) —
 and streams session updates. The ACP module is stdlib-only and targets
-whatever `kimi` binary is on PATH; the model is passed via the
-`KIMI_MODEL_NAME` env var on the subprocess (ACP has no model param).
+whatever `kimi` binary is on PATH; the model is selected per session via an
+ACP `session/set_config_option` request (`configId: "model"`, since `kimi acp`
+has no model flag), with `KIMI_MODEL_NAME` on the subprocess env as a fallback.
 
 Update mapping (partial chunks are aggregated into message-sized entries):
 `AgentMessageChunk` → `on_message`, `AgentThoughtChunk` → `on_thinking`,
@@ -127,9 +129,10 @@ Remaining limitations (deliberate, mirrors the lean Ollama feature set):
 
 ## Requirements
 
-- `kimi-agent-sdk` >= 0.0.6 — installed via `requirements.txt` from the
+- `kimi-agent-sdk` — installed via `requirements.txt` from the
   `epatel/kimi-agent-sdk@agentic-setup` fork branch (PyPI <= 0.0.5 lacks the
-  ACP client). The import is lazy — the dashboard runs fine without it;
+  ACP client). The requirement is the bare git URL, so **no version floor is
+  enforced** — the branch is the contract. The import is lazy — the dashboard runs fine without it;
   starting a Kimi session without the package reports `KIMI_SDK_INSTALL_HINT`
   via `on_error`. Note: the *runtime* no longer depends on the package's
   `kimi-cli` pin (ACP talks to the PATH binary), but pip still installs the

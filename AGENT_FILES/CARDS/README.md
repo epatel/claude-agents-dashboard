@@ -4,6 +4,8 @@ Living docs grouped by **when to load**. Scan this index first, then load only t
 
 Each card also carries its own `> Load when` block so you can verify relevance after landing on it, and a `See also` footer pointing at sibling cards likely co-needed.
 
+One living reference lives outside this directory: [`docs/item-states.md`](../../docs/item-states.md) — the `ItemState` FSM (13 states, DB encoding, transition diagram). Load it with the cards below when you touch item state transitions; it must stay in sync with `src/domain/item_state.py`.
+
 ---
 
 ## Task → cards
@@ -14,6 +16,7 @@ Common operations and the cards that cover them. Order is suggested reading orde
 | --- | --- |
 | Add a new MCP tool or PreToolUse hook | [ARCHITECTURE](ARCHITECTURE.md) (agent runtime) → [CONVENTIONS](CONVENTIONS.md) |
 | Add a DB migration / new column | [DATABASE](DATABASE.md) → [CONVENTIONS](CONVENTIONS.md) (data layer) → [TESTING](TESTING.md) (`tests/unit/migrations/`) |
+| Change how an item moves between columns / statuses | [`docs/item-states.md`](../../docs/item-states.md) (the 13-state FSM + diagram) → [ARCHITECTURE](ARCHITECTURE.md) (`WorkflowService`) |
 | Add a frontend dialog or card change | [ARCHITECTURE](ARCHITECTURE.md) (frontend) → [CONVENTIONS](CONVENTIONS.md) (frontend) |
 | Add a new service / repository / endpoint | [ARCHITECTURE](ARCHITECTURE.md) → [CONVENTIONS](CONVENTIONS.md) |
 | Trace an existing flow end-to-end | [PROJECT_MAP](PROJECT_MAP.md) only |

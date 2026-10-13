@@ -25,4 +25,4 @@ Before doing real work, scan **[`AGENT_FILES/CARDS/README.md`](AGENT_FILES/CARDS
 
 Project skills live in `.claude/skills/` (committed): `review-agentic-setup` and `files-skill` for maintaining this setup, `ste-writing` for doc prose.
 
-`AGENT_FILES/` root holds historical snapshots only (`AUDIT.md`, `ASSESSMENT_CODE.md`); living docs are all under `CARDS/`.
+`AGENT_FILES/` root holds historical snapshots only (`AUDIT.md`, `ASSESSMENT_CODE.md`, dated `PLAN_*`/`EVAL_*` records) — don't edit those to match current state. Living docs are under `CARDS/`, plus [`docs/item-states.md`](docs/item-states.md) (the `ItemState` FSM and its diagram, kept in sync with `src/domain/item_state.py`).

@@ -11,19 +11,22 @@ tests/
 │   ├── migrations/
 │   │   ├── test_migration_runner.py             # Core migration functionality (14 tests)
 │   │   ├── test_migration_edge_cases.py         # Edge cases and error scenarios (14 tests)
-│   │   ├── test_default_model_024.py            # Migration 024 default-model bump (4 tests)
+│   │   ├── test_default_model_024.py            # Migration 024 default-model bump (3 tests)
 │   │   ├── test_use_chrome_025.py               # Migration 025 use_chrome column (4 tests)
 │   │   ├── test_api_error_status_026.py         # Migration 026 api_error_status column (4 tests)
 │   │   ├── test_remove_advisor_027.py           # Migration 027 strip +advisor suffix (5 tests)
 │   │   ├── test_graphify_config_028.py          # Migration 028 graphify config (3 tests)
-│   │   └── test_enabled_skills_029.py           # Migration 029 enabled_skills column (3 tests)
+│   │   ├── test_enabled_skills_029.py           # Migration 029 enabled_skills column (3 tests)
+│   │   ├── test_ollama_load_claude_md_030.py    # Migration 030 ollama_load_claude_md column (3 tests)
+│   │   └── test_default_model_031.py            # Migration 031 default-model bump to Opus 5 (5 tests)
 │   ├── test_allowed_commands.py                 # Command filter + access MCP tool (26 tests)
 │   ├── test_annotation_prompt.py                # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py               # Annotation summary generation (2 tests)
 │   ├── test_app.py                              # FastAPI app creation and middleware (26 tests)
-│   ├── test_create_todo_autostart.py            # Todo creation with auto-start (21 tests)
+│   ├── test_create_todo_autostart.py            # Todo creation with auto-start (23 tests)
 │   ├── test_database_service.py                 # DatabaseService CRUD operations (62 tests)
 │   ├── test_diff_mixing.py                      # Diff isolation between items (6 tests)
+│   ├── test_epic_plan_path.py                   # Epic-scoped shared plan path (5 tests)
 │   ├── test_epic_repository.py                  # EpicRepository facade (9 tests)
 │   ├── test_epics.py                            # Epic CRUD, progress, item assignment (19 tests)
 │   ├── test_file_routes.py                      # File browser routes (66 tests)
@@ -36,22 +39,31 @@ tests/
 │   ├── test_item_state.py                       # ItemState FSM: states, events, encoding (66 tests)
 │   ├── test_main.py                             # Server startup and port discovery (34 tests)
 │   ├── test_manage.py                           # Migration CLI commands (24 tests)
-│   ├── test_mcp_tool_servers.py                 # MCP tool server creation and invocation (60 tests)
+│   ├── test_mcp_tool_servers.py                 # MCP tool server creation and invocation (67 tests)
 │   ├── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
+│   ├── test_model_catalog.py                    # Model feed fetch, parsing, fallbacks (14 tests)
 │   ├── test_notification_service.py             # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
-│   ├── test_routes.py                           # HTTP endpoint tests (102 tests)
-│   ├── test_session.py                          # AgentSession SDK wrapper (83 tests)
-│   ├── test_session_service.py                  # SessionService lifecycle (49 tests)
+│   ├── test_peek_worktree.py                    # peek_worktree tool, git reads, rendering (23 tests)
+│   ├── test_routes.py                           # HTTP endpoint tests (116 tests)
+│   ├── test_base.py                             # AbstractAgentSession contract (4 tests)
+│   ├── test_kimi_board_mcp.py                   # Kimi board-tools stdio MCP proxy (12 tests)
+│   ├── test_kimi_session.py                     # KimiAgentSession over ACP (experimental) (57 tests)
+│   ├── test_profiles.py                         # Provider profiles + Kimi/Ollama routing (23 tests)
+│   ├── test_session.py                          # ClaudeAgentSession SDK wrapper (96 tests)
+│   ├── test_session_service.py                  # SessionService lifecycle + provider routing (54 tests)
 │   ├── test_skills_service.py                   # SkillsService install/browse/discover/enable (11 tests)
 │   ├── test_use_chrome.py                       # Per-task Chrome integration (17 tests)
 │   ├── test_websocket.py                        # WebSocket connection and rate limiting (45 tests)
-│   └── test_workflow_service.py                 # WorkflowService state transitions (108 tests)
+│   └── test_workflow_service.py                 # WorkflowService state transitions (115 tests)
 ├── integration/                                  # Integration tests (slower, multi-component)
 │   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (14 tests)
 ├── smoke/                                        # Smoke tests (basic functionality)
 │   ├── test_basic_functionality.py              # Quick regression checks (12 tests)
 │   └── test_multi_repo.py                       # Multi-repo workspace detection and routing (8 tests)
+├── e2e/                                          # Node + Playwright E2E tests (spawn real agents)
+│   ├── helpers.mjs                              # startServer/stopServer, runAgentTask, pass/fail
+│   └── test_*.mjs                               # 7 E2E tests (see the E2E section below)
 └── README.md                                     # This file
 ```
 
@@ -59,19 +71,19 @@ tests/
 
 ### 1. Domain & Repository Layer (100 tests)
 - **ItemState FSM** (66 tests) — States, events, transitions, `from_columns`/`to_columns` encoding round-trips
-- **ItemRepository** (25 tests) — Read APIs, `transition()`, `update_fields()`, `move_item`, column whitelist enforcement
+- **ItemRepository** (25 tests) — Read APIs, `transition()`, `update_fields()`, `move_to_column()`, column whitelist enforcement
 - **EpicRepository** (9 tests) — CRUD facade and column whitelist enforcement
 
-### 2. Service Layer (283 tests)
-- **WorkflowService** (108 tests) — State transitions (driven through `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
+### 2. Service Layer (295 tests)
+- **WorkflowService** (115 tests) — State transitions (driven through `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
 - **DatabaseService** (62 tests) — CRUD operations, item dependencies, clarification context column (column whitelisting moved to the repositories)
-- **SessionService** (49 tests) — Session lifecycle, commit messages, plugin parsing (incl. enabled-skill plugins), SDK wrapper
+- **SessionService** (54 tests) — Session lifecycle, commit messages, plugin parsing (incl. enabled-skill plugins), SDK wrapper
 - **NotificationService** (41 tests) — WebSocket broadcasting, tool formatting, event types
 - **GraphService** (12 tests) — graphify build/refresh/query/status, version detection, cost tracking
 - **SkillsService** (11 tests) — library install/list/remove, browse Anthropic source, multi-skill repo discovery, spec parsing, gitignore management
 
-### 3. Web Layer (247 tests)
-- **Routes** (110 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, graphify endpoints, skills library endpoints
+### 3. Web Layer (253 tests)
+- **Routes** (116 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, graphify endpoints, skills library endpoints
 - **File Routes** (66 tests) — File browser path validation, secret detection, .browserhidden, language mapping, directory scanning
 - **WebSocket** (45 tests) — Connection management, rate limiting, dead-connection cleanup
 - **App** (26 tests) — FastAPI factory, middleware, CORS, security headers, lifespan
@@ -81,25 +93,34 @@ tests/
 - **Git Worktree** (15 tests) — Worktree create/cleanup, base branch tracking
 - **Git Timeout** (5 tests) — Timeout configuration and recovery
 
-### 5. Agent Tools (96 tests)
-- **MCP Tool Servers** (60 tests) — Tool server creation, invocation, request/response flow, `ask_user` context field passthrough
+### 5. Agent Tools (138 tests)
+- **MCP Tool Servers** (67 tests) — Tool server creation, invocation, request/response flow, `ask_user` context field passthrough
 - **Allowed Commands** (26 tests) — Command filter hook, shell operator rejection, YOLO mode bypass
+- **peek_worktree** (23 tests) — Cross-worktree tool, the `GitService` reads behind it, overlap flagging and rendering
+- **Kimi board-tools MCP proxy** (12 tests) — stdio subprocess against a stub dashboard API
 - **graph_query tool** (10 tests) — Read-only knowledge-graph MCP tool server
 
-### 5b. Session (83 tests)
-- **AgentSession** (83 tests) — SDK wrapper, token extraction, event handling, Ollama provider env configuration
+### 5b. Session (180 tests)
+- **ClaudeAgentSession** (96 tests) — SDK wrapper, token extraction, event handling, Ollama provider env configuration
+- **KimiAgentSession** (57 tests) — ACP transport, text protocols, permissions, resume (experimental)
+- **Provider profiles** (23 tests) — Kimi/Ollama routing predicates, env builder, profile gate matrix
+- **AbstractAgentSession** (4 tests) — contract conformance
 
-### 6. Features (81 tests)
+### 5c. Config & Catalog (19 tests)
+- **Model catalog** (14 tests) — Feed fetch and parsing, per-provider filtering, `[1m]` synthesis, offline fallback
+- **Epic plan path** (5 tests) — Epic-scoped shared-plan path resolution
+
+### 6. Features (83 tests)
 - **Epics** (19 tests) — CRUD, progress stats, item assignment, filtering, dependencies
-- **Todo Auto-start** (21 tests) — Todo creation with dependency-based auto-start
+- **Todo Auto-start** (23 tests) — Todo creation with dependency-based auto-start
 - **use_chrome** (17 tests) — Per-task Chrome browser integration
 - **Mini-MCP** (11 tests) — Example MCP server protocol compliance
 - **Diff Mixing** (6 tests) — Diff isolation between concurrent items
 - **Annotation Prompt** (5 tests) — Prompt formatting for agents
 - **Annotation Summary** (2 tests) — Summary text generation
 
-### 7. Infrastructure (143 tests)
-- **Migrations** (58 tests) — Runner, up/down, discovery, edge cases; per-migration data tests for 024 (default-model bump), 025 (use_chrome), 026 (api_error_status), 027 (remove +advisor), 028 (graphify config), 029 (enabled_skills), 031 (default-model bump to Opus 5)
+### 7. Infrastructure (150 tests)
+- **Migrations** (58 tests) — Runner, up/down, discovery, edge cases; per-migration data tests for 024 (default-model bump), 025 (use_chrome), 026 (api_error_status), 027 (remove +advisor), 028 (graphify config), 029 (enabled_skills), 030 (ollama_load_claude_md), 031 (default-model bump to Opus 5)
 - **Main** (34 tests) — Server startup, port discovery, git validation
 - **Manage** (24 tests) — Migration CLI commands
 - **Path Validation** (14 tests) — Traversal prevention, null bytes, symlinks
@@ -123,7 +144,9 @@ Tests the complete agent workflow end-to-end:
 - ✅ **DnD canonicalization** (`test_state_machine_dnd.mjs`, 5 cases): Drag-and-drop produces SM-canonical `(column, status)` encoding (e.g. todo→doing yields `("doing", null)`, never the off-canon family that crashed Start before Phase 2's `move_to_column` normalization); reorder preserves status; move-to-done clears `worktree_path` and stamps `done_at`. Pure HTTP — no agent spawn.
 - ✅ **AgentConfig round-trip** (`test_config_roundtrip.mjs`, 4 steps): Phase 3 boundary contract — `GET /api/config` returns typed lists/dicts (never JSON strings); arrays/objects round-trip across SQLite TEXT storage; legacy JSON-string input on `PUT` is parsed by the `field_validator(mode="before")`. Pure HTTP.
 
-Run with: `./run-e2e-tests.sh` (supports `--verbose` flag for colored output)
+Run with: `./run-e2e-tests.sh` (`-v` / `--verbose` streams server and agent output; colour is always on).
+
+Prerequisites: **Node.js and npm** — the runner `npm install`s Playwright on demand. It creates and reuses a scratch project at `./claude-agents-dashboard-e2e-test` next to the current directory, never this repo. `E2E_RESET=yes|no|ask` controls whether that scratch project is reset between runs (it keeps it when stdin is not a TTY); `E2E_PORT` runs the tests against an already-running server; `E2E_MODEL` is what `--model` sets.
 
 Use `--model` to override the Claude model used by all E2E agents (defaults to the server's configured model):
 ```bash
@@ -149,17 +172,19 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Using pytest directly
 ```bash
-# All tests with coverage
+# All tests (no coverage — pytest.ini sets no --cov; use ./run-coverage.sh for that)
 pytest
 
 # Specific test files
 pytest tests/integration/test_orchestrator_lifecycle.py
 pytest tests/unit/migrations/
 
-# Run tests with specific markers
-pytest -m unit
-pytest -m integration
-pytest -m smoke
+# Select by path, not by marker. The unit/integration/smoke markers exist in
+# pytest.ini but are applied to only a minority of files — `pytest -m unit`
+# collects ~94 of 1288 unit tests and silently skips the rest.
+pytest tests/unit/
+pytest tests/integration/
+pytest tests/smoke/
 
 # Verbose output
 pytest -v
@@ -174,9 +199,12 @@ pytest -n auto
 
 ### Coverage Reports
 ```bash
-# Generate HTML coverage report
-./run-tests.sh --cov=src --cov-report=html
+./run-coverage.sh          # unit/integration/smoke with coverage → htmlcov/
+./run-e2e-coverage.sh      # combined coverage across an E2E run (spawns agents)
 open htmlcov/index.html
+
+# Or pass cov flags through the normal runner:
+./run-tests.sh --cov=src --cov-report=html
 ```
 
 ## Test Configuration
@@ -184,24 +212,31 @@ open htmlcov/index.html
 ### pytest.ini
 Key configuration settings:
 - **Async Support**: `asyncio_mode = auto`
-- **Coverage**: Minimum 75% coverage requirement
-- **Markers**: Test categorization (unit, integration, smoke, slow)
-- **Output**: Verbose reporting with durations
+- **Coverage**: `[coverage:run]` / `[coverage:report]` config only — `source = src`, `branch = true`, omitting `src/migrations/*` and `src/manage.py`. **No threshold is enforced** and `addopts` carries no `--cov`, so coverage runs only via the coverage scripts.
+- **Markers**: declared (unit, integration, smoke, slow) but applied to only a minority of files — select by path instead
+- **Output**: `-v --tb=short --durations=10`
 
 ### Fixtures (conftest.py)
 Shared test infrastructure:
-- `test_db`: Temporary test database
+- `temp_dir`: Temporary directory, auto-cleaned
+- `test_db`: Temporary test database with the full app schema
+- `test_db_connection`: Direct DB connection
+- `migration_runner`: `MigrationRunner` over a temp directory
+- `mock_websocket_manager`: Mocked `ConnectionManager`
 - `test_orchestrator`: Configured orchestrator instance
 - `mock_git_operations`: Mocked git operations for testing
+- `test_item_data`: Plain dict of item fields
 - `test_item`: Sample test data
 
 ## Dependencies
 
-Core testing dependencies (in requirements.txt):
+Core testing dependencies live in **`requirements-test.txt`**, not `requirements.txt` — running the dashboard does not pull them in. The test runners install both files.
 - `pytest>=8.0.0` - Test framework
-- `pytest-asyncio>=0.23.0` - Async test support
-- `pytest-cov>=4.0.0` - Coverage reporting
-- `pytest-mock>=3.12.0` - Mocking utilities
+- `pytest-asyncio>=0.23.0` - Async test support (`asyncio_mode = auto`)
+- `pytest-cov>=4.0.0` - Coverage reporting, used by the coverage scripts
+- `httpx>=0.24.0` - `AsyncClient` + `ASGITransport` in the route tests
+
+Mocking uses `unittest.mock` from the stdlib; `pytest-mock` / `mocker` is not installed and not used.
 
 Install additional development dependencies:
 ```bash
@@ -315,14 +350,16 @@ pytest -v -s tests/unit/test_specific.py::TestClass::test_method
 
 Track test performance:
 ```bash
-# Show slowest tests
+# Show slowest tests — already on by default via pytest.ini addopts
 pytest --durations=10
+```
 
-# Profile test execution
-pytest --profile
+Deeper profiling needs plugins that are **not** installed (they are deliberately
+absent from `requirements-test.txt`); install them first if you want them:
 
-# Check memory usage
-pytest --memray
+```bash
+pip install pytest-profiling && pytest --profile
+pip install pytest-memray && pytest --memray
 ```
 
 ## Contributing

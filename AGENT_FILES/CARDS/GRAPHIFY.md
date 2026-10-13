@@ -9,9 +9,10 @@ A persistent knowledge graph of this repo lives in **`graphify-out/`** (`graph.h
 
 graphify is **not on PATH** — it's installed only in the project venv. Always invoke it explicitly:
 ```bash
-venv/bin/graphify version          # prints the installed version (package name on PyPI is `graphifyy`)
+venv/bin/graphify version             # prints the installed version (package name on PyPI is `graphifyy`)
+venv/bin/python -m graphify version   # equivalent module form
 ```
-The pipeline pins its interpreter in `graphify-out/.graphify_python`; every step runs `$(cat graphify-out/.graphify_python)`. If that file is stale/missing, repoint it: `venv/bin/python -c "import sys; open('graphify-out/.graphify_python','w').write(sys.executable)"`.
+Either form works. The dashboard's own `GraphService` always uses the **module form** with its own interpreter (`[sys.executable, "-m", "graphify", …]`, `src/services/graph_service.py:98-102`), so it never depends on the console script or on PATH.
 
 ## Using the graph (cheap, no LLM)
 
@@ -48,6 +49,18 @@ Two notices the 0.9.x CLI may print after an `update`, both optional and neither
 - *"pre-#1504 node-ID scheme"* — the graph predates path-qualified node ids, which is why same-name symbols collide (see the `::` note above). Fixed only by a full `graphify extract --force`, which runs semantic LLM extraction.
 - *"community set changed since labeling"* — communities were renamed by their hub instead of by the LLM. `graphify label --missing-only` refreshes names and costs LLM tokens.
 
+## The in-dashboard surface
+
+Everything above is the CLI/skill workflow you drive by hand. The dashboard also owns the graph as a feature, and that is a different set of files:
+
+- **`GraphService`** (`src/services/graph_service.py`) — build / refresh / query / status, version detection and cost tracking; shells out via `python -m graphify` and owns `graphify-out/`.
+- **Config** — the `graphify_enabled`, `graphify_auto_refresh` and `graphify_backend` columns on `agent_config` (migration `028`), surfaced as **Settings ▸ Graphify**. Off by default.
+- **Agent access** — the read-only `graph_query` MCP tool (`src/agent/graph_query.py`), wired into a session only when `graphify_enabled` **and** the provider profile allows it.
+- **Routes** — `GET`/`POST` under `/api/graphify/*` in `src/web/routes.py`; progress reaches the UI as the `graph_build_progress` / `graph_ready` WebSocket events from `NotificationService`.
+- **Auto-refresh** — `WorkflowService._maybe_refresh_graph_after_merge` re-runs an incremental update after a successful merge when `graphify_auto_refresh` is on.
+
+AST builds/refreshes are free; semantic (LLM) builds cost tokens — see the rebuild notes above.
+
 ---
 
-**See also**: [ARCHITECTURE](ARCHITECTURE.md) (the structure the graph maps), [PROJECT_MAP](PROJECT_MAP.md) (hand-curated flow vocabulary — complements the auto-extracted graph).
+**See also**: [ARCHITECTURE](ARCHITECTURE.md) (the structure the graph maps), [PROJECT_MAP](PROJECT_MAP.md) (hand-curated flow vocabulary — complements the auto-extracted graph; `flow.graph` covers the build/query path), [DATABASE](DATABASE.md) (migration 028).
