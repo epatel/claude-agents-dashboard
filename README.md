@@ -295,7 +295,7 @@ graph TB
 
 - **Backend**: Python, FastAPI, uvicorn, aiosqlite, 7-service architecture (Workflow, Database, Notification, Git, Session, Graph, Skills) on top of an explicit `ItemState` finite state machine (`src/domain/`) and item/epic repositories (`src/repositories/`), ~11,700 lines across 43 source files (excluding migrations)
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~9,600 lines JS + ~3,850 lines CSS
-- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.88), models: Claude Opus 5 (default) plus the current Claude list from the published model feed, 12 built-in MCP tools across 10 servers (incl. read-only `graph_query` and `peek_worktree`); installable Agent Skills delivered via `plugins=`; optional Ollama and Kimi providers (experimental — Kimi runs on a separate runtime: `kimi-agent-sdk` ACP client driving the `kimi` CLI)
+- **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.165), models: Claude Opus 5 (default) plus the current Claude list from the published model feed, 12 built-in MCP tools across 10 servers (incl. read-only `graph_query` and `peek_worktree`); installable Agent Skills delivered via `plugins=`; optional Ollama and Kimi providers (experimental — Kimi runs on a separate runtime: `kimi-agent-sdk` ACP client driving the `kimi` CLI)
 - **Database**: SQLite with 31 versioned migrations (auto-runs on startup)
 - **Security**: Localhost by default (`--host 0.0.0.0` opts out and prints a warning), no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
 
