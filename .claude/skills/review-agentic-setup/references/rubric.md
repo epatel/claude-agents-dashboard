@@ -16,7 +16,8 @@ Checks per asset type. Every check names the finding class it usually produces (
 
 - **Context budget** — loaded every session. Anything only needed for specific tasks → GAP: move to a card/skill with a routing line.
 - **`@` imports** — resolve each one; broken import → ROT.
-- **Routing quality** — if the project has an `AGENT_FILES/CARDS`-style manifest: does CLAUDE.md point to it, and do manifest entries match real files with accurate "Load when" lines? Mismatch → ROT; large doc pile with no manifest → GAP.
+- **Routing quality** — if the project has a card index (or another routing manifest such as `AGENT_FILES/`): does every entry link to a real file, and does each name a *trigger situation* rather than a topic? Dead link or orphan card → ROT; topic-style trigger → GAP; large doc pile with no index → GAP.
+- **Eager imports of lazy docs** — an `@path` reference to a card, `CLAUDE_full.md`, or any other file meant to load on demand is an import that loads it every session → ROT: replace with a plain path or markdown link plus a "read when…" condition.
 - **Hooks vs prose** — "always/never/before each X" behavioral rules in prose that the harness could enforce via hooks or permission settings → GAP (note it; implement only if mechanical).
 
 ## Skills (SKILL.md)
@@ -41,7 +42,7 @@ Checks per asset type. Every check names the finding class it usually produces (
 ## Settings & hooks (.claude/settings*.json)
 
 - Valid JSON; hook scripts exist and are executable → else ROT.
-- Hooks calling moved/renamed binaries (e.g. wrapper tools like `rtk`) → verify with `which`.
+- Hooks calling moved/renamed binaries (e.g. command wrappers or proxies the hook rewrites through) → verify with `which`.
 - Permission allowlist entries for tools/commands no longer used → REDUNDANT (list them, don't silently remove — QUESTION if unsure).
 - MCP servers configured but unreachable → QUESTION (may be environment-specific).
 

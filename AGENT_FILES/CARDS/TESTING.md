@@ -12,7 +12,7 @@
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed, installs **both** `requirements.txt` (runtime) and `requirements-test.txt` (pytest, pytest-asyncio, pytest-cov, httpx), then runs `pytest`. Running the dashboard via `run.sh` installs only the runtime file, so test deps stay out of an app-only venv — a new test dependency goes in `requirements-test.txt`. Tests use `pytest-asyncio` in auto mode. Database has 31 migrations (001–031).
+The script creates a venv if needed, installs **both** `requirements.txt` (runtime) and `requirements-test.txt` (pytest, pytest-asyncio, pytest-cov, httpx), then runs `pytest`. Running the dashboard via `run.sh` installs only the runtime file, so test deps stay out of an app-only venv — a new test dependency goes in `requirements-test.txt`. Tests use `pytest-asyncio` in auto mode. With no path argument the script runs the whole `tests/` tree; any path (or `path::node` id) runs only what you name. Database has 31 migrations (001–031).
 
 ## Test Structure
 
@@ -226,6 +226,7 @@ async def test_apply_migration(self, raw_db, runner):
 2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1338. Select by path (`./run-tests.sh tests/unit/`), not by marker.
 3. Async tests work automatically (no `@pytest.mark.asyncio` needed)
 4. Run `./run-tests.sh` to verify all tests pass
+5. Put a new test file in one of the category buckets above and update that bucket's count and the totals here and in `tests/README.md` — the buckets partition the unit tests exactly, and unmaintained counts drift silently.
 
 ## E2E Tests
 

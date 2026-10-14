@@ -11,6 +11,8 @@ Two sections: **Flows** (hand-curated) and **UI** (hand-curated table of current
 
 Strategy doc: [`PROJECT_MAP_STRATEGY.md`](PROJECT_MAP_STRATEGY.md).
 
+Line anchors drift whenever their files change — re-grep an anchor before relying on it, and fix any you find stale.
+
 For broader project context (architecture, patterns, dev workflows), see the [card index](README.md). Cross-references in the flow entries below link to the relevant card.
 
 ---

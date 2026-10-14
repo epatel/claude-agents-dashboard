@@ -1,0 +1,21 @@
+{
+  "source": "https://ai.memention.net/setup",
+  "version": "2026-10-15",
+  "updated": "2026-10-15",
+  "applied": [
+    "context-cards",
+    "project-plan",
+    "skill:review-agentic-setup",
+    "skill:ste-writing"
+  ],
+  "declined": [
+    "feature-first",
+    "feature-first-advanced",
+    "two-tier",
+    "standing-defaults",
+    "hooks-over-prose",
+    "plugin:example-skills@anthropic-agent-skills",
+    "plugin:document-skills@anthropic-agent-skills"
+  ],
+  "copied": {}
+}

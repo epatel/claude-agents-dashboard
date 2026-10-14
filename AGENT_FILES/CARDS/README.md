@@ -6,6 +6,8 @@ Each card also carries its own `> Load when` block so you can verify relevance a
 
 One living reference lives outside this directory: [`docs/item-states.md`](../../docs/item-states.md) — the `ItemState` FSM (13 states, DB encoding, transition diagram). Load it with the cards below when you touch item state transitions; it must stay in sync with `src/domain/item_state.py`.
 
+When a change adds non-obvious logic, settles an architectural choice, or makes a card wrong, update or add the card in the same change and keep this manifest in sync.
+
 ---
 
 ## Task → cards

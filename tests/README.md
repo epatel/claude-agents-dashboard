@@ -163,7 +163,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 # Run all 1372 tests
 ./run-tests.sh
 
-# Run specific test categories
+# Run specific test categories (any path narrows the run)
 ./run-tests.sh tests/unit/        # Unit tests only
 ./run-tests.sh tests/integration/ # Integration tests
 ./run-tests.sh tests/smoke/       # Smoke tests

@@ -39,72 +39,34 @@ Replace this with the specific objective the moment one is in flight.
 - [x] M9 — Docs reassessment + first security audit of the post-rev-11 subsystems: living docs
   re-verified against code (≈45 wrong test counts, 22 drifted `PROJECT_MAP` anchors, and a set of
   wrong names/flags/claims fixed); `AUDIT.md` rev 12 adds findings #15–#17 (2026-10-08)
-- [ ] M10 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
+- [x] M10 — Hardening pass: Kimi worktree confinement via shared `PathScope` (AUDIT #15 → Mitigated),
+  remote skill-install path validation + 8 MiB response cap (#16 → Remediated; audit rev 14, no open
+  actionable finding), `verbatim_prompts=True` everywhere, SDK floor `>=0.2.165`, flag-aware
+  `run.sh` argument parsing; 1372 tests (2026-10-14)
+- [ ] M11 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
 
 ## Decisions
 
 Settled, still-relevant choices no agent should reopen without flagging here. Long-lived
 architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
-- 2026-10-14 — Path validation has **one** implementation too: `validate_file_path()` in
-  `src/git/operations.py`. It is the guard on diff paths, file-browser paths, `peek_worktree`
-  paths and now on every per-file path a skill install takes from the remote GitHub tree
-  (`SkillsService._install_sync`). Any new code that joins an **externally supplied** relative
-  path onto a dashboard-owned directory calls it and skips what it rejects — do not write a
-  second check, and do not rely on an upstream invariant (git cannot store a `..` component,
-  which is exactly why #16 sat open as "borrowed protection"). Note this is a *string* guard
-  and is separate from `PathScope`, which is the *agent worktree boundary* for absolute paths;
-  they are not interchangeable. `SkillsService._get` additionally caps a response at
-  `MAX_RESPONSE_BYTES` (8 MiB) — an install must not be able to write an unbounded file.
-  See AUDIT #16 (Remediated, rev 14) and `CARDS/SKILLS.md`.
-
-- 2026-10-14 — The worktree boundary has **one** implementation: `PathScope` in
-  `src/agent/path_guard.py`. The Claude `PreToolUse` hook and the Kimi ACP permission
-  handler (`kimi_session._decide_permission`) both call it; do not write a second path
-  predicate. Two things to know. (1) `PathScope.resolve()` expands `~` and joins relative
-  paths onto the **worktree**, because that is the agent's cwd — resolving them against the
-  dashboard process's cwd was wrong and false-denied relative paths when the dashboard
-  orchestrates its own repo. (2) Kimi constructs it with **`strict_writes=True`** (a write
-  anywhere outside the worktree is denied, not only one landing in the main checkout), while
-  the Claude hook keeps the historical non-strict rule, because for Claude the hook sees
-  every tool call and for Kimi it does not. Reads use identical scope in both runtimes
-  (worktree, plus `workspace_root` in multi-repo mode). Kimi's residual gap is **by
-  construction, not an oversight**: kimi-code's classifier decides which tool calls raise an
-  ACP permission request, so calls it never asks about are only logged
-  (`KimiAgentSession.audit_tool_call_scope`). Closing it needs client-side ACP
-  `fs/*` interposition or an OS sandbox around `kimi acp` — don't claim Kimi is confined
-  until one of those exists. See AUDIT #15 (Mitigated, rev 13) and
-  `CARDS/KIMI_PROVIDER.md` "Worktree confinement".
-
-- 2026-10-14 — The `claude-agent-sdk` floor in `requirements.txt` is kept at the **latest
-  published release** (now `>=0.2.165`), not at a merely-working version. Rationale: token
-  pricing data lives in the SDK and the dashboard reads `total_cost_usd` straight from it —
-  there is no rate table in this repo, so a stale floor silently means stale prices on a fresh
-  `pip install`. Each bump appends a dated **rev note** to
-  `AGENT_FILES/SDK_BUMP_2026-06-03.md` (changelog review + suite result) rather than rewriting
-  that snapshot, and updates the two places that state the floor in prose: `README.md` tech
-  stack and `AGENT_FILES/README.md`. This is the one exception to the don't-touch policy for
-  `SDK_BUMP_*`, and it is append-only.
-- 2026-10-14 — `run.sh`'s own argument loop is **flag-aware**, and the list of
-  value-taking options lives in exactly two places: the `--host|--port` case arm in
-  `run.sh` and `VALUE_OPTIONS` in `tests/unit/test_run_sh_args.py` (a test asserts both
-  stay in sync with `src/main.py`). The wrapper still splits argv itself — it needs the
-  target path before `src.main` runs, for the git-repo check — but "positional" is no
-  longer "does not start with `--`": an option that takes a separate value consumes it.
-  If you add a value-taking option to `src/main.py`'s argparse, add it to both places or
-  its value becomes the target path again. Options with inline values (`--port=8100`)
-  need no entry.
-- 2026-10-14 — Every `ClaudeAgentOptions` the dashboard builds passes
-  **`verbatim_prompts=True`** (`src/agent/session.py`, both branches of
-  `src/agent/review_agent.py`). Prompts are assembled from board-item text (title,
-  description, last agent message, raw diff), and with the SDK default the CLI expands any
-  `@path` in that text into a file read and dispatches a leading `/name` as a slash command —
-  interpreting text that was only ever meant to be instructions. Nothing in the repo relies
-  on `@path` expansion (attachments are listed as plain paths for the Read tool) or on
-  sending a prompt as a slash command. It is a CLI-level flag, so it composes with the Ollama
-  profile's overrides. No version gate: the flag needs CLI 2.1.248+, our floor bundles
-  2.1.294, and an older CLI only warns — a hard assert would turn a benign degradation into
-  a crash. Set it on any new call site.
+- 2026-10-14 — Path checks have **one** implementation each: `PathScope`
+  (`src/agent/path_guard.py`) is the agent worktree boundary for both runtimes, and
+  `validate_file_path()` (`src/git/operations.py`) is the string guard for any externally
+  supplied relative path joined onto a dashboard-owned directory. Never write a second one;
+  they are not interchangeable. Kimi is **Mitigated, not confined** — don't claim otherwise.
+  Rationale and details: `CARDS/CONVENTIONS.md` (Security), `CARDS/KIMI_PROVIDER.md`
+  ("Worktree confinement"), `CARDS/SKILLS.md`, AUDIT #15/#16. Locked.
+- 2026-10-14 — The `claude-agent-sdk` floor tracks the **latest published release** (now
+  `>=0.2.165`) because pricing data comes from the SDK. Each bump appends a rev note to
+  `AGENT_FILES/SDK_BUMP_2026-06-03.md` (the one append-only exception to the snapshot
+  policy). Details: `CARDS/ARCHITECTURE.md` (Entry points & plumbing).
+- 2026-10-14 — `run.sh` parses its own args flag-aware; value-taking options live in the
+  `--host|--port` case arm and `VALUE_OPTIONS` in `tests/unit/test_run_sh_args.py`. Adding a
+  value-taking option to `src/main.py` means adding it to both. Details: `CARDS/ARCHITECTURE.md`.
+- 2026-10-14 — Every `ClaudeAgentOptions` passes **`verbatim_prompts=True`** so board-item text
+  can't trigger `@path` reads or slash commands. Set it on any new call site. Details:
+  `CARDS/ARCHITECTURE.md` (Agent runtime).
 - 2026-10-08 — `AGENT_FILES/AUDIT.md` is **revised in place with a new rev** when agent-facing
   surface is added, rather than left as a frozen snapshot like the other root files. Rationale:
   a security doc that says "posture strong, 9 of 9 remediated" while five unreviewed subsystems
@@ -173,80 +135,22 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-No objective in flight. Last change (2026-10-08, M9): a docs reassessment plus the first
-security review of everything added since `AUDIT.md` rev 11.
+No objective in flight. Last change (2026-10-14, M10): the hardening pass — the security audit
+(`AGENT_FILES/AUDIT.md`, rev 14) has no open actionable finding. 2026-10-15: agentic setup
+refreshed against ai.memention.net/setup (record in `.claude/agent-setup.json`).
 
-Authoritative counts, all re-verified by collection/grep this pass — trust these over any
-number you find in prose: **31 migrations (001–031)**; **1372 tests = 20 smoke + 1338 unit
-+ 14 integration** (plus 7 Node E2E tests, counted separately); **7 services**; **10 MCP
-tool servers exposing 12 tools** (`todo.py` serves three); skills ship as plugins, not as
-an MCP tool.
+Authoritative counts, re-verified by collection/grep — trust these over prose: **31 migrations
+(001–031)**; **1372 tests = 20 smoke + 1338 unit + 14 integration** (plus 7 Node E2E tests,
+counted separately); **7 services**; **10 MCP tool servers exposing 12 tools** (`todo.py`
+serves three); skills ship as plugins, not as an MCP tool.
 
-**AUDIT #16 is closed, 2026-10-14 (audit now rev 14)** — and with it the audit has **no open
-actionable finding**: 10 of 11 remediated, #15 mitigated, the rest accepted by design.
-`SkillsService._install_sync` validates every remote tree path with `validate_file_path()`
-before the join and skips what it rejects (the blob isn't even fetched); `_get` caps a single
-response at 8 MiB. 3 new tests (`test_skills_service.py` 11 → 14 — note the card said 11, not
-the 12 the board item claimed). Suite **1372**, green. See the new Decision below.
+⚠️ If 5 tests in `tests/unit/test_allowed_commands.py` fail on `verbatim_prompts`, the venv
+has an SDK older than the `>=0.2.165` floor: `./run-tests.sh` reinstalls requirements, a bare
+`pytest` does not.
 
-⚠️ **Environment note for the next agent**: the shared `venv/` in the main checkout had
-`claude-agent-sdk` 0.2.157 installed while `requirements.txt` now floors at `>=0.2.165`, which
-failed 5 tests in `tests/unit/test_allowed_commands.py` (`verbatim_prompts` is not a
-`ClaudeAgentOptions` kwarg before 0.2.165) — nothing to do with the code. `./run-tests.sh`
-pip-installs the requirements and fixes it; running `pytest` directly against a stale venv does
-not. It has been upgraded in place. If you see those 5 failures, check the installed SDK version
-first.
+History is not repeated here: see Milestones, the cards for how things work now, and `git log`.
 
-**Kimi worktree confinement (board item `d36331e6bccf`) is done, 2026-10-14** — `AUDIT.md`
-finding **#15** moves Open → **Mitigated** and the audit is at **rev 13**. What landed: the
-boundary predicate was factored out of `path_guard.py` into a shared `PathScope`;
-`KimiAgentSession` builds one with `strict_writes=True` (and now receives `workspace_root`
-from `SessionService`) and `_decide_permission` **denies** any ACP permission request whose
-path arguments resolve outside it, logging the violation; every streamed tool call also goes
-through `audit_tool_call_scope`, which logs out-of-boundary paths. Paths are read from
-`rawInput` (`_PATH_KEYS`/`_PATH_LIST_KEYS`) plus ACP `locations[].path`, and any tool kind
-outside `read`/`search`/`think`/`fetch` — including a missing kind — is checked as a write,
-so unknown tools fail closed. It is **Mitigated, not Remediated**: kimi-code decides which
-calls raise a permission request, so the ones it skips can only be logged — that gap is now
-documented in `CARDS/KIMI_PROVIDER.md`, the `--experimental` help text and the startup
-banner (see the new Decision below). 31 new tests (`test_kimi_session.py` 57 → 88); suite
-**1369** = 20 smoke + 1335 unit + 14 integration, green (the count has since moved to 1372 —
-see the #16 note above). The follow-up it filed, **#16**, is now done as well.
-
-Also done 2026-10-14: `verbatim_prompts=True` at all three `ClaudeAgentOptions` call sites
-(see the new Decision above and the second rev note in `SDK_BUMP_2026-06-03.md`). The suite
-grew by 5 tests — 2 in `test_session.py`, plus a new `tests/unit/test_review_agent.py` (3),
-which is the first unit coverage of `review_agent.run_auto_review`'s options construction.
-
-Of the two follow-ups filed that pass, `27bc0bcbbed4` is **done** (2026-10-14): the
-`claude-agent-sdk` floor went `>=0.2.88` → `>=0.2.165` (latest), suite green at
-1321 passed / 1 skipped, no code changes needed — the 0.2.89→0.2.165 range is almost all
-bundled-CLI bumps, and neither of its two surface changes touches us (details and the
-list of still-unadopted SDK features in the rev note appended to
-`AGENT_FILES/SDK_BUMP_2026-06-03.md`). The second follow-up, `89698a379b59`, is also
-**done** (2026-10-14): `run.sh`'s argument loop is now flag-aware, so `run.sh --port 8100`
-no longer takes `8100` as the target path (see the Decision below). The suite grew by 11
-tests — a new `tests/unit/test_run_sh_args.py`, the first test file in the repo that
-exercises a shell script; it extracts the parse block from `run.sh` and runs it under bash,
-so it starts no server and needs no venv of its own. Counts above are re-verified
-(20 + 1304 + 14 = 1338); `TESTING.md`'s Infrastructure bucket went 72 → 83.
-
-Docs discipline learned this pass, worth keeping: the per-file and per-category test counts
-in `tests/README.md` / `CARDS/TESTING.md` drift silently and were wrong in ~45 places. The
-category buckets now partition the 1288 unit tests exactly, so the totals reconcile — if you
-add a test file, put it in a bucket and update both numbers. Likewise `PROJECT_MAP.md` line
-anchors: all 22 `workflow_service.py` / `session_service.py` ones had drifted (worst by 167
-lines) while every `routes.py` / `agent/*` one was still correct. Re-grep anchors rather than
-trusting them.
-
-How earlier work landed is not repeated here: see Milestones for the sequence, the cards
-for how things work now ([`KIMI_PROVIDER`](AGENT_FILES/CARDS/KIMI_PROVIDER.md) for the Kimi
-runtime, [`ARCHITECTURE`](AGENT_FILES/CARDS/ARCHITECTURE.md) for the session layer and
-`peek_worktree`), and `git log` for the detail. The dated `PLAN_*`/`EVAL_*`/`SDK_BUMP_*`
-snapshots in `AGENT_FILES/` root stay untouched; `AUDIT.md` is the exception — it is
-revised in place and is now at rev 14.
-
-The next agent to pick up real work should set **Goal**, fill in **M10**, and rewrite this
+The next agent to pick up real work should set **Goal**, fill in **M11**, and rewrite this
 note as the running handoff — keep it a short handoff, not a log.
 
 ## Open questions

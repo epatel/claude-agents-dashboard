@@ -1,6 +1,6 @@
 ---
 name: review-agentic-setup
-description: Review and modernize a project's agentic setup — CLAUDE.md / AGENTS.md, agent docs (AGENT_FILES, cards, project-plan.md), local .claude/ skills, agents, commands, and hooks — against the capabilities of the model currently running this skill. Applies updates to project-local files directly; for global skills (~/.claude/skills, ~/.claude/CLAUDE.md) it only produces an update plan, never edits. Use when the user asks to review, refresh, audit, or modernize the agentic/Claude setup of a project, when instruction files reference outdated models or tools, or periodically as models and tooling improve. Trigger: /review-agentic-setup [path]
+description: Review and modernize a project's agentic setup — CLAUDE.md / AGENTS.md, agent docs (cards/ index, per-feature CLAUDE.md / CLAUDE_full.md, project-plan.md), local .claude/ skills, agents, commands, and hooks — against the capabilities of the model currently running this skill. Applies updates to project-local files directly; for global skills (~/.claude/skills, ~/.claude/CLAUDE.md) it only produces an update plan, never edits. Use when the user asks to review, refresh, audit, or modernize the agentic/Claude setup of a project, when instruction files reference outdated models or tools, or periodically as models and tooling improve. Trigger: /review-agentic-setup [path]
 ---
 
 # Review Agentic Setup
@@ -21,12 +21,12 @@ Target: the project at `[path]` if given, else the current working directory.
 
 ## Phase 1 — Inventory
 
-Enumerate every agentic asset. Typical locations in this user's projects:
+Enumerate every agentic asset. Typical locations:
 
 | Asset | Where to look |
 |---|---|
 | Project instructions | `CLAUDE.md`, `AGENTS.md`, `*.md` referenced via `@` imports from CLAUDE.md |
-| Agent docs | `AGENT_FILES/` (esp. `CARDS/README.md` routing manifest), `project-plan.md`, `docs/` files addressed to agents |
+| Agent docs | `cards/` + the card index in CLAUDE.md, per-feature `CLAUDE.md` / `CLAUDE_full.md`, `project-plan.md`, `docs/` files addressed to agents; older layouts may use an `AGENT_FILES/` dir with its own routing manifest |
 | Local skills | `.claude/skills/*/SKILL.md` + sibling reference files |
 | Local agents | `.claude/agents/*.md` |
 | Local commands | `.claude/commands/*.md` (legacy — candidates for skill conversion) |

@@ -18,4 +18,15 @@ fi
 "$VENV_DIR/bin/pip" install -q -r "$SCRIPT_DIR/requirements-test.txt"
 
 cd "$SCRIPT_DIR"
-exec "$VENV_DIR/bin/python" -m pytest --color=yes tests/ "$@"
+
+# Run the whole tree unless a test path was given (pytest node ids such as
+# tests/unit/test_x.py::TestY count as paths).
+TARGETS=(tests/)
+for arg in "$@"; do
+    if [ -e "${arg%%::*}" ]; then
+        TARGETS=()
+        break
+    fi
+done
+
+exec "$VENV_DIR/bin/python" -m pytest --color=yes ${TARGETS[@]+"${TARGETS[@]}"} "$@"

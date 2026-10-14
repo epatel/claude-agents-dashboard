@@ -109,6 +109,7 @@ Workflow state changes go through `ItemState.transition(state, event)` in `src/d
 - PreToolUse hooks are defense-in-depth. Allowlist match happens **after** rejecting commands containing shell operators (`;`, `&&`, `||`, `|`, `>`, `>>`, `<`, `$(`, `` ` ``). See `src/agent/command_filter.py:_contains_shell_operators`.
 - CORS is restricted to `127.0.0.1` and `localhost` across the app's port range only. Don't widen it.
 - `path_guard.py` prevents agents from editing files outside their worktree. New file-touching tools must be on its known list or they get denied.
+- **One implementation per path check.** `PathScope` (`src/agent/path_guard.py`) is the agent worktree boundary for absolute paths; the Claude `PreToolUse` hook and Kimi's ACP permission handler both call it. `validate_file_path()` (`src/git/operations.py`) is the string guard for an externally supplied relative path joined onto a dashboard-owned directory (diff paths, file browser, `peek_worktree`, remote skill-install trees). They are not interchangeable, and new code calls the right one — never a second predicate, and never an upstream invariant ("git can't store `..`") as the only protection.
 
 ### Simplicity bias
 

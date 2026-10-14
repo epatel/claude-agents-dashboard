@@ -65,6 +65,8 @@ External MCP servers get wildcard tool permissions (`mcp__{server_name}__*`).
 ## Entry points & plumbing
 
 - `src/main.py` — CLI entry (`run.sh` calls it): resolves the target project / workspace, picks a free port (`127.0.0.1:8000`, 20 tries), handles `--host` / `--port` / `--experimental` / `--ui-map`
+- `run.sh` — splits argv itself (it needs the target path before `src.main` runs) and is flag-aware: an option that takes a separate value consumes it. Value-taking options are listed in the `--host|--port` case arm and in `VALUE_OPTIONS` (`tests/unit/test_run_sh_args.py`, which asserts both match `src/main.py`); a new one goes in both, or its value becomes the target path. Inline values (`--port=8100`) need no entry.
+- `requirements.txt` — the `claude-agent-sdk` floor tracks the latest published release, not a merely-working one: pricing comes from the SDK (`total_cost_usd`; there is no rate table here), so a stale floor means stale prices on a fresh install. A bump appends a dated rev note to `AGENT_FILES/SDK_BUMP_2026-06-03.md` and updates the floor stated in `README.md` and `AGENT_FILES/README.md`.
 - `src/config.py` — runtime config resolved from the target path (`DATA_DIR_NAME = "agents-lab"`, `DEFAULT_HOST`, `DEFAULT_PORT`, `MAX_PORT_TRIES`)
 - `src/database.py` — the `Database` holder; runs pending migrations on startup via the lifespan in `web/app.py`
 - `src/migrations/runner.py` — discovers and applies `src/migrations/versions/NNN_*.py`; driven by the `src/manage.py` CLI (see [DATABASE](DATABASE.md))

@@ -10,6 +10,7 @@ Standalone scrum board that orchestrates Claude agents working on a **separate t
 ./run.sh /path/to/project --experimental  # Experimental features (Ollama + Kimi providers)
 ./run.sh /path/to/project --ui-map        # PROJECT_MAP overlays (Cmd+Shift+M)
 ./run-tests.sh                      # All tests (unit/integration/smoke — count in CARDS/TESTING.md)
+./run-tests.sh tests/unit/test_x.py -k name  # One file / dir / test (any path narrows the run)
 ./run-e2e-tests.sh                  # E2E tests (Node Playwright, spawns agents)
 ```
 
