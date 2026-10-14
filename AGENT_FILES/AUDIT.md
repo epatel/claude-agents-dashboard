@@ -1,7 +1,9 @@
 # Security Audit Report
 
 **Date**: 2026-04-10
-**Last updated**: 2026-10-14 (rev 13 — remediation pass on **#15**, the one open actionable finding of rev 12. The worktree boundary predicate was factored out of `src/agent/path_guard.py` into a shared `PathScope`, and the Kimi runtime now uses it: `_decide_permission` **denies** any ACP permission request whose path arguments resolve outside the agent's worktree (strict writes; reads keep the Claude scope, including the workspace root in multi-repo mode), and every streamed tool call is checked by `KimiAgentSession.audit_tool_call_scope`, which logs a boundary-violation `WARNING`. #15 moves from Open to **Mitigated**, not Remediated: kimi-code's own classifier decides which calls raise a permission request, so calls it never asks about can be logged but not blocked — that residual gap is now documented in `CARDS/KIMI_PROVIDER.md`, the `--experimental` help text and the startup banner. 31 new tests (`test_kimi_session.py` 57 → 88). No new findings; no other finding's status changed.)
+**Last updated**: 2026-10-14 (rev 14 — remediation pass on **#16**, the last fully open actionable finding of rev 12. `SkillsService._install_sync` now runs every per-file path from the remote GitHub tree through the codebase's existing `validate_file_path()` (`src/git/operations.py`) before joining it onto the skill directory, and skips — with a `WARNING` naming the path — any entry that fails; the blob is not even fetched. The same pass closes the "related, not separately numbered" note on #16: `SkillsService._get` now caps a single response at `MAX_RESPONSE_BYTES` (8 MiB) and raises instead of writing an unbounded body to disk. No second path predicate was written — the guard is the one already used on diff and file-browser paths. #16 moves Open → **Remediated**; with that **all 11 actionable findings are addressed — 10 remediated plus #15 mitigated** (the rev-13 header said "9 of 10", which miscounted #16 itself; the Remediation Progress table has always listed 11 rows). 3 new tests (`test_skills_service.py` 11 → 14): a tree entry with `..`, an absolute tree entry, and the response cap — the normal nested-entry install is still covered by the existing mirror test. Suite **1372** = 20 smoke + 1338 unit + 14 integration, green. No new findings; no other finding's status changed. The remaining open items (#8, #9, #11, #12, #13, #17) are all accepted-by-design or non-actionable for a localhost tool.)
+
+**Rev 13 note**: 2026-10-14 (remediation pass on **#15**, the one open actionable finding of rev 12. The worktree boundary predicate was factored out of `src/agent/path_guard.py` into a shared `PathScope`, and the Kimi runtime now uses it: `_decide_permission` **denies** any ACP permission request whose path arguments resolve outside the agent's worktree (strict writes; reads keep the Claude scope, including the workspace root in multi-repo mode), and every streamed tool call is checked by `KimiAgentSession.audit_tool_call_scope`, which logs a boundary-violation `WARNING`. #15 moves from Open to **Mitigated**, not Remediated: kimi-code's own classifier decides which calls raise a permission request, so calls it never asks about can be logged but not blocked — that residual gap is now documented in `CARDS/KIMI_PROVIDER.md`, the `--experimental` help text and the startup banner. 31 new tests (`test_kimi_session.py` 57 → 88). No new findings; no other finding's status changed.)
 
 **Rev 12 note**: 2026-10-08 (first review of the subsystems added since rev 11: the **Kimi runtime** (`src/agent/kimi_session.py`, `kimi_board_mcp.py`), **`peek_worktree`**, the **skills library** (`src/services/skills_service.py`), the **graphify** surface (`GraphService` + `graph_query`), and the **model feed** (`src/model_catalog.py`). **Three new findings — #15 (Medium), #16 (Low), #17 (Info)** — all open; see "Findings added in rev 12". The headline is #15: Kimi agents are confined to their worktree by `cwd` plus a prompt instruction, with no enforcing `path_guard` equivalent, so the containment guarantee that holds for Claude agents does **not** hold for Kimi agents. It is gated behind `--experimental`. Migrations 025–031 were reviewed and add no shell or SQL-construction surface: 025/026/028/029/030 are column adds, 027 and 031 are parameterized `UPDATE`s (027 uses `REPLACE(model, '+advisor', '')`, 031 rewrites the default model including the `[1m]` variant). All prior remediations still stand; no previously-fixed finding regressed.)
 
@@ -13,7 +15,7 @@
 
 ## Executive Summary
 
-This audit has identified **17 security findings** relevant to a localhost developer tool: 2 High, 6 Medium, and 9 Low/Info. Of the 10 actionable findings, **9 are remediated and 1 (#15, Kimi path confinement) is mitigated** as of rev 13 — out-of-worktree paths are now denied on every ACP permission request the Kimi runtime receives and logged on the tool calls kimi never asks about, which is the most that can be enforced from outside the CLI. The one fully open actionable finding is **#16** (Low, defense-in-depth).
+This audit has identified **17 security findings** relevant to a localhost developer tool: 2 High, 6 Medium, and 9 Low/Info. Of the 11 actionable findings, **10 are remediated and 1 (#15, Kimi path confinement) is mitigated** as of rev 14 — for #15, out-of-worktree paths are denied on every ACP permission request the Kimi runtime receives and logged on the tool calls kimi never asks about, which is the most that can be enforced from outside the CLI. **No actionable finding is open.** The six still-open items (#8, #9, #11, #12, #13, #17) are accepted by design for a single-user localhost tool.
 
 The two original high-severity findings (command filter bypass and YOLO mode) have both been addressed with robust fixes. The five original medium-severity findings have been resolved, including `.browserhidden` support for project-specific secret patterns. Two low-severity findings (epic color validation and security headers) have also been fixed.
 
@@ -184,13 +186,17 @@ These cover the subsystems that landed after rev 11 and had never been reviewed.
 ### 16. Skills Install Writes Remote Tree Paths Without Local Validation
 
 - **Severity**: Low
-- **Status**: ⚠️ **OPEN** (defense-in-depth)
-- **File**: `src/services/skills_service.py` (`_install_sync`)
+- **Status**: ✅ **REMEDIATED** (rev 14, 2026-10-14)
+- **File**: `src/services/skills_service.py` (`_install_sync`, `_get`)
 - **Description**: Installing a skill walks the GitHub tree API and writes each blob to `skill_dir / rel`, where `rel` is derived from the remote `node["path"]`. `rel` is checked only for emptiness and a trailing slash — it is never validated for traversal before being joined and written. The skill **name** is properly validated (`_valid_name` = regex match plus an explicit `".." not in name`), so the containing directory is safe; the per-file paths inside it are not.
 - **Why it is Low and not High**: git tree objects cannot contain `..` as a path component — git refuses to create them and `git fsck` flags them — so GitHub's API will not return such a path for a well-formed repository. The protection is real, but it is **borrowed from an upstream invariant** rather than asserted locally, which is exactly the pattern finding #4 was raised about for diff paths.
 - **Failure scenario**: Any future change that makes the file list attacker-influenced — a different source backend, a local-directory or archive install path, a tarball fast-path to avoid per-file HTTP — turns an unvalidated join into a write outside `skill-library/`. The fix costs one line today and is easy to forget later.
 - **Recommendation**: Run `rel` through the codebase's existing `validate_file_path()` (`src/git/operations.py`) before the join, and skip any entry it rejects. That function already blocks absolute paths, `..`, null bytes, `~/`, `//` and backslashes, and is the same guard used on diff and file-browser paths — reuse it rather than writing a second check.
-- **Related, not separately numbered**: installed skills are **third-party instructions executed in the agent's context** (each is wrapped as a plugin and delivered via SDK `plugins=`), and installing one auto-enables it for the project. The command filter and path guard still apply, so a hostile skill cannot exceed the agent's permissions — but it can steer the agent within them. Review a skill's `SKILL.md` before enabling it, the same way you would review a dependency. `_get` also applies no response size cap, so a hostile repo can make an install write arbitrarily large files.
+- **Remediation (rev 14, 2026-10-14)**:
+  - `_install_sync` now calls `validate_file_path(rel)` on every per-file path before the join and `continue`s past any entry it rejects, logging a `WARNING` with the path and the reason. The skipped blob is never fetched, so a hostile entry costs no request either. The guard is the existing one from `src/git/operations.py` — the same function used on diff and file-browser paths — not a second check, and `rel` is reassigned to its normalized return value so the write uses the sanitized path. One case the generic guard does not cover is handled alongside it: a path that normalizes to `"."` (e.g. a bare null byte, which `validate_file_path` strips to an empty string) names the skill directory itself, so it is skipped rather than passed to `write_bytes` as a directory.
+  - `_get` caps a single response at `MAX_RESPONSE_BYTES` (8 MiB): it reads one byte past the cap so an oversized body is detected rather than silently truncated, and raises `ValueError`. `install()` already wraps failures into `{"ok": False, "error": ...}`, so an oversized file fails the install instead of filling the disk. This closes the size-cap half of the note below.
+  - 3 tests added in `tests/unit/test_skills_service.py` (11 → 14): a tree entry with `..` (skipped, nothing written outside the library, legitimate sibling entries still install), an absolute tree entry (skipped — this is the case where an unvalidated `skill_dir / rel` would have discarded the prefix entirely), and the response-size cap (over-cap raises, under-cap returns).
+- **Related, not separately numbered**: installed skills are **third-party instructions executed in the agent's context** (each is wrapped as a plugin and delivered via SDK `plugins=`), and installing one auto-enables it for the project. The command filter and path guard still apply, so a hostile skill cannot exceed the agent's permissions — but it can steer the agent within them. Review a skill's `SKILL.md` before enabling it, the same way you would review a dependency. (The other half of this note — `_get` having no response size cap — was fixed in rev 14, above.)
 
 ### 17. `peek_worktree` Reads Peer Worktrees Without Secret-File Hiding
 
@@ -222,15 +228,15 @@ These cover the subsystems that landed after rev 11 and had never been reviewed.
 | 13 | HTTP only | Info | ⚠️ Open | By design for localhost |
 | 14 | Missing security headers | Info | ✅ Fixed | Minimal risk on localhost |
 | 15 | Kimi agents not confined by an enforcing hook | **Medium** | 🟡 Mitigated | Out-of-worktree paths denied on permission requests, logged otherwise (experimental only) |
-| 16 | Skills install writes remote tree paths unvalidated | Low | ⚠️ Open | Defense-in-depth; relies on a git invariant |
+| 16 | Skills install writes remote tree paths unvalidated | Low | ✅ Fixed | Defense-in-depth; no longer relies on a git invariant |
 | 17 | `peek_worktree` has no secret-file hiding | Info | ⚠️ Open | Peer-worktree secrets readable (by design) |
 
 ---
 
 ## Remediation Progress
 
-**9 of 10 actionable findings fixed, plus #15 mitigated** (rev 13). The only
-fully open actionable item is #16:
+**10 of 11 actionable findings fixed, plus #15 mitigated** (rev 14) — no actionable
+item is open:
 
 | Priority | Finding | Status |
 |----------|---------|--------|
@@ -244,7 +250,7 @@ fully open actionable item is #16:
 | Low | #10 Epic color validation — Pydantic field_validator on EpicCreate/EpicUpdate | ✅ Done |
 | Low | #14 Security headers — SecurityHeadersMiddleware (nosniff + DENY) | ✅ Done |
 | Do Now | #15 Kimi path confinement — shared `PathScope` + path check in `_decide_permission`, violations logged, gap documented | 🟡 Mitigated (residual needs client-side ACP fs handling) |
-| Low | #16 Skills install — run `rel` through `validate_file_path()` | ⚠️ Open |
+| Low | #16 Skills install — `rel` runs through `validate_file_path()` before the join; `_get` caps responses at 8 MiB | ✅ Done |
 
 ### Not Needed for Localhost
 

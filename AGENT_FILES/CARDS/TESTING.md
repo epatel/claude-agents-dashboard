@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1369 tests
+./run-tests.sh              # Run all 1372 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -69,7 +69,7 @@ tests/
 │   ├── test_review_agent.py         # Auto-review session options (3 tests)
 │   ├── test_session.py              # ClaudeAgentSession SDK wrapper (98 tests)
 │   ├── test_session_service.py      # SessionService lifecycle + provider routing (54 tests)
-│   ├── test_skills_service.py       # SkillsService install/browse/discover (11 tests)
+│   ├── test_skills_service.py       # SkillsService install/browse/discover (14 tests)
 │   ├── test_use_chrome.py           # Per-task Chrome integration (17 tests)
 │   ├── test_websocket.py            # WebSocket rate limiting (45 tests)
 │   └── test_workflow_service.py     # WorkflowService transitions (115 tests)
@@ -83,7 +83,7 @@ tests/
 
 ## Test Categories
 
-**1369 total** = 20 smoke + 1335 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1335 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
+**1372 total** = 20 smoke + 1338 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1338 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
 
 ### Smoke Tests (20 tests)
 Quick checks that core components work:
@@ -98,13 +98,13 @@ Quick checks that core components work:
 - **ItemRepository** (25 tests): Read APIs, `transition()`, `update_fields()`, `move_to_column()`, `_WRITABLE_ITEM_COLUMNS` enforcement
 - **EpicRepository** (9 tests): CRUD facade and `_WRITABLE_EPIC_COLUMNS` enforcement (replaces the old `ALLOWED_EPIC_COLUMNS` whitelist that lived in `database_service.py`)
 
-### Unit Tests — Service Layer (295 tests)
+### Unit Tests — Service Layer (298 tests)
 - **WorkflowService** (115 tests): State transitions (driven through the `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
 - **DatabaseService** (62 tests): CRUD operations, item dependencies, clarification context column (column whitelisting moved into the repositories)
 - **SessionService** (54 tests): Session lifecycle, commit messages, plugin parsing (incl. enabled-skill plugins), SDK wrapper
 - **NotificationService** (41 tests): WebSocket broadcasting, tool formatting, event types
 - **GraphService** (12 tests): graphify build/refresh/query/status, version detection, cost tracking
-- **SkillsService** (11 tests): library install/list/remove, browse Anthropic source, multi-skill repo discovery, spec parsing, gitignore management
+- **SkillsService** (14 tests): library install/list/remove, browse Anthropic source, multi-skill repo discovery, spec parsing, gitignore management, remote-tree path validation (traversal + absolute entries skipped) and the HTTP response size cap
 
 ### Unit Tests — Web Layer (253 tests)
 - **Routes** (116 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, `/api/graphify/*`, `/api/skills/*`
@@ -223,7 +223,7 @@ async def test_apply_migration(self, raw_db, runner):
 ### Adding New Tests
 
 1. Place in the appropriate directory (`unit/`, `integration/`, `smoke/`)
-2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1335. Select by path (`./run-tests.sh tests/unit/`), not by marker.
+2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1338. Select by path (`./run-tests.sh tests/unit/`), not by marker.
 3. Async tests work automatically (no `@pytest.mark.asyncio` needed)
 4. Run `./run-tests.sh` to verify all tests pass
 

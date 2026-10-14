@@ -71,7 +71,7 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1338 tests across smoke, unit, and integration tiers (`run-tests.sh` creates the venv and installs both `requirements.txt` and `requirements-test.txt` on first run).
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1372 tests across smoke, unit, and integration tiers (`run-tests.sh` creates the venv and installs both `requirements.txt` and `requirements-test.txt` on first run).
 
 E2E tests run separately and **spawn real agents, which costs tokens**:
 
@@ -722,7 +722,7 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 
 One living reference sits outside `CARDS/`: [`docs/item-states.md`](docs/item-states.md) — the 13 `ItemState` values, their `(column_name, status)` encoding, and the transition diagram.
 
-Point-in-time snapshots (**not maintained**) sit in the AGENT_FILES root: `ASSESSMENT_CODE.md` (module-by-module quality ratings), `AUDIT.md` (security audit, rev 13 — 17 findings, 9 of 10 actionable remediated and Kimi worktree confinement under `--experimental` mitigated; the open one is unvalidated skill-install paths), and dated decision/eval records (`EVAL_*`, `PLAN_*`, `SDK_BUMP_*`).
+Point-in-time snapshots (**not maintained**) sit in the AGENT_FILES root: `ASSESSMENT_CODE.md` (module-by-module quality ratings), `AUDIT.md` (security audit, rev 14 — 17 findings, no actionable finding open: 10 of 11 remediated, with Kimi worktree confinement under `--experimental` mitigated rather than fully closed), and dated decision/eval records (`EVAL_*`, `PLAN_*`, `SDK_BUMP_*`).
 
 ## License
 

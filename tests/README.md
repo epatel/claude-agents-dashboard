@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (1369 tests across 52 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (31 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1372 tests across 52 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (31 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -53,7 +53,7 @@ tests/
 │   ├── test_review_agent.py                     # Auto-review session options (3 tests)
 │   ├── test_session.py                          # ClaudeAgentSession SDK wrapper (98 tests)
 │   ├── test_session_service.py                  # SessionService lifecycle + provider routing (54 tests)
-│   ├── test_skills_service.py                   # SkillsService install/browse/discover/enable (11 tests)
+│   ├── test_skills_service.py                   # SkillsService install/browse/discover/enable (14 tests)
 │   ├── test_use_chrome.py                       # Per-task Chrome integration (17 tests)
 │   ├── test_websocket.py                        # WebSocket connection and rate limiting (45 tests)
 │   └── test_workflow_service.py                 # WorkflowService state transitions (115 tests)
@@ -160,7 +160,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 1369 tests
+# Run all 1372 tests
 ./run-tests.sh
 
 # Run specific test categories
@@ -183,7 +183,7 @@ pytest tests/unit/migrations/
 
 # Select by path, not by marker. The unit/integration/smoke markers exist in
 # pytest.ini but are applied to only a minority of files — `pytest -m unit`
-# collects ~94 of 1335 unit tests and silently skips the rest.
+# collects ~94 of 1338 unit tests and silently skips the rest.
 pytest tests/unit/
 pytest tests/integration/
 pytest tests/smoke/
