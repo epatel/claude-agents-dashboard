@@ -108,9 +108,11 @@ Same shape as `flow.command-gate` but for built-in tools (WebSearch, WebFetch).
 - **Tables:** `items` (`allowed_builtin_tools` from migration 006)
 
 ### `flow.path-guard`
-PreToolUse hook resolves Read/Edit/Write paths and denies any access outside the worktree (and outside `workspace_root` for reads in multi-repo mode).
-- **Hook:** `src/agent/path_guard.py:25` `make_path_guard_hook(worktree_path, workspace_root)` / `:90` `hook`
-- **WS events:** none (denial returned to agent)
+PreToolUse hook resolves Read/Edit/Write paths and denies any access outside the worktree (and outside `workspace_root` for reads in multi-repo mode). The Kimi runtime has no hooks, so it reuses the same `PathScope` predicate from its ACP permission handler (AUDIT #15).
+- **Predicate:** `src/agent/path_guard.py:30` `PathScope` (`resolve` / `write_denied` / `read_denied`; `strict_writes=True` for Kimi)
+- **Hook:** `src/agent/path_guard.py:125` `make_path_guard_hook(worktree_path, workspace_root)` / `:143` `hook`
+- **Kimi side:** `src/agent/kimi_session.py:140` `_tool_call_paths` / `:165` `_scope_violations` / `:187` `_decide_permission` / `:375` `KimiAgentSession.audit_tool_call_scope`
+- **WS events:** none (denial returned to agent; Kimi boundary violations go to the server log)
 - **Tables:** n/a
 
 ### `flow.notify-broadcast`

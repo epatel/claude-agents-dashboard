@@ -46,6 +46,24 @@ Replace this with the specific objective the moment one is in flight.
 Settled, still-relevant choices no agent should reopen without flagging here. Long-lived
 architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
+- 2026-10-14 — The worktree boundary has **one** implementation: `PathScope` in
+  `src/agent/path_guard.py`. The Claude `PreToolUse` hook and the Kimi ACP permission
+  handler (`kimi_session._decide_permission`) both call it; do not write a second path
+  predicate. Two things to know. (1) `PathScope.resolve()` expands `~` and joins relative
+  paths onto the **worktree**, because that is the agent's cwd — resolving them against the
+  dashboard process's cwd was wrong and false-denied relative paths when the dashboard
+  orchestrates its own repo. (2) Kimi constructs it with **`strict_writes=True`** (a write
+  anywhere outside the worktree is denied, not only one landing in the main checkout), while
+  the Claude hook keeps the historical non-strict rule, because for Claude the hook sees
+  every tool call and for Kimi it does not. Reads use identical scope in both runtimes
+  (worktree, plus `workspace_root` in multi-repo mode). Kimi's residual gap is **by
+  construction, not an oversight**: kimi-code's classifier decides which tool calls raise an
+  ACP permission request, so calls it never asks about are only logged
+  (`KimiAgentSession.audit_tool_call_scope`). Closing it needs client-side ACP
+  `fs/*` interposition or an OS sandbox around `kimi acp` — don't claim Kimi is confined
+  until one of those exists. See AUDIT #15 (Mitigated, rev 13) and
+  `CARDS/KIMI_PROVIDER.md` "Worktree confinement".
+
 - 2026-10-14 — The `claude-agent-sdk` floor in `requirements.txt` is kept at the **latest
   published release** (now `>=0.2.165`), not at a merely-working version. Rationale: token
   pricing data lives in the SDK and the dashboard reads `total_cost_usd` straight from it —
@@ -147,16 +165,27 @@ No objective in flight. Last change (2026-10-08, M9): a docs reassessment plus t
 security review of everything added since `AUDIT.md` rev 11.
 
 Authoritative counts, all re-verified by collection/grep this pass — trust these over any
-number you find in prose: **31 migrations (001–031)**; **1338 tests = 20 smoke + 1304 unit
+number you find in prose: **31 migrations (001–031)**; **1369 tests = 20 smoke + 1335 unit
 + 14 integration** (plus 7 Node E2E tests, counted separately); **7 services**; **10 MCP
 tool servers exposing 12 tools** (`todo.py` serves three); skills ship as plugins, not as
 an MCP tool.
 
-**One thing to know before touching the Kimi runtime or `--experimental`**: `AUDIT.md`
-finding **#15** (new in rev 12) — Kimi agents have **no enforcing worktree-write guard**.
-Claude agents get `path_guard.py`; Kimi's `_decide_permission` allows every non-execute
-tool call, so confinement is `cwd` plus a prompt instruction. Shell commands *do* reach
-parity (allowlist + shell-operator escalation). Fix tracked as board item `d36331e6bccf`.
+**Kimi worktree confinement (board item `d36331e6bccf`) is done, 2026-10-14** — `AUDIT.md`
+finding **#15** moves Open → **Mitigated** and the audit is at **rev 13**. What landed: the
+boundary predicate was factored out of `path_guard.py` into a shared `PathScope`;
+`KimiAgentSession` builds one with `strict_writes=True` (and now receives `workspace_root`
+from `SessionService`) and `_decide_permission` **denies** any ACP permission request whose
+path arguments resolve outside it, logging the violation; every streamed tool call also goes
+through `audit_tool_call_scope`, which logs out-of-boundary paths. Paths are read from
+`rawInput` (`_PATH_KEYS`/`_PATH_LIST_KEYS`) plus ACP `locations[].path`, and any tool kind
+outside `read`/`search`/`think`/`fetch` — including a missing kind — is checked as a write,
+so unknown tools fail closed. It is **Mitigated, not Remediated**: kimi-code decides which
+calls raise a permission request, so the ones it skips can only be logged — that gap is now
+documented in `CARDS/KIMI_PROVIDER.md`, the `--experimental` help text and the startup
+banner (see the new Decision below). 31 new tests (`test_kimi_session.py` 57 → 88); suite
+**1369** = 20 smoke + 1335 unit + 14 integration, green. The remaining open actionable audit
+finding is **#16** (Low — `skills_service` writes remote tree paths without a local
+`validate_file_path()` check); a follow-up todo is on the board.
 
 Also done 2026-10-14: `verbatim_prompts=True` at all three `ClaudeAgentOptions` call sites
 (see the new Decision above and the second rev note in `SDK_BUMP_2026-06-03.md`). The suite

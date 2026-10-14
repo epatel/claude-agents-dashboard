@@ -110,6 +110,37 @@ dashboard decides the ANSWER**:
   approval flow. It cannot make kimi ask more often; it only changes the
   answer side.
 
+### Worktree confinement — read this before trusting `--experimental`
+
+`KimiAgentSession` builds a `path_guard.PathScope` (the same predicate the
+Claude `path_guard` PreToolUse hook uses) with **`strict_writes=True`**, and
+`_decide_permission` denies any permission request whose path arguments leave
+it: writes must stay inside the worktree, reads may also reach the workspace
+root in multi-repo mode. Paths come from the ACP tool call's `rawInput` (keys
+in `_PATH_KEYS`/`_PATH_LIST_KEYS` — `path` is what kimi-code sends, the
+Claude-style aliases are there for other tools) plus ACP's schema'd
+`locations[].path`. Relative paths resolve against the worktree, `~` is
+expanded, and `.resolve()` collapses `..` and symlinks. A tool kind outside
+`_READ_ONLY_KINDS` (`read`/`search`/`think`/`fetch`) — including a **missing**
+kind — is checked as a write, so an unrecognized tool fails closed.
+`bash_yolo` does not relax this; it governs shell commands only.
+
+**The residual gap (why this is mitigation, not a hard boundary)**: the
+Claude guard is a PreToolUse hook, so it sees *every* tool call. On the Kimi
+side, **kimi-code's own classifier decides which calls raise a
+`session/request_permission`** — an edit it deems safe never reaches
+`permission_handler` and therefore cannot be refused there. ACP exposes no
+stricter mode and no client-side filesystem interposition in the SDK's ACP
+client, so for calls kimi never asks about, confinement is still `cwd` plus the
+prompt instruction. What we do have for those: every streamed tool call goes
+through `KimiAgentSession.audit_tool_call_scope`, which logs a `WARNING`
+naming the out-of-boundary path and the item — detection and an audit trail,
+not prevention. **Running a Kimi agent is therefore a weaker containment
+guarantee than running a Claude agent**; `--experimental` is a trust decision.
+See AUDIT.md finding #15. If the ACP client ever grows client-side
+`fs/read_text_file` / `fs/write_text_file` handling, moving the check there
+would close the gap for real.
+
 **Project context files**: kimi-cli natively discovers and merges
 `AGENTS.md` (root `AGENTS.md`/`agents.md` + `.kimi/AGENTS.md`, project
 root down to workdir) — nothing to do when the target project has one.
@@ -153,9 +184,12 @@ Remaining limitations (deliberate, mirrors the lean Ollama feature set):
 
 ## Tests
 
-`tests/unit/test_kimi_session.py` (fake `kimi_agent_sdk` module injected via
-`sys.modules`), `TestKimiRouting` in `test_session_service.py`,
-`TestIsKimiModel` in `test_profiles.py`.
+`tests/unit/test_kimi_session.py` (88 tests; fake `kimi_agent_sdk` module
+injected via `sys.modules`) — including `TestToolCallPaths`,
+`TestPathBoundary`, `TestSessionPathScope` and `TestAuditToolCallScope` for
+worktree confinement. Plus `TestKimiRouting` in `test_session_service.py`,
+`TestIsKimiModel` in `test_profiles.py`. The `PathScope` predicate itself is
+also exercised through the Claude hook in `tests/smoke/test_multi_repo.py`.
 
 ---
 

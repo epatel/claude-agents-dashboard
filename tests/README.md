@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (1338 tests across 52 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (31 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1369 tests across 52 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (31 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -48,7 +48,7 @@ tests/
 │   ├── test_routes.py                           # HTTP endpoint tests (116 tests)
 │   ├── test_base.py                             # AbstractAgentSession contract (4 tests)
 │   ├── test_kimi_board_mcp.py                   # Kimi board-tools stdio MCP proxy (12 tests)
-│   ├── test_kimi_session.py                     # KimiAgentSession over ACP (experimental) (57 tests)
+│   ├── test_kimi_session.py                     # KimiAgentSession over ACP (experimental) (88 tests)
 │   ├── test_profiles.py                         # Provider profiles + Kimi/Ollama routing (23 tests)
 │   ├── test_review_agent.py                     # Auto-review session options (3 tests)
 │   ├── test_session.py                          # ClaudeAgentSession SDK wrapper (98 tests)
@@ -101,10 +101,10 @@ tests/
 - **Kimi board-tools MCP proxy** (12 tests) — stdio subprocess against a stub dashboard API
 - **graph_query tool** (10 tests) — Read-only knowledge-graph MCP tool server
 
-### 5b. Session (185 tests)
+### 5b. Session (216 tests)
 - **ClaudeAgentSession** (98 tests) — SDK wrapper, token extraction, event handling, Ollama provider env configuration, `verbatim_prompts`
 - **Auto-review session** (3 tests) — `run_auto_review` options on the Claude and Ollama branches, prompt passed through unmodified
-- **KimiAgentSession** (57 tests) — ACP transport, text protocols, permissions, resume (experimental)
+- **KimiAgentSession** (88 tests) — ACP transport, text protocols, permissions, worktree path boundary (AUDIT #15), resume (experimental)
 - **Provider profiles** (23 tests) — Kimi/Ollama routing predicates, env builder, profile gate matrix
 - **AbstractAgentSession** (4 tests) — contract conformance
 
@@ -160,7 +160,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 1338 tests
+# Run all 1369 tests
 ./run-tests.sh
 
 # Run specific test categories
@@ -183,7 +183,7 @@ pytest tests/unit/migrations/
 
 # Select by path, not by marker. The unit/integration/smoke markers exist in
 # pytest.ini but are applied to only a minority of files — `pytest -m unit`
-# collects ~94 of 1304 unit tests and silently skips the rest.
+# collects ~94 of 1335 unit tests and silently skips the rest.
 pytest tests/unit/
 pytest tests/integration/
 pytest tests/smoke/

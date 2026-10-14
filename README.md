@@ -218,7 +218,7 @@ The SQLite database uses a versioned migration system to manage schema changes s
 - **Standalone item detail page** — each item has a shareable URL; Done detail dialog includes a copy-link button for sharing
 - **Animated flame background** — optional animated flame effect behind board columns with activity-driven intensity; configurable via agent config (flame_enabled setting)
 - **Ollama provider** (experimental) — run agents against local Ollama models via Claude Code's env override mechanism; dynamic model discovery, connection status indicator, provider badges on cards; enable with `--experimental` flag
-- **Kimi provider** (experimental) — run agents on Kimi models (`kimi-code/k3`, `k3-256k`, `kimi-for-coding`, `kimi-for-coding-highspeed`) via the Kimi Agent SDK's ACP client (`kimi acp` subprocess); full feature parity: streaming, pause/resume, commit messages, clarifications, board tools (stdio MCP proxy), permission hooks; auth via one-time `kimi login`; enable with `--experimental` flag
+- **Kimi provider** (experimental) — run agents on Kimi models (`kimi-code/k3`, `k3-256k`, `kimi-for-coding`, `kimi-for-coding-highspeed`) via the Kimi Agent SDK's ACP client (`kimi acp` subprocess); full feature parity: streaming, pause/resume, commit messages, clarifications, board tools (stdio MCP proxy), permission hooks; auth via one-time `kimi login`; enable with `--experimental` flag. Note the **weaker worktree boundary**: out-of-worktree paths are denied on the tool calls kimi raises a permission request for and logged on the rest — see [`CARDS/KIMI_PROVIDER.md`](AGENT_FILES/CARDS/KIMI_PROVIDER.md)
 - **Light/dark mode** — respects system preference with manual toggle
 
 ## Architecture
@@ -297,7 +297,7 @@ graph TB
 - **Frontend**: Jinja2 templates, vanilla HTML/CSS/JS, WebSocket, modular dialog system (12 specialized modules), Prism.js syntax highlighting, mermaid diagram rendering, ~9,600 lines JS + ~3,850 lines CSS
 - **Agent**: Claude Agent SDK (`claude-agent-sdk` >=0.2.165), models: Claude Opus 5 (default) plus the current Claude list from the published model feed, 12 built-in MCP tools across 10 servers (incl. read-only `graph_query` and `peek_worktree`); installable Agent Skills delivered via `plugins=`; optional Ollama and Kimi providers (experimental — Kimi runs on a separate runtime: `kimi-agent-sdk` ACP client driving the `kimi` CLI)
 - **Database**: SQLite with 31 versioned migrations (auto-runs on startup)
-- **Security**: Localhost by default (`--host 0.0.0.0` opts out and prints a warning), no authentication, path traversal protection, path guard hook, WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
+- **Security**: Localhost by default (`--host 0.0.0.0` opts out and prints a warning), no authentication, path traversal protection, path guard hook (Claude runtime; the Kimi runtime applies the same `PathScope` predicate in its ACP permission handler), WebSocket rate limiting, git operation timeouts, CORS limited to localhost ports 8000–8019, security response headers
 
 ### Item lifecycle
 
@@ -715,14 +715,14 @@ The `AGENT_FILES/` directory contains supplementary documentation for agents wor
 - [`CARDS/TESTING.md`](AGENT_FILES/CARDS/TESTING.md) — test layout (unit / integration / smoke / e2e) and per-suite conventions
 - [`CARDS/COMMIT_POLICY.md`](AGENT_FILES/CARDS/COMMIT_POLICY.md) — commit policies (e.g. excluding annotation images)
 - [`CARDS/OLLAMA_PROVIDER.md`](AGENT_FILES/CARDS/OLLAMA_PROVIDER.md) — Ollama as a local model provider via Claude Agent SDK + dashboard wiring
-- [`CARDS/KIMI_PROVIDER.md`](AGENT_FILES/CARDS/KIMI_PROVIDER.md) — the Kimi runtime (experimental): ACP transport, board-tools MCP proxy, text protocols, permission trust model
+- [`CARDS/KIMI_PROVIDER.md`](AGENT_FILES/CARDS/KIMI_PROVIDER.md) — the Kimi runtime (experimental): ACP transport, board-tools MCP proxy, text protocols, permission trust model, worktree confinement and its residual gap
 - [`CARDS/GRAPHIFY.md`](AGENT_FILES/CARDS/GRAPHIFY.md) — using and maintaining the codebase knowledge graph (`graphify-out/`)
 - [`CARDS/SKILLS.md`](AGENT_FILES/CARDS/SKILLS.md) — the Agent-Skills library: install/enable skills and how enabled ones reach agents via `plugins=`
 - [`CARDS/DEMO.md`](AGENT_FILES/CARDS/DEMO.md) — the one-prompt `kanban-demo` walkthrough, for demoing the dashboard end to end
 
 One living reference sits outside `CARDS/`: [`docs/item-states.md`](docs/item-states.md) — the 13 `ItemState` values, their `(column_name, status)` encoding, and the transition diagram.
 
-Point-in-time snapshots (**not maintained**) sit in the AGENT_FILES root: `ASSESSMENT_CODE.md` (module-by-module quality ratings), `AUDIT.md` (security audit, rev 12 — 17 findings, 9 of 10 actionable remediated; the open one is Kimi worktree confinement under `--experimental`), and dated decision/eval records (`EVAL_*`, `PLAN_*`, `SDK_BUMP_*`).
+Point-in-time snapshots (**not maintained**) sit in the AGENT_FILES root: `ASSESSMENT_CODE.md` (module-by-module quality ratings), `AUDIT.md` (security audit, rev 13 — 17 findings, 9 of 10 actionable remediated and Kimi worktree confinement under `--experimental` mitigated; the open one is unvalidated skill-install paths), and dated decision/eval records (`EVAL_*`, `PLAN_*`, `SDK_BUMP_*`).
 
 ## License
 
