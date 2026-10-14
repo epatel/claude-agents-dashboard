@@ -40,7 +40,7 @@ run.sh [target] [options]
   --ui-map         Enable PROJECT_MAP overlays (Cmd+Shift+M)
 ```
 
-Note: `run.sh` treats the first argument that does not start with `--` as the target path, so put the target **first** when you combine it with options (`run.sh /path/to/project --port 8100`).
+The target and the options can come in any order — `run.sh --port 8100 /path/to/project` and `run.sh /path/to/project --port 8100` are the same. `run.sh` no longer mistakes an option value for the target path.
 
 ### Make targets
 
@@ -71,7 +71,7 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1327 tests across smoke, unit, and integration tiers (`run-tests.sh` creates the venv and installs both `requirements.txt` and `requirements-test.txt` on first run).
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1338 tests across smoke, unit, and integration tiers (`run-tests.sh` creates the venv and installs both `requirements.txt` and `requirements-test.txt` on first run).
 
 E2E tests run separately and **spawn real agents, which costs tokens**:
 

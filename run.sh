@@ -24,15 +24,34 @@ if [ -z "${__PATH_INITIALIZED:-}" ]; then
     fi
 fi
 
-# Parse arguments: first positional arg is target project, rest are forwarded
+# Parse arguments: first positional arg is target project, rest are forwarded.
+# The loop is flag-aware: options that take a separate value (--host, --port) consume
+# the next argument, so `run.sh --port 8100` does not mistake 8100 for the target path.
 TARGET_PROJECT=""
 EXTRA_ARGS=()
+expect_value=0
 for arg in "$@"; do
-    if [ -z "$TARGET_PROJECT" ] && [[ "$arg" != --* ]]; then
-        TARGET_PROJECT="$arg"
-    else
+    if [ "$expect_value" -eq 1 ]; then
         EXTRA_ARGS+=("$arg")
+        expect_value=0
+        continue
     fi
+    case "$arg" in
+        --host|--port)
+            EXTRA_ARGS+=("$arg")
+            expect_value=1
+            ;;
+        --*)
+            EXTRA_ARGS+=("$arg")
+            ;;
+        *)
+            if [ -z "$TARGET_PROJECT" ]; then
+                TARGET_PROJECT="$arg"
+            else
+                EXTRA_ARGS+=("$arg")
+            fi
+            ;;
+    esac
 done
 TARGET_PROJECT="${TARGET_PROJECT:-$(pwd)}"
 TARGET_PROJECT="$(cd "$TARGET_PROJECT" && pwd)"
