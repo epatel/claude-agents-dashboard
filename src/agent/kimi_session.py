@@ -52,6 +52,7 @@ from pathlib import Path
 
 from .base import AbstractAgentSession, AgentResult
 from .command_filter import _contains_shell_operators, _extract_command_name
+from .path_guard import PathScope
 
 logger = logging.getLogger(__name__)
 
@@ -117,16 +118,100 @@ def _extract_ask_user(text: str) -> tuple[str, str | None]:
     return _ASK_USER_RE.sub("", text).rstrip(), matches[-1]
 
 
-def _decide_permission(tool_call, allowed_commands, bash_yolo) -> tuple[str, str]:
-    """Decide an ACP permission request: ("allow" | "ask", command).
+# ACP `rawInput` has no fixed schema — every tool names its own arguments, so
+# the path check enumerates the keys kimi-code is known to use ("path", for
+# read/edit/grep/glob) plus the Claude-style aliases, and ACP's own schema'd
+# `locations[].path`. A key that is not really a path costs nothing: a value
+# that resolves inside the worktree is allowed either way.
+_PATH_KEYS = (
+    "path", "file_path", "filePath", "filename", "file_name", "file",
+    "abs_path", "absolute_path", "notebook_path", "dir", "directory", "cwd",
+    "target", "target_path", "destination", "dest", "dst",
+    "old_path", "new_path", "source", "src",
+)
+_PATH_LIST_KEYS = ("paths", "files", "file_paths", "filePaths")
+
+# ACP ToolKind values that only observe the filesystem. Anything else —
+# including a missing kind — is checked as a write, so an unrecognized tool
+# fails closed.
+_READ_ONLY_KINDS = {"read", "search", "think", "fetch"}
+
+
+def _tool_call_paths(tool_call: dict) -> list[str]:
+    """Every path-looking argument of an ACP tool call."""
+    paths: list[str] = []
+
+    def add(value) -> None:
+        if isinstance(value, str) and value.strip():
+            paths.append(value)
+
+    raw_input = tool_call.get("rawInput")
+    if isinstance(raw_input, dict):
+        for key in _PATH_KEYS:
+            add(raw_input.get(key))
+        for key in _PATH_LIST_KEYS:
+            value = raw_input.get(key)
+            if isinstance(value, (list, tuple)):
+                for entry in value:
+                    add(entry)
+    locations = tool_call.get("locations")
+    if isinstance(locations, (list, tuple)):
+        for location in locations:
+            if isinstance(location, dict):
+                add(location.get("path"))
+    return paths
+
+
+def _scope_violations(tool_call: dict, path_scope: PathScope) -> list[str]:
+    """Path arguments of this tool call that leave the agent's boundary.
+
+    Write-ish tool kinds (anything outside `_READ_ONLY_KINDS`, including an
+    absent kind) must stay in the worktree; read-ish ones may also reach the
+    workspace root in multi-repo mode.
+    """
+    is_read = tool_call.get("kind") in _READ_ONLY_KINDS
+    violations = []
+    for path_str in _tool_call_paths(tool_call):
+        resolved = path_scope.resolve(path_str)
+        if resolved is None:
+            continue
+        denied = (
+            path_scope.read_denied(resolved) if is_read
+            else path_scope.write_denied(resolved)
+        )
+        if denied:
+            violations.append(path_str)
+    return violations
+
+
+def _decide_permission(tool_call, allowed_commands, bash_yolo,
+                       path_scope=None) -> tuple[str, str]:
+    """Decide an ACP permission request: ("allow" | "ask" | "deny", subject).
 
     Mirrors the Claude path's semantics: non-execute tool calls (read/edit/
     search/…) are allowed, like permission_mode="acceptEdits"; shell commands
     are allowed when bash_yolo is on or the first word is allowlisted, and
     otherwise escalate to the user ("ask"). Commands with shell operators
     always escalate — they can smuggle unlisted commands past the allowlist.
+
+    With a `path_scope` (a `path_guard.PathScope`), any path argument that
+    leaves the agent's boundary is **denied** outright and logged — the Kimi
+    equivalent of the Claude `path_guard` PreToolUse hook (AUDIT #15). Writes
+    must stay in the worktree; reads may also reach the workspace root in
+    multi-repo mode. `bash_yolo` does not relax this — it governs shell
+    commands only.
     """
     tool_call = tool_call or {}
+    if path_scope is not None:
+        violations = _scope_violations(tool_call, path_scope)
+        if violations:
+            logger.warning(
+                "Kimi mode: worktree boundary violation — denied %r on %s "
+                "(worktree %s)",
+                tool_call.get("title") or tool_call.get("kind") or "tool call",
+                ", ".join(violations), path_scope.worktree,
+            )
+            return "deny", violations[0]
     raw_input = tool_call.get("rawInput")
     command = raw_input.get("command") if isinstance(raw_input, dict) else None
     if tool_call.get("kind") != "execute" and not isinstance(command, str):
@@ -259,6 +344,7 @@ class KimiAgentSession(AbstractAgentSession):
         allowed_commands: list[str] | None = None,
         bash_yolo: bool = False,
         item_id: str | None = None,
+        workspace_root: Path | None = None,
     ):
         self.worktree_path = worktree_path
         self.system_prompt = system_prompt
@@ -274,10 +360,42 @@ class KimiAgentSession(AbstractAgentSession):
         self.allowed_commands = allowed_commands or []
         self.bash_yolo = bash_yolo
         self.item_id = item_id
+        self.workspace_root = workspace_root
+        # Worktree boundary, shared with the Claude path_guard hook. Writes are
+        # strict (anything outside the worktree is refused, not just the main
+        # checkout) because the Kimi runtime has no second line of defense.
+        self.path_scope = PathScope(
+            worktree_path, workspace_root=workspace_root, strict_writes=True,
+        )
         self._task: asyncio.Task | None = None
         self._cancelled = False
         self._acp_session = None
         self.current_session_id: str | None = None
+
+    def audit_tool_call_scope(self, pending: "_PendingToolCall") -> list[str]:
+        """Log a WARNING for each path argument of `pending` outside the boundary.
+
+        Detection only, and deliberately so: kimi-code's own classifier decides
+        which tool calls raise an ACP `session/request_permission`, so a file
+        write it considers safe never reaches `permission_handler` and cannot be
+        refused there. Every tool call *is* streamed to us, so this gives an
+        escape an audit trail in the server log even when nothing could block
+        it (AUDIT #15 — see CARDS/KIMI_PROVIDER.md "Worktree confinement").
+        """
+        violations = _scope_violations(
+            {"kind": pending.kind, "rawInput": pending.raw_input,
+             "title": pending.title},
+            self.path_scope,
+        )
+        if violations:
+            logger.warning(
+                "Kimi mode: tool call %r (item %s) referenced paths outside the "
+                "worktree %s: %s — only blocked if kimi raised a permission "
+                "request for it",
+                pending.title, self.item_id, self.path_scope.worktree,
+                ", ".join(violations),
+            )
+        return violations
 
     async def start(self, prompt: str, attachments: list[dict] | None = None,
                     resume_session_id: str | None = None) -> None:
@@ -291,7 +409,8 @@ class KimiAgentSession(AbstractAgentSession):
             prompt = (
                 f"{self.system_prompt}\n\n"
                 f"IMPORTANT: Your working directory is {self.worktree_path}. "
-                "All file operations must be within this directory."
+                "All file operations must be within this directory — writes to "
+                "paths outside it are blocked. Use relative paths."
                 f"{_project_context_note(self.worktree_path)}\n\n"
                 f"--- Task ---\n{prompt}"
             )
@@ -339,7 +458,8 @@ class KimiAgentSession(AbstractAgentSession):
 
             async def permission_handler(request):
                 decision, command = _decide_permission(
-                    request.tool_call, self.allowed_commands, self.bash_yolo
+                    request.tool_call, self.allowed_commands, self.bash_yolo,
+                    self.path_scope,
                 )
                 if decision == "ask":
                     if self.on_request_command:
@@ -353,7 +473,7 @@ class KimiAgentSession(AbstractAgentSession):
                 if decision == "allow":
                     outcome = _pick(request, ("allow_once", "allow_always"))
                 else:
-                    logger.info(f"Kimi mode: denied permission for command: {command!r}")
+                    logger.info(f"Kimi mode: denied permission for: {command!r}")
                     outcome = _pick(request, ("reject_once", "reject_always"))
                 return outcome or PermissionCancelled()
 
@@ -426,8 +546,12 @@ class KimiAgentSession(AbstractAgentSession):
 
                 async def emit_pending() -> None:
                     nonlocal pending_tool
-                    if pending_tool is not None and self.on_tool_use:
-                        await self.on_tool_use(pending_tool.title, pending_tool.input)
+                    if pending_tool is not None:
+                        self.audit_tool_call_scope(pending_tool)
+                        if self.on_tool_use:
+                            await self.on_tool_use(
+                                pending_tool.title, pending_tool.input
+                            )
                     pending_tool = None
 
                 # Turn loop: normally one turn, but an ASK_USER line chains a

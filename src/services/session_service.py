@@ -91,6 +91,9 @@ class SessionService:
                 allowed_commands=allowed_commands,
                 bash_yolo=config.get("bash_yolo", False),
                 item_id=item_id,
+                # Worktree boundary for the ACP permission handler; in
+                # multi-repo mode the workspace root also unlocks reads.
+                workspace_root=workspace_root,
             )
             self.sessions[item_id] = session
             self._update_caffeinate()

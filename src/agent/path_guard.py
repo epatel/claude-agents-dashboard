@@ -1,4 +1,4 @@
-"""PreToolUse hook that keeps writes scoped to the agent's worktree.
+"""Worktree boundary predicates, plus the Claude PreToolUse hook built on them.
 
 Single-repo mode: writes AND reads are restricted to the worktree. Any path
 that lands in the main project checkout (but not the worktree) is denied.
@@ -6,6 +6,11 @@ that lands in the main project checkout (but not the worktree) is denied.
 Multi-repo mode: writes are still worktree-only, but reads/searches are
 allowed anywhere under the workspace root so an agent can reference sibling
 repos. The workspace root is the parent folder containing all subrepos.
+
+`PathScope` holds the decision logic so the Claude hook
+(`make_path_guard_hook`) and the Kimi ACP permission handler
+(`kimi_session._decide_permission`) share one implementation of "is this path
+inside the agent's boundary" — see AGENT_FILES/AUDIT.md finding #15.
 """
 
 import logging
@@ -22,6 +27,101 @@ PATH_TOOLS = {"Glob", "Grep"}
 READ_ONLY_TOOLS = {"Read", "Glob", "Grep"}
 
 
+class PathScope:
+    """The path boundary of one agent run.
+
+    Args:
+        worktree_path: Absolute path to the agent's worktree. Writes must stay
+            inside it; relative paths resolve against it (it is the agent's
+            cwd, not the dashboard process's).
+        workspace_root: Optional parent folder containing sibling repos
+            (multi-repo mode). When given, reads are allowed anywhere under it.
+        strict_writes: When True, a write outside the worktree is denied
+            wherever it points. When False (the historical Claude-hook
+            behavior), only writes that land in the main project checkout are
+            denied — a write to, say, `/tmp` is left alone.
+    """
+
+    def __init__(self, worktree_path: Path, workspace_root: Optional[Path] = None,
+                 strict_writes: bool = False):
+        resolved_worktree = Path(worktree_path).resolve()
+        self.worktree = str(resolved_worktree)
+        # Derive the single-repo "project root" for write-scope checks — the
+        # main repo is the worktree's great-grandparent
+        # (…/<project>/agents-lab/worktrees/<id>).
+        self.project_root = str(resolved_worktree.parent.parent.parent)
+        self.workspace_root = (
+            str(Path(workspace_root).resolve()) if workspace_root else None
+        )
+        self.strict_writes = strict_writes
+
+    def resolve(self, path_str: str) -> Optional[str]:
+        """Absolute, symlink-resolved form of a tool-supplied path, or None.
+
+        `~` is expanded and relative paths are joined onto the worktree, so a
+        path the agent meant relative to its cwd is not mistaken for one
+        outside the boundary (or vice versa).
+        """
+        if not path_str or not isinstance(path_str, str):
+            return None
+        try:
+            path = Path(path_str).expanduser()
+            if not path.is_absolute():
+                path = Path(self.worktree) / path
+            return str(path.resolve())
+        except (ValueError, OSError, RuntimeError):
+            return None
+
+    @staticmethod
+    def _inside(resolved: str, root: str) -> bool:
+        return resolved == root or resolved.startswith(root + "/")
+
+    def inside_worktree(self, resolved: str) -> bool:
+        return self._inside(resolved, self.worktree)
+
+    def write_denied(self, resolved: str) -> bool:
+        """Should a write to this resolved path be refused?"""
+        if self.inside_worktree(resolved):
+            return False
+        if self.strict_writes:
+            return True
+        return self._inside(resolved, self.project_root)
+
+    def read_denied(self, resolved: str) -> bool:
+        """Should a read/search of this resolved path be refused?
+
+        Multi-repo mode: anywhere under the workspace root is fine.
+        Single-repo mode: only the worktree is fine if the path is inside
+        the main project.
+        """
+        if self.inside_worktree(resolved):
+            return False
+        if self.workspace_root and self._inside(resolved, self.workspace_root):
+            return False
+        return self._inside(resolved, self.project_root)
+
+    @property
+    def write_deny_reason(self) -> str:
+        if self.strict_writes:
+            return (
+                "This path is outside your worktree. Your worktree is at "
+                f"{self.worktree}. Writes must stay inside it."
+            )
+        return (
+            "This path is in the main project checkout, not your worktree. "
+            f"Your worktree is at {self.worktree}. Writes must stay inside it."
+        )
+
+    @property
+    def read_deny_reason(self) -> str:
+        return (
+            "This path is outside the allowed read scope "
+            f"(worktree: {self.worktree}"
+            + (f", workspace: {self.workspace_root}" if self.workspace_root else "")
+            + "). Use paths inside that scope."
+        )
+
+
 def make_path_guard_hook(worktree_path: Path, workspace_root: Optional[Path] = None):
     """Create a PreToolUse hook that enforces the worktree boundary.
 
@@ -35,57 +135,10 @@ def make_path_guard_hook(worktree_path: Path, workspace_root: Optional[Path] = N
             back to historical single-repo behavior where reads are also
             restricted to the worktree.
     """
-    worktree_str = str(worktree_path.resolve())
-    # Derive single-repo "project root" for write-scope checks — the main
-    # repo is the worktree's grandparent's parent (…/agents-lab/worktrees/<id>).
-    project_root = worktree_path.resolve().parent.parent.parent
-    project_root_str = str(project_root)
-    workspace_root_str = str(workspace_root.resolve()) if workspace_root else None
-
-    def _resolve(path_str: str) -> Optional[str]:
-        if not path_str:
-            return None
-        try:
-            return str(Path(path_str).resolve())
-        except (ValueError, OSError):
-            return None
-
-    def _inside(resolved: str, root: str) -> bool:
-        return resolved == root or resolved.startswith(root + "/")
-
-    def _write_denied(resolved: str) -> bool:
-        """Block writes that leave the worktree and land in the main checkout."""
-        if _inside(resolved, worktree_str):
-            return False
-        if _inside(resolved, project_root_str):
-            return True
-        return False
-
-    def _read_denied(resolved: str) -> bool:
-        """Block reads that leave the allowed scope.
-
-        Multi-repo mode: anywhere under the workspace root is fine.
-        Single-repo mode: only the worktree is fine if the path is inside
-        the main project.
-        """
-        if _inside(resolved, worktree_str):
-            return False
-        if workspace_root_str and _inside(resolved, workspace_root_str):
-            return False
-        if _inside(resolved, project_root_str):
-            return True
-        return False
-
-    write_deny_reason = (
-        "This path is in the main project checkout, not your worktree. "
-        f"Your worktree is at {worktree_str}. Writes must stay inside it."
-    )
-    read_deny_reason = (
-        "This path is outside the allowed read scope "
-        f"(worktree: {worktree_str}"
-        + (f", workspace: {workspace_root_str}" if workspace_root_str else "")
-        + "). Use paths inside that scope."
-    )
+    scope = PathScope(worktree_path, workspace_root=workspace_root)
+    worktree_str = scope.worktree
+    project_root_str = scope.project_root
+    workspace_root_str = scope.workspace_root
 
     async def hook(hook_input, tool_use_id, context):
         tool_name = hook_input.get("tool_name", "")
@@ -99,10 +152,13 @@ def make_path_guard_hook(worktree_path: Path, workspace_root: Optional[Path] = N
             path_str = tool_input.get("path", "")
 
         if path_str:
-            resolved = _resolve(path_str)
+            resolved = scope.resolve(path_str)
             if resolved is not None:
                 is_read = tool_name in READ_ONLY_TOOLS
-                denied = _read_denied(resolved) if is_read else _write_denied(resolved)
+                denied = (
+                    scope.read_denied(resolved) if is_read
+                    else scope.write_denied(resolved)
+                )
                 if denied:
                     logger.warning(
                         f"Path guard blocked {tool_name} on {path_str} "
@@ -113,7 +169,8 @@ def make_path_guard_hook(worktree_path: Path, workspace_root: Optional[Path] = N
                             "hookEventName": "PreToolUse",
                             "permissionDecision": "deny",
                             "permissionDecisionReason": (
-                                read_deny_reason if is_read else write_deny_reason
+                                scope.read_deny_reason if is_read
+                                else scope.write_deny_reason
                             ),
                         }
                     }

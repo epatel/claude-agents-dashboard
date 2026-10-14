@@ -20,7 +20,9 @@ from src.agent.kimi_session import (
     _extract_commit_message,
     _project_context_note,
     _raw_input,
+    _tool_call_paths,
 )
+from src.agent.path_guard import PathScope
 
 
 def make_acp_module(session_id="acp-1", load_raises=None):
@@ -579,6 +581,257 @@ class TestDecidePermission:
         tc = {"kind": "read", "rawInput": {"path": "a.py"}}
         with patch.dict(os.environ, {"KIMI_FORCE_PERMISSION_ASK": "1"}):
             assert _decide_permission(tc, [], False) == ("allow", "")
+
+
+def make_worktree(tmp_path):
+    """A worktree in the real layout: <project>/agents-lab/worktrees/<id>."""
+    worktree = tmp_path / "proj" / "agents-lab" / "worktrees" / "agent-1"
+    worktree.mkdir(parents=True)
+    return worktree
+
+
+class TestToolCallPaths:
+    """Path arguments are pulled out of ACP `rawInput` / `locations`."""
+
+    def test_kimi_path_key(self):
+        assert _tool_call_paths({"rawInput": {"path": "a.py"}}) == ["a.py"]
+
+    def test_claude_style_alias(self):
+        assert _tool_call_paths({"rawInput": {"file_path": "a.py"}}) == ["a.py"]
+
+    def test_list_valued_key(self):
+        assert _tool_call_paths({"rawInput": {"paths": ["a.py", "b.py"]}}) == ["a.py", "b.py"]
+
+    def test_acp_locations(self):
+        tc = {"locations": [{"path": "a.py"}, {"line": 3}, "junk"]}
+        assert _tool_call_paths(tc) == ["a.py"]
+
+    def test_ignores_non_path_arguments(self):
+        tc = {"kind": "execute", "rawInput": {"command": "cat /etc/hosts"}}
+        assert _tool_call_paths(tc) == []
+
+    def test_ignores_blank_and_non_string_values(self):
+        assert _tool_call_paths({"rawInput": {"path": "  ", "file": None, "dir": 7}}) == []
+
+    def test_no_raw_input(self):
+        assert _tool_call_paths({"kind": "read", "title": "Read"}) == []
+
+
+class TestPathBoundary:
+    """AUDIT #15: Kimi tool calls that leave the worktree must be denied."""
+
+    def scope(self, tmp_path, **kwargs):
+        return PathScope(make_worktree(tmp_path), strict_writes=True, **kwargs)
+
+    def decide(self, tool_call, scope, allowed_commands=None, bash_yolo=False):
+        return _decide_permission(tool_call, allowed_commands or [], bash_yolo, scope)
+
+    def test_absolute_path_outside_worktree_denied(self, tmp_path):
+        scope = self.scope(tmp_path)
+        decision, subject = self.decide(
+            {"kind": "edit", "rawInput": {"path": "/etc/hosts"}}, scope)
+        assert decision == "deny" and subject == "/etc/hosts"
+
+    def test_dot_dot_escape_denied(self, tmp_path):
+        scope = self.scope(tmp_path)
+        # …/agents-lab/worktrees/agent-1/../../../../elsewhere.py
+        decision, subject = self.decide(
+            {"kind": "edit", "rawInput": {"path": "../../../../elsewhere.py"}}, scope)
+        assert decision == "deny" and subject == "../../../../elsewhere.py"
+
+    def test_relative_in_worktree_write_allowed(self, tmp_path):
+        scope = self.scope(tmp_path)
+        assert self.decide(
+            {"kind": "edit", "rawInput": {"path": "src/app.py"}}, scope) == ("allow", "")
+
+    def test_absolute_in_worktree_write_allowed(self, tmp_path):
+        scope = self.scope(tmp_path)
+        inside = str(Path(scope.worktree) / "src" / "app.py")
+        assert self.decide(
+            {"kind": "edit", "rawInput": {"file_path": inside}}, scope) == ("allow", "")
+
+    def test_home_shorthand_outside_worktree_denied(self, tmp_path):
+        scope = self.scope(tmp_path)
+        decision, _ = self.decide(
+            {"kind": "write", "rawInput": {"file_path": "~/.zshrc"}}, scope)
+        assert decision == "deny"
+
+    def test_second_path_argument_also_checked(self, tmp_path):
+        scope = self.scope(tmp_path)
+        decision, subject = self.decide(
+            {"kind": "move",
+             "rawInput": {"old_path": "a.py", "new_path": "/tmp/stolen.py"}},
+            scope)
+        assert decision == "deny" and subject == "/tmp/stolen.py"
+
+    def test_acp_location_outside_worktree_denied(self, tmp_path):
+        scope = self.scope(tmp_path)
+        decision, _ = self.decide(
+            {"kind": "edit", "locations": [{"path": "/etc/hosts"}]}, scope)
+        assert decision == "deny"
+
+    def test_missing_kind_is_treated_as_a_write(self, tmp_path):
+        """Fail closed: an unrecognized tool shape gets the strict check."""
+        scope = self.scope(tmp_path)
+        decision, _ = self.decide({"rawInput": {"path": "/etc/hosts"}}, scope)
+        assert decision == "deny"
+
+    def test_read_in_main_checkout_denied(self, tmp_path):
+        scope = self.scope(tmp_path)
+        outside = str(tmp_path / "proj" / "src" / "main.py")
+        decision, _ = self.decide({"kind": "read", "rawInput": {"path": outside}}, scope)
+        assert decision == "deny"
+
+    def test_read_outside_the_project_allowed(self, tmp_path):
+        """Read scope mirrors the Claude hook — only the main checkout is off limits."""
+        scope = self.scope(tmp_path)
+        assert self.decide(
+            {"kind": "read", "rawInput": {"path": "/usr/lib/python3/os.py"}},
+            scope) == ("allow", "")
+
+    def test_multi_repo_read_in_sibling_allowed(self, tmp_path):
+        workspace = tmp_path / "proj"
+        scope = PathScope(make_worktree(tmp_path), workspace_root=workspace,
+                          strict_writes=True)
+        sibling = str(workspace / "repo_b" / "shared.py")
+        assert self.decide(
+            {"kind": "search", "rawInput": {"path": sibling}}, scope) == ("allow", "")
+
+    def test_multi_repo_write_in_sibling_still_denied(self, tmp_path):
+        workspace = tmp_path / "proj"
+        scope = PathScope(make_worktree(tmp_path), workspace_root=workspace,
+                          strict_writes=True)
+        sibling = str(workspace / "repo_b" / "shared.py")
+        decision, _ = self.decide({"kind": "edit", "rawInput": {"path": sibling}}, scope)
+        assert decision == "deny"
+
+    def test_bash_yolo_does_not_relax_the_boundary(self, tmp_path):
+        scope = self.scope(tmp_path)
+        decision, _ = self.decide(
+            {"kind": "edit", "rawInput": {"path": "/etc/hosts"}}, scope, bash_yolo=True)
+        assert decision == "deny"
+
+    def test_command_semantics_unchanged_with_a_scope(self, tmp_path):
+        """A shell command mentioning an outside path still goes through the
+        allowlist, not the path check — `command` is not a path argument."""
+        scope = self.scope(tmp_path)
+        tc = {"kind": "execute", "rawInput": {"command": "cat /etc/hosts"}}
+        assert self.decide(tc, scope, allowed_commands=["cat"]) == ("allow", "cat /etc/hosts")
+        assert self.decide(tc, scope)[0] == "ask"
+
+    def test_without_a_scope_paths_are_not_checked(self):
+        """Back-compat: the check only runs when a scope is supplied."""
+        assert _decide_permission(
+            {"kind": "edit", "rawInput": {"path": "/etc/hosts"}}, [], False
+        ) == ("allow", "")
+
+    def test_violation_is_logged(self, tmp_path, caplog):
+        scope = self.scope(tmp_path)
+        with caplog.at_level("WARNING", logger="src.agent.kimi_session"):
+            self.decide({"kind": "edit", "rawInput": {"path": "/etc/hosts"}}, scope)
+        assert "boundary violation" in caplog.text and "/etc/hosts" in caplog.text
+
+
+class TestSessionPathScope:
+    def test_session_builds_a_strict_write_scope(self, tmp_path):
+        worktree = make_worktree(tmp_path)
+        session = make_session(worktree_path=worktree)
+        assert session.path_scope.worktree == str(worktree.resolve())
+        assert session.path_scope.strict_writes is True
+        assert session.path_scope.workspace_root is None
+
+    def test_workspace_root_reaches_the_scope(self, tmp_path):
+        worktree = make_worktree(tmp_path)
+        session = make_session(worktree_path=worktree, workspace_root=tmp_path / "proj")
+        assert session.path_scope.workspace_root == str((tmp_path / "proj").resolve())
+
+    @pytest.mark.asyncio
+    async def test_prompt_includes_boundary_notice(self, tmp_path):
+        modules, acp, _ = make_acp_module()
+        session = make_session(worktree_path=make_worktree(tmp_path))
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        prompt = acp.AcpClient.last.session.prompts[0]
+        assert "writes to paths outside it are blocked" in prompt
+
+    @pytest.mark.asyncio
+    async def test_handler_rejects_out_of_worktree_edit_without_asking(self, tmp_path):
+        """End to end through the ACP permission handler."""
+        on_request_command = AsyncMock(return_value="approved")
+        modules, acp, _ = make_acp_module()
+        session = make_session(worktree_path=make_worktree(tmp_path),
+                               on_request_command=on_request_command)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        handler = acp.AcpClient.last.connect_kwargs["permission_handler"]
+        request = types.SimpleNamespace(
+            session_id="s",
+            options=(types.SimpleNamespace(option_id="a1", name="Allow", kind="allow_once"),
+                     types.SimpleNamespace(option_id="r1", name="Reject", kind="reject_once")),
+            tool_call={"kind": "edit", "title": "Edit /etc/hosts",
+                       "rawInput": {"path": "/etc/hosts"}},
+        )
+        outcome = await handler(request)
+        assert isinstance(outcome, acp.PermissionSelected) and outcome.option_id == "r1"
+        on_request_command.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_handler_allows_in_worktree_edit(self, tmp_path):
+        worktree = make_worktree(tmp_path)
+        modules, acp, _ = make_acp_module()
+        session = make_session(worktree_path=worktree)
+        with patch.dict(sys.modules, modules):
+            await start_and_wait(session)
+        handler = acp.AcpClient.last.connect_kwargs["permission_handler"]
+        request = types.SimpleNamespace(
+            session_id="s",
+            options=(types.SimpleNamespace(option_id="a1", name="Allow", kind="allow_once"),
+                     types.SimpleNamespace(option_id="r1", name="Reject", kind="reject_once")),
+            tool_call={"kind": "edit", "title": "Edit app.py",
+                       "rawInput": {"path": str(worktree / "app.py")}},
+        )
+        outcome = await handler(request)
+        assert isinstance(outcome, acp.PermissionSelected) and outcome.option_id == "a1"
+
+
+class TestAuditToolCallScope:
+    """Streamed tool calls kimi never asked about are at least logged."""
+
+    def pending(self, title="Edit", kind="edit", raw_input=None):
+        start = types.SimpleNamespace(
+            tool_call_id="tc-1", title=title, kind=kind,
+            raw={"rawInput": raw_input} if raw_input else {})
+        return _PendingToolCall(start)
+
+    def test_outside_write_is_logged(self, tmp_path, caplog):
+        session = make_session(worktree_path=make_worktree(tmp_path))
+        with caplog.at_level("WARNING", logger="src.agent.kimi_session"):
+            violations = session.audit_tool_call_scope(
+                self.pending(raw_input={"path": "/etc/hosts"}))
+        assert violations == ["/etc/hosts"]
+        assert "outside the worktree" in caplog.text
+
+    def test_in_worktree_write_is_quiet(self, tmp_path, caplog):
+        session = make_session(worktree_path=make_worktree(tmp_path))
+        with caplog.at_level("WARNING", logger="src.agent.kimi_session"):
+            assert session.audit_tool_call_scope(
+                self.pending(raw_input={"path": "src/app.py"})) == []
+        assert caplog.text == ""
+
+    @pytest.mark.asyncio
+    async def test_streamed_tool_call_is_audited(self, tmp_path, caplog):
+        modules, acp, items = make_acp_module()
+        items.extend([
+            acp.ToolCallStart("Edit", kind="edit",
+                              raw={"rawInput": {"path": "/etc/hosts"}}),
+            acp.TurnEnded("end_turn"),
+        ])
+        session = make_session(worktree_path=make_worktree(tmp_path),
+                               on_tool_use=AsyncMock())
+        with patch.dict(sys.modules, modules), \
+             caplog.at_level("WARNING", logger="src.agent.kimi_session"):
+            await start_and_wait(session)
+        assert "/etc/hosts" in caplog.text
 
 
 class TestProjectContextNote:

@@ -44,7 +44,7 @@ Claude SDK integration plus built-in MCP tool servers and PreToolUse hooks. One 
 **PreToolUse hooks**:
 - `command_filter.py` — denies shell commands not in the allowlist
 - `tool_filter.py` — denies built-in tools (WebSearch, WebFetch) not allowed
-- `path_guard.py` — confines Edit/Write to the agent's own worktree, and Read/Glob/Grep to the workspace root (two tool sets: `FILE_PATH_TOOLS` = Read/Edit/Write, `PATH_TOOLS` = Glob/Grep)
+- `path_guard.py` — confines Edit/Write to the agent's own worktree, and Read/Glob/Grep to the workspace root (two tool sets: `FILE_PATH_TOOLS` = Read/Edit/Write, `PATH_TOOLS` = Glob/Grep). The boundary logic lives in a `PathScope` class, which the hook-less Kimi runtime also uses from its ACP permission handler (`strict_writes=True`) — see [KIMI_PROVIDER](KIMI_PROVIDER.md) "Worktree confinement" and AUDIT #15
 
 **Plus**:
 - `base.py` — `AbstractAgentSession` contract (start/cancel + `current_session_id`/`on_error`) and the `AgentResult` dataclass
