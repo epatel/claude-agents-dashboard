@@ -55,6 +55,15 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
   that snapshot, and updates the two places that state the floor in prose: `README.md` tech
   stack and `AGENT_FILES/README.md`. This is the one exception to the don't-touch policy for
   `SDK_BUMP_*`, and it is append-only.
+- 2026-10-14 — `run.sh`'s own argument loop is **flag-aware**, and the list of
+  value-taking options lives in exactly two places: the `--host|--port` case arm in
+  `run.sh` and `VALUE_OPTIONS` in `tests/unit/test_run_sh_args.py` (a test asserts both
+  stay in sync with `src/main.py`). The wrapper still splits argv itself — it needs the
+  target path before `src.main` runs, for the git-repo check — but "positional" is no
+  longer "does not start with `--`": an option that takes a separate value consumes it.
+  If you add a value-taking option to `src/main.py`'s argparse, add it to both places or
+  its value becomes the target path again. Options with inline values (`--port=8100`)
+  need no entry.
 - 2026-10-14 — Every `ClaudeAgentOptions` the dashboard builds passes
   **`verbatim_prompts=True`** (`src/agent/session.py`, both branches of
   `src/agent/review_agent.py`). Prompts are assembled from board-item text (title,
@@ -138,7 +147,7 @@ No objective in flight. Last change (2026-10-08, M9): a docs reassessment plus t
 security review of everything added since `AUDIT.md` rev 11.
 
 Authoritative counts, all re-verified by collection/grep this pass — trust these over any
-number you find in prose: **31 migrations (001–031)**; **1327 tests = 20 smoke + 1293 unit
+number you find in prose: **31 migrations (001–031)**; **1338 tests = 20 smoke + 1304 unit
 + 14 integration** (plus 7 Node E2E tests, counted separately); **7 services**; **10 MCP
 tool servers exposing 12 tools** (`todo.py` serves three); skills ship as plugins, not as
 an MCP tool.
@@ -159,8 +168,13 @@ Of the two follow-ups filed that pass, `27bc0bcbbed4` is **done** (2026-10-14): 
 1321 passed / 1 skipped, no code changes needed — the 0.2.89→0.2.165 range is almost all
 bundled-CLI bumps, and neither of its two surface changes touches us (details and the
 list of still-unadopted SDK features in the rev note appended to
-`AGENT_FILES/SDK_BUMP_2026-06-03.md`). Still open: `89698a379b59` (`run.sh` treats
-`--port 8100`'s value as the target path).
+`AGENT_FILES/SDK_BUMP_2026-06-03.md`). The second follow-up, `89698a379b59`, is also
+**done** (2026-10-14): `run.sh`'s argument loop is now flag-aware, so `run.sh --port 8100`
+no longer takes `8100` as the target path (see the Decision below). The suite grew by 11
+tests — a new `tests/unit/test_run_sh_args.py`, the first test file in the repo that
+exercises a shell script; it extracts the parse block from `run.sh` and runs it under bash,
+so it starts no server and needs no venv of its own. Counts above are re-verified
+(20 + 1304 + 14 = 1338); `TESTING.md`'s Infrastructure bucket went 72 → 83.
 
 Docs discipline learned this pass, worth keeping: the per-file and per-category test counts
 in `tests/README.md` / `CARDS/TESTING.md` drift silently and were wrong in ~45 places. The
