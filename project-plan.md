@@ -46,6 +46,18 @@ Replace this with the specific objective the moment one is in flight.
 Settled, still-relevant choices no agent should reopen without flagging here. Long-lived
 architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
+- 2026-10-14 — Path validation has **one** implementation too: `validate_file_path()` in
+  `src/git/operations.py`. It is the guard on diff paths, file-browser paths, `peek_worktree`
+  paths and now on every per-file path a skill install takes from the remote GitHub tree
+  (`SkillsService._install_sync`). Any new code that joins an **externally supplied** relative
+  path onto a dashboard-owned directory calls it and skips what it rejects — do not write a
+  second check, and do not rely on an upstream invariant (git cannot store a `..` component,
+  which is exactly why #16 sat open as "borrowed protection"). Note this is a *string* guard
+  and is separate from `PathScope`, which is the *agent worktree boundary* for absolute paths;
+  they are not interchangeable. `SkillsService._get` additionally caps a response at
+  `MAX_RESPONSE_BYTES` (8 MiB) — an install must not be able to write an unbounded file.
+  See AUDIT #16 (Remediated, rev 14) and `CARDS/SKILLS.md`.
+
 - 2026-10-14 — The worktree boundary has **one** implementation: `PathScope` in
   `src/agent/path_guard.py`. The Claude `PreToolUse` hook and the Kimi ACP permission
   handler (`kimi_session._decide_permission`) both call it; do not write a second path
@@ -165,10 +177,25 @@ No objective in flight. Last change (2026-10-08, M9): a docs reassessment plus t
 security review of everything added since `AUDIT.md` rev 11.
 
 Authoritative counts, all re-verified by collection/grep this pass — trust these over any
-number you find in prose: **31 migrations (001–031)**; **1369 tests = 20 smoke + 1335 unit
+number you find in prose: **31 migrations (001–031)**; **1372 tests = 20 smoke + 1338 unit
 + 14 integration** (plus 7 Node E2E tests, counted separately); **7 services**; **10 MCP
 tool servers exposing 12 tools** (`todo.py` serves three); skills ship as plugins, not as
 an MCP tool.
+
+**AUDIT #16 is closed, 2026-10-14 (audit now rev 14)** — and with it the audit has **no open
+actionable finding**: 10 of 11 remediated, #15 mitigated, the rest accepted by design.
+`SkillsService._install_sync` validates every remote tree path with `validate_file_path()`
+before the join and skips what it rejects (the blob isn't even fetched); `_get` caps a single
+response at 8 MiB. 3 new tests (`test_skills_service.py` 11 → 14 — note the card said 11, not
+the 12 the board item claimed). Suite **1372**, green. See the new Decision below.
+
+⚠️ **Environment note for the next agent**: the shared `venv/` in the main checkout had
+`claude-agent-sdk` 0.2.157 installed while `requirements.txt` now floors at `>=0.2.165`, which
+failed 5 tests in `tests/unit/test_allowed_commands.py` (`verbatim_prompts` is not a
+`ClaudeAgentOptions` kwarg before 0.2.165) — nothing to do with the code. `./run-tests.sh`
+pip-installs the requirements and fixes it; running `pytest` directly against a stale venv does
+not. It has been upgraded in place. If you see those 5 failures, check the installed SDK version
+first.
 
 **Kimi worktree confinement (board item `d36331e6bccf`) is done, 2026-10-14** — `AUDIT.md`
 finding **#15** moves Open → **Mitigated** and the audit is at **rev 13**. What landed: the
@@ -183,9 +210,8 @@ so unknown tools fail closed. It is **Mitigated, not Remediated**: kimi-code dec
 calls raise a permission request, so the ones it skips can only be logged — that gap is now
 documented in `CARDS/KIMI_PROVIDER.md`, the `--experimental` help text and the startup
 banner (see the new Decision below). 31 new tests (`test_kimi_session.py` 57 → 88); suite
-**1369** = 20 smoke + 1335 unit + 14 integration, green. The remaining open actionable audit
-finding is **#16** (Low — `skills_service` writes remote tree paths without a local
-`validate_file_path()` check); a follow-up todo is on the board.
+**1369** = 20 smoke + 1335 unit + 14 integration, green (the count has since moved to 1372 —
+see the #16 note above). The follow-up it filed, **#16**, is now done as well.
 
 Also done 2026-10-14: `verbatim_prompts=True` at all three `ClaudeAgentOptions` call sites
 (see the new Decision above and the second rev note in `SDK_BUMP_2026-06-03.md`). The suite
@@ -218,7 +244,7 @@ for how things work now ([`KIMI_PROVIDER`](AGENT_FILES/CARDS/KIMI_PROVIDER.md) f
 runtime, [`ARCHITECTURE`](AGENT_FILES/CARDS/ARCHITECTURE.md) for the session layer and
 `peek_worktree`), and `git log` for the detail. The dated `PLAN_*`/`EVAL_*`/`SDK_BUMP_*`
 snapshots in `AGENT_FILES/` root stay untouched; `AUDIT.md` is the exception — it is
-revised in place and is now at rev 12.
+revised in place and is now at rev 14.
 
 The next agent to pick up real work should set **Goal**, fill in **M10**, and rewrite this
 note as the running handoff — keep it a short handoff, not a log.

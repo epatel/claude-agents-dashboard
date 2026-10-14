@@ -11,6 +11,12 @@ A dashboard-managed library of [Agent Skills](https://docs.claude.com/en/docs/cl
   - `browse(source="anthropic")` — list installable skills from Anthropic's public `anthropics/skills` repo (cached in-process).
   - `discover(spec)` — find every folder containing a `SKILL.md` in a GitHub repo / sub-path / URL; returns one install `spec` per skill, pinned to the resolved ref.
   - `install(spec)` — download a skill's files into the library; synthesizes a `.claude-plugin/plugin.json`.
+    Every per-file path comes from the **remote** GitHub tree, so `_install_sync` runs each one
+    through `validate_file_path()` (`src/git/operations.py` — the same guard used on diff and
+    file-browser paths) before joining it onto the skill directory, and skips, with a `WARNING`,
+    any entry it rejects. Don't write a second check here. `_get` also caps a single HTTP
+    response at `MAX_RESPONSE_BYTES` (8 MiB) so a hostile repo can't make an install write an
+    unbounded file. See AUDIT #16 (Remediated, rev 14).
   - `list_installed(enabled)` / `installed_names()` — enumerate the library with per-project enabled flags + description + source.
   - `plugin_path(name)` / `remove(name)`.
   - `_parse_spec` accepts `owner/repo[/path][@ref]` or a `https://github.com/...` tree/blob URL.

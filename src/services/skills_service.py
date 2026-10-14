@@ -26,12 +26,17 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from ..git.operations import validate_file_path
+
 logger = logging.getLogger(__name__)
 
 LIBRARY_DIRNAME = "skill-library"
 NAME_RE = re.compile(r"^[a-z0-9_-]+$")
 HTTP_TIMEOUT = 20
 USER_AGENT = "claude-agents-dashboard-skills"
+# Cap on a single HTTP response. Skills are text files; a remote repo we do not
+# control must not be able to make an install write an unbounded amount of data.
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
 # Default browse source.
 ANTHROPIC_OWNER = "anthropics"
@@ -71,7 +76,14 @@ class SkillsService:
     def _get(self, url: str) -> bytes:
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-            return resp.read()
+            # Read one byte past the cap so an oversized body is detected
+            # rather than silently truncated.
+            data = resp.read(MAX_RESPONSE_BYTES + 1)
+        if len(data) > MAX_RESPONSE_BYTES:
+            raise ValueError(
+                f"response from {url} exceeds {MAX_RESPONSE_BYTES} bytes"
+            )
+        return data
 
     def _get_json(self, url: str) -> Any:
         return json.loads(self._get(url).decode("utf-8"))
@@ -304,6 +316,16 @@ class SkillsService:
         for node in blobs:
             rel = node["path"][len(prefix):]
             if not rel or rel.endswith("/"):
+                continue
+            # The remote tree decides these paths. Git itself cannot store a
+            # ".." component, but assert that locally instead of borrowing the
+            # invariant (AUDIT #16) — same guard as diff / file-browser paths.
+            try:
+                rel = validate_file_path(rel)
+                if rel in (".", ""):  # normalized away to the skill dir itself
+                    raise ValueError("path does not name a file")
+            except ValueError as exc:
+                logger.warning("skills: skipping unsafe path %r: %s", rel, exc)
                 continue
             raw = self._get(
                 f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{node['path']}"

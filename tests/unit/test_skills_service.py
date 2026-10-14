@@ -119,6 +119,91 @@ class TestInstall:
         res = await svc.install("o/r/bad.name@main")
         assert res["ok"] is False
 
+    @pytest.mark.asyncio
+    async def test_install_skips_traversal_tree_entries(self, tmp_path):
+        """A tree entry with `..` is skipped, not written outside the library.
+
+        Git cannot store such a path, so this asserts the local guard
+        (validate_file_path) rather than the upstream invariant — AUDIT #16.
+        """
+        svc = SkillsService(library_dir=tmp_path / "lib")
+        fetched = []
+
+        svc._get_json = lambda url: {"tree": [
+            {"type": "blob", "path": "skills/docx/SKILL.md"},
+            {"type": "blob", "path": "skills/docx/../../../../evil.md"},
+            {"type": "blob", "path": "skills/docx/nested/ok.md"},
+        ]}
+
+        def fake_get(url):
+            fetched.append(url)
+            if url.endswith("/SKILL.md"):
+                return b"---\nname: docx\ndescription: D\n---\n"
+            return b"ok"
+
+        svc._get = fake_get
+
+        res = await svc.install("o/r/skills/docx@main")
+        assert res["ok"] is True
+        base = tmp_path / "lib" / "docx" / "skills" / "docx"
+        assert (base / "SKILL.md").exists()
+        # the legitimate nested entry still installs
+        assert (base / "nested" / "ok.md").read_text() == "ok"
+        # nothing escaped the library, and the blob was never even fetched
+        assert not (tmp_path / "evil.md").exists()
+        assert not (tmp_path / "lib" / "evil.md").exists()
+        assert not any("evil.md" in u for u in fetched)
+
+    @pytest.mark.asyncio
+    async def test_install_skips_absolute_tree_entries(self, tmp_path):
+        """An absolute tree entry is rejected before the join."""
+        svc = SkillsService(library_dir=tmp_path / "lib")
+
+        svc._get_json = lambda url: {"tree": [
+            {"type": "blob", "path": "SKILL.md"},
+            {"type": "blob", "path": "/tmp/pwned.md"},
+        ]}
+        svc._get = lambda url: b"---\nname: r\ndescription: D\n---\n"
+
+        res = await svc.install("o/r@main")
+        assert res["ok"] is True and res["name"] == "r"
+        base = tmp_path / "lib" / "r" / "skills" / "r"
+        assert (base / "SKILL.md").exists()
+        # an absolute rel would have made `skill_dir / rel` discard the prefix
+        assert not (base / "tmp").exists()
+        assert not Path("/tmp/pwned.md").exists()
+
+    def test_get_caps_response_size(self, tmp_path):
+        """_get refuses an oversized body instead of writing it to disk."""
+        import urllib.request
+        from unittest.mock import patch
+
+        from src.services.skills_service import MAX_RESPONSE_BYTES
+
+        svc = SkillsService(library_dir=tmp_path / "lib")
+
+        class _Resp:
+            def __init__(self, payload):
+                self._payload = payload
+
+            def read(self, n=-1):
+                return self._payload[:n] if n and n > 0 else self._payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        with patch.object(urllib.request, "urlopen",
+                          lambda *a, **kw: _Resp(b"x" * (MAX_RESPONSE_BYTES + 10))):
+            with pytest.raises(ValueError, match="exceeds"):
+                svc._get("https://example.com/big")
+
+        with patch.object(urllib.request, "urlopen",
+                          lambda *a, **kw: _Resp(b"small")):
+            assert svc._get("https://example.com/ok") == b"small"
+
 
 class TestDiscover:
     @pytest.mark.asyncio
