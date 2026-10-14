@@ -1176,6 +1176,51 @@ class TestStart:
     @patch("src.agent.session.ClaudeSDKClient")
     @patch("src.agent.session.ClaudeAgentOptions")
     @pytest.mark.asyncio
+    async def test_start_passes_verbatim_prompts(self, mock_options_cls, mock_client_cls, tmp_path):
+        """Prompts go to the CLI verbatim — no `@path` expansion, no slash dispatch.
+
+        The prompt is built from the board item's own title/description, so
+        text like `@../../etc/passwd` or a leading `/clear` must stay text.
+        """
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        session = make_session(worktree_path=tmp_path)
+        try:
+            await session.start("/clear and read @../../secrets.txt")
+        except Exception:
+            pass
+
+        kwargs = mock_options_cls.call_args.kwargs
+        assert kwargs["verbatim_prompts"] is True
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
+    async def test_start_passes_verbatim_prompts_for_ollama(self, mock_options_cls, mock_client_cls, tmp_path):
+        """verbatim_prompts is a CLI-level flag — the Ollama profile keeps it too."""
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        ollama_env = {
+            "ANTHROPIC_AUTH_TOKEN": "ollama",
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_BASE_URL": "http://localhost:11434",
+        }
+        session = make_session(worktree_path=tmp_path, model="qwen3.5", ollama_env=ollama_env)
+        try:
+            await session.start("test")
+        except Exception:
+            pass
+
+        kwargs = mock_options_cls.call_args.kwargs
+        assert kwargs["verbatim_prompts"] is True
+        # The profile still supplies its own divergent values alongside it.
+        assert kwargs["env"] == ollama_env
+
+    @patch("src.agent.session.ClaudeSDKClient")
+    @patch("src.agent.session.ClaudeAgentOptions")
+    @pytest.mark.asyncio
     async def test_start_passes_ollama_env_to_options(self, mock_options_cls, mock_client_cls, tmp_path):
         """Ollama env vars are forwarded to ClaudeAgentOptions.env."""
         mock_client = AsyncMock()

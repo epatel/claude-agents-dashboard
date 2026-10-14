@@ -55,6 +55,17 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
   that snapshot, and updates the two places that state the floor in prose: `README.md` tech
   stack and `AGENT_FILES/README.md`. This is the one exception to the don't-touch policy for
   `SDK_BUMP_*`, and it is append-only.
+- 2026-10-14 — Every `ClaudeAgentOptions` the dashboard builds passes
+  **`verbatim_prompts=True`** (`src/agent/session.py`, both branches of
+  `src/agent/review_agent.py`). Prompts are assembled from board-item text (title,
+  description, last agent message, raw diff), and with the SDK default the CLI expands any
+  `@path` in that text into a file read and dispatches a leading `/name` as a slash command —
+  interpreting text that was only ever meant to be instructions. Nothing in the repo relies
+  on `@path` expansion (attachments are listed as plain paths for the Read tool) or on
+  sending a prompt as a slash command. It is a CLI-level flag, so it composes with the Ollama
+  profile's overrides. No version gate: the flag needs CLI 2.1.248+, our floor bundles
+  2.1.294, and an older CLI only warns — a hard assert would turn a benign degradation into
+  a crash. Set it on any new call site.
 - 2026-10-08 — `AGENT_FILES/AUDIT.md` is **revised in place with a new rev** when agent-facing
   surface is added, rather than left as a frozen snapshot like the other root files. Rationale:
   a security doc that says "posture strong, 9 of 9 remediated" while five unreviewed subsystems
@@ -127,7 +138,7 @@ No objective in flight. Last change (2026-10-08, M9): a docs reassessment plus t
 security review of everything added since `AUDIT.md` rev 11.
 
 Authoritative counts, all re-verified by collection/grep this pass — trust these over any
-number you find in prose: **31 migrations (001–031)**; **1322 tests = 20 smoke + 1288 unit
+number you find in prose: **31 migrations (001–031)**; **1327 tests = 20 smoke + 1293 unit
 + 14 integration** (plus 7 Node E2E tests, counted separately); **7 services**; **10 MCP
 tool servers exposing 12 tools** (`todo.py` serves three); skills ship as plugins, not as
 an MCP tool.
@@ -137,6 +148,11 @@ finding **#15** (new in rev 12) — Kimi agents have **no enforcing worktree-wri
 Claude agents get `path_guard.py`; Kimi's `_decide_permission` allows every non-execute
 tool call, so confinement is `cwd` plus a prompt instruction. Shell commands *do* reach
 parity (allowlist + shell-operator escalation). Fix tracked as board item `d36331e6bccf`.
+
+Also done 2026-10-14: `verbatim_prompts=True` at all three `ClaudeAgentOptions` call sites
+(see the new Decision above and the second rev note in `SDK_BUMP_2026-06-03.md`). The suite
+grew by 5 tests — 2 in `test_session.py`, plus a new `tests/unit/test_review_agent.py` (3),
+which is the first unit coverage of `review_agent.run_auto_review`'s options construction.
 
 Of the two follow-ups filed that pass, `27bc0bcbbed4` is **done** (2026-10-14): the
 `claude-agent-sdk` floor went `>=0.2.88` → `>=0.2.165` (latest), suite green at

@@ -141,6 +141,11 @@ async def run_auto_review(
     # reviewer always runs bypassPermissions — its tool allowlist is the guard —
     # and the non-Ollama branch deliberately omits thinking/setting_sources
     # (SDK defaults), so the profile's permission_mode/kwargs helper is not used.
+    #
+    # verbatim_prompts: the review prompt embeds the item title/description and
+    # the raw diff, so a `@path` anywhere in that text would otherwise become a
+    # CLI-side file read (and a leading `/name` a slash command) before the
+    # reviewer ever sees it. Same reasoning as session.py.
     profile = resolve_profile(ollama_env)
     if profile.name == "ollama":
         options = ClaudeAgentOptions(
@@ -154,6 +159,7 @@ async def run_auto_review(
             thinking=profile.thinking,
             setting_sources=list(profile.setting_sources),
             env=profile.env,
+            verbatim_prompts=True,
         )
     else:
         options = ClaudeAgentOptions(
@@ -165,6 +171,7 @@ async def run_auto_review(
             can_use_tool=_review_can_use_tool,
             add_dirs=[str(worktree_path)],
             env={},
+            verbatim_prompts=True,
         )
 
     client = ClaudeSDKClient(options=options)

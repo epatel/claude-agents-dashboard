@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1322 tests
+./run-tests.sh              # Run all 1327 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -65,7 +65,8 @@ tests/
 │   ├── test_kimi_board_mcp.py       # Kimi board-tools stdio MCP proxy (12 tests)
 │   ├── test_kimi_session.py         # KimiAgentSession over ACP (experimental) (57 tests)
 │   ├── test_profiles.py             # Provider profiles + Kimi/Ollama routing (23 tests)
-│   ├── test_session.py              # ClaudeAgentSession SDK wrapper (96 tests)
+│   ├── test_review_agent.py         # Auto-review session options (3 tests)
+│   ├── test_session.py              # ClaudeAgentSession SDK wrapper (98 tests)
 │   ├── test_session_service.py      # SessionService lifecycle + provider routing (54 tests)
 │   ├── test_skills_service.py       # SkillsService install/browse/discover (11 tests)
 │   ├── test_use_chrome.py           # Per-task Chrome integration (17 tests)
@@ -81,7 +82,7 @@ tests/
 
 ## Test Categories
 
-**1322 total** = 20 smoke + 1288 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1288 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
+**1327 total** = 20 smoke + 1293 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1293 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
 
 ### Smoke Tests (20 tests)
 Quick checks that core components work:
@@ -122,8 +123,10 @@ Quick checks that core components work:
 - **graph_query tool** (10 tests): Read-only knowledge-graph MCP tool server
 - **Kimi board-tools MCP proxy** (12 tests): stdio subprocess against a stub dashboard API — tools list, agent-todos proxying (requires/autostart), error resilience
 
-### Unit Tests — Session (180 tests)
-- `ClaudeAgentSession` SDK wrapper, token extraction, event handling (96)
+### Unit Tests — Session (185 tests)
+- `ClaudeAgentSession` SDK wrapper, token extraction, event handling, `verbatim_prompts` (98)
+- Auto-review session (`review_agent.run_auto_review`): `ClaudeAgentOptions` on both
+  the Claude and Ollama branches, prompt passed through unmodified (3)
 - `AbstractAgentSession` contract conformance (4)
 - Provider profiles: Kimi/Ollama routing predicates, env builder, profile gate matrix, options kwargs (23)
 - `KimiAgentSession` over ACP: chunk aggregation, tool-call mapping, deferred tool input, commit-message + ask_user text protocols, resume/fallback, cancel, missing-SDK hint, permission decisions + handler + force-ask env, CLAUDE.md/AGENTS.md context, board-tools MCP config, errors (57)
@@ -218,7 +221,7 @@ async def test_apply_migration(self, raw_db, runner):
 ### Adding New Tests
 
 1. Place in the appropriate directory (`unit/`, `integration/`, `smoke/`)
-2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1288. Select by path (`./run-tests.sh tests/unit/`), not by marker.
+2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1293. Select by path (`./run-tests.sh tests/unit/`), not by marker.
 3. Async tests work automatically (no `@pytest.mark.asyncio` needed)
 4. Run `./run-tests.sh` to verify all tests pass
 
