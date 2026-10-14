@@ -71,7 +71,7 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1322 tests across smoke, unit, and integration tiers (`run-tests.sh` creates the venv and installs both `requirements.txt` and `requirements-test.txt` on first run).
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. The suite includes 1327 tests across smoke, unit, and integration tiers (`run-tests.sh` creates the venv and installs both `requirements.txt` and `requirements-test.txt` on first run).
 
 E2E tests run separately and **spawn real agents, which costs tokens**:
 

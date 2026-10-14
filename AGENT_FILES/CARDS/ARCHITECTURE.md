@@ -54,6 +54,12 @@ Claude SDK integration plus built-in MCP tool servers and PreToolUse hooks. One 
 - `review_agent.py` — the read-only reviewer session spawned for `auto_approve=REVIEW`; its tool allowlist is `_REVIEWER_ALLOWED_TOOLS = {Read, Glob, Grep}`, so APPROVE auto-merges and anything else routes comments back to the original agent (retry bookkeeping lives in `WorkflowService`)
 - `orchestrator.py` — the public facade
 
+Every `ClaudeAgentOptions` here (session + both reviewer branches) sets
+`verbatim_prompts=True`: prompts are assembled from board-item text, so `@path`
+must stay text instead of becoming a CLI-side file read, and a leading `/name`
+must not be dispatched as a slash command. Keep it set on any new call site —
+nothing in the dashboard emits `@`-prefixed references to be expanded.
+
 External MCP servers get wildcard tool permissions (`mcp__{server_name}__*`).
 
 ## Entry points & plumbing

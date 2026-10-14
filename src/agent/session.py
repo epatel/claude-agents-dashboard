@@ -653,6 +653,14 @@ class ClaudeAgentSession(AbstractAgentSession):
             add_dirs=[str(self.worktree_path), *(str(p) for p in self.sibling_repo_paths)],
             plugins=plugins if plugins else None,
             hooks=hooks,
+            # The prompt is assembled from the board item's own title and
+            # description. Without this, the CLI would expand any `@path` in
+            # that text into a file read and dispatch a leading `/name` as a
+            # slash command — interpreting text that was only ever meant to be
+            # instructions. Nothing in the dashboard builds `@path` references
+            # (attachments are listed as plain paths for the Read tool), so
+            # passing prompts through verbatim costs us nothing.
+            verbatim_prompts=True,
             **profile_options_kwargs(profile),
         )
         if profile.allow_chrome_extra_args:
