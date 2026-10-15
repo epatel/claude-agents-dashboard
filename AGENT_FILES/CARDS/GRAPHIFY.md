@@ -43,7 +43,7 @@ venv/bin/pip install --upgrade graphifyy     # update the package in the venv
 venv/bin/graphify install --platform claude  # sync ~/.claude/skills/graphify/ to the new version
 venv/bin/graphify version                    # confirm: no drift warning, both at the same version
 ```
-`install` keeps the replaced skill as `~/.claude/skills/graphify/SKILL.md.bak`. Last upgraded 2026-09-19 to **0.9.64** (from 0.8.44 / skill 0.8.33).
+`install` keeps the replaced skill as `~/.claude/skills/graphify/SKILL.md.bak`. The 0.9.91 CLI also refreshes the skill automatically on first run after an upgrade (`GRAPHIFY_NO_AUTO_REFRESH=1` disables it). Last upgraded 2026-10-16 to **0.9.91** (from 0.9.64).
 
 Two notices the 0.9.x CLI may print after an `update`, both optional and neither free:
 - *"pre-#1504 node-ID scheme"* — the graph predates path-qualified node ids, which is why same-name symbols collide (see the `::` note above). Fixed only by a full `graphify extract --force`, which runs semantic LLM extraction.
