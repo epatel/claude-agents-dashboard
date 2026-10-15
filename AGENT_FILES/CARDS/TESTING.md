@@ -6,13 +6,13 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1372 tests
+./run-tests.sh              # Run all 1378 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed, installs **both** `requirements.txt` (runtime) and `requirements-test.txt` (pytest, pytest-asyncio, pytest-cov, httpx), then runs `pytest`. Running the dashboard via `run.sh` installs only the runtime file, so test deps stay out of an app-only venv — a new test dependency goes in `requirements-test.txt`. Tests use `pytest-asyncio` in auto mode. With no path argument the script runs the whole `tests/` tree; any path (or `path::node` id) runs only what you name. Database has 31 migrations (001–031).
+The script creates a venv if needed, installs **both** `requirements.txt` (runtime) and `requirements-test.txt` (pytest, pytest-asyncio, pytest-cov, httpx), then runs `pytest`. Running the dashboard via `run.sh` installs only the runtime file, so test deps stay out of an app-only venv — a new test dependency goes in `requirements-test.txt`. Tests use `pytest-asyncio` in auto mode. With no path argument the script runs the whole `tests/` tree; any path (or `path::node` id) runs only what you name. Database has 32 migrations (001–032).
 
 ## Test Structure
 
@@ -33,7 +33,8 @@ tests/
 │   │   ├── test_graphify_config_028.py # Migration 028 graphify config (3 tests)
 │   │   ├── test_enabled_skills_029.py  # Migration 029 enabled_skills column (3 tests)
 │   │   ├── test_ollama_load_claude_md_030.py # Migration 030 ollama_load_claude_md column (3 tests)
-│   │   └── test_default_model_031.py   # Migration 031 default-model bump to Opus 5 (5 tests)
+│   │   ├── test_default_model_031.py   # Migration 031 default-model bump to Opus 5 (5 tests)
+│   │   └── test_strip_1m_suffix_032.py # Migration 032 strip redundant [1m] suffix (5 tests)
 │   ├── test_allowed_commands.py       # Command filter + access MCP (26 tests)
 │   ├── test_annotation_prompt.py      # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py     # Annotation summary generation (2 tests)
@@ -56,7 +57,7 @@ tests/
 │   ├── test_manage.py                # Migration CLI commands (24 tests)
 │   ├── test_mcp_tool_servers.py      # MCP tool server tests (67 tests)
 │   ├── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
-│   ├── test_model_catalog.py        # Model feed fetch, parsing, fallbacks (14 tests)
+│   ├── test_model_catalog.py        # Model feed fetch, parsing, fallbacks (15 tests)
 │   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
 │   ├── test_peek_worktree.py        # peek_worktree tool, git reads, rendering (23 tests)
@@ -83,7 +84,7 @@ tests/
 
 ## Test Categories
 
-**1372 total** = 20 smoke + 1338 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1338 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
+**1378 total** = 20 smoke + 1344 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1344 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
 
 ### Smoke Tests (20 tests)
 Quick checks that core components work:
@@ -132,12 +133,12 @@ Quick checks that core components work:
 - Provider profiles: Kimi/Ollama routing predicates, env builder, profile gate matrix, options kwargs (23)
 - `KimiAgentSession` over ACP: chunk aggregation, tool-call mapping, deferred tool input, commit-message + ask_user text protocols, resume/fallback, cancel, missing-SDK hint, permission decisions + handler + force-ask env, CLAUDE.md/AGENTS.md context, board-tools MCP config, worktree path boundary (shared `PathScope`, AUDIT #15), errors (88)
 
-### Unit Tests — Migrations (58 tests)
+### Unit Tests — Migrations (63 tests)
 - Apply/rollback single and multiple migrations
 - Migration discovery from files
 - Edge cases: malformed files, concurrent apply, long versions, empty methods
 - Performance: 100-file discovery under 1 second
-- Per-migration data tests: 024 default-model bump (`claude-opus-4-7` → `claude-opus-4-8`), 025 use_chrome, 026 api_error_status, 027 strip `+advisor` suffix, 028 graphify config, 029 enabled_skills, 030 ollama_load_claude_md, 031 default-model bump (`claude-opus-4-8` → `claude-opus-5`, incl. the `[1m]` variant)
+- Per-migration data tests: 024 default-model bump (`claude-opus-4-7` → `claude-opus-4-8`), 025 use_chrome, 026 api_error_status, 027 strip `+advisor` suffix, 028 graphify config, 029 enabled_skills, 030 ollama_load_claude_md, 031 default-model bump (`claude-opus-4-8` → `claude-opus-5`, incl. the `[1m]` variant), 032 strip redundant `[1m]` from Opus 4.7+
 
 ### Unit Tests — Infrastructure (83 tests)
 - **Main** (34 tests): Server startup, port discovery, git validation
@@ -145,8 +146,8 @@ Quick checks that core components work:
 - **Path Validation** (14 tests): Traversal prevention, null bytes, symlinks, control characters
 - **run.sh arguments** (11 tests): the wrapper's flag-aware target/forwarded-arg split — `--host`/`--port` values are not mistaken for the target path
 
-### Unit Tests — Config & Catalog (19 tests)
-- **Model catalog** (14 tests): feed fetch and parsing, per-provider filtering, `[1m]` synthesis, offline fallback to the bundled lists
+### Unit Tests — Config & Catalog (20 tests)
+- **Model catalog** (15 tests): feed fetch and parsing, per-provider filtering, `[1m]` synthesis, offline fallback to the bundled lists
 - **Epic plan path** (5 tests): epic-scoped shared-plan path resolution
 
 ### Unit Tests — Features (83 tests)
@@ -223,7 +224,7 @@ async def test_apply_migration(self, raw_db, runner):
 ### Adding New Tests
 
 1. Place in the appropriate directory (`unit/`, `integration/`, `smoke/`)
-2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1338. Select by path (`./run-tests.sh tests/unit/`), not by marker.
+2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1344. Select by path (`./run-tests.sh tests/unit/`), not by marker.
 3. Async tests work automatically (no `@pytest.mark.asyncio` needed)
 4. Run `./run-tests.sh` to verify all tests pass
 5. Put a new test file in one of the category buckets above and update that bucket's count and the totals here and in `tests/README.md` — the buckets partition the unit tests exactly, and unmaintained counts drift silently.

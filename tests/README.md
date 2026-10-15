@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (1372 tests across 52 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (31 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1378 tests across 53 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (32 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -18,7 +18,8 @@ tests/
 │   │   ├── test_graphify_config_028.py          # Migration 028 graphify config (3 tests)
 │   │   ├── test_enabled_skills_029.py           # Migration 029 enabled_skills column (3 tests)
 │   │   ├── test_ollama_load_claude_md_030.py    # Migration 030 ollama_load_claude_md column (3 tests)
-│   │   └── test_default_model_031.py            # Migration 031 default-model bump to Opus 5 (5 tests)
+│   │   ├── test_default_model_031.py            # Migration 031 default-model bump to Opus 5 (5 tests)
+│   │   └── test_strip_1m_suffix_032.py          # Migration 032 strip redundant [1m] suffix (5 tests)
 │   ├── test_allowed_commands.py                 # Command filter + access MCP tool (26 tests)
 │   ├── test_annotation_prompt.py                # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py               # Annotation summary generation (2 tests)
@@ -41,7 +42,7 @@ tests/
 │   ├── test_manage.py                           # Migration CLI commands (24 tests)
 │   ├── test_mcp_tool_servers.py                 # MCP tool server creation and invocation (67 tests)
 │   ├── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
-│   ├── test_model_catalog.py                    # Model feed fetch, parsing, fallbacks (14 tests)
+│   ├── test_model_catalog.py                    # Model feed fetch, parsing, fallbacks (15 tests)
 │   ├── test_notification_service.py             # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
 │   ├── test_peek_worktree.py                    # peek_worktree tool, git reads, rendering (23 tests)
@@ -108,8 +109,8 @@ tests/
 - **Provider profiles** (23 tests) — Kimi/Ollama routing predicates, env builder, profile gate matrix
 - **AbstractAgentSession** (4 tests) — contract conformance
 
-### 5c. Config & Catalog (19 tests)
-- **Model catalog** (14 tests) — Feed fetch and parsing, per-provider filtering, `[1m]` synthesis, offline fallback
+### 5c. Config & Catalog (20 tests)
+- **Model catalog** (15 tests) — Feed fetch and parsing, per-provider filtering, `[1m]` synthesis, offline fallback
 - **Epic plan path** (5 tests) — Epic-scoped shared-plan path resolution
 
 ### 6. Features (83 tests)
@@ -121,8 +122,8 @@ tests/
 - **Annotation Prompt** (5 tests) — Prompt formatting for agents
 - **Annotation Summary** (2 tests) — Summary text generation
 
-### 7. Infrastructure (150 tests)
-- **Migrations** (58 tests) — Runner, up/down, discovery, edge cases; per-migration data tests for 024 (default-model bump), 025 (use_chrome), 026 (api_error_status), 027 (remove +advisor), 028 (graphify config), 029 (enabled_skills), 030 (ollama_load_claude_md), 031 (default-model bump to Opus 5)
+### 7. Infrastructure (155 tests)
+- **Migrations** (63 tests) — Runner, up/down, discovery, edge cases; per-migration data tests for 024 (default-model bump), 025 (use_chrome), 026 (api_error_status), 027 (remove +advisor), 028 (graphify config), 029 (enabled_skills), 030 (ollama_load_claude_md), 031 (default-model bump to Opus 5), 032 (strip redundant `[1m]`)
 - **Main** (34 tests) — Server startup, port discovery, git validation
 - **Manage** (24 tests) — Migration CLI commands
 - **Path Validation** (14 tests) — Traversal prevention, null bytes, symlinks
@@ -160,7 +161,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 1372 tests
+# Run all 1378 tests
 ./run-tests.sh
 
 # Run specific test categories (any path narrows the run)
@@ -183,7 +184,7 @@ pytest tests/unit/migrations/
 
 # Select by path, not by marker. The unit/integration/smoke markers exist in
 # pytest.ini but are applied to only a minority of files — `pytest -m unit`
-# collects ~94 of 1338 unit tests and silently skips the rest.
+# collects ~94 of 1344 unit tests and silently skips the rest.
 pytest tests/unit/
 pytest tests/integration/
 pytest tests/smoke/

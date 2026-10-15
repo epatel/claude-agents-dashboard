@@ -73,9 +73,14 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
   have landed is worse than no doc. Every other root file (`ASSESSMENT_CODE.md`, `PLAN_*`,
   `EVAL_*`, `SDK_BUMP_*`) keeps the don't-touch snapshot policy. A rev must state what it
   reviewed *and* record negative results, so the next reviewer knows what was already cleared.
-- 2026-07-25 — Default model is `claude-opus-5` (migration 031); Claude Opus 5, Opus 5 (1M)
-  and Claude Sonnet 5 added to `AVAILABLE_MODELS`. Supersedes the 2026-05-28 `claude-opus-4-8`
+- 2026-07-25 — Default model is `claude-opus-5` (migration 031); Claude Opus 5 and Claude
+  Sonnet 5 added to `AVAILABLE_MODELS`. Supersedes the 2026-05-28 `claude-opus-4-8`
   decision (that model stays selectable). Locked.
+- 2026-10-15 — `[1m]` is offered only where it does something: `CLAUDE_1M_OPT_IN_MODELS` is
+  `claude-opus-4-6` + `claude-sonnet-4-6`. Per Claude Code's model-config docs, Fable 5/5.1,
+  Sonnet 5 and later, Haiku 5.5 and Opus 4.7 and later (so Opus 5 and 5.5 too) run at 1M by
+  default. The Opus 5 / 4.8 / 4.7 `(1M)` entries were dropped, and migration 032 strips the
+  suffix from stored rows. Amends the 2026-07-25 decision, which had added Opus 5 (1M).
 - 2026-10-08 — The selectable Claude and Kimi model lists are **fetched**, not hand-edited:
   `src/model_catalog.py` refreshes it from `constants.MODEL_LIST_URL`
   (`https://epatel.github.io/model-lists/models.json`, non-deprecated entries of providers
@@ -139,8 +144,8 @@ No objective in flight. Last change (2026-10-14, M10): the hardening pass — th
 (`AGENT_FILES/AUDIT.md`, rev 14) has no open actionable finding. 2026-10-15: agentic setup
 refreshed against ai.memention.net/setup (record in `.claude/agent-setup.json`).
 
-Authoritative counts, re-verified by collection/grep — trust these over prose: **31 migrations
-(001–031)**; **1372 tests = 20 smoke + 1338 unit + 14 integration** (plus 7 Node E2E tests,
+Authoritative counts, re-verified by collection/grep — trust these over prose: **32 migrations
+(001–032)**; **1378 tests = 20 smoke + 1344 unit + 14 integration** (plus 7 Node E2E tests,
 counted separately); **7 services**; **10 MCP tool servers exposing 12 tools** (`todo.py`
 serves three); skills ship as plugins, not as an MCP tool.
 
@@ -155,15 +160,6 @@ note as the running handoff — keep it a short handoff, not a log.
 
 ## Open questions
 
-- **Do the 5.5-family models need `[1m]` opt-in entries?** The feed now serves
-  `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` and `claude-fable-5-1`,
-  and they are already in `FALLBACK_CLAUDE_MODELS`. None is in
-  `CLAUDE_1M_OPT_IN_MODELS`, so none gets a paired `(1M)` entry. For Fable 5.1 that
-  is **correct** — it is always 1M on the API, like Fable 5 and Sonnet 5, so the CLI
-  exposes no `[1m]` variant. For Opus/Sonnet/Haiku 5.5 it is **unverified**: if any
-  of them treats 1M as opt-in the way Opus 5 does, it needs a
-  `CLAUDE_1M_OPT_IN_MODELS` entry. Check Claude Code's model-config docs before
-  adding one — the feed's `context_window` cannot distinguish opt-in from always-on,
-  which is exactly why that set stays a local constant.
+None open.
 
 An agent that hits a blocker or undecided choice adds it here rather than guessing.

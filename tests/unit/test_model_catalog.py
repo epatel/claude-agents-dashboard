@@ -36,12 +36,18 @@ class TestParseModelList:
         assert [m[0] for m in model_catalog.parse_model_list(data)["anthropic"]] == ["claude-beta"]
 
     def test_adds_1m_variant_for_opt_in_models(self):
-        data = {"models": [_model("claude-opus-5", "Claude Opus 5"), _model("claude-sonnet-5", "Claude Sonnet 5")]}
+        data = {"models": [_model("claude-opus-4-6", "Claude Opus 4.6"), _model("claude-opus-5", "Claude Opus 5")]}
         assert model_catalog.parse_model_list(data)["anthropic"] == [
+            ("claude-opus-4-6", "Claude Opus 4.6", False),
+            ("claude-opus-4-6[1m]", "Claude Opus 4.6 (1M)", False),
             ("claude-opus-5", "Claude Opus 5", False),
-            ("claude-opus-5[1m]", "Claude Opus 5 (1M)", False),
-            ("claude-sonnet-5", "Claude Sonnet 5", False),
         ]
+
+    def test_natively_1m_models_get_no_variant(self):
+        ids = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1",
+               "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7"]
+        data = {"models": [_model(i) for i in ids]}
+        assert [m[0] for m in model_catalog.parse_model_list(data)["anthropic"]] == ids
 
     def test_kimi_code_models_get_alias_prefix_and_experimental_flag(self):
         data = {"models": [

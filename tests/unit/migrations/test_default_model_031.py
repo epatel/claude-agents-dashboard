@@ -3,7 +3,7 @@ Unit tests for the Opus 5 default-model change.
 
 Covers:
 - The centralized constants pin claude-opus-5 as the default and list it
-  (alongside the new Opus 5 1M and Sonnet 5 entries).
+  (alongside Sonnet 5). Its "[1m]" variant is gone — see migration 032.
 - Migration 031 bumps items / agent_config rows off the previous default
   (claude-opus-4-8, plus its [1m] variant) to the new default, leaves other
   models alone, and reverts.
@@ -43,7 +43,6 @@ class TestOpus5Constants:
     def test_new_models_are_available(self):
         ids = [m[0] for m in AVAILABLE_MODELS]
         assert NEW_DEFAULT in ids
-        assert "claude-opus-5[1m]" in ids
         assert "claude-sonnet-5" in ids
 
     def test_previous_default_stays_selectable(self):

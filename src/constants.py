@@ -8,16 +8,13 @@ MODEL_LIST_URL = "https://epatel.github.io/model-lists/models.json"
 
 # Models that get an extra "<id>[1m]" entry. The "[1m]" suffix opts the spawned
 # `claude` CLI into the optional 1M-token context window (no API beta header
-# needed via the Agent SDK; standard pricing). Per Claude Code's model-config
-# docs, the suffix applies only to Opus 4.6+ and Sonnet 4.6. Fable 5 and
-# Sonnet 5 ALWAYS run at 1M on the API, so they need no suffix (and the CLI
-# exposes no fable[1m]/sonnet-5[1m] variant). Opus 4.5 and Haiku 4.5 do not
-# support 1M. The feed's context_window can't tell opt-in from always-on, so
-# this stays a local list.
+# needed via the Agent SDK). Per Claude Code's model-config docs (2026-10-15),
+# only Opus 4.6 and Sonnet 4.6 reach 1M through "[1m]". Fable 5/5.1, Sonnet 5
+# and later, Haiku 5.5 and Opus 4.7 and later run at 1M by default, so the
+# suffix has no effect on them (migration 032 strips it from stored rows).
+# Opus 4.5 and Haiku 4.5 do not support 1M. The feed's context_window can't
+# tell opt-in from always-on, so this stays a local list.
 CLAUDE_1M_OPT_IN_MODELS = {
-    "claude-opus-5",
-    "claude-opus-4-8",
-    "claude-opus-4-7",
     "claude-opus-4-6",
     "claude-sonnet-4-6",
 }
@@ -29,16 +26,13 @@ FALLBACK_CLAUDE_MODELS = [
     ("claude-sonnet-5-5", "Claude Sonnet 5.5", False),
     ("claude-opus-5-5", "Claude Opus 5.5", False),
     ("claude-fable-5-1", "Claude Fable 5.1", False),
-    ("claude-fable-5", "Claude Fable 5", False),  # always 1M on the API
+    ("claude-fable-5", "Claude Fable 5", False),
     ("claude-opus-5", "Claude Opus 5", False),
-    ("claude-opus-5[1m]", "Claude Opus 5 (1M)", False),
-    ("claude-sonnet-5", "Claude Sonnet 5", False),  # always 1M on the API
+    ("claude-sonnet-5", "Claude Sonnet 5", False),
     ("claude-sonnet-4-6", "Claude Sonnet 4.6", False),
     ("claude-sonnet-4-6[1m]", "Claude Sonnet 4.6 (1M)", False),
     ("claude-opus-4-8", "Claude Opus 4.8", False),
-    ("claude-opus-4-8[1m]", "Claude Opus 4.8 (1M)", False),
     ("claude-opus-4-7", "Claude Opus 4.7", False),
-    ("claude-opus-4-7[1m]", "Claude Opus 4.7 (1M)", False),
     ("claude-opus-4-6", "Claude Opus 4.6", False),
     ("claude-opus-4-6[1m]", "Claude Opus 4.6 (1M)", False),
     ("claude-opus-4-5-20251101", "Claude Opus 4.5", False),
