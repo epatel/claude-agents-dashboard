@@ -18,7 +18,9 @@ Server binds to `127.0.0.1:8000` (auto-increments up to 8019).
 
 ## Shared plan
 
-Always read **[`@project-plan.md`](project-plan.md)** before starting — it holds the shared goal and current state across agents. When spawning subagents or worktree agents, tell them to read it first and to update its **Current state** and **Decisions** sections before finishing.
+@project-plan.md
+
+Always read the shared plan above before starting — it holds the shared goal and current state across agents. When spawning subagents or worktree agents, tell them to read it first and to update its **Current state** and **Decisions** sections before finishing.
 
 ## Docs
 
