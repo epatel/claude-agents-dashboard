@@ -52,6 +52,7 @@ Cross-file pass after per-file review: contradictions between CLAUDE.md, cards, 
 Fix ROT, REDUNDANT, and GAP findings in project-local files only.
 
 - Skills: keep `SKILL.md` lean (frontmatter + when-to-use + how-to-run); push long material to sibling reference files loaded on demand. Descriptions must be trigger-rich — state *when* to use, including indirect phrasings — since the description is all the model sees before deciding to load it.
+- Skill placement: skills belong at project level. If the project depends on a skill that exists only under `~/.claude/skills/`, copy it into `.claude/skills/` (a real directory, not a symlink) so collaborators and fresh clones get it. Note the now-redundant global copy in the Phase 4 plan; never remove it yourself.
 - CLAUDE.md: it loads into every session — every line costs context forever. Move task-specific material into cards/skills with a routing line ("read X when doing Y") instead.
 - Verify each edit: referenced paths exist, referenced commands run, `@` imports resolve, card manifest entries match actual files.
 - Keep a running changelog of every edit (file, finding class, one-line rationale) for the report.

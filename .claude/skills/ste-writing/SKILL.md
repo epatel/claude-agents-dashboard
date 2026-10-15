@@ -21,6 +21,7 @@ VERBS
 - Use a verb for an action. "analyze the log", not "perform an analysis of the log".
 - No stacked auxiliaries. Not "it is important to note that this may help to improve". Write "this improves X".
 - No "-ing" main verb where a simple tense works.
+- No phrasal verbs. "start the server", not "spin up the server". "find", not "figure out".
 
 SENTENCES
 - One instruction per sentence. Max 20 words (instruction), max 25 (descriptive).
@@ -36,8 +37,8 @@ Write only the requested text. No preamble, no summary, no closing remarks.
 
 ## Modes
 
-- **strict** — procedures, runbooks, safety text, error messages: apply every rule and both length caps.
-- **STE-flavored** — general prose (READMEs, PR descriptions, docs): apply the sentence, paragraph, active-voice, and no-phrasal-verb discipline; relax the ~900-word dictionary lockdown so the text keeps enough range to read naturally.
+- **strict** — procedures, runbooks, safety text, error messages: apply every rule and both length caps. Keep to the short common words (the WORDS list shows the pattern). The full STE dictionary is about 900 approved words plus project technical names.
+- **STE-flavored** — general prose (READMEs, PR descriptions, docs): apply the sentence, paragraph, active-voice, and no-phrasal-verb rules. Do not limit the vocabulary to the STE dictionary, so the text keeps enough range to read naturally.
 
 ## Self-lint (run before returning text)
 
