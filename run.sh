@@ -100,12 +100,11 @@ if [ "${AGENTS_DASHBOARD_AUTO_UPDATE:-0}" != "1" ]; then
     fi
 fi
 
-# Set up venv if needed
+# Python venv bootstrap (needs Python >= 3.12; see scripts/python-env.sh)
+. "$SCRIPT_DIR/scripts/python-env.sh"
+
 VENV_DIR="$SCRIPT_DIR/venv"
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv "$VENV_DIR"
-fi
+ensure_venv "$VENV_DIR"
 
 # Install/update dependencies
 "$VENV_DIR/bin/pip" install -q -r "$SCRIPT_DIR/requirements.txt"

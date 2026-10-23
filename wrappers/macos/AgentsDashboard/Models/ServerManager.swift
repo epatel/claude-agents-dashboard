@@ -14,8 +14,6 @@ enum WrapperUpdateStatus {
 
 enum InstallStage {
     case cloning
-    case creatingVenv
-    case installingDeps
     case done
 }
 
@@ -35,33 +33,7 @@ class ServerManager: ObservableObject {
     @Published var installError: String?
 
     static let repoURL = "https://github.com/epatel/claude-agents-dashboard.git"
-    static let minimumPythonVersion = "3.10"
     static let minimumClaudeCLIVersion = "2.1.111"
-
-    /// Find a suitable Python 3.10+ binary, preferring Homebrew over system Python.
-    var pythonPath: String {
-        let candidates = [
-            "/opt/homebrew/bin/python3",
-            "/usr/local/bin/python3",
-            "/opt/homebrew/bin/python3.14",
-            "/opt/homebrew/bin/python3.13",
-            "/opt/homebrew/bin/python3.12",
-            "/opt/homebrew/bin/python3.11",
-            "/opt/homebrew/bin/python3.10",
-            "/usr/local/bin/python3.14",
-            "/usr/local/bin/python3.13",
-            "/usr/local/bin/python3.12",
-            "/usr/local/bin/python3.11",
-            "/usr/local/bin/python3.10",
-            "/usr/bin/python3",
-        ]
-        for path in candidates {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                return path
-            }
-        }
-        return "/usr/bin/python3"
-    }
 
     /// Override in tests to use a temp directory instead of ~/.agents-dashboard
     var serverURL: URL {
@@ -157,26 +129,17 @@ class ServerManager: ObservableObject {
         return FileManager.default.fileExists(atPath: runSh)
     }
 
+    /// Clone the server repo. The Python venv and dependencies are not set up here:
+    /// run.sh does that on every launch (picking a Python >= 3.12, falling back to uv,
+    /// rebuilding a stale venv), so there is one implementation and its output lands
+    /// in the dashboard's startup log.
     func clone() async throws {
         await MainActor.run { installStage = .cloning; installError = nil }
 
         var cloned = false
         do {
-            // Clone repo
             try await runProcessBackground("/usr/bin/git", arguments: ["clone", Self.repoURL, serverPath])
             cloned = true
-
-            // Create venv
-            await MainActor.run { installStage = .creatingVenv }
-            let venvPath = serverURL.appendingPathComponent("venv").path
-            try await runProcessBackground(pythonPath, arguments: ["-m", "venv", venvPath])
-
-            // Upgrade pip, then install dependencies
-            await MainActor.run { installStage = .installingDeps }
-            let pipPath = serverURL.appendingPathComponent("venv/bin/pip").path
-            try await runProcessBackground(pipPath, arguments: ["install", "--upgrade", "-q", "pip"])
-            let reqPath = serverURL.appendingPathComponent("requirements.txt").path
-            try await runProcessBackground(pipPath, arguments: ["install", "-q", "-r", reqPath])
 
             await MainActor.run { installStage = .done }
         } catch {

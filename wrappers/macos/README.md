@@ -6,7 +6,7 @@ A native SwiftUI wrapper that provides a desktop interface for managing Claude a
 
 - **Project management** — add local git repositories, start/stop dashboard instances per project
 - **Tabbed interface** — switch between running dashboards, each rendered in an embedded WebView
-- **Auto-install** — on first run, clones the server to `~/.agents-dashboard/`, creates a Python venv, and installs dependencies
+- **Auto-install** — on first run, clones the server to `~/.agents-dashboard/`, and `run.sh` creates the Python venv and installs dependencies on first launch
 - **Update detection** — checks for upstream changes and prompts to pull
 - **Real-time logs** — view server startup output while the dashboard is loading
 - **Smart suggestions** — file browser scans common directories (~/Developer, ~/Development, ~/Projects, etc.)
@@ -14,7 +14,7 @@ A native SwiftUI wrapper that provides a desktop interface for managing Claude a
 ## Requirements
 
 - macOS 14+
-- Python 3.10+
+- Python 3.12+ (or [uv](https://docs.astral.sh/uv/), which `run.sh` uses to fetch one; the macOS system Python 3.9 is too old)
 - Git
 - Claude Code (installed and logged in)
 
@@ -65,7 +65,7 @@ AgentsDashboard/
 ├── Models/
 │   ├── Project.swift            # Project data model (persisted via UserDefaults)
 │   ├── ProjectManager.swift     # State management, process lifecycle
-│   └── ServerManager.swift      # Server install, update, Python discovery
+│   └── ServerManager.swift      # Server install (clone) and update checks
 └── Views/
     ├── ContentView.swift        # NavigationSplitView root layout
     ├── SidebarView.swift        # Project list with status indicators
@@ -75,7 +75,7 @@ AgentsDashboard/
     └── InstallSheet.swift       # First-run installation flow
 ```
 
-**ServerManager** handles the server clone at `~/.agents-dashboard/` — installation, Python venv setup, dependency installation, and update checks.
+**ServerManager** handles the server clone at `~/.agents-dashboard/` — installation (clone only — `run.sh` owns the Python venv) and update checks.
 
 **ProjectManager** orchestrates project CRUD and dashboard process lifecycle — launching `run.sh` as a subprocess, capturing output via pipes, detecting the server port from stdout, and graceful shutdown (SIGTERM → SIGKILL after 5s).
 

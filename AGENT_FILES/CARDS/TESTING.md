@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1378 tests
+./run-tests.sh              # Run all 1391 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -63,6 +63,7 @@ tests/
 │   ├── test_peek_worktree.py        # peek_worktree tool, git reads, rendering (23 tests)
 │   ├── test_routes.py               # HTTP endpoint tests (116 tests)
 │   ├── test_run_sh_args.py          # run.sh target/flag argument parsing (11 tests)
+│   ├── test_python_env.py           # scripts/python-env.sh venv bootstrap (13 tests)
 │   ├── test_base.py                 # AbstractAgentSession contract (4 tests)
 │   ├── test_kimi_board_mcp.py       # Kimi board-tools stdio MCP proxy (12 tests)
 │   ├── test_kimi_session.py         # KimiAgentSession over ACP (experimental) (88 tests)
@@ -84,7 +85,7 @@ tests/
 
 ## Test Categories
 
-**1378 total** = 20 smoke + 1344 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1344 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
+**1391 total** = 20 smoke + 1357 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1357 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
 
 ### Smoke Tests (20 tests)
 Quick checks that core components work:
@@ -140,11 +141,12 @@ Quick checks that core components work:
 - Performance: 100-file discovery under 1 second
 - Per-migration data tests: 024 default-model bump (`claude-opus-4-7` → `claude-opus-4-8`), 025 use_chrome, 026 api_error_status, 027 strip `+advisor` suffix, 028 graphify config, 029 enabled_skills, 030 ollama_load_claude_md, 031 default-model bump (`claude-opus-4-8` → `claude-opus-5`, incl. the `[1m]` variant), 032 strip redundant `[1m]` from Opus 4.7+
 
-### Unit Tests — Infrastructure (83 tests)
+### Unit Tests — Infrastructure (96 tests)
 - **Main** (34 tests): Server startup, port discovery, git validation
 - **Manage** (24 tests): Migration CLI commands
 - **Path Validation** (14 tests): Traversal prevention, null bytes, symlinks, control characters
 - **run.sh arguments** (11 tests): the wrapper's flag-aware target/forwarded-arg split — `--host`/`--port` values are not mistaken for the target path
+- **Python env bootstrap** (13 tests): `scripts/python-env.sh` — picks a Python >= 3.12, rebuilds a venv made with an older or removed interpreter, falls back to uv, fails clearly otherwise; entry scripts must use it
 
 ### Unit Tests — Config & Catalog (20 tests)
 - **Model catalog** (15 tests): feed fetch and parsing, per-provider filtering, `[1m]` synthesis, offline fallback to the bundled lists
@@ -224,7 +226,7 @@ async def test_apply_migration(self, raw_db, runner):
 ### Adding New Tests
 
 1. Place in the appropriate directory (`unit/`, `integration/`, `smoke/`)
-2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1344. Select by path (`./run-tests.sh tests/unit/`), not by marker.
+2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1357. Select by path (`./run-tests.sh tests/unit/`), not by marker.
 3. Async tests work automatically (no `@pytest.mark.asyncio` needed)
 4. Run `./run-tests.sh` to verify all tests pass
 5. Put a new test file in one of the category buckets above and update that bucket's count and the totals here and in `tests/README.md` — the buckets partition the unit tests exactly, and unmaintained counts drift silently.

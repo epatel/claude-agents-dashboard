@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (1378 tests across 53 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (32 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1391 tests across 54 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (32 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -161,7 +161,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 1378 tests
+# Run all 1391 tests
 ./run-tests.sh
 
 # Run specific test categories (any path narrows the run)
@@ -184,7 +184,7 @@ pytest tests/unit/migrations/
 
 # Select by path, not by marker. The unit/integration/smoke markers exist in
 # pytest.ini but are applied to only a minority of files — `pytest -m unit`
-# collects ~94 of 1344 unit tests and silently skips the rest.
+# collects ~94 of 1357 unit tests and silently skips the rest.
 pytest tests/unit/
 pytest tests/integration/
 pytest tests/smoke/

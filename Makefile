@@ -44,7 +44,7 @@ test_filter:
 	./run-tests.sh -k "$(F)" -v
 
 setup:
-	python3 -m venv venv
+	bash -c '. scripts/python-env.sh && ensure_venv venv'
 	venv/bin/pip install -r requirements.txt -r requirements-test.txt
 
 update_phony:

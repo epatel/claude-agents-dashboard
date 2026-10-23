@@ -50,6 +50,11 @@ Replace this with the specific objective the moment one is in flight.
 Settled, still-relevant choices no agent should reopen without flagging here. Long-lived
 architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
+- 2026-10-23 — Python floor is **3.12** (kimi-agent-sdk / kimi-cli declare it; `src/` also uses
+  3.11+ `StrEnum` / `asyncio.timeout`). `scripts/python-env.sh` is the only venv bootstrap
+  (run.sh, run-tests.sh, `make setup`); the macOS wrapper no longer creates the venv itself.
+  It never installs uv or Homebrew on its own — it uses uv only if already present.
+  Details: `CARDS/ARCHITECTURE.md` (Entry points & plumbing).
 - 2026-10-14 — Path checks have **one** implementation each: `PathScope`
   (`src/agent/path_guard.py`) is the agent worktree boundary for both runtimes, and
   `validate_file_path()` (`src/git/operations.py`) is the string guard for any externally
@@ -142,10 +147,11 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 No objective in flight. Last change (2026-10-14, M10): the hardening pass — the security audit
 (`AGENT_FILES/AUDIT.md`, rev 14) has no open actionable finding. 2026-10-15: agentic setup
-refreshed against ai.memention.net/setup (record in `.claude/agent-setup.json`).
+refreshed against ai.memention.net/setup (record in `.claude/agent-setup.json`). 2026-10-23: shared
+Python >= 3.12 venv bootstrap (`scripts/python-env.sh`); the macOS wrapper delegates venv setup to `run.sh`.
 
 Authoritative counts, re-verified by collection/grep — trust these over prose: **32 migrations
-(001–032)**; **1378 tests = 20 smoke + 1344 unit + 14 integration** (plus 7 Node E2E tests,
+(001–032)**; **1391 tests = 20 smoke + 1357 unit + 14 integration** (plus 7 Node E2E tests,
 counted separately); **7 services**; **10 MCP tool servers exposing 12 tools** (`todo.py`
 serves three); skills ship as plugins, not as an MCP tool.
 

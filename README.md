@@ -71,7 +71,7 @@ path/to/claude-agents-dashboard/run.sh /path/to/workspace-with-many-repos
 ./run-tests.sh
 ```
 
-Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. With no path the script runs the whole `tests/` tree; a path runs only that file or directory. The suite includes 1378 tests across smoke, unit, and integration tiers (`run-tests.sh` creates the venv and installs both `requirements.txt` and `requirements-test.txt` on first run).
+Pass extra args to pytest: `./run-tests.sh tests/smoke/ -v` or `./run-tests.sh -k "test_cancel"`. With no path the script runs the whole `tests/` tree; a path runs only that file or directory. The suite includes 1391 tests across smoke, unit, and integration tiers (`run-tests.sh` creates the venv and installs both `requirements.txt` and `requirements-test.txt` on first run).
 
 E2E tests run separately and **spawn real agents, which costs tokens**:
 
@@ -648,9 +648,9 @@ git log --oneline -1  # Should show at least one commit
 chmod +x /path/to/claude-agents-dashboard/run.sh
 ```
 
-**Python version**: Verify you have Python 3.12+:
+**Python version**: the dependencies need Python 3.12+. `run.sh`, `run-tests.sh` and `make setup` use the newest `python3.1x` on PATH that qualifies. If none does (the macOS system Python is 3.9) but [uv](https://docs.astral.sh/uv/) is installed, they create the venv with a uv-managed Python. A venv made with an older Python is rebuilt automatically. Otherwise install one:
 ```bash
-python3 --version  # Should show 3.12.0 or higher
+brew install python@3.12
 ```
 
 ### Getting help
@@ -664,7 +664,7 @@ A native macOS wrapper app is available under [Releases](../../releases) as a pr
 - **Add projects** via a file browser with smart suggestions (scans ~/Developer, ~/Development, etc.)
 - **Start/stop dashboards** per project with real-time startup logs
 - **Tabbed interface** — switch between running dashboards, each rendered in an embedded WebView
-- **Auto-install** — on first run, clones the server repo to `~/.agents-dashboard/`, creates a Python venv, and installs dependencies
+- **Auto-install** — on first run, clones the server repo to `~/.agents-dashboard/`; `run.sh` creates the Python venv and installs dependencies on first launch
 - **Update detection** — checks for upstream changes and prompts to pull
 
 Requires macOS 14+. Source code is in `wrappers/macos/`.

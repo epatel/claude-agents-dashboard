@@ -50,19 +50,6 @@ final class ServerManagerTests: XCTestCase {
         XCTAssertTrue(manager.installationExists())
     }
 
-    // MARK: - pythonPath
-
-    func testPythonPathReturnsExecutablePath() {
-        let path = manager.pythonPath
-        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: path),
-                       "pythonPath should return an executable: \(path)")
-    }
-
-    func testPythonPathFallsBackToUsrBin() {
-        // pythonPath should always return something, at minimum /usr/bin/python3
-        XCTAssertFalse(manager.pythonPath.isEmpty)
-    }
-
     // MARK: - checkForUpdates when not installed
 
     func testCheckForUpdatesReturnsErrorWhenNotInstalled() async {

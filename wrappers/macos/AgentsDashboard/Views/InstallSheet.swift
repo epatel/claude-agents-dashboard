@@ -150,8 +150,7 @@ struct InstallSheet: View {
                     .fontWeight(.medium)
 
                 Label("Clone the dashboard repository into ~/.agents-dashboard/", systemImage: "1.circle")
-                Label("Create a Python virtual environment", systemImage: "2.circle")
-                Label("Install Python dependencies (FastAPI, aiosqlite, etc.)", systemImage: "3.circle")
+                Label("On first launch, create a Python 3.12+ environment and install dependencies (shown in the startup log)", systemImage: "2.circle")
             }
             .font(.callout)
             .foregroundColor(.secondary)
@@ -313,8 +312,6 @@ struct InstallSheet: View {
     private var stageText: String {
         switch serverManager.installStage {
         case .cloning: return "Cloning repository..."
-        case .creatingVenv: return "Setting up Python environment..."
-        case .installingDeps: return "Installing dependencies..."
         case .done: return "Done!"
         case nil: return "Preparing..."
         }

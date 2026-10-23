@@ -8,10 +8,9 @@ export FORCE_COLOR=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/venv"
 
-# Create venv if needed
-if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR"
-fi
+# Create (or rebuild a too-old) venv; needs Python >= 3.12
+. "$SCRIPT_DIR/scripts/python-env.sh"
+ensure_venv "$VENV_DIR"
 
 # Install/update dependencies
 "$VENV_DIR/bin/pip" install -q -r "$SCRIPT_DIR/requirements.txt"
