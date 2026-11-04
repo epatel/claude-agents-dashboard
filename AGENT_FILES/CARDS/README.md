@@ -91,7 +91,7 @@ If your task isn't above, fall through to the **Load when** triggers below.
 - *The first non-Claude runtime: `kimi-*` model routing, session contract implementation, experimental gating, v1 limitations.*
 
 ### [GRAPHIFY](GRAPHIFY.md)
-- **Load when**: querying the `graphify-out/` knowledge graph, rebuilding it, or upgrading the graphify tool/skill.
+- **Load when**: querying the `graphify-out/` knowledge graph, rebuilding it, or upgrading the graphify CLI.
 - **Skip when**: normal feature work not touching the graph.
 - *Use the venv binary (not PATH); query/path/explain; incremental update vs full rebuild; upgrading tool + skill together.*
 

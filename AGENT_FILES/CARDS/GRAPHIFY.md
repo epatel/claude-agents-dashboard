@@ -1,9 +1,11 @@
 # Graphify Knowledge Graph
 
-> **Load when**: querying the codebase knowledge graph, rebuilding it, or upgrading the graphify tool/skill.
+> **Load when**: querying the codebase knowledge graph, rebuilding it, or upgrading the graphify CLI.
 > **Skip when**: doing normal feature work that doesn't touch `graphify-out/`.
 
-A persistent knowledge graph of this repo lives in **`graphify-out/`** (`graph.html`, `graph.json`, `GRAPH_REPORT.md`, `cost.json`, `cache/`). Built by the `/graphify` skill from AST extraction (code) + LLM semantic extraction (docs/images).
+A persistent knowledge graph of this repo lives in **`graphify-out/`** (`graph.html`, `graph.json`, `GRAPH_REPORT.md`, `cost.json`, `cache/`). Built by the `graphify` CLI from AST extraction (code) + LLM semantic extraction (docs/images).
+
+The graphify **Claude skill (`/graphify`) is not installed** — it was removed from `~/.claude/skills/` on purpose (2026-10-18). Drive everything through `venv/bin/graphify` or the dashboard (Settings ▸ Graphify). Do not run `graphify install`.
 
 ## Critical: graphify lives in the venv, not on PATH
 
@@ -31,19 +33,18 @@ A bare symbol name often matches several nodes (the code definition plus every d
 
 ```bash
 venv/bin/graphify update .         # incremental: re-extract only changed code files (no LLM, free)
-/graphify .                        # full rebuild via skill (AST + LLM semantic; ~230k tokens)
+venv/bin/graphify extract .        # full rebuild, headless (AST + LLM semantic; --backend B picks the LLM)
 venv/bin/graphify cluster-only .   # re-run clustering on existing graph only
 ```
-- A full `/graphify .` rebuild costs LLM tokens (semantic extraction runs as Claude subagents unless `GEMINI_API_KEY`/`GOOGLE_API_KEY` is set). Run sparingly — prefer `update` after code changes.
+- A full rebuild costs LLM tokens. `extract` uses the backend whose API key is set (or `--backend`). The dashboard's **Settings ▸ Graphify** semantic build runs the same `extract` (`GraphService.build(semantic=True)`), passing `--backend gemini` when `GEMINI_API_KEY`/`GOOGLE_API_KEY` is set. Run sparingly — prefer `update` after code changes.
 - Cumulative token cost is tracked in `graphify-out/cost.json`.
 
-**Upgrading the tool + skill** (do both together — the CLI prints a drift warning on every command until you do):
+**Upgrading the tool:**
 ```bash
 venv/bin/pip install --upgrade graphifyy     # update the package in the venv
-venv/bin/graphify install --platform claude  # sync ~/.claude/skills/graphify/ to the new version
-venv/bin/graphify version                    # confirm: no drift warning, both at the same version
+venv/bin/graphify version                    # confirm the new version
 ```
-`install` keeps the replaced skill as `~/.claude/skills/graphify/SKILL.md.bak`. The 0.9.91 CLI also refreshes the skill automatically on first run after an upgrade (`GRAPHIFY_NO_AUTO_REFRESH=1` disables it). Last upgraded 2026-10-16 to **0.9.91** (from 0.9.64).
+With no skill installed there is nothing to sync and no drift warning. If one appears, a skill copy has come back somewhere — check `~/.claude/skills/graphify/` before you run anything else. Last upgraded 2026-10-16 to **0.9.91** (from 0.9.64).
 
 Two notices the 0.9.x CLI may print after an `update`, both optional and neither free:
 - *"pre-#1504 node-ID scheme"* — the graph predates path-qualified node ids, which is why same-name symbols collide (see the `::` note above). Fixed only by a full `graphify extract --force`, which runs semantic LLM extraction.
@@ -51,7 +52,7 @@ Two notices the 0.9.x CLI may print after an `update`, both optional and neither
 
 ## The in-dashboard surface
 
-Everything above is the CLI/skill workflow you drive by hand. The dashboard also owns the graph as a feature, and that is a different set of files:
+Everything above is the CLI workflow you drive by hand. The dashboard also owns the graph as a feature, and that is a different set of files:
 
 - **`GraphService`** (`src/services/graph_service.py`) — build / refresh / query / status, version detection and cost tracking; shells out via `python -m graphify` and owns `graphify-out/`.
 - **Config** — the `graphify_enabled`, `graphify_auto_refresh` and `graphify_backend` columns on `agent_config` (migration `028`), surfaced as **Settings ▸ Graphify**. Off by default.
