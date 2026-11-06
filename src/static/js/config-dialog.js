@@ -50,6 +50,16 @@ const ConfigDialog = {
                 this.refreshOllamaModels();
             }
 
+            // Load Tiiny settings
+            document.getElementById('config-tiiny-enabled').checked = !!config.tiiny_enabled;
+            document.getElementById('config-tiiny-base-url').value = config.tiiny_base_url || window.__DEFAULT_TIINY_URL__;
+            document.getElementById('config-tiiny-load-claude-md').checked = !!config.tiiny_load_claude_md;
+            this._setTiinyStatus('', '');
+            document.getElementById('tiiny-test-result').innerHTML = '';
+            if (config.tiiny_enabled && window.__EXPERIMENTAL__) {
+                this.refreshTiinyModels();
+            }
+
             // Load plugins
             try {
                 this._configPlugins = JSON.parse(config.plugins || '[]');
@@ -107,6 +117,7 @@ const ConfigDialog = {
                 // Still populate from shared cache
                 await DialogUtils.populateOllamaOptions(document.getElementById('config-model'));
             }
+            await DialogUtils.populateTiinyOptions(document.getElementById('config-model'));
 
             this.switchConfigTab('general');
             DialogCore.open('config-dialog');
@@ -287,6 +298,63 @@ const ConfigDialog = {
         }
     },
 
+    _setTiinyStatus(state, message) {
+        const el = document.getElementById('tiiny-connection-status');
+        if (!el) return;
+        if (!state) { el.innerHTML = ''; return; }
+        const dotCls = state === 'connected' ? 'connected' : state === 'checking' ? 'checking' : 'disconnected';
+        el.innerHTML = `<span class="ollama-status-dot ${dotCls}"></span>${message || ''}`;
+    },
+
+    async refreshTiinyModels() {
+        const listEl = document.getElementById('tiiny-models-list');
+        const keyEl = document.getElementById('tiiny-key-status');
+        if (listEl) listEl.innerHTML = '<span style="color:var(--text-muted);">Fetching models…</span>';
+        this._setTiinyStatus('checking', 'Connecting…');
+        try {
+            const result = await Api.request('GET', '/api/tiiny/models?force=true');
+            const models = result.models || [];
+            if (keyEl) {
+                keyEl.innerHTML = result.key_present
+                    ? '<span style="color:var(--success, #4caf50);">✓ API key found</span>'
+                    : '<span style="color:var(--warning);">⚠ No API key found</span>';
+            }
+            this._setTiinyStatus(result.error ? 'disconnected' : 'connected', result.error ? 'Not available' : 'Reachable');
+            if (listEl) {
+                const esc = s => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+                const rows = models.map(m => `<div style="padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:3px;"><code style="font-size:12px;">${esc(m.name)}</code></div>`).join('');
+                listEl.innerHTML = (result.error ? `<div style="color:var(--warning);margin-bottom:4px;">⚠ ${esc(result.error)}</div>` : '') + rows;
+            }
+            for (const m of models) {
+                window.__MODEL_NAMES__[m.name] = m.display_name;
+            }
+            DialogUtils._tiinyCache = { models, enabled: result.enabled !== false, fetched: true };
+            this._updateModelDropdowns();
+        } catch (err) {
+            console.error('Failed to fetch Tiiny models:', err);
+            this._setTiinyStatus('disconnected', 'Not available');
+            if (listEl) listEl.innerHTML = '<span style="color:var(--warning);">⚠ Failed to fetch models</span>';
+        }
+    },
+
+    async testTiinyConnection() {
+        const out = document.getElementById('tiiny-test-result');
+        if (out) out.innerHTML = '<span style="color:var(--text-muted);">Sending "Reply with the word OK"… (first call after a model load can be slow)</span>';
+        try {
+            const result = await Api.request('POST', '/api/tiiny/test', {
+                base_url: document.getElementById('config-tiiny-base-url').value,
+            });
+            const esc = s => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+            if (out) {
+                out.innerHTML = result.ok
+                    ? `<span style="color:var(--success, #4caf50);">✓ ${esc(result.model || 'model')} replied: “${esc(result.reply)}”</span>`
+                    : `<span style="color:var(--warning);">⚠ ${esc(result.message)}</span>`;
+            }
+        } catch (err) {
+            if (out) out.innerHTML = '<span style="color:var(--warning);">⚠ Test request failed</span>';
+        }
+    },
+
     _updateModelDropdowns() {
         // Update both config-model and item-form-model selects
         this._updateModelSelect('config-model', false);
@@ -314,6 +382,22 @@ const ConfigDialog = {
                 const sizeStr = m.size ? ` (${(m.size / 1e9).toFixed(1)}GB)` : '';
                 const paramStr = m.parameter_size ? `:${m.parameter_size}` : '';
                 opt.textContent = `${m.display_name}${paramStr}${sizeStr}`;
+                optgroup.appendChild(opt);
+            }
+            select.appendChild(optgroup);
+        }
+
+        // Tiiny models (from the shared cache) after Ollama
+        const tiinyGroup = select.querySelector('optgroup[label="Tiiny Models"]');
+        if (tiinyGroup) tiinyGroup.remove();
+        const tiiny = DialogUtils._tiinyCache;
+        if (tiiny.enabled && tiiny.models.length > 0) {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = 'Tiiny Models';
+            for (const m of tiiny.models) {
+                const opt = document.createElement('option');
+                opt.value = m.name;
+                opt.textContent = m.display_name;
                 optgroup.appendChild(opt);
             }
             select.appendChild(optgroup);
@@ -598,6 +682,9 @@ const ConfigDialog = {
             ollama_enabled: document.getElementById('config-ollama-enabled').checked,
             ollama_base_url: document.getElementById('config-ollama-base-url').value || 'http://localhost:11434',
             ollama_load_claude_md: document.getElementById('config-ollama-load-claude-md').checked,
+            tiiny_enabled: document.getElementById('config-tiiny-enabled').checked,
+            tiiny_base_url: document.getElementById('config-tiiny-base-url').value || window.__DEFAULT_TIINY_URL__,
+            tiiny_load_claude_md: document.getElementById('config-tiiny-load-claude-md').checked,
             wip_limit: parseInt(document.getElementById('config-wip-limit').value, 10) || 0,
             graphify_enabled: document.getElementById('config-graphify-enabled').checked,
             graphify_auto_refresh: document.getElementById('config-graphify-auto-refresh').checked,

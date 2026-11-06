@@ -43,12 +43,24 @@ Replace this with the specific objective the moment one is in flight.
   remote skill-install path validation + 8 MiB response cap (#16 → Remediated; audit rev 14, no open
   actionable finding), `verbatim_prompts=True` everywhere, SDK floor `>=0.2.165`, flag-aware
   `run.sh` argument parsing; 1372 tests (2026-10-14)
-- [ ] M11 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
+- [x] M11 — Tiiny provider (experimental): `tiiny/*` models run on a local Tiiny device through its
+  Anthropic endpoint as the shared lean *local* profile of the Claude runtime (Ollama profile
+  generalized); migration 033, Settings ▸ Tiiny tab, `/api/tiiny/{models,test}`, key from env/Keychain;
+  1434 tests; live-verified in the dashboard on a real device (2026-11-06)
+- [ ] M12 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
 
 ## Decisions
 
 Settled, still-relevant choices no agent should reopen without flagging here. Long-lived
 architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
+
+- 2026-11-06 — Tiiny is a **local profile of the Claude runtime** (not a separate runtime), using
+  the device's Anthropic endpoint. The Ollama `AgentProfile` became the shared local profile
+  (`AgentProfile.local`; sessions take `local_env` / `load_claude_md`); the Ollama settings
+  (thinking off, `setting_sources=["local"]`) apply to Tiiny unchanged. Tiiny model IDs are
+  namespaced `tiiny/<id>` and stripped by `sdk_model_id` before the SDK. The Tiiny API key is
+  **never stored in the DB** — `$TIINY_API_KEY`, else macOS Keychain `tiiny-api-key` — and a local
+  env is only logged through `redact_env`. Details: `CARDS/TIINY_PROVIDER.md`.
 
 - 2026-10-23 — Python floor is **3.12** (kimi-agent-sdk / kimi-cli declare it; `src/` also uses
   3.11+ `StrEnum` / `asyncio.timeout`). `scripts/python-env.sh` is the only venv bootstrap
@@ -145,13 +157,14 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-No objective in flight. Last change (2026-10-14, M10): the hardening pass — the security audit
+No objective in flight. Last change (2026-11-06, M11): Tiiny provider — `scripts/tiiny-smoke.sh` and a
+real dashboard agent run both verified on the user's device. Previous change (2026-10-14, M10): the hardening pass — the security audit
 (`AGENT_FILES/AUDIT.md`, rev 14) has no open actionable finding. 2026-10-15: agentic setup
 refreshed against ai.memention.net/setup (record in `.claude/agent-setup.json`). 2026-10-23: shared
 Python >= 3.12 venv bootstrap (`scripts/python-env.sh`); the macOS wrapper delegates venv setup to `run.sh`.
 
-Authoritative counts, re-verified by collection/grep — trust these over prose: **32 migrations
-(001–032)**; **1391 tests = 20 smoke + 1357 unit + 14 integration** (plus 7 Node E2E tests,
+Authoritative counts, re-verified by collection/grep — trust these over prose: **33 migrations
+(001–033)**; **1434 tests = 20 smoke + 1400 unit + 14 integration** (plus 7 Node E2E tests,
 counted separately); **7 services**; **10 MCP tool servers exposing 12 tools** (`todo.py`
 serves three); skills ship as plugins, not as an MCP tool.
 

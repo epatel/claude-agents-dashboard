@@ -639,9 +639,9 @@ const Board = {
             timestampHtml = `<span class="card-timestamp" data-map-name="card.timestamp">${timeStr}</span>`;
         }
 
-        // Model badge (show only for non-default / Ollama models)
+        // Model badge (show only for non-default / local Ollama or Tiiny models)
         let modelBadgeHtml = '';
-        if (item.model && DialogUtils._isOllamaModel(item.model)) {
+        if (item.model && DialogUtils._isLocalModel(item.model)) {
             const shortName = DialogUtils._getModelDisplayName(item.model);
             modelBadgeHtml = `<span class="card-model-badge" data-map-name="card.model-badge" title="${item.model}">${shortName}</span>`;
         }

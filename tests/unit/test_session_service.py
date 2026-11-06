@@ -242,7 +242,7 @@ class TestKimiRouting:
             await service.create_session("item-1", temp_dir, config=config, model="kimi-k2")
 
         MockClaude.assert_not_called()
-        assert "ollama_env" not in MockKimi.call_args.kwargs
+        assert "local_env" not in MockKimi.call_args.kwargs
 
     @pytest.mark.asyncio
     async def test_claude_model_still_creates_claude_session(self, temp_dir):

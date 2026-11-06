@@ -533,6 +533,11 @@ body {
     color: #5a82f0;
 }
 
+.provider-badge-tiiny {
+    background: rgba(170, 110, 220, 0.15);
+    color: #aa6edc;
+}
+
 .card-model-badge {
     font-size: 10px;
     color: var(--text-muted);

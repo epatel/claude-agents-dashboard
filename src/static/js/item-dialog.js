@@ -570,8 +570,9 @@ const ItemDialog = {
                 defaultOption.textContent = `Use Global Default (${displayName})`;
             }
 
-            // Populate Ollama models in the item model dropdown
+            // Populate Ollama and Tiiny models in the item model dropdown
             await DialogUtils.populateOllamaOptions(modelSelect);
+            await DialogUtils.populateTiinyOptions(modelSelect);
         } catch (err) {
             console.error('Failed to fetch config for model display:', err);
             // Keep the original text if we can't fetch the config

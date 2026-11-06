@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..agent.profiles import is_kimi_model, is_ollama_model, resolve_ollama_env
+from ..agent.profiles import is_kimi_model, is_ollama_model, resolve_local_env
 from ..agent.review_agent import run_auto_review
 from ..agent.session import AgentResult
 from ..config import epic_plan_relpath
@@ -1773,9 +1773,10 @@ class WorkflowService:
 
             last_message = self._last_agent_message.get(item_id, "")
 
-            # Build Ollama env for the reviewer if the workspace is configured
-            # for it. The reviewer uses the same model selection logic as the
-            # implementing agent so a Claude/Ollama mix doesn't get mismatched.
+            # Build the local-provider (Tiiny/Ollama) env for the reviewer if the
+            # workspace is configured for it. The reviewer uses the same model
+            # selection logic as the implementing agent so a Claude/local mix
+            # doesn't get mismatched.
             config = await self.db.get_agent_config()
             review_model = item.get("model") or config.get("model")
             # The one-shot reviewer runs on the Claude Agent SDK; Kimi models
@@ -1788,7 +1789,7 @@ class WorkflowService:
                     "leaving item in Review for manual approval."
                 )
                 return
-            ollama_env = resolve_ollama_env(config, review_model)
+            local_env = resolve_local_env(config, review_model)
 
             await self._log_and_notify(
                 item_id, "system",
@@ -1810,7 +1811,7 @@ class WorkflowService:
                     item_description=item.get("description", ""),
                     diff=full_diff,
                     last_message=last_message,
-                    ollama_env=ollama_env,
+                    local_env=local_env,
                 )
             finally:
                 self._auto_reviewing.discard(item_id)

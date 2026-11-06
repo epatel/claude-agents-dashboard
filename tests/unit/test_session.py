@@ -153,12 +153,12 @@ class TestAgentSessionConstructor:
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_BASE_URL": "http://localhost:11434",
         }
-        session = make_session(ollama_env=env)
-        assert session.ollama_env == env
+        session = make_session(local_env=env)
+        assert session.local_env == env
 
     def test_ollama_env_default_none(self):
         session = make_session()
-        assert session.ollama_env is None
+        assert session.local_env is None
 
 
 
@@ -978,12 +978,12 @@ class TestStart:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
 
-        ollama_env = {
+        local_env = {
             "ANTHROPIC_AUTH_TOKEN": "ollama",
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_BASE_URL": "http://localhost:11434",
         }
-        session = make_session(worktree_path=tmp_path, model="qwen3.5", ollama_env=ollama_env)
+        session = make_session(worktree_path=tmp_path, model="qwen3.5", local_env=local_env)
         try:
             await session.start("test")
         except Exception:
@@ -1069,12 +1069,12 @@ class TestStart:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
 
-        ollama_env = {
+        local_env = {
             "ANTHROPIC_AUTH_TOKEN": "ollama",
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_BASE_URL": "http://localhost:11434",
         }
-        session = make_session(worktree_path=tmp_path, model="qwen3.5", ollama_env=ollama_env)
+        session = make_session(worktree_path=tmp_path, model="qwen3.5", local_env=local_env)
         try:
             await session.start("test")
         except Exception:
@@ -1094,12 +1094,12 @@ class TestStart:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
 
-        ollama_env = {
+        local_env = {
             "ANTHROPIC_AUTH_TOKEN": "ollama",
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_BASE_URL": "http://localhost:11434",
         }
-        session = make_session(worktree_path=tmp_path, model="qwen3.5", ollama_env=ollama_env)
+        session = make_session(worktree_path=tmp_path, model="qwen3.5", local_env=local_env)
         try:
             await session.start("test")
         except Exception:
@@ -1119,10 +1119,10 @@ class TestStart:
         mock_client_cls.return_value = mock_client
         (tmp_path / "CLAUDE.md").write_text("PROJECT CONVENTIONS: use tabs.")
 
-        ollama_env = {"ANTHROPIC_AUTH_TOKEN": "ollama", "ANTHROPIC_API_KEY": "",
+        local_env = {"ANTHROPIC_AUTH_TOKEN": "ollama", "ANTHROPIC_API_KEY": "",
                       "ANTHROPIC_BASE_URL": "http://localhost:11434"}
         session = make_session(worktree_path=tmp_path, model="qwen3.5",
-                               ollama_env=ollama_env, ollama_load_claude_md=True)
+                               local_env=local_env, load_claude_md=True)
         try:
             await session.start("test")
         except Exception:
@@ -1141,10 +1141,10 @@ class TestStart:
         mock_client_cls.return_value = mock_client
         (tmp_path / "CLAUDE.md").write_text("PROJECT CONVENTIONS: use tabs.")
 
-        ollama_env = {"ANTHROPIC_AUTH_TOKEN": "ollama", "ANTHROPIC_API_KEY": "",
+        local_env = {"ANTHROPIC_AUTH_TOKEN": "ollama", "ANTHROPIC_API_KEY": "",
                       "ANTHROPIC_BASE_URL": "http://localhost:11434"}
         session = make_session(worktree_path=tmp_path, model="qwen3.5",
-                               ollama_env=ollama_env)
+                               local_env=local_env)
         try:
             await session.start("test")
         except Exception:
@@ -1164,7 +1164,7 @@ class TestStart:
         (tmp_path / "CLAUDE.md").write_text("PROJECT CONVENTIONS: use tabs.")
 
         session = make_session(worktree_path=tmp_path, model="claude-opus-4-8",
-                               ollama_load_claude_md=True)
+                               load_claude_md=True)
         try:
             await session.start("test")
         except Exception:
@@ -1202,12 +1202,12 @@ class TestStart:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
 
-        ollama_env = {
+        local_env = {
             "ANTHROPIC_AUTH_TOKEN": "ollama",
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_BASE_URL": "http://localhost:11434",
         }
-        session = make_session(worktree_path=tmp_path, model="qwen3.5", ollama_env=ollama_env)
+        session = make_session(worktree_path=tmp_path, model="qwen3.5", local_env=local_env)
         try:
             await session.start("test")
         except Exception:
@@ -1216,7 +1216,7 @@ class TestStart:
         kwargs = mock_options_cls.call_args.kwargs
         assert kwargs["verbatim_prompts"] is True
         # The profile still supplies its own divergent values alongside it.
-        assert kwargs["env"] == ollama_env
+        assert kwargs["env"] == local_env
 
     @patch("src.agent.session.ClaudeSDKClient")
     @patch("src.agent.session.ClaudeAgentOptions")
@@ -1226,26 +1226,26 @@ class TestStart:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
 
-        ollama_env = {
+        local_env = {
             "ANTHROPIC_AUTH_TOKEN": "ollama",
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_BASE_URL": "http://localhost:11434",
         }
-        session = make_session(worktree_path=tmp_path, model="qwen3.5", ollama_env=ollama_env)
+        session = make_session(worktree_path=tmp_path, model="qwen3.5", local_env=local_env)
         try:
             await session.start("test")
         except Exception:
             pass
 
         kwargs = mock_options_cls.call_args.kwargs
-        assert kwargs["env"] == ollama_env
+        assert kwargs["env"] == local_env
         assert kwargs["model"] == "qwen3.5"
 
     @patch("src.agent.session.ClaudeSDKClient")
     @patch("src.agent.session.ClaudeAgentOptions")
     @pytest.mark.asyncio
     async def test_start_ollama_env_none_passes_empty_dict(self, mock_options_cls, mock_client_cls, tmp_path):
-        """When ollama_env is None, env should be an empty dict (SDK default)."""
+        """When local_env is None, env should be an empty dict (SDK default)."""
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
 
@@ -1266,12 +1266,12 @@ class TestStart:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
 
-        ollama_env = {
+        local_env = {
             "ANTHROPIC_AUTH_TOKEN": "ollama",
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_BASE_URL": "http://192.168.1.100:11434",
         }
-        session = make_session(worktree_path=tmp_path, model="llama3.2", ollama_env=ollama_env)
+        session = make_session(worktree_path=tmp_path, model="llama3.2", local_env=local_env)
         try:
             await session.start("test")
         except Exception:

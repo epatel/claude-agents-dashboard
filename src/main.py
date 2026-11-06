@@ -125,7 +125,7 @@ def main():
     parser.add_argument("--port", type=int, default=None,
                         help=f"Port to bind to (default: auto-detect starting from {DEFAULT_PORT})")
     parser.add_argument("--experimental", action="store_true", default=False,
-                        help="Enable experimental features (Ollama and Kimi providers). "
+                        help="Enable experimental features (Ollama, Tiiny and Kimi providers). "
                              "Note: Kimi agents get a weaker worktree boundary than Claude "
                              "agents — the dashboard denies out-of-worktree paths only on the "
                              "tool calls kimi asks permission for, and merely logs the rest. "
@@ -205,7 +205,7 @@ def main():
     if host == "0.0.0.0":
         print(f"⚠️  Accepting connections from all network interfaces")
     if args.experimental:
-        print(f"🧪 Experimental features enabled (Ollama + Kimi providers)")
+        print(f"🧪 Experimental features enabled (Ollama + Tiiny + Kimi providers)")
         print("   ⚠️  Kimi agents have a weaker worktree boundary than Claude agents — "
               "see AGENT_FILES/CARDS/KIMI_PROVIDER.md")
     if args.ui_map:

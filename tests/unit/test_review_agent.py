@@ -48,7 +48,7 @@ class TestReviewOptions:
     @pytest.mark.asyncio
     async def test_verbatim_prompts_on_ollama_branch(self, tmp_path):
         """verbatim_prompts is a CLI-level flag, so the Ollama branch keeps it."""
-        ollama_env = {
+        local_env = {
             "ANTHROPIC_AUTH_TOKEN": "ollama",
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_BASE_URL": "http://localhost:11434",
@@ -56,12 +56,12 @@ class TestReviewOptions:
         client_cls, _ = _mock_client_cls()
         with patch("src.agent.review_agent.ClaudeSDKClient", client_cls), \
              patch("src.agent.review_agent.ClaudeAgentOptions") as options_cls:
-            await _run(tmp_path, ollama_env=ollama_env)
+            await _run(tmp_path, local_env=local_env)
 
         kwargs = options_cls.call_args.kwargs
         assert kwargs["verbatim_prompts"] is True
         # Ollama's divergent values still come from the profile.
-        assert kwargs["env"] == ollama_env
+        assert kwargs["env"] == local_env
         assert kwargs["thinking"] == {"type": "disabled"}
 
     @pytest.mark.asyncio

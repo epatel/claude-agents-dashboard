@@ -23,7 +23,7 @@ FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin
 - `routes.py` — board/item/epic/clarification/shortcut/notifications/stats/graphify HTTP endpoints (~1750 LOC)
 - `file_routes.py` — attachments + file browser
 - `websocket.py` — WS connection manager
-- `src/model_catalog.py` (one level up) — the selectable model list rendered into the board: Claude and Kimi entries fetched from the published feed (`constants.MODEL_LIST_URL`), with bundled per-provider fallbacks in `constants.py`; Ollama models are discovered separately via `/api/ollama/models`
+- `src/model_catalog.py` (one level up) — the selectable model list rendered into the board: Claude and Kimi entries fetched from the published feed (`constants.MODEL_LIST_URL`), with bundled per-provider fallbacks in `constants.py`; Ollama models are discovered separately via `/api/ollama/models`, Tiiny models via `/api/tiiny/models`
 
 ## Agent runtime (`src/agent/`)
 
@@ -49,7 +49,7 @@ Claude SDK integration plus built-in MCP tool servers and PreToolUse hooks. One 
 **Plus**:
 - `base.py` — `AbstractAgentSession` contract (start/cancel + `current_session_id`/`on_error`) and the `AgentResult` dataclass
 - `kimi_session.py` — `KimiAgentSession` (experimental): the first non-Claude runtime, drives `kimi acp` (Kimi Code CLI as an ACP server) for `kimi-*` models; `kimi_board_mcp.py` is its stdio board-tools proxy; see [KIMI_PROVIDER](KIMI_PROVIDER.md)
-- `profiles.py` — provider routing (`is_kimi_model` / `is_ollama_model` / `resolve_ollama_env`) plus the `AgentProfile` that carries the divergent SDK options and feature gates (Ollama = a profile of the Claude runtime, not a separate runtime; Kimi = a separate runtime)
+- `profiles.py` — provider routing (`is_kimi_model` / `is_ollama_model` / `is_tiiny_model`, `resolve_local_env` → Tiiny or Ollama env, `sdk_model_id`) plus the `AgentProfile` that carries the divergent SDK options and feature gates (Ollama and Tiiny = the shared lean *local* profile of the Claude runtime, `AgentProfile.local`; Kimi = a separate runtime). See [TIINY_PROVIDER](TIINY_PROVIDER.md)
 - `session.py` — `ClaudeAgentSession` (Claude Agent SDK wrapper): system prompt + tool wiring
 - `review_agent.py` — the read-only reviewer session spawned for `auto_approve=REVIEW`; its tool allowlist is `_REVIEWER_ALLOWED_TOOLS = {Read, Glob, Grep}`, so APPROVE auto-merges and anything else routes comments back to the original agent (retry bookkeeping lives in `WorkflowService`)
 - `orchestrator.py` — the public facade

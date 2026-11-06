@@ -287,7 +287,7 @@ Subsystem prefixes:
 | `dialog.settings.btn-close` | × close button | `src/templates/board.html` |
 | `dialog.settings.form` | Settings form | `src/templates/board.html` |
 | `dialog.settings.tabs` | Tab-bar wrapper | `src/templates/board.html` |
-| `dialog.settings.tab-{id}` | Individual tab button; `{id}` ∈ `general`, `prompts`, `ollama`, `mcp`, `plugins`, `skills`, `appearance`, `graphify` | `src/templates/board.html` |
+| `dialog.settings.tab-{id}` | Individual tab button; `{id}` ∈ `general`, `prompts`, `ollama`, `tiiny`, `mcp`, `plugins`, `skills`, `appearance`, `graphify` | `src/templates/board.html` |
 | `dialog.settings.panel-{id}` | Tab content panel | `src/templates/board.html` |
 | `dialog.settings.field-model` | Model `<select>` (General) | `src/templates/board.html` |
 | `dialog.settings.field-wip-limit` | WIP limit `<input>` (General) | `src/templates/board.html` |

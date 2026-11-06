@@ -28,7 +28,7 @@ from claude_agent_sdk import (
     TextBlock,
 )
 
-from .profiles import resolve_profile
+from .profiles import resolve_profile, sdk_model_id
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +123,7 @@ async def run_auto_review(
     item_description: str,
     diff: str,
     last_message: str,
-    ollama_env: dict[str, str] | None = None,
+    local_env: dict[str, str] | None = None,
     timeout: float = 240.0,
 ) -> dict:
     """Run a one-shot review agent and parse its decision.
@@ -137,21 +137,22 @@ async def run_auto_review(
     prompt = _build_review_prompt(item_title, item_description, diff, last_message)
 
     # Provider-divergent values come from the profile (see profiles.resolve_profile
-    # for the Ollama rationale: thinking disabled, no `user` settings). The
-    # reviewer always runs bypassPermissions — its tool allowlist is the guard —
-    # and the non-Ollama branch deliberately omits thinking/setting_sources
+    # for the local-provider rationale: thinking disabled, no `user` settings).
+    # The reviewer always runs bypassPermissions — its tool allowlist is the
+    # guard — and the Claude branch deliberately omits thinking/setting_sources
     # (SDK defaults), so the profile's permission_mode/kwargs helper is not used.
     #
     # verbatim_prompts: the review prompt embeds the item title/description and
     # the raw diff, so a `@path` anywhere in that text would otherwise become a
     # CLI-side file read (and a leading `/name` a slash command) before the
     # reviewer ever sees it. Same reasoning as session.py.
-    profile = resolve_profile(ollama_env)
-    if profile.name == "ollama":
+    profile = resolve_profile(local_env, model=model)
+    if profile.local:
         options = ClaudeAgentOptions(
             cwd=worktree_path,
             system_prompt=_REVIEW_SYSTEM_PROMPT,
-            model=model,
+            # Tiiny ids are namespaced ("tiiny/default"); the SDK gets the bare id.
+            model=sdk_model_id(model),
             permission_mode="bypassPermissions",
             allowed_tools=list(_REVIEWER_ALLOWED_TOOLS),
             can_use_tool=_review_can_use_tool,

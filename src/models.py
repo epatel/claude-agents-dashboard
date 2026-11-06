@@ -6,6 +6,7 @@ import uuid
 from .constants import (
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_BASE_URL,
+    DEFAULT_TIINY_BASE_URL,
     EPIC_COLORS,
     AUTO_APPROVE_OFF,
     AUTO_APPROVE_REVIEW,
@@ -219,6 +220,9 @@ class AgentConfig(BaseModel):
     ollama_enabled: bool = False
     ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
     ollama_load_claude_md: bool = False
+    tiiny_enabled: bool = False
+    tiiny_base_url: str = DEFAULT_TIINY_BASE_URL
+    tiiny_load_claude_md: bool = False
     wip_limit: int = 0
     graphify_enabled: bool = False
     graphify_auto_refresh: bool = True

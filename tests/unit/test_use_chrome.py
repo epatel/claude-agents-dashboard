@@ -145,7 +145,7 @@ class TestStartConfiguresChrome:
         """Even with use_chrome=True, Ollama mode must not enable browser tools."""
         kwargs = await _start_and_capture_options(
             mock_options, mock_client, worktree_path=temp_dir, use_chrome=True,
-            ollama_env={"ANTHROPIC_BASE_URL": "http://localhost:11434"},
+            local_env={"ANTHROPIC_BASE_URL": "http://localhost:11434"},
         )
         # Ollama options block carries no extra_args at all.
         assert kwargs.get("extra_args") is None

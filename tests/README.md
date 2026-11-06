@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (1391 tests across 54 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (32 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1434 tests across 55 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (32 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -46,11 +46,12 @@ tests/
 │   ├── test_notification_service.py             # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
 │   ├── test_peek_worktree.py                    # peek_worktree tool, git reads, rendering (23 tests)
-│   ├── test_routes.py                           # HTTP endpoint tests (116 tests)
+│   ├── test_routes.py                           # HTTP endpoint tests (125 tests)
 │   ├── test_base.py                             # AbstractAgentSession contract (4 tests)
 │   ├── test_kimi_board_mcp.py                   # Kimi board-tools stdio MCP proxy (12 tests)
 │   ├── test_kimi_session.py                     # KimiAgentSession over ACP (experimental) (88 tests)
 │   ├── test_profiles.py                         # Provider profiles + Kimi/Ollama routing (23 tests)
+│   ├── test_tiiny_provider.py                   # Tiiny provider: routing, key, env, profile, migration 033 (34 tests)
 │   ├── test_review_agent.py                     # Auto-review session options (3 tests)
 │   ├── test_session.py                          # ClaudeAgentSession SDK wrapper (98 tests)
 │   ├── test_session_service.py                  # SessionService lifecycle + provider routing (54 tests)
@@ -161,7 +162,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 1391 tests
+# Run all 1434 tests
 ./run-tests.sh
 
 # Run specific test categories (any path narrows the run)
@@ -184,7 +185,7 @@ pytest tests/unit/migrations/
 
 # Select by path, not by marker. The unit/integration/smoke markers exist in
 # pytest.ini but are applied to only a minority of files — `pytest -m unit`
-# collects ~94 of 1357 unit tests and silently skips the rest.
+# collects ~94 of 1400 unit tests and silently skips the rest.
 pytest tests/unit/
 pytest tests/integration/
 pytest tests/smoke/

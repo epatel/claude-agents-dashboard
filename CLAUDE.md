@@ -7,7 +7,7 @@ Standalone scrum board that orchestrates Claude agents working on a **separate t
 ```bash
 ./run.sh /path/to/target-project    # Single-repo mode
 ./run.sh /path/to/workspace-folder  # Multi-repo mode
-./run.sh /path/to/project --experimental  # Experimental features (Ollama + Kimi providers)
+./run.sh /path/to/project --experimental  # Experimental features (Ollama + Tiiny + Kimi providers)
 ./run.sh /path/to/project --ui-map        # PROJECT_MAP overlays (Cmd+Shift+M)
 ./run-tests.sh                      # All tests (unit/integration/smoke — count in CARDS/TESTING.md)
 ./run-tests.sh tests/unit/test_x.py -k name  # One file / dir / test (any path narrows the run)

@@ -60,6 +60,10 @@ DEFAULT_MODEL = "claude-opus-5"
 # Default Ollama base URL
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 
+# Default Tiiny Anthropic-protocol endpoint. The *.api.tiiny names resolve to
+# 127.0.0.1, where the TiinyOS PC Server forwards to the device. Plain http.
+DEFAULT_TIINY_BASE_URL = "http://anthropic.api.tiiny"
+
 # Auto-approve modes for items.
 # Stored as INTEGER in the items.auto_approve column (legacy: 0/1 boolean).
 #   0 (OFF)    — no auto-approve; the agent's work lands in Review for a human.

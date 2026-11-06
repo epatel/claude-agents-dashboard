@@ -7,6 +7,8 @@
 **Last reviewed**: 2026-10-08 (doc reassessment — no functional changes; `ollama_enabled` / `ollama_base_url` columns and the `/api/ollama/models` route still present. Ollama is **no longer the only** `--experimental` feature: the Kimi provider is gated behind the same flag — see [KIMI_PROVIDER](KIMI_PROVIDER.md). The local-model table below is from the 2026-04-12 test and is not re-verified.)
 **Status**: Working ✓
 
+> **2026-11-06**: the lean Ollama `AgentProfile` is now the shared *local* profile, also used by Tiiny (see [TIINY_PROVIDER](TIINY_PROVIDER.md)). Sessions take `local_env` / `load_claude_md` (renamed from `ollama_env` / `ollama_load_claude_md`); routing goes through `profiles.resolve_local_env`. The Ollama behavior below is unchanged.
+
 ## Overview
 
 The Claude Agent SDK can use a local Ollama instance as its model provider. Ollama exposes an Anthropic-compatible API at `/v1/messages`, which the SDK calls transparently when configured via environment variables.

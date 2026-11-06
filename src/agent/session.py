@@ -27,7 +27,14 @@ from claude_agent_sdk import (
 )
 
 from .base import AbstractAgentSession, AgentResult  # noqa: F401  (AgentResult re-exported)
-from .profiles import profile_options_kwargs, resolve_profile
+from .profiles import (
+    is_tiiny_model,
+    profile_options_kwargs,
+    redact_env,
+    resolve_profile,
+    sdk_model_id,
+    tiiny_error_hint,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,8 +160,8 @@ class ClaudeAgentSession(AbstractAgentSession):
         bash_yolo: bool = False,
         allowed_builtin_tools: list[str] | None = None,
         use_chrome: bool = False,
-        ollama_env: dict[str, str] | None = None,
-        ollama_load_claude_md: bool = False,
+        local_env: dict[str, str] | None = None,
+        load_claude_md: bool = False,
         workspace_root: Path | None = None,
         sibling_repo_paths: list[Path] | None = None,
         item_repo_name: str | None = None,
@@ -167,11 +174,11 @@ class ClaudeAgentSession(AbstractAgentSession):
         self.allowed_commands = allowed_commands or []
         self.bash_yolo = bash_yolo
         self.allowed_builtin_tools = allowed_builtin_tools or []
-        self.ollama_env = ollama_env
-        # When True, inject the worktree CLAUDE.md into the Ollama system prompt
-        # (the Ollama path uses setting_sources=["local"], which does not
+        self.local_env = local_env
+        # When True, inject the worktree CLAUDE.md into a local-provider system
+        # prompt (the local path uses setting_sources=["local"], which does not
         # auto-load it the way the Claude path's ["project"] does).
-        self.ollama_load_claude_md = ollama_load_claude_md
+        self.load_claude_md = load_claude_md
         # Multi-repo mode fields (all None in single-repo mode).
         self.workspace_root = workspace_root
         self.sibling_repo_paths = sibling_repo_paths or []
@@ -244,7 +251,7 @@ class ClaudeAgentSession(AbstractAgentSession):
         # Provider profile: which SDK options and features this run gets.
         # The Ollama profile disables heavy features (graphify, external MCP,
         # plugins, chrome) whose tool definitions overwhelm small local models.
-        profile = resolve_profile(self.ollama_env, ollama_load_claude_md=self.ollama_load_claude_md)
+        profile = resolve_profile(self.local_env, model=self.model, load_claude_md=self.load_claude_md)
         # graphify graph_query tool — only when enabled in config
         if self.on_graph_query and self.graphify_enabled and profile.graphify:
             from .graph_query import create_graph_query_server
@@ -264,7 +271,7 @@ class ClaudeAgentSession(AbstractAgentSession):
                 mcp_servers.update(agent_mcp_servers)
                 logger.info(f"Loaded {len(agent_mcp_servers)} MCP servers from agent configuration")
         elif self.mcp_enabled and self.mcp_servers:
-            logger.info("Ollama mode: skipping external MCP servers to reduce context size")
+            logger.info(f"{profile.name} mode: skipping external MCP servers to reduce context size")
 
         # Ensure agent knows to work in the worktree directory
         cwd_note = (
@@ -451,9 +458,9 @@ class ClaudeAgentSession(AbstractAgentSession):
                     claude_md_note = (
                         f"\n\n--- Project CLAUDE.md ({claude_md_path}) ---\n{content}"
                     )
-                    logger.info("Ollama mode: injected project CLAUDE.md into system prompt")
+                    logger.info(f"{profile.name} mode: injected project CLAUDE.md into system prompt")
                 else:
-                    logger.info("Ollama 'Load project CLAUDE.md' is on but no CLAUDE.md found in worktree")
+                    logger.info(f"{profile.name} 'Load project CLAUDE.md' is on but no CLAUDE.md found in worktree")
             except Exception as e:
                 logger.warning(f"Could not read project CLAUDE.md at {claude_md_path}: {e}")
 
@@ -555,7 +562,7 @@ class ClaudeAgentSession(AbstractAgentSession):
                     plugin_prefixes.append(f"mcp__plugin_{plugin_name}")
                     logger.info(f"Loading plugin from: {plugin_path}")
         elif self.plugins:
-            logger.info("Ollama mode: skipping plugins to reduce context size")
+            logger.info(f"{profile.name} mode: skipping plugins to reduce context size")
 
         # Always allow Bash in the tool whitelist — permission_mode and the
         # PreToolUse hook handle actual command filtering.
@@ -639,14 +646,16 @@ class ClaudeAgentSession(AbstractAgentSession):
         # setting_sources, env, stderr) come from the profile — the Ollama
         # rationale (thinking disabled, no `user` settings) is documented in
         # profiles.resolve_profile and locked in project-plan.md Decisions.
-        if profile.name == "ollama":
-            logger.info(f"Ollama mode: using lightweight SDK options for model {self.model}")
-            logger.info(f"Ollama env: {self.ollama_env}")
+        if profile.local:
+            logger.info(f"{profile.name} mode: using lightweight SDK options for model {self.model}")
+            # redact_env: a Tiiny env carries the API key.
+            logger.info(f"{profile.name} env: {redact_env(self.local_env)}")
 
         options_kwargs = dict(
             cwd=self.worktree_path,
             system_prompt=full_system_prompt,
-            model=self.model,
+            # Tiiny ids are namespaced ("tiiny/default"); the SDK gets the bare id.
+            model=sdk_model_id(self.model),
             mcp_servers=mcp_servers if mcp_servers else None,
             allowed_tools=allowed_tools if allowed_tools else None,
             can_use_tool=can_use_tool_fn,
@@ -780,6 +789,10 @@ class ClaudeAgentSession(AbstractAgentSession):
                     error_text = message.result if message.is_error else None
                     if message.is_error and api_error_status:
                         error_text = f"[HTTP {api_error_status}] {error_text or ''}".strip()
+                    if message.is_error and is_tiiny_model(self.model):
+                        hint = tiiny_error_hint(api_error_status, error_text)
+                        if hint:
+                            error_text = f"{error_text or ''} — {hint}".strip(" —")
 
                     result = AgentResult(
                         success=not message.is_error,

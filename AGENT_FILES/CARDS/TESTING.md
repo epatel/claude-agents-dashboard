@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1391 tests
+./run-tests.sh              # Run all 1434 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -61,13 +61,14 @@ tests/
 │   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
 │   ├── test_peek_worktree.py        # peek_worktree tool, git reads, rendering (23 tests)
-│   ├── test_routes.py               # HTTP endpoint tests (116 tests)
+│   ├── test_routes.py               # HTTP endpoint tests (125 tests)
 │   ├── test_run_sh_args.py          # run.sh target/flag argument parsing (11 tests)
 │   ├── test_python_env.py           # scripts/python-env.sh venv bootstrap (13 tests)
 │   ├── test_base.py                 # AbstractAgentSession contract (4 tests)
 │   ├── test_kimi_board_mcp.py       # Kimi board-tools stdio MCP proxy (12 tests)
 │   ├── test_kimi_session.py         # KimiAgentSession over ACP (experimental) (88 tests)
 │   ├── test_profiles.py             # Provider profiles + Kimi/Ollama routing (23 tests)
+│   ├── test_tiiny_provider.py       # Tiiny provider: routing, key, env, profile, migration 033 (34 tests)
 │   ├── test_review_agent.py         # Auto-review session options (3 tests)
 │   ├── test_session.py              # ClaudeAgentSession SDK wrapper (98 tests)
 │   ├── test_session_service.py      # SessionService lifecycle + provider routing (54 tests)
@@ -85,7 +86,7 @@ tests/
 
 ## Test Categories
 
-**1391 total** = 20 smoke + 1357 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1357 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
+**1434 total** = 20 smoke + 1400 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1400 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
 
 ### Smoke Tests (20 tests)
 Quick checks that core components work:
@@ -108,8 +109,8 @@ Quick checks that core components work:
 - **GraphService** (12 tests): graphify build/refresh/query/status, version detection, cost tracking
 - **SkillsService** (14 tests): library install/list/remove, browse Anthropic source, multi-skill repo discovery, spec parsing, gitignore management, remote-tree path validation (traversal + absolute entries skipped) and the HTTP response size cap
 
-### Unit Tests — Web Layer (253 tests)
-- **Routes** (116 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, `/api/graphify/*`, `/api/skills/*`
+### Unit Tests — Web Layer (262 tests)
+- **Routes** (125 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, `/api/graphify/*`, `/api/skills/*`, `/api/tiiny/*`
 - **File Routes** (66 tests): Path validation, secret detection, .browserhidden, language mapping, directory scanning, file content
 - **WebSocket** (45 tests): Connection management, rate limiting, dead-connection cleanup
 - **App** (26 tests): FastAPI factory, middleware, CORS, security headers, lifespan
@@ -126,12 +127,13 @@ Quick checks that core components work:
 - **graph_query tool** (10 tests): Read-only knowledge-graph MCP tool server
 - **Kimi board-tools MCP proxy** (12 tests): stdio subprocess against a stub dashboard API — tools list, agent-todos proxying (requires/autostart), error resilience
 
-### Unit Tests — Session (216 tests)
+### Unit Tests — Session (250 tests)
 - `ClaudeAgentSession` SDK wrapper, token extraction, event handling, `verbatim_prompts` (98)
 - Auto-review session (`review_agent.run_auto_review`): `ClaudeAgentOptions` on both
   the Claude and Ollama branches, prompt passed through unmodified (3)
 - `AbstractAgentSession` contract conformance (4)
 - Provider profiles: Kimi/Ollama routing predicates, env builder, profile gate matrix, options kwargs (23)
+- Tiiny provider (`test_tiiny_provider.py`): `tiiny/*` routing, API-key lookup (env/Keychain), env builder, local profile, error hints, session/reviewer/service wiring, migration 033 (34)
 - `KimiAgentSession` over ACP: chunk aggregation, tool-call mapping, deferred tool input, commit-message + ask_user text protocols, resume/fallback, cancel, missing-SDK hint, permission decisions + handler + force-ask env, CLAUDE.md/AGENTS.md context, board-tools MCP config, worktree path boundary (shared `PathScope`, AUDIT #15), errors (88)
 
 ### Unit Tests — Migrations (63 tests)
@@ -226,7 +228,7 @@ async def test_apply_migration(self, raw_db, runner):
 ### Adding New Tests
 
 1. Place in the appropriate directory (`unit/`, `integration/`, `smoke/`)
-2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1357. Select by path (`./run-tests.sh tests/unit/`), not by marker.
+2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1400. Select by path (`./run-tests.sh tests/unit/`), not by marker.
 3. Async tests work automatically (no `@pytest.mark.asyncio` needed)
 4. Run `./run-tests.sh` to verify all tests pass
 5. Put a new test file in one of the category buckets above and update that bucket's count and the totals here and in `tests/README.md` — the buckets partition the unit tests exactly, and unmaintained counts drift silently.

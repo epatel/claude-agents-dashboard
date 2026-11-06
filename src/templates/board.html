@@ -5,7 +5,8 @@
 window.__ANTHROPIC_MODEL_IDS__ = new Set([{% for model_id, _, _ in available_models %}{{ model_id|tojson }}{% if not loop.last %}, {% endif %}{% endfor %}]);
 window.__EXPERIMENTAL__ = {{ 'true' if experimental else 'false' }};
 window.__DEFAULT_MODEL__ = '{{ default_model }}';
-window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
+window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';
+window.__DEFAULT_TIINY_URL__ = '{{ default_tiiny_url }}';</script>
 <div class="epic-panel-toggle" onclick="Board.toggleEpicPanel()" data-map-name="board.epic-toggle">
     <svg class="epic-panel-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
     Epics
@@ -432,6 +433,7 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                 <button type="button" class="review-tab active" data-map-name="dialog.settings.tab-general" data-tab="general" onclick="Dialogs.switchConfigTab('general')">General</button>
                 <button type="button" class="review-tab" data-map-name="dialog.settings.tab-prompts" data-tab="prompts" onclick="Dialogs.switchConfigTab('prompts')">Prompts</button>
                 {% if experimental %}<button type="button" class="review-tab" data-map-name="dialog.settings.tab-ollama" data-tab="ollama" onclick="Dialogs.switchConfigTab('ollama')">Ollama <span style="font-size:9px;opacity:0.6;font-weight:normal;vertical-align:super;">experimental</span></button>{% endif %}
+                {% if experimental %}<button type="button" class="review-tab" data-map-name="dialog.settings.tab-tiiny" data-tab="tiiny" onclick="Dialogs.switchConfigTab('tiiny')">Tiiny <span style="font-size:9px;opacity:0.6;font-weight:normal;vertical-align:super;">experimental</span></button>{% endif %}
                 <button type="button" class="review-tab" data-map-name="dialog.settings.tab-mcp" data-tab="mcp" onclick="Dialogs.switchConfigTab('mcp')">MCP</button>
                 <button type="button" class="review-tab" data-map-name="dialog.settings.tab-plugins" data-tab="plugins" onclick="Dialogs.switchConfigTab('plugins')">Plugins</button>
                 <button type="button" class="review-tab" data-map-name="dialog.settings.tab-graphify" data-tab="graphify" onclick="Dialogs.switchConfigTab('graphify')">Graphify</button>
@@ -532,6 +534,64 @@ window.__DEFAULT_OLLAMA_URL__ = '{{ default_ollama_url }}';</script>
                         <b>1.</b> Install <a href="https://ollama.com" target="_blank" style="color:var(--accent);">Ollama</a> and start the server<br>
                         <b>2.</b> Pull a model: <code>ollama pull qwen3.5</code><br>
                         <b>3.</b> Enable this toggle — Ollama models will appear in all Model dropdowns automatically
+                    </p>
+                </div>
+            </div>
+            <!-- Tiiny tab -->
+            <div class="config-tab-content" data-map-name="dialog.settings.panel-tiiny" data-config-tab="tiiny" style="padding:20px;display:none;">
+                <div style="padding:8px 12px;margin-bottom:16px;background:var(--warning-bg, rgba(255,180,0,0.1));border:1px solid var(--warning, #e6a700);border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary);">
+                    <b>Experimental.</b> Runs agents on a local Tiiny device through its Anthropic-compatible endpoint. Like Ollama agents, Tiiny agents run without thinking, external MCP servers or plugins. Agents need a model marked <b>Tool Use</b> in TiinyOS.
+                </div>
+                <div class="form-group">
+                    <label for="config-tiiny-enabled" style="display:flex;align-items:center;gap:8px;">
+                        Enable Tiiny Provider
+                        <input type="checkbox" id="config-tiiny-enabled" style="cursor:pointer;" onchange="if(this.checked) ConfigDialog.refreshTiinyModels()">
+                    </label>
+                    <p class="text-muted" style="font-size:12px;margin:4px 0 0;">
+                        Route <code>tiiny/*</code> models to the Tiiny device. TiinyOS must run on this computer and be connected to the device.
+                    </p>
+                </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label for="config-tiiny-base-url" style="display:flex;align-items:center;gap:8px;">
+                        Base URL <span class="tooltip" title="TiinyOS → Settings → API Key shows it. Default http://anthropic.api.tiiny (plain http).">?</span>
+                        <span id="tiiny-connection-status" style="font-size:11px;font-weight:normal;"></span>
+                    </label>
+                    <input type="text" id="config-tiiny-base-url" placeholder="http://anthropic.api.tiiny" value="http://anthropic.api.tiiny">
+                </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label style="display:flex;align-items:center;gap:8px;">API key</label>
+                    <p class="text-muted" style="font-size:12px;margin:4px 0 0;line-height:1.5;">
+                        Not stored by the dashboard. Set <code>TIINY_API_KEY</code> before starting the server, or store it in the macOS Keychain:<br>
+                        <code>security add-generic-password -s tiiny-api-key -a "$USER" -w</code><br>
+                        <span id="tiiny-key-status"></span>
+                    </p>
+                </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label for="config-tiiny-load-claude-md" style="display:flex;align-items:center;gap:8px;">
+                        Load project CLAUDE.md
+                        <input type="checkbox" id="config-tiiny-load-claude-md" style="cursor:pointer;">
+                    </label>
+                    <p class="text-muted" style="font-size:12px;margin:4px 0 0;">
+                        Inject the project's <code>CLAUDE.md</code> into the prompt (Tiiny agents skip it by default to stay lean).
+                    </p>
+                </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
+                        Models
+                        <button type="button" class="btn btn-xs" onclick="ConfigDialog.refreshTiinyModels()" title="Refresh model list" style="font-size:11px;padding:2px 8px;">↻ Refresh</button>
+                        <button type="button" class="btn btn-xs" onclick="ConfigDialog.testTiinyConnection()" title="Send one short message to the device" style="font-size:11px;padding:2px 8px;">Test connection</button>
+                    </label>
+                    <div id="tiiny-models-list" style="font-size:12px;color:var(--text-muted);">
+                        Click Refresh to list models from the device.
+                    </div>
+                    <div id="tiiny-test-result" style="font-size:12px;margin-top:6px;"></div>
+                </div>
+                <div class="form-group" style="margin-top:16px;padding:12px;background:var(--bg-hover);border-radius:var(--radius-sm);">
+                    <label style="font-size:12px;font-weight:600;margin-bottom:6px;display:block;">How it works</label>
+                    <p class="text-muted" style="font-size:12px;margin:0;line-height:1.5;">
+                        <b>1.</b> Start TiinyOS and connect it to the device<br>
+                        <b>2.</b> Make the API key available (see above) and restart the dashboard if you set the env var<br>
+                        <b>3.</b> Enable this toggle and save — pick <code>tiiny/default</code> to use whatever model is loaded in TiinyOS
                     </p>
                 </div>
             </div>

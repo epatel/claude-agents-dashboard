@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ..agent.base import AbstractAgentSession
 from ..agent.kimi_session import KimiAgentSession
-from ..agent.profiles import is_kimi_model, resolve_ollama_env
+from ..agent.profiles import is_kimi_model, load_claude_md_for, resolve_local_env
 from ..agent.session import ClaudeAgentSession
 
 logger = logging.getLogger(__name__)
@@ -99,9 +99,10 @@ class SessionService:
             self._update_caffeinate()
             return session
 
-        # Ollama env only if enabled AND the model is actually an Ollama model
-        # (Claude models must not be routed to Ollama) — see agent/profiles.py.
-        ollama_env = resolve_ollama_env(config, session_model)
+        # Local-provider env (Tiiny or Ollama) only if that provider is enabled
+        # AND the model belongs to it (Claude models must never be routed to a
+        # local provider) — see agent/profiles.py.
+        local_env = resolve_local_env(config, session_model)
 
         session = ClaudeAgentSession(
             worktree_path=worktree_path,
@@ -131,8 +132,8 @@ class SessionService:
             allowed_commands=allowed_commands,
             bash_yolo=config.get("bash_yolo", False),
             allowed_builtin_tools=allowed_builtin_tools,
-            ollama_env=ollama_env,
-            ollama_load_claude_md=bool(config.get("ollama_load_claude_md", False)),
+            local_env=local_env,
+            load_claude_md=load_claude_md_for(config, session_model),
             workspace_root=workspace_root,
             sibling_repo_paths=sibling_repo_paths,
             item_repo_name=item_repo_name,

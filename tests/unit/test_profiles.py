@@ -106,11 +106,11 @@ class TestResolveProfile:
         assert p.inject_claude_md is False
 
     def test_ollama_load_claude_md_opt_in(self):
-        p = resolve_profile(build_ollama_env(DEFAULT_OLLAMA_BASE_URL), ollama_load_claude_md=True)
+        p = resolve_profile(build_ollama_env(DEFAULT_OLLAMA_BASE_URL), load_claude_md=True)
         assert p.inject_claude_md is True
 
     def test_load_claude_md_ignored_for_claude_profile(self):
-        p = resolve_profile(None, ollama_load_claude_md=True)
+        p = resolve_profile(None, load_claude_md=True)
         assert p.inject_claude_md is False
 
     def test_profile_is_frozen(self):

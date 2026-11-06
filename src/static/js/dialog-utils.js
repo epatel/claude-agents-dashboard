@@ -20,8 +20,9 @@ const DialogUtils = {
             return true;
         }
         // Anthropic models always start with "claude-"; Kimi models ("kimi-*")
-        // run on the Kimi Agent SDK runtime, not Ollama.
-        if (modelId.startsWith('claude-') || this._isKimiModel(modelId)) return false;
+        // run on the Kimi Agent SDK runtime, and Tiiny models ("tiiny/*") on
+        // the Tiiny device — none of them are Ollama.
+        if (modelId.startsWith('claude-') || this._isKimiModel(modelId) || this._isTiinyModel(modelId)) return false;
         // If it's in the server-rendered list, it's Anthropic
         const serverModels = window.__MODEL_NAMES__ || {};
         // Models that were in the initial server render are Anthropic
@@ -38,10 +39,25 @@ const DialogUtils = {
     },
 
     /**
+     * Determine if a model ID is a Tiiny model (local Tiiny device, experimental).
+     */
+    _isTiinyModel(modelId) {
+        return !!modelId && modelId.startsWith('tiiny/');
+    },
+
+    /**
+     * True for models served by a local provider (Ollama or Tiiny).
+     */
+    _isLocalModel(modelId) {
+        return this._isTiinyModel(modelId) || this._isOllamaModel(modelId);
+    },
+
+    /**
      * Get provider label for a model.
      */
     _getModelProvider(modelId) {
         if (this._isKimiModel(modelId)) return 'Kimi';
+        if (this._isTiinyModel(modelId)) return 'Tiiny';
         return this._isOllamaModel(modelId) ? 'Ollama' : 'Anthropic';
     },
 
@@ -52,6 +68,7 @@ const DialogUtils = {
         const provider = this._getModelProvider(modelId);
         const cls = provider === 'Ollama' ? 'provider-badge-ollama'
             : provider === 'Kimi' ? 'provider-badge-kimi'
+            : provider === 'Tiiny' ? 'provider-badge-tiiny'
             : 'provider-badge-anthropic';
         return `<span class="provider-badge ${cls}">${provider}</span>`;
     },
@@ -105,6 +122,51 @@ const DialogUtils = {
                 const sizeStr = m.size ? ` (${(m.size / 1e9).toFixed(1)}GB)` : '';
                 const paramStr = m.parameter_size ? `:${m.parameter_size}` : '';
                 opt.textContent = `${m.display_name}${paramStr}${sizeStr}`;
+                optgroup.appendChild(opt);
+            }
+            selectEl.appendChild(optgroup);
+        }
+    },
+
+    // --- Tiiny model discovery ---
+
+    _tiinyCache: { models: [], enabled: false, fetched: false },
+
+    async fetchTiinyModels() {
+        try {
+            const result = await Api.request('GET', '/api/tiiny/models');
+            this._tiinyCache = {
+                models: result.models || [],
+                enabled: result.enabled !== false,
+                fetched: true,
+            };
+            for (const m of this._tiinyCache.models) {
+                window.__MODEL_NAMES__[m.name] = m.display_name;
+            }
+        } catch {
+            // keep the previous cache
+        }
+        return this._tiinyCache;
+    },
+
+    /**
+     * Append Tiiny models as an optgroup to a <select> element.
+     * Removes any existing Tiiny optgroup first.
+     */
+    async populateTiinyOptions(selectEl) {
+        if (!selectEl || !window.__EXPERIMENTAL__) return;
+        if (!this._tiinyCache.fetched) {
+            await this.fetchTiinyModels();
+        }
+        const existing = selectEl.querySelector('optgroup[label="Tiiny Models"]');
+        if (existing) existing.remove();
+        if (this._tiinyCache.enabled && this._tiinyCache.models.length > 0) {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = 'Tiiny Models';
+            for (const m of this._tiinyCache.models) {
+                const opt = document.createElement('option');
+                opt.value = m.name;
+                opt.textContent = m.display_name;
                 optgroup.appendChild(opt);
             }
             selectEl.appendChild(optgroup);

@@ -5,14 +5,14 @@ import logging
 import uuid
 from pathlib import Path
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from ..config import COLUMNS
-from ..constants import DEFAULT_MODEL, DEFAULT_OLLAMA_BASE_URL, EPIC_COLORS
+from ..constants import DEFAULT_MODEL, DEFAULT_OLLAMA_BASE_URL, DEFAULT_TIINY_BASE_URL, EPIC_COLORS
 from ..model_catalog import get_available_models
 from ..domain.item_state import Event
 from ..repositories.epic_repository import EpicNotFound
@@ -227,6 +227,7 @@ async def board_page(request: Request):
             "available_models": get_available_models(),
             "default_model": DEFAULT_MODEL,
             "default_ollama_url": DEFAULT_OLLAMA_BASE_URL,
+            "default_tiiny_url": DEFAULT_TIINY_BASE_URL,
             "workspace_repos": sorted(repos) if repos else [],
             "workspace_mode": "multi" if repos else "single",
         },
@@ -1010,7 +1011,7 @@ async def update_config(request: Request, body: AgentConfig):
     db = request.app.state.db
     async with db.connect() as conn:
         await conn.execute(
-            "UPDATE agent_config SET system_prompt = ?, tools = ?, model = ?, project_context = ?, mcp_servers = ?, mcp_enabled = ?, plugins = ?, allowed_commands = ?, bash_yolo = ?, allowed_builtin_tools = ?, flame_enabled = ?, flame_intensity_multiplier = ?, ollama_enabled = ?, ollama_base_url = ?, ollama_load_claude_md = ?, wip_limit = ?, graphify_enabled = ?, graphify_auto_refresh = ?, graphify_backend = ?, updated_at = datetime('now') WHERE id = 1",
+            "UPDATE agent_config SET system_prompt = ?, tools = ?, model = ?, project_context = ?, mcp_servers = ?, mcp_enabled = ?, plugins = ?, allowed_commands = ?, bash_yolo = ?, allowed_builtin_tools = ?, flame_enabled = ?, flame_intensity_multiplier = ?, ollama_enabled = ?, ollama_base_url = ?, ollama_load_claude_md = ?, tiiny_enabled = ?, tiiny_base_url = ?, tiiny_load_claude_md = ?, wip_limit = ?, graphify_enabled = ?, graphify_auto_refresh = ?, graphify_backend = ?, updated_at = datetime('now') WHERE id = 1",
             (
                 body.system_prompt,
                 json.dumps(body.tools),
@@ -1027,6 +1028,9 @@ async def update_config(request: Request, body: AgentConfig):
                 body.ollama_enabled,
                 body.ollama_base_url,
                 body.ollama_load_claude_md,
+                body.tiiny_enabled,
+                body.tiiny_base_url,
+                body.tiiny_load_claude_md,
                 body.wip_limit,
                 body.graphify_enabled,
                 body.graphify_auto_refresh,
@@ -1244,6 +1248,140 @@ async def get_ollama_models(request: Request, force: bool = False):
         return {"models": [], "error": "Ollama API timed out.", "enabled": True}
     except Exception as e:
         return {"models": [], "error": f"Failed to fetch models: {str(e)}", "enabled": True}
+
+
+# --- Tiiny (experimental local provider) ---
+
+async def _tiiny_settings(request: Request) -> tuple[bool, str]:
+    """(tiiny_enabled, tiiny_base_url) from agent_config."""
+    enabled, base_url = False, DEFAULT_TIINY_BASE_URL
+    try:
+        async with request.app.state.db.connect() as conn:
+            cursor = await conn.execute(
+                "SELECT tiiny_enabled, tiiny_base_url FROM agent_config WHERE id = 1"
+            )
+            row = await cursor.fetchone()
+            if row:
+                enabled = bool(row["tiiny_enabled"])
+                base_url = row["tiiny_base_url"] or base_url
+    except Exception:
+        pass
+    return enabled, base_url.rstrip("/")
+
+
+def _tiiny_request(method: str, url: str, api_key: str, body: dict | None, timeout: float):
+    """Blocking HTTP call to the Tiiny endpoint → (status, parsed JSON | text).
+
+    status 0 means the endpoint could not be reached at all.
+    """
+    import urllib.error
+    import urllib.request
+
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("anthropic-version", "2023-06-01")
+    req.add_header("Accept", "application/json")
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+
+    def _parse(raw: bytes):
+        try:
+            return json.loads(raw.decode() or "null")
+        except ValueError:
+            return raw.decode(errors="replace")[:500]
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, _parse(resp.read())
+    except urllib.error.HTTPError as e:
+        return e.code, _parse(e.read())
+    except (urllib.error.URLError, OSError) as e:
+        return 0, str(getattr(e, "reason", e))
+
+
+def _tiiny_status_message(status: int, detail: Any) -> str:
+    from ..agent.profiles import tiiny_error_hint
+    if status == 0:
+        return tiiny_error_hint(None, "connection refused") or "Tiiny not reachable"
+    return tiiny_error_hint(status, None) or f"Tiiny returned HTTP {status}: {str(detail)[:200]}"
+
+
+@router.get("/api/tiiny/models")
+async def get_tiiny_models(request: Request, force: bool = False):
+    """Models the Tiiny device offers, as dashboard ids (tiiny/<Model ID>).
+
+    `tiiny/default` (whatever model is loaded in TiinyOS) is always offered,
+    even when listing fails, so the provider stays usable.
+    """
+    from ..agent.profiles import TIINY_MODEL_PREFIX, get_tiiny_api_key
+
+    enabled, base_url = await _tiiny_settings(request)
+    if not enabled and not force:
+        return {"models": [], "error": None, "enabled": False, "key_present": False}
+
+    default = {"name": f"{TIINY_MODEL_PREFIX}default",
+               "display_name": "Tiiny — loaded model (default)"}
+    api_key = await asyncio.to_thread(get_tiiny_api_key)
+    if not api_key:
+        return {"models": [default], "enabled": True, "key_present": False,
+                "error": "No API key: set TIINY_API_KEY or the Keychain entry 'tiiny-api-key'."}
+
+    status, data = await asyncio.to_thread(
+        _tiiny_request, "GET", f"{base_url}/v1/models", api_key, None, 10
+    )
+    models = [default]
+    error = None
+    if status == 200 and isinstance(data, dict):
+        for m in data.get("data") or []:
+            model_id = m.get("id") if isinstance(m, dict) else None
+            if model_id and model_id != "default":
+                models.append({
+                    "name": f"{TIINY_MODEL_PREFIX}{model_id}",
+                    "display_name": f"Tiiny — {m.get('display_name') or model_id}",
+                })
+    elif status in (0, 401, 502):
+        error = _tiiny_status_message(status, data)
+    # Other statuses (e.g. 404: no model listing on this endpoint) are not an
+    # error for the user — tiiny/default still works.
+    return {"models": models, "error": error, "enabled": True, "key_present": True}
+
+
+@router.post("/api/tiiny/test")
+async def test_tiiny_connection(request: Request):
+    """Send one short message ("Reply with the word OK") and report the reply."""
+    from ..agent.profiles import get_tiiny_api_key, sdk_model_id
+
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    _, base_url = await _tiiny_settings(request)
+    base_url = (body.get("base_url") or base_url).rstrip("/")
+    model = sdk_model_id(body.get("model") or "tiiny/default")
+
+    api_key = await asyncio.to_thread(get_tiiny_api_key)
+    if not api_key:
+        return {"ok": False, "status": None,
+                "message": "No API key: set TIINY_API_KEY or the Keychain entry 'tiiny-api-key'."}
+
+    status, data = await asyncio.to_thread(
+        _tiiny_request, "POST", f"{base_url}/v1/messages", api_key,
+        {"model": model, "max_tokens": 32,
+         "messages": [{"role": "user", "content": "Reply with the word OK"}]},
+        180,
+    )
+    if status != 200:
+        return {"ok": False, "status": status or None, "message": _tiiny_status_message(status, data)}
+    reply = ""
+    if isinstance(data, dict):
+        reply = "".join(
+            b.get("text", "") for b in data.get("content") or []
+            if isinstance(b, dict) and b.get("type") == "text"
+        ).strip()
+    return {"ok": True, "status": 200, "model": data.get("model") if isinstance(data, dict) else None,
+            "reply": reply[:200], "message": "Connected"}
 
 
 @router.get("/api/yolo-items")
