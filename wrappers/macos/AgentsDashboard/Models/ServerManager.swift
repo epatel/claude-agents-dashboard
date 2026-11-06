@@ -136,17 +136,13 @@ class ServerManager: ObservableObject {
     func clone() async throws {
         await MainActor.run { installStage = .cloning; installError = nil }
 
-        var cloned = false
         do {
+            // A failed `git clone` removes the directory it created itself. Don't
+            // delete serverURL here: if the clone failed because it already exists,
+            // that would wipe an existing install.
             try await runProcessBackground("/usr/bin/git", arguments: ["clone", Self.repoURL, serverPath])
-            cloned = true
-
             await MainActor.run { installStage = .done }
         } catch {
-            // Clean up partial clone so a retry can start fresh
-            if cloned {
-                try? FileManager.default.removeItem(at: serverURL)
-            }
             await MainActor.run { installError = error.localizedDescription }
             throw error
         }
