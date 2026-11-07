@@ -74,7 +74,19 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     Original scope — split `approve_item` (209 lines, cyclomatic 49) into validate → merge → conflicts →
     cleanup/unblock phases; simplify `peek_worktree`. Extracting auto-review into its own
     collaborator is optional — flag here before doing it.
-  - [ ] 3 — Split `ClaudeAgentSession.start` (391 lines, cyclomatic 91): options building,
+  - [x] 3 — Done 2026-11-07 (live-verified: one real Haiku `ClaudeAgentSession` in a scratch repo
+    used who_am_i, Write, Bash past the command filter and set_commit_message; success, $0.04): `session.py` 5.72 → 8.05,
+    project 7.31 → 7.38. `start` is now cyclomatic 14 (`_build_mcp_servers`,
+    `_build_system_prompt` + note helpers and module-level `_*_NOTE` constants, `_build_allowed_tools`,
+    `_build_plugins`, `_build_hooks`, `_build_can_use_tool`, `_stage_attachments`), driven by the
+    `_BOARD_SERVERS` / `_BUILTIN_SERVER_TOOLS` tables; `_receive_loop` dispatches to
+    `_handle_content_block` / `_handle_result` / `_handle_system_message`; `build_attachment_prompt`
+    split. Proof of no behavior change: a snapshot of every SDK option, the full system prompt,
+    hooks, `can_use_tool` verdicts and the final query across 6 configs (minimal, full multi-repo +
+    attachments + resume, YOLO, bad MCP JSON, Ollama, Tiiny) is byte-identical before/after under a
+    fixed `PYTHONHASHSEED` (`OPTIONAL_TOOL_NAMES` is a set, so its whitelist order already varied
+    per process). Left: `__init__`'s 35 parameters (the shared session constructor contract).
+    Original scope — split `ClaudeAgentSession.start` (391 lines, cyclomatic 91): options building,
     `can_use_tool`, prompt/attachments (`build_attachment_prompt`); flatten `_receive_loop`
     (depth 6) into per-message-type dispatch. Needs a live agent run, not just unit tests.
   - [ ] 4 — Split `KimiAgentSession._run` (118 lines) along the same stages; also
@@ -198,7 +210,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-07): steps 0–2 done; next are steps 3 and 5.** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 in flight (2026-11-07): steps 0–3 done; next are 4 and 5.** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above
