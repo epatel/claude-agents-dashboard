@@ -153,27 +153,19 @@ const Annotate = {
         if (window.ANNOTATE_DEBUG) console.log('Manual paste triggered');
 
         try {
-            // Try modern Clipboard API first
-            if (navigator.clipboard && navigator.clipboard.read) {
-                if (window.ANNOTATE_DEBUG) console.log('Using modern Clipboard API');
-                const clipboardItems = await navigator.clipboard.read();
-
-                for (const item of clipboardItems) {
-                    if (window.ANNOTATE_DEBUG) console.log('Clipboard item types:', Array.from(item.types));
-
-                    for (const type of item.types) {
-                        if (type.startsWith('image/')) {
-                            const blob = await item.getType(type);
-                            this._processPastedImage(blob);
-                            return true; // Successfully processed image
-                        }
-                    }
-                }
-
-                // No images found
-                this._showPasteMessage('No images found in clipboard. Copy an image first.');
+            // Modern Clipboard API only
+            if (!(navigator.clipboard && navigator.clipboard.read)) {
+                this._showPasteMessage('Clipboard access not available. Use Ctrl+V or drag and drop instead.');
                 return false;
             }
+            if (window.ANNOTATE_DEBUG) console.log('Using modern Clipboard API');
+            const blob = await this._firstClipboardImage(await navigator.clipboard.read());
+            if (blob) {
+                this._processPastedImage(blob);
+                return true;
+            }
+            this._showPasteMessage('No images found in clipboard. Copy an image first.');
+            return false;
         } catch (error) {
             if (window.ANNOTATE_DEBUG) console.log('Clipboard API failed:', error);
 
@@ -185,9 +177,16 @@ const Annotate = {
             this.focusPasteTarget();
             return false;
         }
+    },
 
-        this._showPasteMessage('Clipboard access not available. Use Ctrl+V or drag and drop instead.');
-        return false;
+    /** The first image blob among Clipboard API items, or null. */
+    async _firstClipboardImage(clipboardItems) {
+        for (const item of clipboardItems) {
+            if (window.ANNOTATE_DEBUG) console.log('Clipboard item types:', Array.from(item.types));
+            const type = Array.from(item.types).find(t => t.startsWith('image/'));
+            if (type) return item.getType(type);
+        }
+        return null;
     },
 
     // Show a temporary message to the user
@@ -245,40 +244,10 @@ const Annotate = {
         c.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
         c.addEventListener('drop', (e) => this._onDrop(e));
 
-        // Paste images — listen on document because canvas elements don't
-        // reliably receive paste events, even when focused.
-        // Remove any existing paste listener to prevent duplicates
-        if (this._pasteHandler) {
-            document.removeEventListener('paste', this._pasteHandler);
-        }
-        this._pasteHandler = (e) => {
-            // Only handle paste when the annotate dialog is open
-            if (!this._isAnnotateDialogOpen()) {
-                if (window.ANNOTATE_DEBUG) console.log('Paste: Dialog not open');
-                return;
-            }
+        this._installPasteHandler();
 
-            if (window.ANNOTATE_DEBUG) console.log('Paste: Processing image from clipboard');
-            this._onPaste(e);
-        };
-        document.addEventListener('paste', this._pasteHandler);
-
-        // Keyboard
         // Mouse wheel to scale selected image
-        c.addEventListener('wheel', (e) => {
-            const sel = this.images.find(i => i.selected);
-            if (!sel) return;
-            e.preventDefault();
-            const factor = e.deltaY < 0 ? 1.08 : 0.92;
-            const p = this._pos(e);
-            // Scale around mouse position
-            const oldW = sel.w, oldH = sel.h;
-            sel.w *= factor;
-            sel.h *= factor;
-            sel.x -= (sel.w - oldW) * ((p.x - sel.x) / oldW);
-            sel.y -= (sel.h - oldH) * ((p.y - sel.y) / oldH);
-            this.render();
-        }, { passive: false });
+        c.addEventListener('wheel', (e) => this._onWheel(e), { passive: false });
 
         c.setAttribute('tabindex', '0');
         c.addEventListener('keydown', (e) => {
@@ -308,6 +277,41 @@ const Annotate = {
         c.addEventListener('click', () => {
             if (!this._activeTextEditor) this.focusPasteTarget();
         });
+    },
+
+    // Paste images — listen on document because canvas elements don't
+    // reliably receive paste events, even when focused.
+    _installPasteHandler() {
+        // Remove any existing paste listener to prevent duplicates
+        if (this._pasteHandler) {
+            document.removeEventListener('paste', this._pasteHandler);
+        }
+        this._pasteHandler = (e) => {
+            // Only handle paste when the annotate dialog is open
+            if (!this._isAnnotateDialogOpen()) {
+                if (window.ANNOTATE_DEBUG) console.log('Paste: Dialog not open');
+                return;
+            }
+
+            if (window.ANNOTATE_DEBUG) console.log('Paste: Processing image from clipboard');
+            this._onPaste(e);
+        };
+        document.addEventListener('paste', this._pasteHandler);
+    },
+
+    /** Scale the selected image around the mouse position. */
+    _onWheel(e) {
+        const sel = this.images.find(i => i.selected);
+        if (!sel) return;
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.08 : 0.92;
+        const p = this._pos(e);
+        const oldW = sel.w, oldH = sel.h;
+        sel.w *= factor;
+        sel.h *= factor;
+        sel.x -= (sel.w - oldW) * ((p.x - sel.x) / oldW);
+        sel.y -= (sel.h - oldH) * ((p.y - sel.y) / oldH);
+        this.render();
     },
 
     _pos(e) {
@@ -362,25 +366,24 @@ const Annotate = {
 
         if (window.ANNOTATE_DEBUG) console.log(`Found ${items.length} clipboard items`);
 
-        let foundImage = false;
-        for (const item of items) {
-            if (window.ANNOTATE_DEBUG) console.log('Item type:', item.type);
-            if (item.type.startsWith('image/')) {
-                const file = item.getAsFile();
-                if (!file) {
-                    if (window.ANNOTATE_DEBUG) console.log('Failed to get file from item');
-                    continue;
-                }
-
-                this._processPastedImage(file);
-                foundImage = true;
-                break; // Only handle the first image
-            }
-        }
-
-        if (!foundImage) {
+        const file = this._firstImageFile(items);
+        if (file) {
+            this._processPastedImage(file); // Only handle the first image
+        } else {
             this._showPasteMessage('No images found in clipboard. Copy an image first.');
         }
+    },
+
+    /** The first clipboard item that is an image and yields a file, or null. */
+    _firstImageFile(items) {
+        for (const item of items) {
+            if (window.ANNOTATE_DEBUG) console.log('Item type:', item.type);
+            if (!item.type.startsWith('image/')) continue;
+            const file = item.getAsFile();
+            if (file) return file;
+            if (window.ANNOTATE_DEBUG) console.log('Failed to get file from item');
+        }
+        return null;
     },
 
     // Common function to process pasted images (from clipboard events or API)
@@ -463,132 +466,95 @@ const Annotate = {
         }
 
         if (this.tool === 'select') {
-            // Check resize handles on selected images first
-            const selImg = this.images.find(i => i.selected);
-            if (selImg) {
-                const handle = this._hitHandle(selImg, p.x, p.y);
-                if (handle) {
-                    this._resizing = { img: selImg, handle };
-                    return;
-                }
-            }
-
-            // Try to select an annotation or image
-            this._deselectAll();
-            const ann = this._hitAnnotation(p.x, p.y);
-            if (ann) {
-                ann.selected = true;
-                this._dragging = ann;
-                this._offsetX = p.x - (ann.x || ann.x1 || 0);
-                this._offsetY = p.y - (ann.y || ann.y1 || 0);
-                this.render();
-                return;
-            }
-            const img = this._hitImage(p.x, p.y);
-            if (img) {
-                img.selected = true;
-                this._dragging = img;
-                this._offsetX = p.x - img.x;
-                this._offsetY = p.y - img.y;
-                this.render();
-                return;
-            }
-            this.render();
+            this._selectAt(p);
         } else if (this.tool === 'text') {
             e.stopPropagation();
-            // If a text editor is open, close it (save) instead of opening a new one
-            if (this._activeTextEditor) {
-                this._closeTextEditor(true);
-                return;
-            }
             this._openTextEditor(p.x, p.y, null);
         } else if (this.tool === 'freehand') {
-            // Start freehand path
             this._drawing = { type: 'freehand', points: [{ x: p.x, y: p.y }] };
         } else {
-            // Start drawing (include fillColor for live preview)
+            // Include fillColor for the live preview
             this._drawing = { type: this.tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y, fillColor: this.fillColor };
         }
     },
 
+    /** Select tool: grab a resize handle, else select and start dragging what's under p. */
+    _selectAt(p) {
+        // Check resize handles on the selected image first
+        const selImg = this.images.find(i => i.selected);
+        const handle = selImg && this._hitHandle(selImg, p.x, p.y);
+        if (handle) {
+            this._resizing = { img: selImg, handle };
+            return;
+        }
+
+        // Annotations sit above images
+        this._deselectAll();
+        const target = this._hitAnnotation(p.x, p.y) || this._hitImage(p.x, p.y);
+        if (target) {
+            target.selected = true;
+            this._dragging = target;
+            this._offsetX = p.x - (target.x || target.x1 || 0);
+            this._offsetY = p.y - (target.y || target.y1 || 0);
+        }
+        this.render();
+    },
+
     _onMouseMove(e) {
         const p = this._pos(e);
-
-        // Resize handle drag
         if (this._resizing) {
-            const { img, handle } = this._resizing;
-            const aspect = img.img.width / img.img.height;
-            if (handle === 'se') {
-                img.w = Math.max(30, p.x - img.x);
-                img.h = img.w / aspect;
-            } else if (handle === 'sw') {
-                const newW = Math.max(30, (img.x + img.w) - p.x);
-                img.x = img.x + img.w - newW;
-                img.w = newW;
-                img.h = img.w / aspect;
-            } else if (handle === 'ne') {
-                img.w = Math.max(30, p.x - img.x);
-                const newH = img.w / aspect;
-                img.y = img.y + img.h - newH;
-                img.h = newH;
-            } else if (handle === 'nw') {
-                const newW = Math.max(30, (img.x + img.w) - p.x);
-                const newH = newW / aspect;
-                img.x = img.x + img.w - newW;
-                img.y = img.y + img.h - newH;
-                img.w = newW;
-                img.h = newH;
-            }
+            this._resizeImage(this._resizing, p);
             this.render();
-            return;
-        }
-
-        if (this._dragging) {
-            const d = this._dragging;
-            if (d.img) {
-                // Moving an image
-                d.x = p.x - this._offsetX;
-                d.y = p.y - this._offsetY;
-            } else if (d.type === 'text') {
-                d.x = p.x - this._offsetX;
-                d.y = p.y - this._offsetY;
-            } else if (d.type === 'arrow') {
-                const dx = p.x - this._startX;
-                const dy = p.y - this._startY;
-                d.x1 += dx; d.y1 += dy;
-                d.x2 += dx; d.y2 += dy;
-                this._startX = p.x;
-                this._startY = p.y;
-            } else if (d.type === 'freehand') {
-                const dx = p.x - this._startX;
-                const dy = p.y - this._startY;
-                for (const pt of d.points) { pt.x += dx; pt.y += dy; }
-                d.x += dx; d.y += dy;
-                this._startX = p.x;
-                this._startY = p.y;
-            } else if (d.type === 'circle' || d.type === 'rect') {
-                const dx = p.x - this._startX;
-                const dy = p.y - this._startY;
-                d.x += dx; d.y += dy;
-                this._startX = p.x;
-                this._startY = p.y;
-            }
+        } else if (this._dragging) {
+            this._dragTo(this._dragging, p);
             this.render();
-            return;
-        }
-
-        if (this._drawing) {
+        } else if (this._drawing) {
             if (this._drawing.type === 'freehand') {
                 this._drawing.points.push({ x: p.x, y: p.y });
-                this.render();
-                this._drawShape(this._drawing);
             } else {
                 this._drawing.x2 = p.x;
                 this._drawing.y2 = p.y;
-                this.render();
-                this._drawShape(this._drawing);
             }
+            this.render();
+            this._drawShape(this._drawing);
         }
+    },
+
+    /** Drag a corner handle, keeping the aspect ratio and the opposite corner fixed. */
+    _resizeImage({ img, handle }, p) {
+        const aspect = img.img.width / img.img.height;
+        const west = handle.endsWith('w');
+        const north = handle.startsWith('n');
+        const newW = Math.max(30, west ? (img.x + img.w) - p.x : p.x - img.x);
+        const newH = newW / aspect;
+        if (west) img.x = img.x + img.w - newW;
+        if (north) img.y = img.y + img.h - newH;
+        img.w = newW;
+        img.h = newH;
+    },
+
+    /** Images and text follow the grab offset; other shapes move by the mouse delta. */
+    _dragTo(d, p) {
+        if (d.img || d.type === 'text') {
+            d.x = p.x - this._offsetX;
+            d.y = p.y - this._offsetY;
+            return;
+        }
+        this._moveShape(d, p.x - this._startX, p.y - this._startY);
+        this._startX = p.x;
+        this._startY = p.y;
+    },
+
+    _moveShape(d, dx, dy) {
+        if (d.type === 'arrow') {
+            d.x1 += dx; d.y1 += dy;
+            d.x2 += dx; d.y2 += dy;
+            return;
+        }
+        if (d.type === 'freehand') {
+            for (const pt of d.points) { pt.x += dx; pt.y += dy; }
+        }
+        d.x += dx; d.y += dy;  // freehand bounds, circle centre, rect corner
     },
 
     _onMouseUp(e) {
@@ -598,56 +564,46 @@ const Annotate = {
             return;
         }
         if (this._drawing) {
-            const d = this._drawing;
-            if (d.type === 'freehand') {
-                // Simplify and save freehand path if it has enough points
-                if (d.points.length > 2) {
-                    const simplified = this._simplifyPoints(d.points, 2);
-                    const bounds = this._getPointsBounds(simplified);
-                    this.annotations.push({
-                        type: 'freehand', points: simplified,
-                        x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h,
-                        color: this.color, lineWidth: this.lineWidth, selected: false,
-                        layer: this.drawOnImage ? 'image' : 'annotation',
-                    });
-                }
-                this._drawing = null;
-                this.render();
-                this._dragging = null;
-                return;
-            }
-            const dx = Math.abs(d.x2 - d.x1);
-            const dy = Math.abs(d.y2 - d.y1);
-            if (dx > 5 || dy > 5) {
-                if (d.type === 'arrow') {
-                    this.annotations.push({
-                        type: 'arrow', x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2,
-                        color: this.color, lineWidth: this.lineWidth, selected: false,
-                        layer: this.drawOnImage ? 'image' : 'annotation',
-                    });
-                } else if (d.type === 'circle') {
-                    const cx = (d.x1 + d.x2) / 2, cy = (d.y1 + d.y2) / 2;
-                    const rx = dx / 2, ry = dy / 2;
-                    this.annotations.push({
-                        type: 'circle', x: cx, y: cy, rx, ry,
-                        color: this.color, fillColor: this.fillColor,
-                        lineWidth: this.lineWidth, selected: false,
-                        layer: this.drawOnImage ? 'image' : 'annotation',
-                    });
-                } else if (d.type === 'rect') {
-                    this.annotations.push({
-                        type: 'rect', x: Math.min(d.x1, d.x2), y: Math.min(d.y1, d.y2),
-                        w: dx, h: dy,
-                        color: this.color, fillColor: this.fillColor,
-                        lineWidth: this.lineWidth, selected: false,
-                        layer: this.drawOnImage ? 'image' : 'annotation',
-                    });
-                }
-            }
+            const shape = this._shapeFromDrawing(this._drawing);
+            if (shape) this.annotations.push(this._styledAnnotation(shape));
             this._drawing = null;
             this.render();
         }
         this._dragging = null;
+    },
+
+    /** The annotation geometry for a finished drawing, or null if it is too small. */
+    _shapeFromDrawing(d) {
+        if (d.type === 'freehand') {
+            // Simplify and save freehand path if it has enough points
+            if (d.points.length <= 2) return null;
+            const points = this._simplifyPoints(d.points, 2);
+            const bounds = this._getPointsBounds(points);
+            return { type: 'freehand', points, x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h };
+        }
+        const dx = Math.abs(d.x2 - d.x1);
+        const dy = Math.abs(d.y2 - d.y1);
+        if (dx <= 5 && dy <= 5) return null;
+        switch (d.type) {
+            case 'arrow': return { type: 'arrow', x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2 };
+            case 'circle': return { type: 'circle', x: (d.x1 + d.x2) / 2, y: (d.y1 + d.y2) / 2, rx: dx / 2, ry: dy / 2 };
+            case 'rect': return { type: 'rect', x: Math.min(d.x1, d.x2), y: Math.min(d.y1, d.y2), w: dx, h: dy };
+            default: return null;
+        }
+    },
+
+    /** Add the current colour / width / layer (and fill, for circles and rects). */
+    _styledAnnotation(shape) {
+        const fill = (shape.type === 'circle' || shape.type === 'rect') ? { fillColor: this.fillColor } : {};
+        return {
+            ...shape, color: this.color, ...fill,
+            lineWidth: this.lineWidth, selected: false, layer: this._drawLayer(),
+        };
+    },
+
+    /** New drawings go on the image layer when "draw on image" is checked. */
+    _drawLayer() {
+        return this.drawOnImage ? 'image' : 'annotation';
     },
 
     _onDblClick(e) {
@@ -667,6 +623,12 @@ const Annotate = {
     },
 
     _hitTextBounds(a, x, y) {
+        const { maxWidth, totalHeight } = this._measureText(a);
+        return x >= a.x && x <= a.x + maxWidth && y >= a.y && y <= a.y + totalHeight;
+    },
+
+    /** Set the text annotation's font on the context and measure its lines. */
+    _measureText(a) {
         const fontSize = a.fontSize || this.fontSize;
         const lineHeight = fontSize * 1.3;
         const lines = (a.text || '').split('\n');
@@ -675,8 +637,7 @@ const Annotate = {
         for (const line of lines) {
             maxWidth = Math.max(maxWidth, this.ctx.measureText(line).width);
         }
-        const totalHeight = lines.length * lineHeight;
-        return x >= a.x && x <= a.x + maxWidth && y >= a.y && y <= a.y + totalHeight;
+        return { lines, lineHeight, maxWidth, totalHeight: lines.length * lineHeight };
     },
 
     _openTextEditor(canvasX, canvasY, existingAnnotation) {
@@ -700,7 +661,7 @@ const Annotate = {
             font-size: ${fontSize}px;
             font-family: sans-serif;
             color: ${existingAnnotation?.color || this.color};
-            background: ${withBg ? (typeof withBg === 'string' ? withBg : 'rgba(255,255,255,0.95)') : 'transparent'};
+            background: ${this._textEditorBackground(withBg)};
             border: 1px dashed #0071e3;
             outline: none;
             padding: 2px 4px;
@@ -760,6 +721,12 @@ const Annotate = {
         }, 0);
     },
 
+    /** A colour string, white for the legacy boolean ``background``, or transparent. */
+    _textEditorBackground(withBg) {
+        if (!withBg) return 'transparent';
+        return typeof withBg === 'string' ? withBg : 'rgba(255,255,255,0.95)';
+    },
+
     _closeTextEditor(save) {
         if (!this._activeTextEditor) return;
 
@@ -777,7 +744,7 @@ const Annotate = {
                     type: 'text', x: canvasX, y: canvasY, text,
                     color: this.color, fontSize,
                     fillColor: withBg || null, selected: false,
-                    layer: this.drawOnImage ? 'image' : 'annotation',
+                    layer: this._drawLayer(),
                 });
             }
             this.render();
@@ -796,7 +763,7 @@ const Annotate = {
     _hitImage(x, y) {
         for (let i = this.images.length - 1; i >= 0; i--) {
             const im = this.images[i];
-            if (x >= im.x && x <= im.x + im.w && y >= im.y && y <= im.y + im.h) return im;
+            if (this._inBox(x, y, im, 0)) return im;
         }
         return null;
     },
@@ -831,43 +798,54 @@ const Annotate = {
     _hitAnnotation(x, y) {
         for (let i = this.annotations.length - 1; i >= 0; i--) {
             const a = this.annotations[i];
-            if (a.type === 'text') {
-                if (this._hitTextBounds(a, x, y)) return a;
-            } else if (a.type === 'arrow') {
-                const dist = this._distToLine(x, y, a.x1, a.y1, a.x2, a.y2);
-                if (dist < 10) return a;
-            } else if (a.type === 'circle') {
-                const dx = (x - a.x) / a.rx, dy = (y - a.y) / a.ry;
-                const d = Math.sqrt(dx * dx + dy * dy);
-                if (a.fillColor ? d <= 1.1 : Math.abs(d - 1) < 0.2) return a;
-            } else if (a.type === 'rect') {
-                if (a.fillColor) {
-                    // Filled rect: hit anywhere inside
-                    if (x >= a.x - 5 && x <= a.x + a.w + 5 && y >= a.y - 5 && y <= a.y + a.h + 5) return a;
-                } else {
-                    // Stroke-only rect: hit on border
-                    const near = (x >= a.x - 5 && x <= a.x + a.w + 5 && y >= a.y - 5 && y <= a.y + a.h + 5) &&
-                        !(x >= a.x + 5 && x <= a.x + a.w - 5 && y >= a.y + 5 && y <= a.y + a.h - 5);
-                    if (near) return a;
-                }
-            } else if (a.type === 'freehand') {
-                // Hit test: check distance to each line segment
-                for (let j = 0; j < a.points.length - 1; j++) {
-                    const dist = this._distToLine(x, y, a.points[j].x, a.points[j].y, a.points[j + 1].x, a.points[j + 1].y);
-                    if (dist < 10) return a;
-                }
-            }
+            const hit = this._annotationHits[a.type];
+            if (hit && hit.call(this, a, x, y)) return a;
         }
         return null;
     },
 
-    _distToLine(px, py, x1, y1, x2, y2) {
-        const A = px - x1, B = py - y1, C = x2 - x1, D = y2 - y1;
+    /** Per-type hit tests, called with ``this`` = Annotate. */
+    _annotationHits: {
+        text(a, x, y) {
+            return this._hitTextBounds(a, x, y);
+        },
+        arrow(a, x, y) {
+            return this._distToLine({ x, y }, { x: a.x1, y: a.y1 }, { x: a.x2, y: a.y2 }) < 10;
+        },
+        circle(a, x, y) {
+            const dx = (x - a.x) / a.rx, dy = (y - a.y) / a.ry;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            return a.fillColor ? d <= 1.1 : Math.abs(d - 1) < 0.2;
+        },
+        rect(a, x, y) {
+            // Filled: anywhere inside; stroke-only: on the border
+            const near = this._inBox(x, y, a, 5);
+            return a.fillColor ? near : near && !this._inBox(x, y, a, -5);
+        },
+        freehand(a, x, y) {
+            // Distance to each line segment
+            const p = { x, y };
+            for (let j = 0; j < a.points.length - 1; j++) {
+                if (this._distToLine(p, a.points[j], a.points[j + 1]) < 10) return true;
+            }
+            return false;
+        },
+    },
+
+    /** Is (x, y) inside box {x, y, w, h} grown by ``pad`` on every side (negative shrinks)? */
+    _inBox(x, y, box, pad) {
+        return x >= box.x - pad && x <= box.x + box.w + pad
+            && y >= box.y - pad && y <= box.y + box.h + pad;
+    },
+
+    /** Distance from point p to the segment a–b. */
+    _distToLine(p, a, b) {
+        const A = p.x - a.x, B = p.y - a.y, C = b.x - a.x, D = b.y - a.y;
         const dot = A * C + B * D;
         const lenSq = C * C + D * D;
         let t = lenSq ? dot / lenSq : -1;
         t = Math.max(0, Math.min(1, t));
-        const dx = px - (x1 + t * C), dy = py - (y1 + t * D);
+        const dx = p.x - (a.x + t * C), dy = p.y - (a.y + t * D);
         return Math.sqrt(dx * dx + dy * dy);
     },
 
@@ -885,76 +863,19 @@ const Annotate = {
     // --- Rendering ---
 
     render() {
-        const ctx = this.ctx;
-        const c = this.canvas;
-        ctx.clearRect(0, 0, c.width, c.height);
+        this._drawCheckerboard();
+        for (const im of this.images) this._drawImage(im);
 
-        // Checkerboard background
-        ctx.fillStyle = '#f0f0f0';
-        ctx.fillRect(0, 0, c.width, c.height);
-        const sz = 16;
-        ctx.fillStyle = '#e0e0e0';
-        for (let y = 0; y < c.height; y += sz) {
-            for (let x = 0; x < c.width; x += sz) {
-                if ((Math.floor(x / sz) + Math.floor(y / sz)) % 2) ctx.fillRect(x, y, sz, sz);
-            }
-        }
-
-        // Draw images
-        for (const im of this.images) {
-            ctx.drawImage(im.img, im.x, im.y, im.w, im.h);
-            if (im.selected) {
-                ctx.strokeStyle = '#0071e3';
-                ctx.lineWidth = 2;
-                ctx.setLineDash([5, 3]);
-                ctx.strokeRect(im.x - 2, im.y - 2, im.w + 4, im.h + 4);
-                ctx.setLineDash([]);
-                this._drawHandles(im);
-            }
-        }
-
-        // Draw image-layer annotations (drawn "on" the image, below regular annotations)
-        for (const a of this.annotations) {
-            if (a.layer === 'image') {
-                this._drawShape(a);
-                if (a.selected) {
-                    ctx.strokeStyle = '#0071e3';
-                    ctx.lineWidth = 1;
-                    ctx.setLineDash([4, 3]);
-                    this._drawSelectionBounds(a);
-                    ctx.setLineDash([]);
-                }
-            }
-        }
-
-        // Draw annotation-layer items on top
-        // First draw shapes (arrows, circles, rectangles)
-        for (const a of this.annotations) {
-            if (a.layer === 'image') continue;
-            if (a.type !== 'text') {
-                this._drawShape(a);
-                if (a.selected) {
-                    ctx.strokeStyle = '#0071e3';
-                    ctx.lineWidth = 1;
-                    ctx.setLineDash([4, 3]);
-                    this._drawSelectionBounds(a);
-                    ctx.setLineDash([]);
-                }
-            }
-        }
-
-        // Then draw text annotations on top to prevent overlap
-        for (const a of this.annotations) {
-            if (a.layer === 'image') continue;
-            if (a.type === 'text') {
-                this._drawShape(a);
-                if (a.selected) {
-                    ctx.strokeStyle = '#0071e3';
-                    ctx.lineWidth = 1;
-                    ctx.setLineDash([4, 3]);
-                    this._drawSelectionBounds(a);
-                    ctx.setLineDash([]);
-                }
+        // Image-layer annotations (drawn "on" the image), then annotation-layer
+        // shapes, then annotation-layer text on top to prevent overlap.
+        const passes = [
+            a => a.layer === 'image',
+            a => a.layer !== 'image' && a.type !== 'text',
+            a => a.layer !== 'image' && a.type === 'text',
+        ];
+        for (const inPass of passes) {
+            for (const a of this.annotations) {
+                if (inPass(a)) this._drawAnnotation(a);
             }
         }
 
@@ -964,6 +885,46 @@ const Annotate = {
         }
     },
 
+    _drawCheckerboard() {
+        const ctx = this.ctx;
+        const c = this.canvas;
+        ctx.clearRect(0, 0, c.width, c.height);
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0, 0, c.width, c.height);
+        const sz = 16;
+        ctx.fillStyle = '#e0e0e0';
+        for (let y = 0; y < c.height; y += sz) {
+            for (let x = 0; x < c.width; x += sz) {
+                if ((Math.floor(x / sz) + Math.floor(y / sz)) % 2) ctx.fillRect(x, y, sz, sz);
+            }
+        }
+    },
+
+    /** A background image, with a dashed frame and resize handles when selected. */
+    _drawImage(im) {
+        const ctx = this.ctx;
+        ctx.drawImage(im.img, im.x, im.y, im.w, im.h);
+        if (!im.selected) return;
+        ctx.strokeStyle = '#0071e3';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 3]);
+        ctx.strokeRect(im.x - 2, im.y - 2, im.w + 4, im.h + 4);
+        ctx.setLineDash([]);
+        this._drawHandles(im);
+    },
+
+    /** An annotation, with dashed selection bounds when selected. */
+    _drawAnnotation(a) {
+        const ctx = this.ctx;
+        this._drawShape(a);
+        if (!a.selected) return;
+        ctx.strokeStyle = '#0071e3';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        this._drawSelectionBounds(a);
+        ctx.setLineDash([]);
+    },
+
     _drawSelectionBounds(a) {
         const ctx = this.ctx;
         if (a.type === 'arrow') {
@@ -971,20 +932,10 @@ const Annotate = {
                 Math.abs(a.x2 - a.x1) + 10, Math.abs(a.y2 - a.y1) + 10);
         } else if (a.type === 'circle') {
             ctx.strokeRect(a.x - a.rx - 3, a.y - a.ry - 3, a.rx * 2 + 6, a.ry * 2 + 6);
-        } else if (a.type === 'rect') {
-            ctx.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
-        } else if (a.type === 'freehand') {
+        } else if (a.type === 'rect' || a.type === 'freehand') {
             ctx.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
         } else if (a.type === 'text') {
-            const fontSize = a.fontSize || this.fontSize;
-            const lineHeight = fontSize * 1.3;
-            const lines = (a.text || '').split('\n');
-            ctx.font = `${fontSize}px sans-serif`;
-            let maxWidth = 0;
-            for (const line of lines) {
-                maxWidth = Math.max(maxWidth, ctx.measureText(line).width);
-            }
-            const totalHeight = lines.length * lineHeight;
+            const { maxWidth, totalHeight } = this._measureText(a);
             const padding = 2;
             ctx.strokeRect(a.x - padding, a.y - padding, maxWidth + padding * 2, totalHeight + padding * 2);
         }
@@ -996,8 +947,16 @@ const Annotate = {
         ctx.fillStyle = s.color || this.color;
         ctx.lineWidth = s.lineWidth || this.lineWidth;
         ctx.setLineDash([]);
+        const paint = this._shapePainters[s.type];
+        if (paint) paint.call(this, ctx, s);
+    },
 
-        if (s.type === 'arrow') {
+    /**
+     * Per-type painters, called with ``this`` = Annotate. Circles and rects take
+     * either finished geometry (x/y/rx/ry, x/y/w/h) or an in-progress drag (x1..y2).
+     */
+    _shapePainters: {
+        arrow(ctx, s) {
             const { x1, y1, x2, y2 } = s;
             const angle = Math.atan2(y2 - y1, x2 - x1);
             const headLen = 10 + (s.lineWidth || this.lineWidth) * 2;
@@ -1017,7 +976,8 @@ const Annotate = {
             ctx.lineTo(x2 - headLen * Math.cos(angle + headHalf), y2 - headLen * Math.sin(angle + headHalf));
             ctx.closePath();
             ctx.fill();
-        } else if (s.type === 'circle') {
+        },
+        circle(ctx, s) {
             const cx = s.x ?? (s.x1 + s.x2) / 2;
             const cy = s.y ?? (s.y1 + s.y2) / 2;
             const rx = s.rx ?? Math.abs(s.x2 - s.x1) / 2;
@@ -1029,7 +989,8 @@ const Annotate = {
                 ctx.fill();
             }
             ctx.stroke();
-        } else if (s.type === 'rect') {
+        },
+        rect(ctx, s) {
             const x = s.x ?? Math.min(s.x1, s.x2);
             const y = s.y ?? Math.min(s.y1, s.y2);
             const w = s.w ?? Math.abs(s.x2 - s.x1);
@@ -1039,55 +1000,40 @@ const Annotate = {
                 ctx.fillRect(x, y, w, h);
             }
             ctx.strokeRect(x, y, w, h);
-        } else if (s.type === 'freehand') {
-            if (s.points && s.points.length > 1) {
-                ctx.beginPath();
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.moveTo(s.points[0].x, s.points[0].y);
-                for (let i = 1; i < s.points.length; i++) {
-                    ctx.lineTo(s.points[i].x, s.points[i].y);
-                }
-                ctx.stroke();
+        },
+        freehand(ctx, s) {
+            if (!s.points || s.points.length <= 1) return;
+            ctx.beginPath();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.moveTo(s.points[0].x, s.points[0].y);
+            for (let i = 1; i < s.points.length; i++) {
+                ctx.lineTo(s.points[i].x, s.points[i].y);
             }
-        } else if (s.type === 'text') {
-            const fontSize = s.fontSize || this.fontSize;
-            const lineHeight = fontSize * 1.3;
-            const lines = (s.text || '').split('\n');
-            ctx.font = `${fontSize}px sans-serif`;
+            ctx.stroke();
+        },
+        text(ctx, s) {
+            const { lines, lineHeight, maxWidth, totalHeight } = this._measureText(s);
             ctx.textBaseline = 'top';
-
-            // Measure max line width
-            let maxWidth = 0;
-            for (const line of lines) {
-                maxWidth = Math.max(maxWidth, ctx.measureText(line).width);
-            }
-            const totalHeight = lines.length * lineHeight;
-            const padding = 4;
-
             if (s.fillColor || s.background) {
-                // Draw filled background with border
+                // Filled background with a faint border
+                const padding = 4;
+                const box = [s.x - padding, s.y - padding, maxWidth + padding * 2, totalHeight + padding * 2];
                 ctx.fillStyle = s.fillColor || 'rgba(255, 255, 255, 0.95)';
-                ctx.fillRect(s.x - padding, s.y - padding, maxWidth + padding * 2, totalHeight + padding * 2);
+                ctx.fillRect(...box);
                 ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
                 ctx.lineWidth = 1;
-                ctx.strokeRect(s.x - padding, s.y - padding, maxWidth + padding * 2, totalHeight + padding * 2);
+                ctx.strokeRect(...box);
             } else {
-                // Draw text outline/shadow for readability without background
+                // Light outline for readability without a background
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
                 ctx.lineWidth = 3;
                 ctx.lineJoin = 'round';
-                for (let i = 0; i < lines.length; i++) {
-                    ctx.strokeText(lines[i], s.x, s.y + i * lineHeight);
-                }
+                lines.forEach((line, i) => ctx.strokeText(line, s.x, s.y + i * lineHeight));
             }
-
-            // Draw text lines
             ctx.fillStyle = s.color || this.color;
-            for (let i = 0; i < lines.length; i++) {
-                ctx.fillText(lines[i], s.x, s.y + i * lineHeight);
-            }
-        }
+            lines.forEach((line, i) => ctx.fillText(line, s.x, s.y + i * lineHeight));
+        },
     },
 
     // --- Freehand helpers ---
@@ -1100,7 +1046,7 @@ const Annotate = {
         const first = points[0], last = points[points.length - 1];
 
         for (let i = 1; i < points.length - 1; i++) {
-            const dist = this._distToLine(points[i].x, points[i].y, first.x, first.y, last.x, last.y);
+            const dist = this._distToLine(points[i], first, last);
             if (dist > maxDist) {
                 maxDist = dist;
                 maxIdx = i;
@@ -1142,58 +1088,35 @@ const Annotate = {
     },
 
     toBackgroundDataURL() {
-        // Render background images + image-layer drawings (no annotation-layer) as JPG
-        const hasImageLayerDrawings = this.annotations.some(a => a.layer === 'image');
-        if (this.images.length === 0 && !hasImageLayerDrawings) return null;
-
-        const tmpCanvas = document.createElement('canvas');
-        tmpCanvas.width = this.canvas.width;
-        tmpCanvas.height = this.canvas.height;
-        const tmpCtx = tmpCanvas.getContext('2d');
-
-        // Fill white background (JPG has no transparency)
-        tmpCtx.fillStyle = '#ffffff';
-        tmpCtx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
-
-        for (const img of this.images) {
-            tmpCtx.drawImage(img.img, img.x, img.y, img.w, img.h);
-        }
-
-        // Draw image-layer annotations (baked into the base image)
-        const origCtx = this.ctx;
-        this.ctx = tmpCtx;
-        for (const ann of this.annotations) {
-            if (ann.layer === 'image') this._drawShape(ann);
-        }
-        this.ctx = origCtx;
-
-        return tmpCanvas.toDataURL('image/jpeg', 0.85);
+        // Background images + image-layer drawings (no annotation layer)
+        const imageLayer = this.annotations.filter(a => a.layer === 'image');
+        if (this.images.length === 0 && imageLayer.length === 0) return null;
+        return this._renderJpeg(imageLayer);
     },
 
     toAnnotatedDataURL() {
-        // Render background images + annotations combined as JPG
+        // Background images + all annotations combined
         if (this.images.length === 0 && this.annotations.length === 0) return null;
+        return this._renderJpeg(this.annotations);
+    },
 
+    /** Background images plus ``annotations`` on white (JPG has no transparency), as a JPG data URL. */
+    _renderJpeg(annotations) {
         const tmpCanvas = document.createElement('canvas');
         tmpCanvas.width = this.canvas.width;
         tmpCanvas.height = this.canvas.height;
         const tmpCtx = tmpCanvas.getContext('2d');
-
-        // Fill white background (JPG has no transparency)
         tmpCtx.fillStyle = '#ffffff';
         tmpCtx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
 
-        // Draw background images
         for (const img of this.images) {
             tmpCtx.drawImage(img.img, img.x, img.y, img.w, img.h);
         }
 
-        // Draw annotations on top
+        // _drawShape paints on this.ctx; point it at the temporary canvas
         const origCtx = this.ctx;
         this.ctx = tmpCtx;
-        for (const ann of this.annotations) {
-            this._drawShape(ann);
-        }
+        for (const ann of annotations) this._drawShape(ann);
         this.ctx = origCtx;
 
         return tmpCanvas.toDataURL('image/jpeg', 0.85);

@@ -164,7 +164,21 @@ behavior change** — every step keeps the full test suite green and `aihealth d
       through the real methods and stepped through collapsing, epic filter, 10 `updateCard` moves,
       removals and unblocking — 27 snapshots × 6 columns identical to the old code; plus the live
       WebSocket create → move → delete round trip. (Board harness: `__bd_script` / `__bd_baseline`
-      in the :8017 origin's localStorage.) JS now 7.09, headline 8.00. Next: `annotate.js`.
+      in the :8017 origin's localStorage.) JS now 7.09, headline 8.00.
+      8d — 2026-11-07: `annotate.js` 4.27 → 10.00. `render` → three layer passes over
+      `_drawAnnotation` + `_drawCheckerboard` / `_drawImage`; `_drawShape` and `_hitAnnotation` →
+      per-type `_shapePainters` / `_annotationHits` tables; text measuring shared (`_measureText`);
+      mouse handlers → `_selectAt`, `_resizeImage` (one rule for all four handles), `_dragTo` /
+      `_moveShape`, `_shapeFromDrawing` + `_styledAnnotation`; both JPG exports → `_renderJpeg`;
+      paste paths → `_firstClipboardImage` / `_firstImageFile`; `_distToLine` takes points.
+      Verified with a canvas harness that runs the old copy and the new file in one page through
+      49 scripted steps (paste / drop / Clipboard API, select, move, 4-handle resize, wheel, every
+      tool on both layers, text create / edit / Escape, drag of each type, delete, exports): pixels,
+      model state, a 6-px hit-test grid, export JPGs and return values identical at every step, and
+      the recorded 2D-context call log identical except that text sets `textBaseline` after
+      measuring instead of before (no pixel effect). Plus real mouse drawing in the dialog.
+      JS now 7.82, headline 8.19. Next: `ReviewDialog.showReview` / `DetailDialog` duplication,
+      `FileBrowser._render3DModel`, then `spacing_overlay.js`, `shortcuts.js`, `config-dialog.js`.
       Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
       empty (the summary query yields one all-NULL row) → `stats.js` throws every 10 s; (2) the review
       browser auto-expands folders holding changed files but doesn't load their children, so changed
