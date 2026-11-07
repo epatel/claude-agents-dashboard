@@ -209,25 +209,24 @@ class WorkflowService:
         await self.notifications.broadcast_item_updated(item)
 
         await self._log_and_notify(item_id, "system", "Agent started")
+        await self._track_yolo(item_id, config, announce=True)
 
-        # Track YOLO mode for this item
-        is_yolo = config.get("bash_yolo", False)
-        if is_yolo:
-            self._yolo_items.add(item_id)
-            await self._log_and_notify(item_id, "yolo_command",
-                "⚠️ **YOLO mode active** — all bash commands bypass permission checks")
-            await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
-                "item_id": item_id, "active": True,
-            })
-        else:
-            self._yolo_items.discard(item_id)
-
-        # Create session — validate Ollama model availability first
+        # Validate Ollama model availability before creating the session
         model = item.get("model") or config.get("model")
         if is_ollama_model(model) and config.get("ollama_enabled"):
             model = await self._validate_ollama_model(item_id, model, config)
-        session = await self.sessions.create_session(
-            item_id, worktree_path, config, model,
+
+        prompt = f"Task: {item['title']}\n\n{item['description']}"
+        attachments = await self.db.get_attachments(item_id)
+        if attachments:
+            await self._log_and_notify(item_id, "system", f"Found {len(attachments)} image attachment(s) for agent")
+
+        await self._launch_session(item, config, prompt, model=model, attachments=attachments)
+        return item
+
+    def _session_callbacks(self, item_id: str) -> Dict[str, Any]:
+        """The per-item callbacks every agent session is created with."""
+        return dict(
             on_message=self._create_on_message_callback(item_id),
             on_tool_use=self._create_on_tool_use_callback(item_id),
             on_thinking=self._create_on_thinking_callback(item_id),
@@ -243,19 +242,53 @@ class WorkflowService:
             on_graph_query=self._create_on_graph_query_callback(),
             on_delete_todo=self._create_on_delete_todo_callback(item_id),
             on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **(await self._item_session_kwargs(item)),
         )
 
-        # Build prompt and fetch attachments
-        prompt = f"Task: {item['title']}\n\n{item['description']}"
-        attachments = await self.db.get_attachments(item_id)
-        if attachments:
-            await self._log_and_notify(item_id, "system", f"Found {len(attachments)} image attachment(s) for agent")
+    async def _launch_session(
+        self,
+        item: Dict[str, Any],
+        config: Dict[str, Any],
+        prompt: str,
+        *,
+        model: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
+        resume_id: Optional[str] = None,
+    ) -> None:
+        """Create the agent session for ``item`` and start it in the background.
 
-        # Start session in background
-        await self.sessions.start_session_task(item_id, session, prompt, attachments)
+        Every start/resume/retry/restart path goes through here so all sessions
+        get the same callbacks and per-item kwargs. ``model`` defaults to the
+        item's model, then the config model.
+        """
+        item_id = item["id"]
+        session = await self.sessions.create_session(
+            item_id, Path(item["worktree_path"]), config,
+            model or item.get("model") or config.get("model"),
+            **self._session_callbacks(item_id),
+            **(await self._item_session_kwargs(item)),
+        )
+        await self.sessions.start_session_task(item_id, session, prompt, attachments, resume_id)
 
-        return item
+    async def _track_yolo(self, item_id: str, config: Dict[str, Any], *, announce: bool = False) -> None:
+        """Record whether this item's session runs in YOLO (bash_yolo) mode."""
+        if not config.get("bash_yolo", False):
+            self._yolo_items.discard(item_id)
+            return
+        self._yolo_items.add(item_id)
+        if announce:
+            await self._log_and_notify(item_id, "yolo_command",
+                "⚠️ **YOLO mode active** — all bash commands bypass permission checks")
+        await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
+            "item_id": item_id, "active": True,
+        })
+
+    async def _untrack_yolo(self, item_id: str) -> None:
+        """Clear YOLO tracking for an item whose session has ended."""
+        if item_id in self._yolo_items:
+            self._yolo_items.discard(item_id)
+            await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
+                "item_id": item_id, "active": False,
+            })
 
     async def start_copy_agent(self, item_id: str) -> Dict[str, Any]:
         """Copy a todo item and start the copy, leaving the original in todo."""
@@ -276,13 +309,7 @@ class WorkflowService:
     async def cancel_agent(self, item_id: str) -> Dict[str, Any]:
         """Cancel a running agent."""
         await self.sessions.cleanup_session(item_id)
-
-        # Clean up YOLO tracking
-        if item_id in self._yolo_items:
-            self._yolo_items.discard(item_id)
-            await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
-                "item_id": item_id, "active": False,
-            })
+        await self._untrack_yolo(item_id)
 
         # Cancelling halts any in-flight auto-approve cycle for this item.
         self._auto_approve_retries.pop(item_id, None)
@@ -352,17 +379,7 @@ class WorkflowService:
             )
 
         config = await self.db.get_agent_config()
-        worktree_path = Path(item["worktree_path"])
-
-        # Track YOLO mode for resumed agent
-        is_yolo = config.get("bash_yolo", False)
-        if is_yolo:
-            self._yolo_items.add(item_id)
-            await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
-                "item_id": item_id, "active": True,
-            })
-        else:
-            self._yolo_items.discard(item_id)
+        await self._track_yolo(item_id, config)
 
         # Clear pause_message on the same write that performs the transition
         # so the note is consumed exactly once.
@@ -371,27 +388,6 @@ class WorkflowService:
             resume_extras["pause_message"] = None
         item = await self.items.transition(item_id, Event.RESUME, **resume_extras)
         await self.notifications.broadcast_item_updated(item)
-
-        model = item.get("model") or config.get("model")
-        session = await self.sessions.create_session(
-            item_id, worktree_path, config, model,
-            on_message=self._create_on_message_callback(item_id),
-            on_tool_use=self._create_on_tool_use_callback(item_id),
-            on_thinking=self._create_on_thinking_callback(item_id),
-            on_complete=self._create_on_complete_callback(item_id),
-            on_error=self._create_on_error_callback(item_id),
-            on_clarify=self._create_on_clarify_callback(item_id),
-            on_create_todo=self._create_on_create_todo_callback(item_id),
-            on_create_epic=self._create_on_create_epic_callback(item_id),
-            on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
-            on_request_command=self._create_on_request_command_callback(item_id),
-            on_request_tool=self._create_on_request_tool_callback(item_id),
-            on_view_board=self._create_on_view_board_callback(),
-            on_graph_query=self._create_on_graph_query_callback(),
-            on_delete_todo=self._create_on_delete_todo_callback(item_id),
-            on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **(await self._item_session_kwargs(item)),
-        )
 
         prompt = f"Continue working on your task:\nTask: {item['title']}\n\n{item['description']}"
         if pause_message:
@@ -406,8 +402,7 @@ class WorkflowService:
                 + prompt
             )
         attachments = await self.db.get_attachments(item_id)
-        await self.sessions.start_session_task(item_id, session, prompt, attachments, resume_id)
-
+        await self._launch_session(item, config, prompt, attachments=attachments, resume_id=resume_id)
         return item
 
     async def retry_agent(self, item_id: str) -> Dict[str, Any]:
@@ -436,50 +431,15 @@ class WorkflowService:
             await self._log_and_notify(item_id, "system", "Agent retrying (no session to resume)")
 
         # Re-read item to get updated worktree_path
-        item = await self.db.get_item(item_id)
         config = await self.db.get_agent_config()
-        worktree_path = Path(item["worktree_path"])
+        await self._track_yolo(item_id, config)
 
-        # Track YOLO mode for retried agent
-        is_yolo = config.get("bash_yolo", False)
-        if is_yolo:
-            self._yolo_items.add(item_id)
-            await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
-                "item_id": item_id, "active": True,
-            })
-        else:
-            self._yolo_items.discard(item_id)
-
-        # Update item state
         item = await self.items.transition(item_id, Event.START)
         await self.notifications.broadcast_item_updated(item)
 
-        # Create session and start with resume
-        model = item.get("model") or config.get("model")
-        session = await self.sessions.create_session(
-            item_id, worktree_path, config, model,
-            on_message=self._create_on_message_callback(item_id),
-            on_tool_use=self._create_on_tool_use_callback(item_id),
-            on_thinking=self._create_on_thinking_callback(item_id),
-            on_complete=self._create_on_complete_callback(item_id),
-            on_error=self._create_on_error_callback(item_id),
-            on_clarify=self._create_on_clarify_callback(item_id),
-            on_create_todo=self._create_on_create_todo_callback(item_id),
-            on_create_epic=self._create_on_create_epic_callback(item_id),
-            on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
-            on_request_command=self._create_on_request_command_callback(item_id),
-            on_request_tool=self._create_on_request_tool_callback(item_id),
-            on_view_board=self._create_on_view_board_callback(),
-            on_graph_query=self._create_on_graph_query_callback(),
-            on_delete_todo=self._create_on_delete_todo_callback(item_id),
-            on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **(await self._item_session_kwargs(item)),
-        )
-
         prompt = f"Task: {item['title']}\n\n{item['description']}"
         attachments = await self.db.get_attachments(item_id)
-        await self.sessions.start_session_task(item_id, session, prompt, attachments, resume_id)
-
+        await self._launch_session(item, config, prompt, attachments=attachments, resume_id=resume_id)
         return item
 
     async def approve_item(self, item_id: str) -> Dict[str, Any]:
@@ -728,33 +688,13 @@ class WorkflowService:
                 await self.notifications.broadcast_item_updated(item)
 
                 config = await self.db.get_agent_config()
-                model = item.get("model") or config.get("model")
-                session = await self.sessions.create_session(
-                    item_id, worktree_path, config, model,
-                    on_message=self._create_on_message_callback(item_id),
-                    on_tool_use=self._create_on_tool_use_callback(item_id),
-                    on_thinking=self._create_on_thinking_callback(item_id),
-                    on_complete=self._create_on_complete_callback(item_id),
-                    on_error=self._create_on_error_callback(item_id),
-                    on_clarify=self._create_on_clarify_callback(item_id),
-                    on_create_todo=self._create_on_create_todo_callback(item_id),
-            on_create_epic=self._create_on_create_epic_callback(item_id),
-                    on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
-                    on_request_command=self._create_on_request_command_callback(item_id),
-                    on_request_tool=self._create_on_request_tool_callback(item_id),
-                    on_view_board=self._create_on_view_board_callback(),
-            on_graph_query=self._create_on_graph_query_callback(),
-                    on_delete_todo=self._create_on_delete_todo_callback(item_id),
-                    **(await self._item_session_kwargs(item)),
-                )
-
                 conflict_prompt = (
                     f"Your previous changes caused a merge conflict. The base branch has been updated.\n\n"
                     f"Here is the diff of your previous work — please reapply these changes to the "
                     f"updated codebase, resolving any conflicts:\n\n```diff\n{agent_diff}\n```\n\n"
                     f"Original task: {item['title']}\n\n{item['description']}"
                 )
-                await self.sessions.start_session_task(item_id, session, conflict_prompt)
+                await self._launch_session(item, config, conflict_prompt)
                 return item
 
             # Fallback: no diff captured, show conflict status
@@ -817,47 +757,13 @@ class WorkflowService:
         item = await self.items.transition(item_id, Event.REQUEST_CHANGES)
         await self.notifications.broadcast_item_updated(item)
 
-        # Start new agent session with feedback
+        # Resume the conversation with the feedback in a new session
         config = await self.db.get_agent_config()
-        worktree_path = Path(item["worktree_path"])
-
-        # Track YOLO mode
-        is_yolo = config.get("bash_yolo", False)
-        if is_yolo:
-            self._yolo_items.add(item_id)
-            await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
-                "item_id": item_id, "active": True,
-            })
-        else:
-            self._yolo_items.discard(item_id)
-
-        session = await self.sessions.create_session(
-            item_id, worktree_path, config,
-            on_message=self._create_on_message_callback(item_id),
-            on_tool_use=self._create_on_tool_use_callback(item_id),
-            on_thinking=self._create_on_thinking_callback(item_id),
-            on_complete=self._create_on_complete_callback(item_id),
-            on_error=self._create_on_error_callback(item_id),
-            on_clarify=self._create_on_clarify_callback(item_id),
-            on_create_todo=self._create_on_create_todo_callback(item_id),
-            on_create_epic=self._create_on_create_epic_callback(item_id),
-            on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
-            on_request_command=self._create_on_request_command_callback(item_id),
-            on_request_tool=self._create_on_request_tool_callback(item_id),
-            on_view_board=self._create_on_view_board_callback(),
-            on_graph_query=self._create_on_graph_query_callback(),
-            on_delete_todo=self._create_on_delete_todo_callback(item_id),
-            on_create_shortcut=self._create_on_create_shortcut_callback(item_id),
-            **(await self._item_session_kwargs(item)),
-        )
-
-        # Fetch attachments for context
+        await self._track_yolo(item_id, config)
         attachments = await self.db.get_attachments(item_id)
-
-        # Resume conversation with feedback
-        resume_id = item.get("session_id")
-        await self.sessions.start_session_task(item_id, session, feedback, attachments, resume_id)
-
+        await self._launch_session(
+            item, config, feedback, attachments=attachments, resume_id=item.get("session_id"),
+        )
         return item
 
     async def cancel_review(self, item_id: str) -> Dict[str, Any]:
@@ -1012,19 +918,17 @@ class WorkflowService:
                 await self.notifications.broadcast_item_updated(item, source="agent")
                 self._add_failure_notification(item_id, result.error, result.api_error_status)
 
-            # Remove finished session from tracking so it no longer counts as active
-            self.sessions.remove_session(item_id)
-            # Clean up YOLO tracking
-            if item_id in self._yolo_items:
-                self._yolo_items.discard(item_id)
-                await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
-                    "item_id": item_id, "active": False,
-                })
-
-            # Process queue — a slot just opened
-            await self.process_queue()
+            await self._release_session(item_id)
 
         return on_complete
+
+    async def _release_session(self, item_id: str) -> None:
+        """Bookkeeping once an agent session has ended (completed or errored)."""
+        # Remove finished session from tracking so it no longer counts as active
+        self.sessions.remove_session(item_id)
+        await self._untrack_yolo(item_id)
+        # Process queue — a slot just opened
+        await self.process_queue()
 
     def _create_on_error_callback(self, item_id: str):
         async def on_error(error: str):
@@ -1032,17 +936,7 @@ class WorkflowService:
             item = await self.items.transition(item_id, Event.FAIL)
             await self.notifications.broadcast_item_updated(item, source="agent")
             self._add_failure_notification(item_id, error)
-            # Remove finished session from tracking so it no longer counts as active
-            self.sessions.remove_session(item_id)
-            # Clean up YOLO tracking
-            if item_id in self._yolo_items:
-                self._yolo_items.discard(item_id)
-                await self.notifications.ws_manager.broadcast("yolo_mode_changed", {
-                    "item_id": item_id, "active": False,
-                })
-
-            # Process queue — a slot just opened
-            await self.process_queue()
+            await self._release_session(item_id)
         return on_error
 
     # HTTP statuses that indicate a transient, retryable API failure rather
@@ -1107,138 +1001,91 @@ class WorkflowService:
 
         return on_clarify
 
+    # What differs between the agent's two permission requests (a bash command
+    # vs. a built-in tool); the request/approve/deny flow itself is shared.
+    _PERMISSION_KINDS: Dict[str, Dict[str, str]] = {
+        "command": dict(
+            prompt_tag="__permission_request__",
+            request_verb="run",
+            ws_event="permission_requested",
+            ws_key="command",
+            label="Command",
+            save_method="save_allowed_command",
+        ),
+        "tool": dict(
+            prompt_tag="__tool_request__",
+            request_verb="use",
+            ws_event="tool_permission_requested",
+            ws_key="tool_name",
+            label="Tool",
+            save_method="save_allowed_builtin_tool",
+        ),
+    }
+
     def _create_on_request_command_callback(self, item_id: str):
         async def on_request_command(command: str, reason: str) -> str:
-            # Store as clarification FIRST so that any client-side auto-transition
-            # triggered by the item_updated broadcast (which fetches
-            # /api/items/{id}/clarification) finds the row immediately.
-            prompt = f"__permission_request__|{command}|{reason}"
-            await self.db.store_clarification(item_id, prompt, None)
-
-            item = await self.items.transition(item_id, Event.ASK)
-            await self.notifications.broadcast_item_updated(item, source="agent")
-            await self._log_and_notify(
-                item_id, "system",
-                f"Agent requests permission to run '{command}': {reason}"
-            )
-
-            await self.notifications.ws_manager.broadcast(
-                "permission_requested",
-                {
-                    "item_id": item_id,
-                    "command": command,
-                    "reason": reason,
-                },
-            )
-
-            event = asyncio.Event()
-            self._clarify_events[item_id] = event
-            await event.wait()
-
-            response = self._clarify_responses.pop(item_id, "denied")
-            self._clarify_events.pop(item_id, None)
-
-            if response == "approved":
-                await self.db.save_allowed_command(command)
-                await self._log_and_notify(
-                    item_id, "system",
-                    f"Command '{command}' approved — restarting session with updated permissions"
-                )
-
-                # Get session_id from the running session for resume
-                old_session = self.sessions.sessions.get(item_id)
-                resume_id = None
-                if old_session:
-                    resume_id = getattr(old_session, 'current_session_id', None)
-
-                # Schedule restart as a separate task — we can't cleanup the
-                # current session from inside it (we're running in its task).
-                item = await self.db.get_item(item_id)
-                asyncio.create_task(
-                    self._restart_session_with_new_permissions(
-                        item_id, command, resume_id, item
-                    )
-                )
-
-                # Return approved so the MCP tool handler exits cleanly.
-                # The session will be killed and restarted by the task above.
-                return "approved"
-            else:
-                await self._log_and_notify(
-                    item_id, "system",
-                    f"Command '{command}' access denied"
-                )
-
-            item = await self.items.transition(item_id, Event.ANSWER)
-            await self.notifications.broadcast_item_updated(item)
-
-            return response
-
+            return await self._request_permission(item_id, "command", command, reason)
         return on_request_command
 
     def _create_on_request_tool_callback(self, item_id: str):
         async def on_request_tool(tool_name: str, reason: str) -> str:
-            # Store as clarification FIRST so that any client-side auto-transition
-            # triggered by the item_updated broadcast (which fetches
-            # /api/items/{id}/clarification) finds the row immediately.
-            prompt = f"__tool_request__|{tool_name}|{reason}"
-            await self.db.store_clarification(item_id, prompt, None)
+            return await self._request_permission(item_id, "tool", tool_name, reason)
+        return on_request_tool
 
-            item = await self.items.transition(item_id, Event.ASK)
-            await self.notifications.broadcast_item_updated(item, source="agent")
+    async def _request_permission(self, item_id: str, kind: str, name: str, reason: str) -> str:
+        """Ask the user to allow a command or tool; block until they answer.
+
+        On approval the allow-list is updated and the session is restarted
+        (from a separate task) so the new permission takes effect.
+        """
+        spec = self._PERMISSION_KINDS[kind]
+        # Store as clarification FIRST so that any client-side auto-transition
+        # triggered by the item_updated broadcast (which fetches
+        # /api/items/{id}/clarification) finds the row immediately.
+        await self.db.store_clarification(item_id, f"{spec['prompt_tag']}|{name}|{reason}", None)
+
+        item = await self.items.transition(item_id, Event.ASK)
+        await self.notifications.broadcast_item_updated(item, source="agent")
+        await self._log_and_notify(
+            item_id, "system",
+            f"Agent requests permission to {spec['request_verb']} '{name}': {reason}"
+        )
+        await self.notifications.ws_manager.broadcast(
+            spec["ws_event"],
+            {"item_id": item_id, spec["ws_key"]: name, "reason": reason},
+        )
+
+        event = asyncio.Event()
+        self._clarify_events[item_id] = event
+        await event.wait()
+
+        response = self._clarify_responses.pop(item_id, "denied")
+        self._clarify_events.pop(item_id, None)
+
+        if response == "approved":
+            await getattr(self.db, spec["save_method"])(name)
             await self._log_and_notify(
                 item_id, "system",
-                f"Agent requests permission to use '{tool_name}': {reason}"
+                f"{spec['label']} '{name}' approved — restarting session with updated permissions"
             )
+            # Get session_id from the running session for resume
+            old_session = self.sessions.sessions.get(item_id)
+            resume_id = getattr(old_session, 'current_session_id', None) if old_session else None
 
-            await self.notifications.ws_manager.broadcast(
-                "tool_permission_requested",
-                {
-                    "item_id": item_id,
-                    "tool_name": tool_name,
-                    "reason": reason,
-                },
+            # Schedule restart as a separate task — we can't cleanup the
+            # current session from inside it (we're running in its task).
+            item = await self.db.get_item(item_id)
+            asyncio.create_task(
+                self._restart_session_with_new_permissions(item_id, name, resume_id, item)
             )
+            # Return approved so the MCP tool handler exits cleanly.
+            # The session will be killed and restarted by the task above.
+            return "approved"
 
-            event = asyncio.Event()
-            self._clarify_events[item_id] = event
-            await event.wait()
-
-            response = self._clarify_responses.pop(item_id, "denied")
-            self._clarify_events.pop(item_id, None)
-
-            if response == "approved":
-                await self.db.save_allowed_builtin_tool(tool_name)
-                await self._log_and_notify(
-                    item_id, "system",
-                    f"Tool '{tool_name}' approved — restarting session with updated permissions"
-                )
-
-                old_session = self.sessions.sessions.get(item_id)
-                resume_id = None
-                if old_session:
-                    resume_id = getattr(old_session, 'current_session_id', None)
-
-                item = await self.db.get_item(item_id)
-                asyncio.create_task(
-                    self._restart_session_with_new_permissions(
-                        item_id, tool_name, resume_id, item
-                    )
-                )
-
-                return "approved"
-            else:
-                await self._log_and_notify(
-                    item_id, "system",
-                    f"Tool '{tool_name}' access denied"
-                )
-
-            item = await self.items.transition(item_id, Event.ANSWER)
-            await self.notifications.broadcast_item_updated(item)
-
-            return response
-
-        return on_request_tool
+        await self._log_and_notify(item_id, "system", f"{spec['label']} '{name}' access denied")
+        item = await self.items.transition(item_id, Event.ANSWER)
+        await self.notifications.broadcast_item_updated(item)
+        return response
 
     async def create_agent_todo(self, creator_item_id: str, title: str, description: str = "",
                                 epic_id: str = None, requires: list[str] = None,
@@ -1634,28 +1481,13 @@ class WorkflowService:
         Scheduled as a background task from on_complete so we don't block the
         agent's completion callback.
         """
-        try:
-            item = await self.db.get_item(item_id)
-            if not item:
-                return
-            # Sanity: the user (or another flow) may have already moved the
-            # item out of review. In that case do nothing.
-            if item.get("column_name") != "review":
-                return
-            if not item.get("auto_approve"):
-                return
-            self._auto_approve_retries.pop(item_id, None)
-            await self._log_and_notify(
-                item_id, "system",
-                "Auto-approve: no file changes — marking done."
-            )
-            await self.approve_item(item_id)
-        except Exception as e:
-            logger.exception("Auto-approve (no-changes) failed for %s: %s", item_id, e)
-            await self._log_and_notify(
-                item_id, "system",
-                f"Auto-approve failed to mark done: {e}. Item left for manual review."
-            )
+        await self._approve_without_review(
+            item_id,
+            required_mode=None,
+            start_message="Auto-approve: no file changes — marking done.",
+            log_tag="no-changes",
+            failure_prefix="Auto-approve failed to mark done",
+        )
 
     async def _auto_approve_direct(self, item_id: str) -> None:
         """Auto-approve an item without running a review agent.
@@ -1670,28 +1502,49 @@ class WorkflowService:
         the other auto-approve paths: approve_item creates new sessions and
         would deadlock if awaited inline.
         """
+        await self._approve_without_review(
+            item_id,
+            required_mode=AUTO_APPROVE_DIRECT,
+            start_message="Auto-approve (direct): skipping review — merging now.",
+            log_tag="direct",
+            failure_prefix="Auto-approve (direct) failed",
+        )
+
+    async def _auto_approvable_item(
+        self, item_id: str, required_mode: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        """The item if it is still in Review with auto-approve on, else None.
+
+        The user (or another flow) may have moved the item out of review, or
+        turned auto-approve off, before a background auto-approve task ran.
+        ``required_mode`` additionally pins the exact auto-approve mode.
+        """
+        item = await self.db.get_item(item_id)
+        if not item or item.get("column_name") != "review":
+            return None
+        mode = int(item.get("auto_approve") or 0)
+        if not mode:
+            return None
+        if required_mode is not None and mode != required_mode:
+            return None
+        return item
+
+    async def _approve_without_review(
+        self, item_id: str, *, required_mode: Optional[int], start_message: str,
+        log_tag: str, failure_prefix: str,
+    ) -> None:
+        """Approve an auto-approve item straight away, with no review agent."""
         try:
-            item = await self.db.get_item(item_id)
-            if not item:
-                return
-            # Sanity: the user may have moved the item out of review before
-            # this task got scheduled.
-            if item.get("column_name") != "review":
-                return
-            mode = int(item.get("auto_approve") or 0)
-            if mode != AUTO_APPROVE_DIRECT:
+            if not await self._auto_approvable_item(item_id, required_mode):
                 return
             self._auto_approve_retries.pop(item_id, None)
-            await self._log_and_notify(
-                item_id, "system",
-                "Auto-approve (direct): skipping review — merging now."
-            )
+            await self._log_and_notify(item_id, "system", start_message)
             await self.approve_item(item_id)
         except Exception as e:
-            logger.exception("Auto-approve (direct) failed for %s: %s", item_id, e)
+            logger.exception("Auto-approve (%s) failed for %s: %s", log_tag, item_id, e)
             await self._log_and_notify(
                 item_id, "system",
-                f"Auto-approve (direct) failed: {e}. Item left for manual review."
+                f"{failure_prefix}: {e}. Item left for manual review."
             )
 
     async def _run_auto_review(self, item_id: str) -> None:
@@ -1710,14 +1563,8 @@ class WorkflowService:
         the item in review (its current state) rather than silently merging.
         """
         try:
-            item = await self.db.get_item(item_id)
+            item = await self._auto_approvable_item(item_id)
             if not item:
-                return
-            # Sanity check: the item should still be in review/auto_approve.
-            # If a user cancelled or moved it during the review setup, bail.
-            if item.get("column_name") != "review":
-                return
-            if not item.get("auto_approve"):
                 return
 
             attempt = self._auto_approve_retries.get(item_id, 0) + 1
@@ -1879,39 +1726,14 @@ class WorkflowService:
             await self.notifications.broadcast_item_updated(item)
 
             config = await self.db.get_agent_config()
-            model = item.get("model") or config.get("model")
-            worktree_path = Path(item["worktree_path"])
-            new_session = await self.sessions.create_session(
-                item_id, worktree_path, config, model,
-                on_message=self._create_on_message_callback(item_id),
-                on_tool_use=self._create_on_tool_use_callback(item_id),
-                on_thinking=self._create_on_thinking_callback(item_id),
-                on_complete=self._create_on_complete_callback(item_id),
-                on_error=self._create_on_error_callback(item_id),
-                on_clarify=self._create_on_clarify_callback(item_id),
-                on_create_todo=self._create_on_create_todo_callback(item_id),
-            on_create_epic=self._create_on_create_epic_callback(item_id),
-                on_set_commit_message=self._create_on_set_commit_message_callback(item_id),
-                on_request_command=self._create_on_request_command_callback(item_id),
-                on_request_tool=self._create_on_request_tool_callback(item_id),
-                on_view_board=self._create_on_view_board_callback(),
-            on_graph_query=self._create_on_graph_query_callback(),
-                on_delete_todo=self._create_on_delete_todo_callback(item_id),
-                **(await self._item_session_kwargs(item or {})),
-            )
-
             # Include original task so agent knows what to do even without resume
-            task_title = (item or {}).get("title", "")
-            task_desc = (item or {}).get("description", "")
             restart_prompt = (
                 f"Permission for '{command}' was granted. "
                 f"You can now run {command} commands.\n\n"
                 f"Continue with your original task:\n"
-                f"Task: {task_title}\n\n{task_desc}"
+                f"Task: {item.get('title', '')}\n\n{item.get('description', '')}"
             )
-            await self.sessions.start_session_task(
-                item_id, new_session, restart_prompt, None, resume_id
-            )
+            await self._launch_session(item, config, restart_prompt, resume_id=resume_id)
         except Exception as e:
             logger.error(f"Failed to restart session for {item_id}: {e}")
             await self._log_and_notify(

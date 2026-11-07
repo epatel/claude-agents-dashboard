@@ -52,7 +52,13 @@ behavior change** — every step keeps the full test suite green and `aihealth d
   step; steps 1→2 and 3→4 are sequential, 5 runs in parallel, 6 waits for 1–5.
   - [x] 0 — Baseline (2026-11-07): scan #1 saved to `.aihealth/health.db` (7.14; 73 healthy /
     53 warning / 2 alert); `.aihealth/` self-ignores via its own `.gitignore`; 1434 tests green.
-  - [ ] 1 — `WorkflowService` session-launch dedup (file score 3.17): one `_launch_session`
+  - [x] 1 — Done 2026-11-07: file 3.17 → 4.73, project 7.14 → 7.25, −178 lines. New helpers
+    `_launch_session` / `_session_callbacks` / `_track_yolo` / `_untrack_yolo` /
+    `_release_session` / `_request_permission` / `_auto_approvable_item` /
+    `_approve_without_review`. Two drifts fixed by unifying: the merge-conflict and
+    permission restarts now get the `create_shortcut` tool, and `request_changes` honours the
+    item's model (it used the config model). Only `approve_item`'s self-duplication is left (step 2).
+    Original scope — `WorkflowService` session-launch dedup (file score 3.17): one `_launch_session`
     helper for `_start_agent_internal` / `resume_agent` / `retry_agent` / `request_changes` /
     `approve_item` / `_restart_session_with_new_permissions` (17–60 shared lines each); merge
     `on_request_command` + `on_request_tool`, `on_complete` + `on_error`, and the shared tail of
@@ -184,7 +190,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-07): step 0 done; next are steps 1, 3 and 5.** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 in flight (2026-11-07): steps 0–1 done; next are steps 2, 3 and 5.** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above
