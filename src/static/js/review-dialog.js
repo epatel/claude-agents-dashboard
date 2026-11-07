@@ -3,6 +3,13 @@
  * that highlights changed files and shows diffs inline.
  */
 const ReviewFileBrowser = {
+    ...FileTreeBase,
+    _tree: {
+        treeId: 'rfb-tree', tabsId: 'rfb-tabs', crumbId: 'rfb-breadcrumb',
+        itemClass: 'rfb-tree-item', childrenClass: 'rfb-tree-children',
+        tabClass: 'rfb-tab', tabNameClass: 'rfb-tab-name', tabCloseClass: 'rfb-tab-close',
+        childLoadingHtml: '<div style="padding:4px 8px;font-size:12px;color:var(--text-muted);">Loading…</div>',
+    },
     _itemId: null,
     _treeData: null,
     _changedFiles: {},   // { path: { status, status_label, diff_lines } }
@@ -61,10 +68,7 @@ const ReviewFileBrowser = {
         const treeEl = document.getElementById('rfb-tree');
         treeEl.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px;">Loading…</div>';
         try {
-            const url = path
-                ? `/api/items/${this._itemId}/worktree/tree?path=${encodeURIComponent(path)}`
-                : `/api/items/${this._itemId}/worktree/tree`;
-            const data = await Api.request('GET', url);
+            const data = await Api.request('GET', this._treeUrl(path));
             if (!path) this._treeData = data.tree;
             this._renderTreeNodes(treeEl, data.tree, 0);
 
@@ -73,6 +77,29 @@ const ReviewFileBrowser = {
         } catch {
             treeEl.innerHTML = '<div style="padding:12px;color:var(--danger);font-size:12px;">Failed to load files</div>';
         }
+    },
+
+    _treeUrl(path) {
+        const base = `/api/items/${this._itemId}/worktree/tree`;
+        return path ? `${base}?path=${encodeURIComponent(path)}` : base;
+    },
+
+    _dirExtraHtml(node) {
+        // Dot on directories that contain changed files
+        const hasChanges = Object.keys(this._changedFiles).some(p => p.startsWith(node.path + '/'));
+        return hasChanges ? '<span class="rfb-status-dot status-M" title="Contains changes"></span>' : '';
+    },
+
+    _decorateFileNode(item, node) {
+        const change = this._changedFiles[node.path];
+        if (!change) return '';
+        item.classList.add('rfb-changed-file');
+        return `<span class="rfb-status-dot status-${change.status}" title="${change.status_label}"></span>`;
+    },
+
+    _tabExtraHtml(tab) {
+        const statusColor = { A: 'var(--success)', D: 'var(--danger)', M: 'var(--accent)' }[tab.status] || '';
+        return statusColor ? `<span class="rfb-tab-status" style="background:${statusColor}"></span>` : '';
     },
 
     _autoExpandChanged() {
@@ -89,104 +116,6 @@ const ReviewFileBrowser = {
             // Re-render tree with expansions
             const treeEl = document.getElementById('rfb-tree');
             if (this._treeData) this._renderTreeNodes(treeEl, this._treeData, 0);
-        }
-    },
-
-    _renderTreeNodes(container, nodes, indent) {
-        container.innerHTML = '';
-        for (const node of nodes) {
-            if (node.type === 'dir') {
-                this._renderDirNode(container, node, indent);
-            } else {
-                this._renderFileNode(container, node, indent);
-            }
-        }
-    },
-
-    _renderDirNode(container, node, indent) {
-        const item = document.createElement('div');
-        item.className = 'rfb-tree-item';
-        item.style.paddingLeft = `${8 + indent * 16}px`;
-        item.dataset.path = node.path;
-        item.dataset.type = 'dir';
-
-        const isExpanded = this._expandedDirs.has(node.path);
-
-        // Check if this dir contains changed files
-        const hasChanges = Object.keys(this._changedFiles).some(p => p.startsWith(node.path + '/'));
-
-        item.innerHTML = `
-            <span class="tree-arrow ${isExpanded ? 'expanded' : ''}">▶</span>
-            <span class="tree-icon">📁</span>
-            <span class="tree-name">${this._escapeHtml(node.name)}</span>
-            ${hasChanges ? '<span class="rfb-status-dot status-M" title="Contains changes"></span>' : ''}
-        `;
-        item.addEventListener('click', () => this._toggleDir(node, item, indent));
-        container.appendChild(item);
-
-        const children = document.createElement('div');
-        children.className = `rfb-tree-children ${isExpanded ? 'expanded' : ''}`;
-        children.dataset.path = node.path;
-        if (isExpanded && node.children) {
-            this._renderTreeNodes(children, node.children, indent + 1);
-        }
-        container.appendChild(children);
-    },
-
-    _renderFileNode(container, node, indent) {
-        const item = document.createElement('div');
-        item.className = 'rfb-tree-item';
-        item.style.paddingLeft = `${8 + indent * 16 + 18}px`;
-        item.dataset.path = node.path;
-        item.dataset.type = 'file';
-
-        const change = this._changedFiles[node.path];
-        if (change) item.classList.add('rfb-changed-file');
-
-        // Highlight active file
-        if (this._activeTab >= 0 && this._openTabs[this._activeTab]?.path === node.path) {
-            item.classList.add('active');
-        }
-
-        const icon = this._getFileIcon(node.name);
-        const statusDot = change
-            ? `<span class="rfb-status-dot status-${change.status}" title="${change.status_label}"></span>`
-            : '';
-
-        item.innerHTML = `
-            <span class="tree-icon">${icon}</span>
-            <span class="tree-name">${this._escapeHtml(node.name)}</span>
-            ${statusDot}
-        `;
-        item.addEventListener('click', () => this._openFile(node.path, node.name));
-        container.appendChild(item);
-    },
-
-    async _toggleDir(node, itemEl, indent) {
-        const isExpanded = this._expandedDirs.has(node.path);
-        const childrenEl = itemEl.nextElementSibling;
-        const arrowEl = itemEl.querySelector('.tree-arrow');
-
-        if (isExpanded) {
-            this._expandedDirs.delete(node.path);
-            childrenEl.classList.remove('expanded');
-            arrowEl.classList.remove('expanded');
-        } else {
-            this._expandedDirs.add(node.path);
-            childrenEl.classList.add('expanded');
-            arrowEl.classList.add('expanded');
-            if (node.children === null) {
-                childrenEl.innerHTML = '<div style="padding:4px 8px;font-size:12px;color:var(--text-muted);">Loading…</div>';
-                try {
-                    const data = await Api.request('GET', `/api/items/${this._itemId}/worktree/tree?path=${encodeURIComponent(node.path)}`);
-                    node.children = data.tree;
-                    this._renderTreeNodes(childrenEl, node.children, indent + 1);
-                } catch {
-                    childrenEl.innerHTML = '<div style="padding:4px 8px;font-size:12px;color:var(--danger);">Failed to load</div>';
-                }
-            } else {
-                this._renderTreeNodes(childrenEl, node.children, indent + 1);
-            }
         }
     },
 
@@ -239,77 +168,6 @@ const ReviewFileBrowser = {
         } catch {
             contentEl.innerHTML = '<div style="padding:20px;color:var(--danger);">Failed to load file</div>';
         }
-    },
-
-    _switchTab(index) {
-        this._activeTab = index;
-        this._renderTabs();
-        this._renderContent();
-        this._renderBreadcrumb();
-        this._updateTreeHighlight();
-    },
-
-    _closeTab(index) {
-        this._openTabs.splice(index, 1);
-        if (this._openTabs.length === 0) {
-            this._activeTab = -1;
-        } else if (this._activeTab >= this._openTabs.length) {
-            this._activeTab = this._openTabs.length - 1;
-        } else if (this._activeTab > index) {
-            this._activeTab--;
-        }
-        this._renderTabs();
-        this._renderContent();
-        this._renderBreadcrumb();
-        this._updateTreeHighlight();
-    },
-
-    _renderTabs() {
-        const tabsEl = document.getElementById('rfb-tabs');
-        tabsEl.innerHTML = '';
-        this._openTabs.forEach((tab, i) => {
-            const el = document.createElement('div');
-            el.className = `rfb-tab ${i === this._activeTab ? 'active' : ''}`;
-
-            const statusColor = tab.status === 'A' ? 'var(--success)' : tab.status === 'D' ? 'var(--danger)' : tab.status === 'M' ? 'var(--accent)' : '';
-            const statusDot = statusColor ? `<span class="rfb-tab-status" style="background:${statusColor}"></span>` : '';
-
-            el.innerHTML = `
-                ${statusDot}
-                <span class="rfb-tab-name" title="${this._escapeHtml(tab.path)}">${this._escapeHtml(tab.name)}</span>
-                <span class="rfb-tab-close">&times;</span>
-            `;
-            el.querySelector('.rfb-tab-name').addEventListener('click', () => this._switchTab(i));
-            el.querySelector('.rfb-tab-close').addEventListener('click', (e) => {
-                e.stopPropagation();
-                this._closeTab(i);
-            });
-            tabsEl.appendChild(el);
-        });
-    },
-
-    _renderBreadcrumb() {
-        const crumbEl = document.getElementById('rfb-breadcrumb');
-        if (this._activeTab < 0) {
-            crumbEl.classList.remove('visible');
-            return;
-        }
-        crumbEl.classList.add('visible');
-        const tab = this._openTabs[this._activeTab];
-        const parts = tab.path.split('/');
-        crumbEl.innerHTML = '';
-        parts.forEach((part, i) => {
-            if (i > 0) {
-                const sep = document.createElement('span');
-                sep.className = 'separator';
-                sep.textContent = '/';
-                crumbEl.appendChild(sep);
-            }
-            const span = document.createElement('span');
-            span.textContent = part;
-            if (i < parts.length - 1) span.className = 'crumb';
-            crumbEl.appendChild(span);
-        });
     },
 
     _renderContent() {
@@ -812,66 +670,6 @@ const ReviewFileBrowser = {
         }
     },
 
-    _updateTreeHighlight() {
-        document.querySelectorAll('.rfb-tree-item.active').forEach(el => el.classList.remove('active'));
-        if (this._activeTab >= 0) {
-            const activePath = this._openTabs[this._activeTab].path;
-            document.querySelectorAll('.rfb-tree-item[data-type="file"]').forEach(el => {
-                if (el.dataset.path === activePath) el.classList.add('active');
-            });
-        }
-    },
-
-    _filterTree(query) {
-        const treeEl = document.getElementById('rfb-tree');
-        const items = treeEl.querySelectorAll('.rfb-tree-item');
-        const childContainers = treeEl.querySelectorAll('.rfb-tree-children');
-        const lq = query.toLowerCase().trim();
-
-        if (!lq) {
-            items.forEach(el => el.style.display = '');
-            childContainers.forEach(el => {
-                const path = el.dataset.path;
-                el.classList.toggle('expanded', this._expandedDirs.has(path));
-            });
-            return;
-        }
-
-        const matchingPaths = new Set();
-        items.forEach(el => {
-            const name = el.querySelector('.tree-name')?.textContent?.toLowerCase() || '';
-            const path = el.dataset.path || '';
-            if (name.includes(lq)) {
-                matchingPaths.add(path);
-                const parts = path.split('/');
-                for (let i = 1; i < parts.length; i++) matchingPaths.add(parts.slice(0, i).join('/'));
-            }
-        });
-
-        items.forEach(el => {
-            el.style.display = matchingPaths.has(el.dataset.path || '') ? '' : 'none';
-        });
-        childContainers.forEach(el => {
-            el.classList.toggle('expanded', matchingPaths.has(el.dataset.path));
-        });
-    },
-
-    _getFileIcon(filename) {
-        const ext = filename.includes('.') ? '.' + filename.split('.').pop().toLowerCase() : '';
-        const iconMap = {
-            '.py': '🐍', '.js': '📜', '.ts': '📜', '.html': '🌐', '.css': '🎨',
-            '.json': '📋', '.md': '📝', '.yaml': '⚙️', '.yml': '⚙️',
-            '.png': '🖼️', '.jpg': '🖼️', '.jpeg': '🖼️', '.gif': '🖼️', '.svg': '🖼️',
-            '.sh': '💻', '.sql': '🗃️', '.toml': '⚙️', '.xml': '📄',
-        };
-        return iconMap[ext] || '📄';
-    },
-
-    _escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    },
 };
 
 

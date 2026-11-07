@@ -132,6 +132,19 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     Playwright E2E tests, which spawn real agents (paid; confirm first) — so each file needs a
     browser check of the affected UI (the `run` skill / Chrome) besides the E2E suite. Do this
     after step 6; it does not depend on 7.
+    - [x] 8a — 2026-11-07: the two file browsers (`FileBrowser`, `ReviewFileBrowser`) now share
+      tree / tab / breadcrumb / filter code via `src/static/js/file-tree.js` (`FileTreeBase`, spread
+      into both; per-browser ids/classes in `_tree`, differences as hooks). Verified with a browser
+      harness: 30 DOM snapshots (tree, tabs, breadcrumb, content) across both browsers on a scratch
+      target, identical to the old code except a trailing space inside one class attribute
+      (`classList.toggle` vs `remove`; no rendering effect). file-tree.js 10.00; file-browser.js
+      3.50 → 4.86, review-dialog.js 4.12 → 5.43 (scan). Left in those two: `FileBrowser._renderContent`
+      / `init` / `_render3DModel` / `_renderArchive`, `ReviewFileBrowser._renderInlineDiff`,
+      `ReviewDialog.showReview` (duplicates `DetailDialog.showDetail`).
+      Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
+      empty (the summary query yields one all-NULL row) → `stats.js` throws every 10 s; (2) the review
+      browser auto-expands folders holding changed files but doesn't load their children, so changed
+      files deeper than the initial tree depth stay hidden until the folder is toggled twice.
 
 ## Decisions
 
