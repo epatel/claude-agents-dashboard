@@ -155,6 +155,16 @@ behavior change** — every step keeps the full test suite green and `aihealth d
       `DetailDialog.showDetail` / `switchDetailTab`). Harness: scratch target + dashboard on :8017,
       script and baseline kept in that origin's localStorage (`__fb_script`, `__fb_baseline`).
       Scores now: headline 7.89, non-JS 8.29, JS 6.63.
+      8c — 2026-11-07: `board.js` 4.69 → 8.39. Done/Archive columns share
+      `_renderDayGroupedColumn` / `_renderDayGroup` (were 60-line copies); Todo epic and No-Epic groups
+      share `_renderTodoGroup`; `renderCard` (cyclomatic 48) → per-part `_card*Html` builders with
+      actions split by column (`_todo/_doing/_reviewActionsHtml`); `updateCard` (cyclomatic 36) →
+      one rule (re-render the grouped column left, then the one entered, else `_insertCard`).
+      Verified with a board harness: ~26 synthetic items covering every card/column branch, rendered
+      through the real methods and stepped through collapsing, epic filter, 10 `updateCard` moves,
+      removals and unblocking — 27 snapshots × 6 columns identical to the old code; plus the live
+      WebSocket create → move → delete round trip. (Board harness: `__bd_script` / `__bd_baseline`
+      in the :8017 origin's localStorage.) JS now 7.09, headline 8.00. Next: `annotate.js`.
       Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
       empty (the summary query yields one all-NULL row) → `stats.js` throws every 10 s; (2) the review
       browser auto-expands folders holding changed files but doesn't load their children, so changed

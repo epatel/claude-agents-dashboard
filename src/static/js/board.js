@@ -530,136 +530,154 @@ const Board = {
         div.ondragstart = (e) => Board.handleDragStart(e);
         div.onclick = () => Dialogs.showDetail(item.id);
 
-        // Epic badge
-        let epicBadgeHtml = '';
-        if (item.epic_id && !this._epicFilter && item.column_name !== 'todo') {
-            const epic = this._epics.find(e => e.id === item.epic_id);
-            if (epic) {
-                epicBadgeHtml = `<div class="card-epic-badge" data-map-name="card.epic-badge"><span class="epic-dot" style="background: var(--epic-${epic.color})"></span>${this.escapeHtml(epic.title)}</div>`;
-            }
-        }
-
-        // Multi-repo badge (matches server-rendered card.html; uses same djb2 hue).
-        let repoBadgeHtml = '';
-        if (item.repo) {
-            const hue = Board.repoHue(item.repo);
-            const repoEsc = this.escapeHtml(item.repo);
-            repoBadgeHtml = `<span class="card-repo-badge" data-map-name="card.repo-badge" data-repo="${repoEsc}" style="--repo-hue: ${hue}" title="Repo: ${repoEsc}">${repoEsc}</span>`;
-        }
-
-        let statusHtml = '';
-        if (item.status) {
-            const labels = {
-                running: '<span class="spinner"></span> Running',
-                queued: '⏳ Queued',
-                paused: '⏸ Paused',
-                failed: '✕ Failed',
-                cancelled: '⊘ Cancelled',
-                conflict: '⚠ Merge conflict',
-                merge_blocked: '⚠ Merge blocked',
-                resolving_conflicts: '<span class="spinner"></span> Resolving conflicts',
-            };
-            const yoloBadge = (item.status === 'running' || item.status === 'resolving_conflicts') && this._yoloItems.has(item.id)
-                ? '<span class="card-yolo-badge">⚡ YOLO</span>' : '';
-            statusHtml = `<div class="card-status card-status-${item.status}" data-map-name="card.status">${labels[item.status] || item.status}${yoloBadge}</div>`;
-        } else if (item.column_name === 'review' && this._autoReviewingItems.has(item.id)) {
-            // Review column item with no DB status but an auto-review agent
-            // is actively inspecting its diff — surface that to the user the
-            // same way Running is surfaced for Doing.
-            statusHtml = `<div class="card-status card-status-reviewing" data-map-name="card.status"><span class="spinner"></span> Reviewing</div>`;
-        }
-
-        // Blocked badge for todo items
-        let blockedHtml = '';
+        // Blocked badge / disabled start button for todo items
         const isBlocked = item.column_name === 'todo' && this.isItemBlocked(item.id);
-        if (isBlocked) {
-            const blockers = this.getBlockingItems(item.id);
-            const names = blockers.map(b => this.escapeHtml(b.title)).join(', ');
-            const items = blockers.map(b => `<span class="blocked-item">🔒 ${this.escapeHtml(b.title)}</span>`).join('');
-            blockedHtml = `<div class="card-blocked-badge" data-map-name="card.blocked-badge" title="Requires: ${names}">${items}</div>`;
-        }
-
-        let actionsHtml = '';
-        const col = item.column_name;
-        const deleteBtn = `<button class="btn btn-xs btn-delete" data-map-name="card.btn-delete" onclick="event.stopPropagation(); Board.deleteItem('${item.id}')" title="Delete">✕</button>`;
-        if (col === 'todo') {
-            const blockedTooltip = isBlocked
-                ? `Blocked by: ${this.getBlockingItems(item.id).map(b => b.title).join(', ')}`
-                : 'Start agent';
-            const disabledAttr = isBlocked ? ' disabled' : '';
-            const disabledClass = isBlocked ? ' btn-disabled' : '';
-            if (item.start_copy) {
-                actionsHtml = `<button class="btn btn-xs btn-primary${disabledClass}" data-map-name="card.btn-start-copy" onclick="event.stopPropagation(); Board.startCopyAgent('${item.id}')" title="${isBlocked ? this.escapeHtml(blockedTooltip) : 'Start Copy (keep original in Todo)'}"${disabledAttr}>▶⧉</button>${deleteBtn}`;
-            } else {
-                actionsHtml = `<button class="btn btn-xs btn-primary${disabledClass}" data-map-name="card.btn-start" onclick="event.stopPropagation(); Board.startAgent('${item.id}')" title="${this.escapeHtml(blockedTooltip)}"${disabledAttr}>▶</button>${deleteBtn}`;
-            }
-        } else if (col === 'doing' && item.status === 'queued') {
-            actionsHtml = `<button class="btn btn-xs btn-danger" data-map-name="card.btn-cancel" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')" title="Cancel">✕</button>`;
-        } else if (col === 'doing' && item.status === 'failed') {
-            actionsHtml = `<button class="btn btn-xs" data-map-name="card.btn-retry" onclick="event.stopPropagation(); Board.retryAgent('${item.id}')" title="Retry">↻ Retry</button>
-                <button class="btn btn-xs" data-map-name="card.btn-move-to-todo" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>`;
-        } else if (col === 'doing' && item.status === 'running') {
-            actionsHtml = `<button class="btn btn-xs btn-warning" data-map-name="card.btn-pause" onclick="event.stopPropagation(); Board.pauseAgent('${item.id}')" title="Pause">⏸</button>
-                <button class="btn btn-xs btn-danger" data-map-name="card.btn-cancel" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')" title="Cancel">✕</button>`;
-        } else if (col === 'doing' && item.status === 'paused') {
-            actionsHtml = `<button class="btn btn-xs btn-primary" data-map-name="card.btn-resume" onclick="event.stopPropagation(); Board.resumeAgent('${item.id}')" title="Resume">▶</button>
-                <button class="btn btn-xs btn-danger" data-map-name="card.btn-cancel" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')" title="Cancel">✕</button>`;
-        } else if (col === 'review') {
-            const hasChanges = item.has_file_changes !== 0;
-            const approveLabel = hasChanges ? '✓ Approve' : '✓ Done';
-            const approveTitle = hasChanges ? 'Approve & Merge' : 'Done';
-            const approveName = hasChanges ? 'card.btn-approve' : 'card.btn-done';
-            // Even when there are no file changes, route through the review
-            // dialog so the agent's closing message is surfaced on the Result
-            // tab instead of being lost when pressing Done from the card.
-            const approveAction = hasChanges
-                ? `Board.approveItem('${item.id}')`
-                : `ReviewDialog.showReview('${item.id}')`;
-            actionsHtml = `<button class="btn btn-xs btn-primary" data-map-name="${approveName}" onclick="event.stopPropagation(); ${approveAction}" title="${approveTitle}">${approveLabel}</button>
-                <button class="btn btn-xs" data-map-name="card.btn-request-changes" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')" title="Request changes">↩</button>
-                <button class="btn btn-xs btn-danger" data-map-name="card.btn-cancel-review" onclick="event.stopPropagation(); Board.cancelReview('${item.id}')" title="Cancel review">✕</button>`;
-        } else if (col === 'questions') {
-            actionsHtml = `<button class="btn btn-xs" data-map-name="card.btn-archive" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;
-        } else if (col === 'done') {
-            actionsHtml = `<button class="btn btn-xs" data-map-name="card.btn-rerun" onclick="event.stopPropagation(); Board.rerunItem('${item.id}')" title="Re-run">↻</button>`
-                + `<button class="btn btn-xs" data-map-name="card.btn-archive" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;
-        } else if (col === 'archive') {
-            actionsHtml = deleteBtn;
-        }
-
-        let logCountHtml = '';
-        if (col === 'doing' && item.log_count > 0) {
-            logCountHtml = `<div class="card-log-count" data-map-name="card.log-count" data-log-count="${item.id}">${item.log_count}</div>`;
-        }
-
-        let timestampHtml = '';
-        if (col === 'done' && (item.done_at || item.updated_at)) {
-            const d = new Date((item.done_at || item.updated_at) + 'Z');
-            const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            timestampHtml = `<span class="card-timestamp" data-map-name="card.timestamp">${timeStr}</span>`;
-        }
-
-        // Model badge (show only for non-default / local Ollama or Tiiny models)
-        let modelBadgeHtml = '';
-        if (item.model && DialogUtils._isLocalModel(item.model)) {
-            const shortName = DialogUtils._getModelDisplayName(item.model);
-            modelBadgeHtml = `<span class="card-model-badge" data-map-name="card.model-badge" title="${item.model}">${shortName}</span>`;
-        }
-
         div.innerHTML = `
-            ${epicBadgeHtml}
-            ${repoBadgeHtml}
+            ${this._cardEpicBadgeHtml(item)}
+            ${this._cardRepoBadgeHtml(item)}
             <div class="card-title" data-map-name="card.title">${this.escapeHtml(item.title)}</div>
-            ${blockedHtml}
-            ${statusHtml}
+            ${isBlocked ? this._cardBlockedHtml(item) : ''}
+            ${this._cardStatusHtml(item)}
             <div class="card-bottom">
-                <div class="card-actions" data-map-name="card.actions">${actionsHtml}</div>
-                ${modelBadgeHtml}
-                ${timestampHtml}
-                ${logCountHtml}
+                <div class="card-actions" data-map-name="card.actions">${this._cardActionsHtml(item, isBlocked)}</div>
+                ${this._cardModelBadgeHtml(item)}
+                ${this._cardTimestampHtml(item)}
+                ${this._cardLogCountHtml(item)}
             </div>
         `;
         return div;
+    },
+
+    _cardEpicBadgeHtml(item) {
+        // Hidden while filtering by epic, and in Todo (grouped by epic already)
+        if (this._epicFilter || item.column_name === 'todo') return '';
+        if (!item.epic_id) return '';
+        const epic = this._epics.find(e => e.id === item.epic_id);
+        if (!epic) return '';
+        return `<div class="card-epic-badge" data-map-name="card.epic-badge"><span class="epic-dot" style="background: var(--epic-${epic.color})"></span>${this.escapeHtml(epic.title)}</div>`;
+    },
+
+    /** Multi-repo badge (matches server-rendered card.html; uses same djb2 hue). */
+    _cardRepoBadgeHtml(item) {
+        if (!item.repo) return '';
+        const hue = Board.repoHue(item.repo);
+        const repoEsc = this.escapeHtml(item.repo);
+        return `<span class="card-repo-badge" data-map-name="card.repo-badge" data-repo="${repoEsc}" style="--repo-hue: ${hue}" title="Repo: ${repoEsc}">${repoEsc}</span>`;
+    },
+
+    _cardStatusLabels: {
+        running: '<span class="spinner"></span> Running',
+        queued: '⏳ Queued',
+        paused: '⏸ Paused',
+        failed: '✕ Failed',
+        cancelled: '⊘ Cancelled',
+        conflict: '⚠ Merge conflict',
+        merge_blocked: '⚠ Merge blocked',
+        resolving_conflicts: '<span class="spinner"></span> Resolving conflicts',
+    },
+
+    _cardStatusHtml(item) {
+        if (item.status) {
+            const isActive = item.status === 'running' || item.status === 'resolving_conflicts';
+            const yoloBadge = isActive && this._yoloItems.has(item.id)
+                ? '<span class="card-yolo-badge">⚡ YOLO</span>' : '';
+            return `<div class="card-status card-status-${item.status}" data-map-name="card.status">${this._cardStatusLabels[item.status] || item.status}${yoloBadge}</div>`;
+        }
+        if (item.column_name === 'review' && this._autoReviewingItems.has(item.id)) {
+            // Review column item with no DB status but an auto-review agent
+            // is actively inspecting its diff — surface that to the user the
+            // same way Running is surfaced for Doing.
+            return `<div class="card-status card-status-reviewing" data-map-name="card.status"><span class="spinner"></span> Reviewing</div>`;
+        }
+        return '';
+    },
+
+    _cardBlockedHtml(item) {
+        const blockers = this.getBlockingItems(item.id);
+        const names = blockers.map(b => this.escapeHtml(b.title)).join(', ');
+        const items = blockers.map(b => `<span class="blocked-item">🔒 ${this.escapeHtml(b.title)}</span>`).join('');
+        return `<div class="card-blocked-badge" data-map-name="card.blocked-badge" title="Requires: ${names}">${items}</div>`;
+    },
+
+    _cardActionsHtml(item, isBlocked) {
+        const deleteBtn = `<button class="btn btn-xs btn-delete" data-map-name="card.btn-delete" onclick="event.stopPropagation(); Board.deleteItem('${item.id}')" title="Delete">✕</button>`;
+        switch (item.column_name) {
+            case 'todo': return this._todoActionsHtml(item, isBlocked) + deleteBtn;
+            case 'doing': return this._doingActionsHtml(item);
+            case 'review': return this._reviewActionsHtml(item);
+            case 'questions':
+                return `<button class="btn btn-xs" data-map-name="card.btn-archive" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;
+            case 'done':
+                return `<button class="btn btn-xs" data-map-name="card.btn-rerun" onclick="event.stopPropagation(); Board.rerunItem('${item.id}')" title="Re-run">↻</button>`
+                    + `<button class="btn btn-xs" data-map-name="card.btn-archive" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'archive')" title="📦 Archive">📦 Archive</button>`;
+            case 'archive': return deleteBtn;
+            default: return '';
+        }
+    },
+
+    /** Start (or start-copy) button; disabled with a "Blocked by" tooltip when blocked. */
+    _todoActionsHtml(item, isBlocked) {
+        const blockedTooltip = isBlocked
+            ? `Blocked by: ${this.getBlockingItems(item.id).map(b => b.title).join(', ')}`
+            : 'Start agent';
+        const disabledAttr = isBlocked ? ' disabled' : '';
+        const disabledClass = isBlocked ? ' btn-disabled' : '';
+        if (item.start_copy) {
+            return `<button class="btn btn-xs btn-primary${disabledClass}" data-map-name="card.btn-start-copy" onclick="event.stopPropagation(); Board.startCopyAgent('${item.id}')" title="${isBlocked ? this.escapeHtml(blockedTooltip) : 'Start Copy (keep original in Todo)'}"${disabledAttr}>▶⧉</button>`;
+        }
+        return `<button class="btn btn-xs btn-primary${disabledClass}" data-map-name="card.btn-start" onclick="event.stopPropagation(); Board.startAgent('${item.id}')" title="${this.escapeHtml(blockedTooltip)}"${disabledAttr}>▶</button>`;
+    },
+
+    _doingActionsHtml(item) {
+        const cancelBtn = `<button class="btn btn-xs btn-danger" data-map-name="card.btn-cancel" onclick="event.stopPropagation(); Board.cancelAgent('${item.id}')" title="Cancel">✕</button>`;
+        switch (item.status) {
+            case 'queued': return cancelBtn;
+            case 'failed':
+                return `<button class="btn btn-xs" data-map-name="card.btn-retry" onclick="event.stopPropagation(); Board.retryAgent('${item.id}')" title="Retry">↻ Retry</button>
+                <button class="btn btn-xs" data-map-name="card.btn-move-to-todo" onclick="event.stopPropagation(); Board.moveItem('${item.id}', 'todo')" title="Move to 📝 Todo">→ 📝 Todo</button>`;
+            case 'running':
+                return `<button class="btn btn-xs btn-warning" data-map-name="card.btn-pause" onclick="event.stopPropagation(); Board.pauseAgent('${item.id}')" title="Pause">⏸</button>
+                ${cancelBtn}`;
+            case 'paused':
+                return `<button class="btn btn-xs btn-primary" data-map-name="card.btn-resume" onclick="event.stopPropagation(); Board.resumeAgent('${item.id}')" title="Resume">▶</button>
+                ${cancelBtn}`;
+            default: return '';
+        }
+    },
+
+    _reviewActionsHtml(item) {
+        const hasChanges = item.has_file_changes !== 0;
+        const approveLabel = hasChanges ? '✓ Approve' : '✓ Done';
+        const approveTitle = hasChanges ? 'Approve & Merge' : 'Done';
+        const approveName = hasChanges ? 'card.btn-approve' : 'card.btn-done';
+        // Even when there are no file changes, route through the review
+        // dialog so the agent's closing message is surfaced on the Result
+        // tab instead of being lost when pressing Done from the card.
+        const approveAction = hasChanges
+            ? `Board.approveItem('${item.id}')`
+            : `ReviewDialog.showReview('${item.id}')`;
+        return `<button class="btn btn-xs btn-primary" data-map-name="${approveName}" onclick="event.stopPropagation(); ${approveAction}" title="${approveTitle}">${approveLabel}</button>
+                <button class="btn btn-xs" data-map-name="card.btn-request-changes" onclick="event.stopPropagation(); Board.requestChanges('${item.id}')" title="Request changes">↩</button>
+                <button class="btn btn-xs btn-danger" data-map-name="card.btn-cancel-review" onclick="event.stopPropagation(); Board.cancelReview('${item.id}')" title="Cancel review">✕</button>`;
+    },
+
+    _cardLogCountHtml(item) {
+        if (item.column_name !== 'doing' || !(item.log_count > 0)) return '';
+        return `<div class="card-log-count" data-map-name="card.log-count" data-log-count="${item.id}">${item.log_count}</div>`;
+    },
+
+    _cardTimestampHtml(item) {
+        const ts = item.done_at || item.updated_at;
+        if (item.column_name !== 'done' || !ts) return '';
+        const timeStr = new Date(ts + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return `<span class="card-timestamp" data-map-name="card.timestamp">${timeStr}</span>`;
+    },
+
+    /** Model badge — only for local (Ollama / Tiiny) models. */
+    _cardModelBadgeHtml(item) {
+        if (!item.model || !DialogUtils._isLocalModel(item.model)) return '';
+        const shortName = DialogUtils._getModelDisplayName(item.model);
+        return `<span class="card-model-badge" data-map-name="card.model-badge" title="${item.model}">${shortName}</span>`;
     },
 
     _getDoneDateKey(item) {
@@ -852,233 +870,158 @@ const Board = {
             ? todoItems.filter(i => i.epic_id === this._epicFilter)
             : todoItems;
 
+        col.innerHTML = '';
         // If filtered to one epic or no epics exist, render flat
         if (this._epicFilter || this._epics.length === 0) {
-            col.innerHTML = '';
-            filtered.sort((a, b) => (a.position || 0) - (b.position || 0));
-            for (const item of filtered) {
-                col.appendChild(this.renderCard(item));
-            }
+            this._appendCardsByPosition(col, filtered);
             return;
         }
 
-        // Group by epic
+        // Group by epic; epic groups in epic position order, "No Epic" at the bottom
         const epicGroups = {};
         const noEpic = [];
         for (const item of filtered) {
-            if (item.epic_id) {
-                if (!epicGroups[item.epic_id]) epicGroups[item.epic_id] = [];
-                epicGroups[item.epic_id].push(item);
-            } else {
-                noEpic.push(item);
-            }
+            if (item.epic_id) (epicGroups[item.epic_id] ||= []).push(item);
+            else noEpic.push(item);
         }
-
-        col.innerHTML = '';
-
-        // Render epic groups in epic position order
         for (const epic of this._epics) {
             const items = epicGroups[epic.id];
             if (!items || items.length === 0) continue;
-
-            const isCollapsed = this._collapsedTodoEpicGroups[epic.id] || false;
-
-            const group = document.createElement('div');
-            group.className = 'todo-epic-group';
-
-            const header = document.createElement('div');
-            header.className = 'todo-epic-header' + (isCollapsed ? '' : ' expanded');
-            header.innerHTML = `
+            col.appendChild(this._renderTodoGroup(epic.id, items, `
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
                 <span class="epic-dot" style="background: var(--epic-${epic.color})"></span>
                 ${Board.escapeHtml(epic.title)}
                 <button class="todo-epic-delete" title="Delete all todos in this epic">&times;</button>
                 <span class="todo-epic-count">${items.length}</span>
-            `;
-            header.addEventListener('click', (e) => {
-                if (e.target.closest('.todo-epic-delete')) return;
-                this._collapsedTodoEpicGroups[epic.id] = !isCollapsed;
-                this.renderTodoColumn();
-            });
-            header.querySelector('.todo-epic-delete').addEventListener('click', (e) => {
-                e.stopPropagation();
-                Board.deleteEpicTodos(epic.id, epic.title);
-            });
-            group.appendChild(header);
-
-            if (!isCollapsed) {
-                items.sort((a, b) => (a.position || 0) - (b.position || 0));
-                for (const item of items) {
-                    group.appendChild(this.renderCard(item));
-                }
-            }
-
-            col.appendChild(group);
+            `, () => Board.deleteEpicTodos(epic.id, epic.title)));
         }
-
-        // "No Epic" group at the bottom
         if (noEpic.length > 0) {
-            const group = document.createElement('div');
-            group.className = 'todo-epic-group';
-            const isCollapsed = this._collapsedTodoEpicGroups['__none__'] || false;
-            const header = document.createElement('div');
-            header.className = 'todo-epic-header' + (isCollapsed ? '' : ' expanded');
-            header.innerHTML = `
+            col.appendChild(this._renderTodoGroup('__none__', noEpic, `
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
                 No Epic
                 <span class="todo-epic-count" style="margin-left: auto">${noEpic.length}</span>
-            `;
-            header.addEventListener('click', () => {
-                this._collapsedTodoEpicGroups['__none__'] = !isCollapsed;
-                this.renderTodoColumn();
-            });
-            group.appendChild(header);
+            `));
+        }
+    },
 
-            if (!isCollapsed) {
-                noEpic.sort((a, b) => (a.position || 0) - (b.position || 0));
-                for (const item of noEpic) {
-                    group.appendChild(this.renderCard(item));
-                }
-            }
-            col.appendChild(group);
+    /** A collapsible Todo group; ``onDelete`` wires the header's delete button (epics only). */
+    _renderTodoGroup(groupKey, items, headerHtml, onDelete = null) {
+        const isCollapsed = this._collapsedTodoEpicGroups[groupKey] || false;
+        const group = document.createElement('div');
+        group.className = 'todo-epic-group';
+
+        const header = document.createElement('div');
+        header.className = 'todo-epic-header' + (isCollapsed ? '' : ' expanded');
+        header.innerHTML = headerHtml;
+        header.addEventListener('click', (e) => {
+            if (e.target.closest('.todo-epic-delete')) return;
+            this._collapsedTodoEpicGroups[groupKey] = !isCollapsed;
+            this.renderTodoColumn();
+        });
+        if (onDelete) {
+            header.querySelector('.todo-epic-delete').addEventListener('click', (e) => {
+                e.stopPropagation();
+                onDelete();
+            });
+        }
+        group.appendChild(header);
+
+        if (!isCollapsed) this._appendCardsByPosition(group, items);
+        return group;
+    },
+
+    _appendCardsByPosition(container, items) {
+        items.sort((a, b) => (a.position || 0) - (b.position || 0));
+        for (const item of items) {
+            container.appendChild(this.renderCard(item));
         }
     },
 
     renderDoneColumn() {
-        const col = document.querySelector('.column-cards[data-column="done"]');
-        if (!col) return;
-
-        // Collect done items
-        let doneItems = Object.values(this.items).filter(i => i.column_name === 'done');
-        if (this._epicFilter) doneItems = doneItems.filter(i => i.epic_id === this._epicFilter);
-
-        // Group by date
-        const groups = {};
-        for (const item of doneItems) {
-            const key = this._getDoneDateKey(item);
-            if (!groups[key]) groups[key] = [];
-            groups[key].push(item);
-        }
-
-        // Sort date keys descending (most recent first)
-        const sortedDates = Object.keys(groups).sort((a, b) => {
-            if (a === 'Unknown') return 1;
-            if (b === 'Unknown') return -1;
-            return b.localeCompare(a);
+        this._renderDayGroupedColumn({
+            column: 'done',
+            collapsedState: this._collapsedDoneGroups,
+            // default: today expanded, others collapsed
+            defaultCollapsed: (dateStr) => !this._isTodayGroup(dateStr),
+            headerButtonHtml: (dateStr) => `<button class="btn btn-xs done-day-archive" data-map-name="board.day-group.btn-archive-all" onclick="event.stopPropagation(); Board.archiveByDate('${dateStr}')" title="Archive all from ${this._formatDateLabel(dateStr)}">📦</button>`,
+            rerender: () => this.renderDoneColumn(),
         });
-
-        // Clear column
-        col.innerHTML = '';
-
-        for (const dateStr of sortedDates) {
-            const items = groups[dateStr];
-            const isToday = this._isTodayGroup(dateStr);
-            const isCollapsed = dateStr in this._collapsedDoneGroups
-                ? this._collapsedDoneGroups[dateStr]
-                : !isToday; // default: today expanded, others collapsed
-
-            // Create group container
-            const group = document.createElement('div');
-            group.className = 'done-day-group' + (isCollapsed ? ' collapsed' : '');
-            group.dataset.date = dateStr;
-            group.dataset.mapName = 'board.day-group';
-
-            // Group header
-            const header = document.createElement('div');
-            header.className = 'done-day-header';
-            header.dataset.mapName = 'board.day-group.header';
-            header.innerHTML = `
-                <svg class="done-day-chevron${isCollapsed ? '' : ' expanded'}" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
-                <span class="done-day-label" data-map-name="board.day-group.label">${this._formatDateLabel(dateStr)}</span>
-                <span class="done-day-count" data-map-name="board.day-group.count">${items.length}</span>
-                <button class="btn btn-xs done-day-archive" data-map-name="board.day-group.btn-archive-all" onclick="event.stopPropagation(); Board.archiveByDate('${dateStr}')" title="Archive all from ${this._formatDateLabel(dateStr)}">📦</button>
-            `;
-            header.addEventListener('click', () => {
-                this._collapsedDoneGroups[dateStr] = !isCollapsed;
-                this.renderDoneColumn();
-            });
-
-            group.appendChild(header);
-
-            // Sort items within group by done_at descending (fallback to updated_at)
-            items.sort((a, b) => (b.done_at || b.updated_at || '').localeCompare(a.done_at || a.updated_at || ''));
-
-            if (!isCollapsed) {
-                // Full card rendering when expanded
-                const cardsContainer = document.createElement('div');
-                cardsContainer.className = 'done-day-cards';
-                for (const item of items) {
-                    cardsContainer.appendChild(this.renderCard(item));
-                }
-                group.appendChild(cardsContainer);
-            }
-
-            col.appendChild(group);
-        }
     },
 
     renderArchiveColumn() {
-        const col = document.querySelector('.column-cards[data-column="archive"]');
+        this._renderDayGroupedColumn({
+            column: 'archive',
+            collapsedState: this._collapsedArchiveGroups,
+            defaultCollapsed: () => true,  // default: all collapsed
+            headerButtonHtml: (dateStr) => `<button class="btn btn-xs btn-delete done-day-archive" data-map-name="board.day-group.btn-delete-all" onclick="event.stopPropagation(); Board.deleteByDate('${dateStr}', 'archive')" title="Delete all from ${this._formatDateLabel(dateStr)}">✕</button>`,
+            rerender: () => this.renderArchiveColumn(),
+        });
+    },
+
+    /** Done / Archive: cards grouped into collapsible per-day groups, newest day first. */
+    _renderDayGroupedColumn(opts) {
+        const col = document.querySelector(`.column-cards[data-column="${opts.column}"]`);
         if (!col) return;
 
-        let archiveItems = Object.values(this.items).filter(i => i.column_name === 'archive');
-        if (this._epicFilter) archiveItems = archiveItems.filter(i => i.epic_id === this._epicFilter);
-
+        let columnItems = Object.values(this.items).filter(i => i.column_name === opts.column);
+        if (this._epicFilter) columnItems = columnItems.filter(i => i.epic_id === this._epicFilter);
         const groups = {};
-        for (const item of archiveItems) {
-            const key = this._getDoneDateKey(item);
-            if (!groups[key]) groups[key] = [];
-            groups[key].push(item);
+        for (const item of columnItems) {
+            (groups[this._getDoneDateKey(item)] ||= []).push(item);
         }
 
-        const sortedDates = Object.keys(groups).sort((a, b) => {
+        col.innerHTML = '';
+        for (const dateStr of this._sortedDateKeys(groups)) {
+            col.appendChild(this._renderDayGroup(dateStr, groups[dateStr], opts));
+        }
+    },
+
+    _renderDayGroup(dateStr, items, { collapsedState, defaultCollapsed, headerButtonHtml, rerender }) {
+        const isCollapsed = dateStr in collapsedState ? collapsedState[dateStr] : defaultCollapsed(dateStr);
+
+        const group = document.createElement('div');
+        group.className = 'done-day-group' + (isCollapsed ? ' collapsed' : '');
+        group.dataset.date = dateStr;
+        group.dataset.mapName = 'board.day-group';
+
+        const header = document.createElement('div');
+        header.className = 'done-day-header';
+        header.dataset.mapName = 'board.day-group.header';
+        header.innerHTML = `
+                <svg class="done-day-chevron${isCollapsed ? '' : ' expanded'}" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
+                <span class="done-day-label" data-map-name="board.day-group.label">${this._formatDateLabel(dateStr)}</span>
+                <span class="done-day-count" data-map-name="board.day-group.count">${items.length}</span>
+                ${headerButtonHtml(dateStr)}
+            `;
+        header.addEventListener('click', () => {
+            collapsedState[dateStr] = !isCollapsed;
+            rerender();
+        });
+        group.appendChild(header);
+
+        if (!isCollapsed) group.appendChild(this._dayGroupCards(items));
+        return group;
+    },
+
+    /** The day's cards, newest first (done_at, falling back to updated_at). */
+    _dayGroupCards(items) {
+        const stamp = (item) => item.done_at || item.updated_at || '';
+        items.sort((a, b) => stamp(b).localeCompare(stamp(a)));
+        const cardsContainer = document.createElement('div');
+        cardsContainer.className = 'done-day-cards';
+        for (const item of items) {
+            cardsContainer.appendChild(this.renderCard(item));
+        }
+        return cardsContainer;
+    },
+
+    /** Date keys, most recent first, with 'Unknown' last. */
+    _sortedDateKeys(groups) {
+        return Object.keys(groups).sort((a, b) => {
             if (a === 'Unknown') return 1;
             if (b === 'Unknown') return -1;
             return b.localeCompare(a);
         });
-
-        col.innerHTML = '';
-
-        for (const dateStr of sortedDates) {
-            const items = groups[dateStr];
-            const isCollapsed = dateStr in this._collapsedArchiveGroups
-                ? this._collapsedArchiveGroups[dateStr]
-                : true; // default: all collapsed
-
-            const group = document.createElement('div');
-            group.className = 'done-day-group' + (isCollapsed ? ' collapsed' : '');
-            group.dataset.date = dateStr;
-            group.dataset.mapName = 'board.day-group';
-
-            const header = document.createElement('div');
-            header.className = 'done-day-header';
-            header.dataset.mapName = 'board.day-group.header';
-            header.innerHTML = `
-                <svg class="done-day-chevron${isCollapsed ? '' : ' expanded'}" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
-                <span class="done-day-label" data-map-name="board.day-group.label">${this._formatDateLabel(dateStr)}</span>
-                <span class="done-day-count" data-map-name="board.day-group.count">${items.length}</span>
-                <button class="btn btn-xs btn-delete done-day-archive" data-map-name="board.day-group.btn-delete-all" onclick="event.stopPropagation(); Board.deleteByDate('${dateStr}', 'archive')" title="Delete all from ${this._formatDateLabel(dateStr)}">✕</button>
-            `;
-            header.addEventListener('click', () => {
-                this._collapsedArchiveGroups[dateStr] = !isCollapsed;
-                this.renderArchiveColumn();
-            });
-
-            group.appendChild(header);
-
-            items.sort((a, b) => (b.done_at || b.updated_at || '').localeCompare(a.done_at || a.updated_at || ''));
-
-            if (!isCollapsed) {
-                const cardsContainer = document.createElement('div');
-                cardsContainer.className = 'done-day-cards';
-                for (const item of items) {
-                    cardsContainer.appendChild(this.renderCard(item));
-                }
-                group.appendChild(cardsContainer);
-            }
-
-            col.appendChild(group);
-        }
     },
 
     escapeHtml(text) {
@@ -1088,77 +1031,53 @@ const Board = {
     },
 
     updateCard(item) {
-        // Merge with previous state to preserve fields not in the update
         const prev = this.items[item.id];
-        if (prev) {
-            // Preserve log_count from previous state if not in new data
-            if (prev.log_count && !item.log_count) {
-                item.log_count = prev.log_count;
-            }
-            // Preserve start_copy from previous state if not in new data
-            if (prev.start_copy && item.start_copy === undefined) {
-                item.start_copy = prev.start_copy;
-            }
-        }
+        this._carryOverCardFields(prev, item);
         this.items[item.id] = item;
 
         // Remove old card if exists
         const oldCard = document.querySelector(`.card[data-id="${item.id}"]`);
         if (oldCard) oldCard.remove();
 
-        // Done and archive columns use grouped rendering
-        if (item.column_name === 'done' || item.column_name === 'archive') {
-            if (prev && prev.column_name === 'done' && item.column_name !== 'done') {
-                this.renderDoneColumn();
-            }
-            if (prev && prev.column_name === 'archive' && item.column_name !== 'archive') {
-                this.renderArchiveColumn();
-            }
-            if (prev && prev.column_name === 'todo' && item.column_name !== 'todo') {
-                this.renderTodoColumn();
-            }
-            if (item.column_name === 'done') this.renderDoneColumn();
-            if (item.column_name === 'archive') this.renderArchiveColumn();
-            this.updateCounts();
-            return;
-        }
-
-        // Todo column uses grouped rendering
-        if (item.column_name === 'todo') {
-            if (prev && prev.column_name === 'done') this.renderDoneColumn();
-            if (prev && prev.column_name === 'archive') this.renderArchiveColumn();
-            this.renderTodoColumn();
-            this.updateCounts();
-            return;
-        }
-
-        // If item was previously in todo, re-render that column
-        if (prev && prev.column_name === 'todo' && item.column_name !== 'todo') {
-            this.renderTodoColumn();
-        }
-
-        // If item was previously in done/archive, re-render that column to remove it
-        if (prev && prev.column_name === 'done' && item.column_name !== 'done') {
-            this.renderDoneColumn();
-        }
-        if (prev && prev.column_name === 'archive' && item.column_name !== 'archive') {
-            this.renderArchiveColumn();
-        }
-
-        // Add new card to correct column
-        const targetCol = document.querySelector(`.column-cards[data-column="${item.column_name}"]`);
-        if (targetCol) {
-            const newCard = this.renderCard(item);
-            // Insert at correct position
-            const cards = targetCol.querySelectorAll('.card');
-            if (item.position < cards.length) {
-                targetCol.insertBefore(newCard, cards[item.position]);
-            } else {
-                targetCol.appendChild(newCard);
-            }
-        }
-
+        // Todo / Done / Archive use grouped rendering: re-render the grouped
+        // column the card left, then the one it entered (or insert the card
+        // into a plain column at its position).
+        const prevColumn = prev?.column_name;
+        if (prevColumn && prevColumn !== item.column_name) this._renderGroupedColumn(prevColumn);
+        if (!this._renderGroupedColumn(item.column_name)) this._insertCard(item);
         this.updateCounts();
+    },
+
+    /** Keep fields a partial update leaves out (log_count, start_copy). */
+    _carryOverCardFields(prev, item) {
+        if (!prev) return;
+        if (prev.log_count && !item.log_count) item.log_count = prev.log_count;
+        if (prev.start_copy && item.start_copy === undefined) item.start_copy = prev.start_copy;
+    },
+
+    /** Re-render a grouped column (todo / done / archive); false for any other column. */
+    _renderGroupedColumn(column) {
+        const render = {
+            todo: () => this.renderTodoColumn(),
+            done: () => this.renderDoneColumn(),
+            archive: () => this.renderArchiveColumn(),
+        }[column];
+        if (!render) return false;
+        render();
+        return true;
+    },
+
+    /** Insert the card into its (plain) column at item.position. */
+    _insertCard(item) {
+        const targetCol = document.querySelector(`.column-cards[data-column="${item.column_name}"]`);
+        if (!targetCol) return;
+        const newCard = this.renderCard(item);
+        const cards = targetCol.querySelectorAll('.card');
+        if (item.position < cards.length) {
+            targetCol.insertBefore(newCard, cards[item.position]);
+        } else {
+            targetCol.appendChild(newCard);
+        }
     },
 
     removeCard(itemId) {
