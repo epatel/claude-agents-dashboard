@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -271,309 +271,218 @@ class TestSendMessage:
 # _check_mcp_status()
 # ---------------------------------------------------------------------------
 
+def _session_with_client(client, **session_kwargs):
+    session = make_session(**session_kwargs)
+    session.client = client
+    return session
+
+
+def _mcp_status_client(*servers):
+    mock_client = AsyncMock()
+    mock_client.get_mcp_status.return_value = {"mcpServers": list(servers)}
+    return mock_client
+
+
 class TestCheckMcpStatus:
-    @pytest.mark.asyncio
     async def test_no_client_returns_early(self):
         session = make_session()
         session.client = None
         await session._check_mcp_status()  # Should not raise
 
-    @pytest.mark.asyncio
     async def test_connected_server_logged(self):
-        session = make_session()
-        mock_client = AsyncMock()
-        mock_client.get_mcp_status.return_value = {
-            "mcpServers": [
-                {"name": "my_server", "status": "connected", "tools": [{"name": "do_thing"}]}
-            ]
-        }
-        session.client = mock_client
-        await session._check_mcp_status()
+        mock_client = _mcp_status_client(
+            {"name": "my_server", "status": "connected", "tools": [{"name": "do_thing"}]}
+        )
+        await _session_with_client(mock_client)._check_mcp_status()
         mock_client.get_mcp_status.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_failed_server_calls_on_message(self):
+    @pytest.mark.parametrize(
+        ("server", "fragments"),
+        [
+            pytest.param({"name": "bad_server", "status": "failed", "error": "timeout"},
+                         ("bad_server", "[warning]"), id="failed"),
+            pytest.param({"name": "srv", "status": "disconnected", "error": ""}, (),
+                         id="disconnected"),
+            pytest.param({"name": "auth_srv", "status": "needs-auth", "error": ""}, (),
+                         id="needs_auth"),
+        ],
+    )
+    async def test_unhealthy_server_calls_on_message(self, server, fragments):
         on_msg = AsyncMock()
-        session = make_session(on_message=on_msg)
-        mock_client = AsyncMock()
-        mock_client.get_mcp_status.return_value = {
-            "mcpServers": [
-                {"name": "bad_server", "status": "failed", "error": "timeout"}
-            ]
-        }
-        session.client = mock_client
-        await session._check_mcp_status()
+        await _session_with_client(_mcp_status_client(server), on_message=on_msg)._check_mcp_status()
         on_msg.assert_called_once()
-        args = on_msg.call_args[0][0]
-        assert "bad_server" in args
-        assert "[warning]" in args
+        text = on_msg.call_args[0][0]
+        for fragment in fragments:
+            assert fragment in text
 
-    @pytest.mark.asyncio
-    async def test_disconnected_server_calls_on_message(self):
-        on_msg = AsyncMock()
-        session = make_session(on_message=on_msg)
-        mock_client = AsyncMock()
-        mock_client.get_mcp_status.return_value = {
-            "mcpServers": [
-                {"name": "srv", "status": "disconnected", "error": ""}
-            ]
-        }
-        session.client = mock_client
-        await session._check_mcp_status()
-        on_msg.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_needs_auth_server_calls_on_message(self):
-        on_msg = AsyncMock()
-        session = make_session(on_message=on_msg)
-        mock_client = AsyncMock()
-        mock_client.get_mcp_status.return_value = {
-            "mcpServers": [
-                {"name": "auth_srv", "status": "needs-auth", "error": ""}
-            ]
-        }
-        session.client = mock_client
-        await session._check_mcp_status()
-        on_msg.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_get_mcp_status_exception_silenced(self):
-        session = make_session()
         mock_client = AsyncMock()
         mock_client.get_mcp_status.side_effect = RuntimeError("boom")
-        session.client = mock_client
-        await session._check_mcp_status()  # Should not raise
+        await _session_with_client(mock_client)._check_mcp_status()  # Should not raise
 
-    @pytest.mark.asyncio
     async def test_no_on_message_with_failed_server(self):
         # No on_message set — should still not raise
-        session = make_session()
-        mock_client = AsyncMock()
-        mock_client.get_mcp_status.return_value = {
-            "mcpServers": [{"name": "x", "status": "failed", "error": "oops"}]
-        }
-        session.client = mock_client
-        await session._check_mcp_status()
+        mock_client = _mcp_status_client({"name": "x", "status": "failed", "error": "oops"})
+        await _session_with_client(mock_client)._check_mcp_status()
 
 
 # ---------------------------------------------------------------------------
 # _receive_loop()
 # ---------------------------------------------------------------------------
 
+def _assistant_message(block_type, **attrs):
+    """An AssistantMessage mock holding one ``block_type`` block with ``attrs``."""
+    from claude_agent_sdk import AssistantMessage
+    block = MagicMock(spec=block_type)
+    for name, value in attrs.items():
+        setattr(block, name, value)
+    msg = MagicMock(spec=AssistantMessage)
+    msg.content = [block]
+    return msg
+
+
 class TestReceiveLoop:
     def _make_text_message(self, text: str):
-        from claude_agent_sdk import AssistantMessage, TextBlock
-        block = MagicMock(spec=TextBlock)
-        block.text = text
-        msg = MagicMock(spec=AssistantMessage)
-        msg.content = [block]
-        return msg
+        from claude_agent_sdk import TextBlock
+        return _assistant_message(TextBlock, text=text)
 
     def _make_thinking_message(self, thinking: str):
-        from claude_agent_sdk import AssistantMessage, ThinkingBlock
-        block = MagicMock(spec=ThinkingBlock)
-        block.thinking = thinking
-        msg = MagicMock(spec=AssistantMessage)
-        msg.content = [block]
-        return msg
+        from claude_agent_sdk import ThinkingBlock
+        return _assistant_message(ThinkingBlock, thinking=thinking)
 
     def _make_tool_use_message(self, name: str, inp: dict):
-        from claude_agent_sdk import AssistantMessage, ToolUseBlock
-        block = MagicMock(spec=ToolUseBlock)
-        block.name = name
-        block.input = inp
-        msg = MagicMock(spec=AssistantMessage)
-        msg.content = [block]
-        return msg
+        from claude_agent_sdk import ToolUseBlock
+        return _assistant_message(ToolUseBlock, name=name, input=inp)
 
     def _make_server_tool_use_message(self, name: str, inp: dict):
-        from claude_agent_sdk import AssistantMessage, ServerToolUseBlock
-        block = MagicMock(spec=ServerToolUseBlock)
-        block.name = name
-        block.input = inp
-        msg = MagicMock(spec=AssistantMessage)
-        msg.content = [block]
-        return msg
+        from claude_agent_sdk import ServerToolUseBlock
+        return _assistant_message(ServerToolUseBlock, name=name, input=inp)
 
     def _make_server_tool_result_message(self, content):
-        from claude_agent_sdk import AssistantMessage, ServerToolResultBlock
-        block = MagicMock(spec=ServerToolResultBlock)
-        block.content = content
-        msg = MagicMock(spec=AssistantMessage)
-        msg.content = [block]
-        return msg
+        from claude_agent_sdk import ServerToolResultBlock
+        return _assistant_message(ServerToolResultBlock, content=content)
 
-    def _make_result_message(self, session_id="sess-1", is_error=False, result_text=None, cost=0.01, usage=None, api_error_status=None):
+    def _make_result_message(self, **overrides):
+        """A ResultMessage mock; ``overrides`` replace the defaults below."""
         from claude_agent_sdk import ResultMessage
+        fields = dict(session_id="sess-1", is_error=False, result=None,
+                      total_cost_usd=0.01, usage={}, api_error_status=None)
+        fields.update(overrides)
         msg = MagicMock(spec=ResultMessage)
-        msg.session_id = session_id
-        msg.is_error = is_error
-        msg.result = result_text
-        msg.total_cost_usd = cost
-        msg.usage = usage or {}
-        msg.api_error_status = api_error_status
+        for name, value in fields.items():
+            setattr(msg, name, value)
         return msg
 
     async def _run_receive_loop_with_messages(self, session, messages):
-        """Helper: patch client.receive_messages to yield given messages, run loop."""
+        """Helper: patch client.receive_messages to yield given messages, run loop.
+
+        ``messages`` may be a list, or an async generator to use as-is.
+        Returns the mock client.
+        """
         async def gen():
             for m in messages:
                 yield m
 
         mock_client = AsyncMock()
         # receive_messages must be a regular (non-async) method returning an async iterable
-        mock_client.receive_messages = MagicMock(return_value=gen())
+        stream = messages if hasattr(messages, "__aiter__") else gen()
+        mock_client.receive_messages = MagicMock(return_value=stream)
         session.client = mock_client
         await session._receive_loop()
+        return mock_client
 
-    @pytest.mark.asyncio
-    async def test_text_block_calls_on_message(self):
-        on_msg = AsyncMock()
-        session = make_session(on_message=on_msg)
-        msg = self._make_text_message("hello world")
-        await self._run_receive_loop_with_messages(session, [msg])
-        on_msg.assert_called_once_with("hello world")
-
-    @pytest.mark.asyncio
-    async def test_thinking_block_calls_on_thinking(self):
-        on_thinking = AsyncMock()
-        session = make_session(on_thinking=on_thinking)
-        msg = self._make_thinking_message("deep thoughts")
-        await self._run_receive_loop_with_messages(session, [msg])
-        on_thinking.assert_called_once_with("deep thoughts")
-
-    @pytest.mark.asyncio
-    async def test_tool_use_block_calls_on_tool_use(self):
-        on_tool = AsyncMock()
-        session = make_session(on_tool_use=on_tool)
-        msg = self._make_tool_use_message("Bash", {"command": "ls"})
-        await self._run_receive_loop_with_messages(session, [msg])
-        on_tool.assert_called_once_with("Bash", {"command": "ls"})
-
-    @pytest.mark.asyncio
-    async def test_result_message_calls_on_complete(self):
+    async def _complete_with(self, msg):
+        """Run the loop over one message; return the AgentResult passed to on_complete."""
         on_complete = AsyncMock()
         session = make_session(on_complete=on_complete)
-        msg = self._make_result_message(session_id="s42", is_error=False, cost=0.05)
         await self._run_receive_loop_with_messages(session, [msg])
         on_complete.assert_called_once()
         result_arg = on_complete.call_args[0][0]
         assert isinstance(result_arg, AgentResult)
+        return result_arg
+
+    @pytest.mark.parametrize(
+        ("callback", "make", "make_args", "expected_call"),
+        [
+            pytest.param("on_message", "_make_text_message", ("hello world",),
+                         ("hello world",), id="text_block_calls_on_message"),
+            pytest.param("on_thinking", "_make_thinking_message", ("deep thoughts",),
+                         ("deep thoughts",), id="thinking_block_calls_on_thinking"),
+            pytest.param("on_tool_use", "_make_tool_use_message", ("Bash", {"command": "ls"}),
+                         ("Bash", {"command": "ls"}), id="tool_use_block_calls_on_tool_use"),
+            pytest.param("on_tool_use", "_make_server_tool_use_message",
+                         ("web_search", {"query": "claude"}), ("web_search", {"query": "claude"}),
+                         id="server_tool_use_block_calls_on_tool_use"),
+            pytest.param("on_message", "_make_server_tool_result_message", ("advisor says hi",),
+                         ("[advisor] advisor says hi",),
+                         id="server_tool_result_block_string_content"),
+            pytest.param("on_message", "_make_server_tool_result_message",
+                         ([{"text": "first"}, "second", {"content": "third"}],),
+                         ("[advisor] first\nsecond\nthird",),
+                         id="server_tool_result_block_list_content_flattened"),
+            pytest.param("on_message", "_make_server_tool_result_message", ("",), None,
+                         id="server_tool_result_block_empty_content_no_message"),
+            # session.py checks `if block.thinking`
+            pytest.param("on_thinking", "_make_thinking_message", ("",), None,
+                         id="empty_thinking_block_not_forwarded"),
+        ],
+    )
+    async def test_block_dispatch(self, callback, make, make_args, expected_call):
+        """Each assistant block type reaches its callback (or none when empty)."""
+        cb = AsyncMock()
+        session = make_session(**{callback: cb})
+        msg = getattr(self, make)(*make_args)
+        await self._run_receive_loop_with_messages(session, [msg])
+        if expected_call is None:
+            cb.assert_not_called()
+        else:
+            cb.assert_called_once_with(*expected_call)
+
+    async def test_result_message_calls_on_complete(self):
+        result_arg = await self._complete_with(
+            self._make_result_message(session_id="s42", is_error=False, total_cost_usd=0.05)
+        )
         assert result_arg.success is True
         assert result_arg.session_id == "s42"
         assert result_arg.cost_usd == 0.05
 
-    @pytest.mark.asyncio
     async def test_result_message_stores_session_id(self):
         session = make_session()
         msg = self._make_result_message(session_id="my-session")
         await self._run_receive_loop_with_messages(session, [msg])
         assert session.current_session_id == "my-session"
 
-    @pytest.mark.asyncio
-    async def test_error_result_calls_on_complete_with_error(self):
-        on_complete = AsyncMock()
-        session = make_session(on_complete=on_complete)
-        msg = self._make_result_message(is_error=True, result_text="Something broke")
-        await self._run_receive_loop_with_messages(session, [msg])
-        result_arg = on_complete.call_args[0][0]
-        assert result_arg.success is False
-        assert result_arg.error == "Something broke"
+    @pytest.mark.parametrize(
+        ("overrides", "expected"),
+        [
+            pytest.param({"is_error": True, "result": "Something broke"},
+                         {"success": False, "error": "Something broke"},
+                         id="error_result_calls_on_complete_with_error"),
+            pytest.param({"is_error": True, "result": "Overloaded", "api_error_status": 529},
+                         {"success": False, "api_error_status": 529,
+                          "error": "[HTTP 529] Overloaded"},
+                         id="error_result_prefixes_http_status"),
+            # Status present but not an error — must not be prefixed, error stays None.
+            pytest.param({"is_error": False, "api_error_status": 200},
+                         {"success": True, "error": None, "api_error_status": 200},
+                         id="success_result_ignores_api_error_status"),
+            pytest.param({"is_error": True, "result": "plain failure", "api_error_status": None},
+                         {"error": "plain failure", "api_error_status": None},
+                         id="error_result_without_status_unprefixed"),
+            pytest.param({"usage": {"input_tokens": 100, "output_tokens": 50}},
+                         {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150},
+                         id="token_usage_parsed"),
+            # total_tokens not in usage — should be computed
+            pytest.param({"usage": {"input_tokens": 200, "output_tokens": 75}},
+                         {"total_tokens": 275},
+                         id="total_tokens_computed_when_missing"),
+        ],
+    )
+    async def test_result_fields(self, overrides, expected):
+        result_arg = await self._complete_with(self._make_result_message(**overrides))
+        for name, value in expected.items():
+            assert getattr(result_arg, name) == value
 
-    @pytest.mark.asyncio
-    async def test_server_tool_use_block_calls_on_tool_use(self):
-        on_tool = AsyncMock()
-        session = make_session(on_tool_use=on_tool)
-        msg = self._make_server_tool_use_message("web_search", {"query": "claude"})
-        await self._run_receive_loop_with_messages(session, [msg])
-        on_tool.assert_called_once_with("web_search", {"query": "claude"})
-
-    @pytest.mark.asyncio
-    async def test_server_tool_result_block_string_content(self):
-        on_msg = AsyncMock()
-        session = make_session(on_message=on_msg)
-        msg = self._make_server_tool_result_message("advisor says hi")
-        await self._run_receive_loop_with_messages(session, [msg])
-        on_msg.assert_called_once_with("[advisor] advisor says hi")
-
-    @pytest.mark.asyncio
-    async def test_server_tool_result_block_list_content_flattened(self):
-        on_msg = AsyncMock()
-        session = make_session(on_message=on_msg)
-        content = [{"text": "first"}, "second", {"content": "third"}]
-        msg = self._make_server_tool_result_message(content)
-        await self._run_receive_loop_with_messages(session, [msg])
-        on_msg.assert_called_once_with("[advisor] first\nsecond\nthird")
-
-    @pytest.mark.asyncio
-    async def test_server_tool_result_block_empty_content_no_message(self):
-        on_msg = AsyncMock()
-        session = make_session(on_message=on_msg)
-        msg = self._make_server_tool_result_message("")
-        await self._run_receive_loop_with_messages(session, [msg])
-        on_msg.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_error_result_prefixes_http_status(self):
-        on_complete = AsyncMock()
-        session = make_session(on_complete=on_complete)
-        msg = self._make_result_message(
-            is_error=True, result_text="Overloaded", api_error_status=529
-        )
-        await self._run_receive_loop_with_messages(session, [msg])
-        result_arg = on_complete.call_args[0][0]
-        assert result_arg.success is False
-        assert result_arg.api_error_status == 529
-        assert result_arg.error == "[HTTP 529] Overloaded"
-
-    @pytest.mark.asyncio
-    async def test_success_result_ignores_api_error_status(self):
-        on_complete = AsyncMock()
-        session = make_session(on_complete=on_complete)
-        # Status present but not an error — must not be prefixed, error stays None.
-        msg = self._make_result_message(is_error=False, api_error_status=200)
-        await self._run_receive_loop_with_messages(session, [msg])
-        result_arg = on_complete.call_args[0][0]
-        assert result_arg.success is True
-        assert result_arg.error is None
-        assert result_arg.api_error_status == 200
-
-    @pytest.mark.asyncio
-    async def test_error_result_without_status_unprefixed(self):
-        on_complete = AsyncMock()
-        session = make_session(on_complete=on_complete)
-        msg = self._make_result_message(
-            is_error=True, result_text="plain failure", api_error_status=None
-        )
-        await self._run_receive_loop_with_messages(session, [msg])
-        result_arg = on_complete.call_args[0][0]
-        assert result_arg.error == "plain failure"
-        assert result_arg.api_error_status is None
-
-    @pytest.mark.asyncio
-    async def test_token_usage_parsed(self):
-        on_complete = AsyncMock()
-        session = make_session(on_complete=on_complete)
-        usage = {"input_tokens": 100, "output_tokens": 50}
-        msg = self._make_result_message(usage=usage)
-        await self._run_receive_loop_with_messages(session, [msg])
-        result_arg = on_complete.call_args[0][0]
-        assert result_arg.input_tokens == 100
-        assert result_arg.output_tokens == 50
-        assert result_arg.total_tokens == 150
-
-    @pytest.mark.asyncio
-    async def test_total_tokens_computed_when_missing(self):
-        on_complete = AsyncMock()
-        session = make_session(on_complete=on_complete)
-        # total_tokens not in usage — should be computed
-        usage = {"input_tokens": 200, "output_tokens": 75}
-        msg = self._make_result_message(usage=usage)
-        await self._run_receive_loop_with_messages(session, [msg])
-        result_arg = on_complete.call_args[0][0]
-        assert result_arg.total_tokens == 275
-
-    @pytest.mark.asyncio
     async def test_exception_calls_on_error(self):
         on_error = AsyncMock()
         session = make_session(on_error=on_error)
@@ -582,704 +491,42 @@ class TestReceiveLoop:
             raise RuntimeError("network error")
             yield  # make it a generator
 
-        mock_client = AsyncMock()
-        mock_client.receive_messages = MagicMock(return_value=gen())
-        session.client = mock_client
-        await session._receive_loop()
+        await self._run_receive_loop_with_messages(session, gen())
         on_error.assert_called_once()
         assert "network error" in on_error.call_args[0][0]
 
-    @pytest.mark.asyncio
     async def test_cancelled_flag_stops_loop(self):
         on_msg = AsyncMock()
         session = make_session(on_message=on_msg)
         session._cancelled = True
-
         msg = self._make_text_message("should not be seen")
-
-        async def gen():
-            yield msg
-
-        mock_client = AsyncMock()
-        mock_client.receive_messages = MagicMock(return_value=gen())
-        session.client = mock_client
-        await session._receive_loop()
+        await self._run_receive_loop_with_messages(session, [msg])
         on_msg.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_client_disconnected_in_finally(self):
         session = make_session()
-        mock_client = AsyncMock()
-        mock_result = self._make_result_message()
-
-        async def gen():
-            yield mock_result
-
-        mock_client.receive_messages = MagicMock(return_value=gen())
-        session.client = mock_client
-        await session._receive_loop()
+        mock_client = await self._run_receive_loop_with_messages(
+            session, [self._make_result_message()]
+        )
         mock_client.disconnect.assert_called_once()
         assert session.client is None
 
-    @pytest.mark.asyncio
     async def test_no_on_message_no_error(self):
         """Receive loop handles missing callbacks gracefully."""
         session = make_session()  # no callbacks
         msg = self._make_text_message("hi")
         await self._run_receive_loop_with_messages(session, [msg])
 
-    @pytest.mark.asyncio
     async def test_system_message_forwarded(self):
         from claude_agent_sdk import SystemMessage
         on_msg = AsyncMock()
         session = make_session(on_message=on_msg)
-
         sys_msg = MagicMock(spec=SystemMessage)
         sys_msg.content = "progress: 50%"
-
-        async def gen():
-            yield sys_msg
-
-        mock_client = AsyncMock()
-        mock_client.receive_messages = MagicMock(return_value=gen())
-        session.client = mock_client
-        await session._receive_loop()
+        await self._run_receive_loop_with_messages(session, [sys_msg])
         on_msg.assert_called_once()
         call_text = on_msg.call_args[0][0]
         assert "[system]" in call_text
-
-    @pytest.mark.asyncio
-    async def test_empty_thinking_block_not_forwarded(self):
-        """ThinkingBlock with empty thinking should NOT call on_thinking."""
-        from claude_agent_sdk import AssistantMessage, ThinkingBlock
-        on_thinking = AsyncMock()
-        session = make_session(on_thinking=on_thinking)
-
-        block = MagicMock(spec=ThinkingBlock)
-        block.thinking = ""  # empty — session.py checks `if block.thinking`
-
-        async def gen():
-            msg = MagicMock(spec=AssistantMessage)
-            msg.content = [block]
-            yield msg
-
-        mock_client = AsyncMock()
-        mock_client.receive_messages = MagicMock(return_value=gen())
-        session.client = mock_client
-        await session._receive_loop()
-        on_thinking.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# start() — options and wiring
-# ---------------------------------------------------------------------------
-
-class TestStart:
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_creates_client_and_connects(self, mock_options_cls, mock_client_cls, tmp_path):
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("Do the thing")
-        except Exception:
-            pass
-
-        mock_client.connect.assert_called_once()
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_calls_query_with_prompt(self, mock_options_cls, mock_client_cls, tmp_path):
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("my prompt text")
-        except Exception:
-            pass
-
-        mock_client.query.assert_called_once()
-        prompt_sent = mock_client.query.call_args[0][0]
-        assert "my prompt text" in prompt_sent
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_passes_cwd_to_options(self, mock_options_cls, mock_client_cls, tmp_path):
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        assert mock_options_cls.called
-        kwargs = mock_options_cls.call_args.kwargs
-        assert kwargs["cwd"] == tmp_path
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_passes_model_to_options(self, mock_options_cls, mock_client_cls, tmp_path):
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path, model="claude-opus-4")
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        assert kwargs["model"] == "claude-opus-4"
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_sets_resume_options(self, mock_options_cls, mock_client_cls, tmp_path):
-        mock_client = AsyncMock()
-        mock_options_obj = MagicMock()
-        mock_options_cls.return_value = mock_options_obj
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("resume task", resume_session_id="prev-session-xyz")
-        except Exception:
-            pass
-
-        assert mock_options_obj.resume == "prev-session-xyz"
-        assert mock_options_obj.continue_conversation is True
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_permission_mode_accept_edits(self, mock_options_cls, mock_client_cls, tmp_path):
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        assert kwargs["permission_mode"] == "acceptEdits"
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_includes_bash_in_allowed_tools(self, mock_options_cls, mock_client_cls, tmp_path):
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        allowed = kwargs.get("allowed_tools", [])
-        assert "Bash" in allowed
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_with_mcp_servers_from_config(self, mock_options_cls, mock_client_cls, tmp_path):
-        import json
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        ext_servers = {"my_tool": {"command": "python", "args": ["-m", "my_tool"]}}
-        session = make_session(
-            worktree_path=tmp_path,
-            mcp_enabled=True,
-            mcp_servers=json.dumps(ext_servers),
-        )
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        mcp = kwargs.get("mcp_servers") or {}
-        assert "my_tool" in mcp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_mcp_disabled_ignores_servers(self, mock_options_cls, mock_client_cls, tmp_path):
-        import json
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        ext_servers = {"ignored_tool": {"command": "python"}}
-        session = make_session(
-            worktree_path=tmp_path,
-            mcp_enabled=False,
-            mcp_servers=json.dumps(ext_servers),
-        )
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        mcp = kwargs.get("mcp_servers") or {}
-        assert "ignored_tool" not in mcp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_system_prompt_augmented(self, mock_options_cls, mock_client_cls, tmp_path):
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path, system_prompt="Base instructions.")
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        sp = kwargs["system_prompt"]
-        assert "Base instructions." in sp
-        assert str(tmp_path) in sp  # cwd_note injected
-        # lifecycle_note: tells the agent completion is automatic, so it doesn't
-        # flail trying to "close" the card (the Ollama failure mode).
-        assert "AUTOMATICALLY" in sp
-        assert "mcp__inloop__" in sp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_injects_own_item_id(self, mock_options_cls, mock_client_cls, tmp_path):
-        """When item_id is set, the system prompt tells the agent its own card."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path, item_id="card-42")
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        sp = mock_options_cls.call_args.kwargs["system_prompt"]
-        assert "card-42" in sp
-        assert "who_am_i" in sp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_omits_item_note_without_item_id(self, mock_options_cls, mock_client_cls, tmp_path):
-        """No item_id → no 'YOUR BOARD ITEM' note (back-compat for callers that don't set it)."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        sp = mock_options_cls.call_args.kwargs["system_prompt"]
-        assert "YOUR BOARD ITEM" not in sp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_injects_shared_plan_note_when_present(self, mock_options_cls, mock_client_cls, tmp_path):
-        """A project-plan.md in the worktree surfaces the read-first/update note."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-        (tmp_path / "project-plan.md").write_text("# Plan\n")
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        sp = mock_options_cls.call_args.kwargs["system_prompt"]
-        assert "SHARED PROJECT PLAN" in sp
-        assert "project-plan.md" in sp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_omits_shared_plan_note_when_absent(self, mock_options_cls, mock_client_cls, tmp_path):
-        """No project-plan.md → no shared-plan note (don't invent a convention)."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        sp = mock_options_cls.call_args.kwargs["system_prompt"]
-        assert "SHARED PROJECT PLAN" not in sp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_injects_epic_plan_note_when_present(self, mock_options_cls, mock_client_cls, tmp_path):
-        """An item's epic plan file surfaces an EPIC PLAN note alongside the root one."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-        (tmp_path / "project-plan.md").write_text("# Plan\n")
-        (tmp_path / "plans").mkdir()
-        (tmp_path / "plans" / "realtime-canvas.md").write_text("# Epic plan\n")
-
-        session = make_session(worktree_path=tmp_path, epic_plan_relpath="plans/realtime-canvas.md")
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        sp = mock_options_cls.call_args.kwargs["system_prompt"]
-        assert "EPIC PLAN" in sp
-        assert "plans/realtime-canvas.md" in sp
-        # Coexists with the project-wide plan note.
-        assert "SHARED PROJECT PLAN" in sp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_omits_epic_plan_note_when_file_absent(self, mock_options_cls, mock_client_cls, tmp_path):
-        """A configured epic relpath with no file on disk → no EPIC PLAN note."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path, epic_plan_relpath="plans/realtime-canvas.md")
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        sp = mock_options_cls.call_args.kwargs["system_prompt"]
-        assert "EPIC PLAN" not in sp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_ollama_gets_stronger_lifecycle_note(self, mock_options_cls, mock_client_cls, tmp_path):
-        """Ollama runs get the blunt 'stop calling tools to finish' addendum."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        local_env = {
-            "ANTHROPIC_AUTH_TOKEN": "ollama",
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_BASE_URL": "http://localhost:11434",
-        }
-        session = make_session(worktree_path=tmp_path, model="qwen3.5", local_env=local_env)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        sp = mock_options_cls.call_args.kwargs["system_prompt"]
-        assert "TO FINISH THIS TASK" in sp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_non_ollama_omits_stronger_lifecycle_note(self, mock_options_cls, mock_client_cls, tmp_path):
-        """Non-Ollama runs get the general note but not the blunt Ollama addendum."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        sp = mock_options_cls.call_args.kwargs["system_prompt"]
-        assert "AUTOMATICALLY" in sp  # general lifecycle note present
-        assert "TO FINISH THIS TASK" not in sp  # Ollama addendum absent
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_clarification_server_registered_when_callback(self, mock_options_cls, mock_client_cls, tmp_path):
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path, on_clarify=AsyncMock())
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        mcp = kwargs.get("mcp_servers") or {}
-        assert "clarification" in mcp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_no_clarification_server_without_callback(self, mock_options_cls, mock_client_cls, tmp_path):
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)  # no on_clarify
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        mcp = kwargs.get("mcp_servers") or {}
-        assert "clarification" not in mcp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_sets_setting_sources(self, mock_options_cls, mock_client_cls, tmp_path):
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        assert kwargs.get("setting_sources") == ["project"]
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_ollama_excludes_user_settings(self, mock_options_cls, mock_client_cls, tmp_path):
-        """Ollama runs must NOT load `user` settings, or global PreToolUse hooks
-        (e.g. the RTK command-rewriter) leak in and mangle command output."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        local_env = {
-            "ANTHROPIC_AUTH_TOKEN": "ollama",
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_BASE_URL": "http://localhost:11434",
-        }
-        session = make_session(worktree_path=tmp_path, model="qwen3.5", local_env=local_env)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        sources = kwargs.get("setting_sources")
-        assert sources is not None, "Ollama must pass an explicit setting_sources to exclude user hooks"
-        assert "user" not in sources
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_ollama_disables_thinking(self, mock_options_cls, mock_client_cls, tmp_path):
-        """Ollama returns unsigned thinking blocks that crash on replay, so
-        thinking must be explicitly disabled."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        local_env = {
-            "ANTHROPIC_AUTH_TOKEN": "ollama",
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_BASE_URL": "http://localhost:11434",
-        }
-        session = make_session(worktree_path=tmp_path, model="qwen3.5", local_env=local_env)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        assert kwargs.get("thinking") == {"type": "disabled"}
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_ollama_injects_claude_md_when_enabled(self, mock_options_cls, mock_client_cls, tmp_path):
-        """With ollama_load_claude_md on, the worktree CLAUDE.md is injected
-        into the system prompt (the Ollama path's setting_sources=['local']
-        does not auto-load it)."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-        (tmp_path / "CLAUDE.md").write_text("PROJECT CONVENTIONS: use tabs.")
-
-        local_env = {"ANTHROPIC_AUTH_TOKEN": "ollama", "ANTHROPIC_API_KEY": "",
-                      "ANTHROPIC_BASE_URL": "http://localhost:11434"}
-        session = make_session(worktree_path=tmp_path, model="qwen3.5",
-                               local_env=local_env, load_claude_md=True)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        sp = mock_options_cls.call_args.kwargs["system_prompt"]
-        assert "PROJECT CONVENTIONS: use tabs." in sp
-        assert "Project CLAUDE.md" in sp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_ollama_omits_claude_md_by_default(self, mock_options_cls, mock_client_cls, tmp_path):
-        """Default (toggle off): CLAUDE.md is NOT injected, keeping context lean."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-        (tmp_path / "CLAUDE.md").write_text("PROJECT CONVENTIONS: use tabs.")
-
-        local_env = {"ANTHROPIC_AUTH_TOKEN": "ollama", "ANTHROPIC_API_KEY": "",
-                      "ANTHROPIC_BASE_URL": "http://localhost:11434"}
-        session = make_session(worktree_path=tmp_path, model="qwen3.5",
-                               local_env=local_env)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        sp = mock_options_cls.call_args.kwargs["system_prompt"]
-        assert "PROJECT CONVENTIONS: use tabs." not in sp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_non_ollama_ignores_claude_md_flag(self, mock_options_cls, mock_client_cls, tmp_path):
-        """The flag only affects Ollama runs; Claude runs auto-load CLAUDE.md via
-        setting_sources=['project'] and must not double-inject it."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-        (tmp_path / "CLAUDE.md").write_text("PROJECT CONVENTIONS: use tabs.")
-
-        session = make_session(worktree_path=tmp_path, model="claude-opus-4-8",
-                               load_claude_md=True)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        sp = mock_options_cls.call_args.kwargs["system_prompt"]
-        assert "PROJECT CONVENTIONS: use tabs." not in sp
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_passes_verbatim_prompts(self, mock_options_cls, mock_client_cls, tmp_path):
-        """Prompts go to the CLI verbatim — no `@path` expansion, no slash dispatch.
-
-        The prompt is built from the board item's own title/description, so
-        text like `@../../etc/passwd` or a leading `/clear` must stay text.
-        """
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("/clear and read @../../secrets.txt")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        assert kwargs["verbatim_prompts"] is True
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_passes_verbatim_prompts_for_ollama(self, mock_options_cls, mock_client_cls, tmp_path):
-        """verbatim_prompts is a CLI-level flag — the Ollama profile keeps it too."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        local_env = {
-            "ANTHROPIC_AUTH_TOKEN": "ollama",
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_BASE_URL": "http://localhost:11434",
-        }
-        session = make_session(worktree_path=tmp_path, model="qwen3.5", local_env=local_env)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        assert kwargs["verbatim_prompts"] is True
-        # The profile still supplies its own divergent values alongside it.
-        assert kwargs["env"] == local_env
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_passes_ollama_env_to_options(self, mock_options_cls, mock_client_cls, tmp_path):
-        """Ollama env vars are forwarded to ClaudeAgentOptions.env."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        local_env = {
-            "ANTHROPIC_AUTH_TOKEN": "ollama",
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_BASE_URL": "http://localhost:11434",
-        }
-        session = make_session(worktree_path=tmp_path, model="qwen3.5", local_env=local_env)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        assert kwargs["env"] == local_env
-        assert kwargs["model"] == "qwen3.5"
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_ollama_env_none_passes_empty_dict(self, mock_options_cls, mock_client_cls, tmp_path):
-        """When local_env is None, env should be an empty dict (SDK default)."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        session = make_session(worktree_path=tmp_path)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        assert kwargs["env"] == {}
-
-    @patch("src.agent.session.ClaudeSDKClient")
-    @patch("src.agent.session.ClaudeAgentOptions")
-    @pytest.mark.asyncio
-    async def test_start_ollama_env_custom_base_url(self, mock_options_cls, mock_client_cls, tmp_path):
-        """Ollama running on a custom host/port is forwarded correctly."""
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        local_env = {
-            "ANTHROPIC_AUTH_TOKEN": "ollama",
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_BASE_URL": "http://192.168.1.100:11434",
-        }
-        session = make_session(worktree_path=tmp_path, model="llama3.2", local_env=local_env)
-        try:
-            await session.start("test")
-        except Exception:
-            pass
-
-        kwargs = mock_options_cls.call_args.kwargs
-        assert kwargs["env"]["ANTHROPIC_BASE_URL"] == "http://192.168.1.100:11434"
-        assert kwargs["model"] == "llama3.2"
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 
 # Reuse the WorkflowService fixtures (real DB, mocked git/sessions).
-from tests.unit.test_workflow_service import (  # noqa: F401
+from tests.unit.workflow_fixtures import (  # noqa: F401
     db, db_service, item, tmp_dir, workflow,
 )
 

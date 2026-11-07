@@ -48,8 +48,8 @@ behavior change** — every step keeps the full test suite green and `aihealth d
   Anthropic endpoint as the shared lean *local* profile of the Claude runtime (Ollama profile
   generalized); migration 033, Settings ▸ Tiiny tab, `/api/tiiny/{models,test}`, key from env/Keychain;
   1434 tests; live-verified in the dashboard on a real device (2026-11-06)
-- [ ] M12 — Code-health pass driven by `aihealth` (owner: —, status: not started). One PR per
-  step; steps 1→2 and 3→4 are sequential, 5 runs in parallel, 6 waits for 1–5.
+- [ ] M12 — Code-health pass driven by `aihealth` (owner: —, status: in progress). One PR per
+  step; steps 1→2 and 3→4 are sequential, 5 runs in parallel, 6 waits for 1–5, 8 follows 6.
   - [x] 0 — Baseline (2026-11-07): scan #1 saved to `.aihealth/health.db` (7.14; 73 healthy /
     53 warning / 2 alert); `.aihealth/` self-ignores via its own `.gitignore`; 1434 tests green.
   - [x] 1 — Done 2026-11-07: file 3.17 → 4.73, project 7.14 → 7.25, −178 lines. New helpers
@@ -113,11 +113,25 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     vs `GraphService._exec`), `web/routes.py` (archive-by-date/epic, worktree tree/content
     helpers, `_get_optimized_stats`), `database_service.py` query builders, `main()`,
     `file_routes.scan_directory`, `SkillsService._install_sync`.
-  - [ ] 6 — Test duplication via shared fixtures + `parametrize`: `test_create_todo_autostart.py`,
+  - [x] 6 — Done 2026-11-07 (three parallel agents, disjoint files): all six files 3.07–5.68 → 10.00.
+    New `test_session_start.py` (31 `start()` tests out of test_session.py), `test_auto_approve.py`
+    (15 out of test_workflow_service.py), and `tests/unit/workflow_fixtures.py` — shared WorkflowService
+    fixtures as a plain module imported explicitly, NOT a conftest (generic names like `db`/`item`
+    would leak). Verified: per-file counts sum to the same 342, full suite 1441, and a runtime count
+    of executed asserts (HEAD vs tree) is equal or higher per group. Non-JS project 8.30, tests 8.60.
+    Original scope — test duplication via shared fixtures + `parametrize`: `test_create_todo_autostart.py`,
     `test_session.py` (Ollama `TestStart`), `test_workflow_service.py`, `test_diff_mixing.py`,
     `test_allowed_commands.py`, `test_mcp_tool_servers.py`.
   - [ ] 7 — Optional: `.aihealth.toml` + `aihealth scan --fail-under` gate in `make`/CI; Swift
     wrapper (`ProjectManager.swift`, `InstallSheet.swift`, `DashboardTabsView.swift`).
+  - [ ] 8 — Frontend JavaScript (`src/static/js/`, 27 files, 5.88; newly scanned by aihealth):
+    worst first — `file-browser.js` 3.50 and `review-dialog.js` 4.12 (12 duplication findings
+    each), `annotate.js` 4.27 and `board.js` 4.69 (complex / high-cognitive methods), then
+    `spacing_overlay.js`, `shortcuts.js`, `config-dialog.js`. Totals: 58 complex methods,
+    50 duplications, 41 high-cognitive. **Risk:** the JS has no unit tests — only the 7 Node
+    Playwright E2E tests, which spawn real agents (paid; confirm first) — so each file needs a
+    browser check of the affected UI (the `run` skill / Chrome) besides the E2E suite. Do this
+    after step 6; it does not depend on 7.
 
 ## Decisions
 
@@ -227,7 +241,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-07): steps 0–5 done; next is 6 (then optional 7). JS (`src/static/js/`, 5.88) is newly scanned and not yet in the plan.** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 in flight (2026-11-07): steps 0–6 done; next is 8 (frontend JS); 7 is optional.** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above

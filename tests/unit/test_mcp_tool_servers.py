@@ -5,6 +5,8 @@ We patch create_sdk_mcp_server to capture the SdkMcpTool objects, then call
 .handler(input_dict) directly to verify callback invocation and return values.
 """
 
+import importlib
+
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -37,326 +39,259 @@ def get_tool(tools, name):
     raise KeyError(f"Tool '{name}' not found. Available: {[t.name for t in tools]}")
 
 
+def _text(result):
+    """The text of the first content block of a tool result."""
+    return result["content"][0]["text"]
+
+
+class _SingleToolServer:
+    """Shared plumbing for a server whose factory takes one callback.
+
+    Subclasses set MODULE (``src.agent.<name>``), SERVER (server and factory
+    suffix), TOOL (tool name) and CB_RETURN (a harmless callback result). Not
+    collected itself (no ``Test`` prefix); its tests run once per subclass.
+    """
+
+    MODULE = ""
+    SERVER = ""
+    TOOL = ""
+    CB_RETURN = None
+
+    def _make(self, cb):
+        module = importlib.import_module(self.MODULE)
+        factory = getattr(module, f"create_{self.SERVER}_server")
+        return capture_tools(self.MODULE, factory, cb)
+
+    def _tool(self, cb=None):
+        cb = cb or AsyncMock(return_value=self.CB_RETURN)
+        return get_tool(self._make(cb)["tools"], self.TOOL)
+
+    def _schema(self, name):
+        return getattr(importlib.import_module(self.MODULE), name)
+
+    async def _call(self, return_value, tool_input):
+        """Invoke the tool with a callback returning return_value.
+
+        Returns (callback, result).
+        """
+        cb = AsyncMock(return_value=return_value)
+        result = await self._tool(cb).handler(tool_input)
+        return cb, result
+
+    def test_server_name(self):
+        cap = self._make(AsyncMock(return_value=self.CB_RETURN))
+        assert cap["name"] == self.SERVER
+
+    def test_exposes_tool(self):
+        assert self._tool().name == self.TOOL
+
+
 # ── board_view ─────────────────────────────────────────────────────────
 
-class TestBoardViewServer:
-    def _make(self, cb):
-        from src.agent.board_view import create_board_view_server
-        return capture_tools("src.agent.board_view", create_board_view_server, cb)
-
-    def test_server_name_is_board_view(self):
-        cap = self._make(AsyncMock(return_value=""))
-        assert cap["name"] == "board_view"
-
-    def test_exposes_view_board_tool(self):
-        cap = self._make(AsyncMock(return_value=""))
-        tool = get_tool(cap["tools"], "view_board")
-        assert tool.name == "view_board"
+class TestBoardViewServer(_SingleToolServer):
+    MODULE = "src.agent.board_view"
+    SERVER = "board_view"
+    TOOL = "view_board"
+    CB_RETURN = ""
 
     def test_view_board_has_description(self):
-        cap = self._make(AsyncMock(return_value=""))
-        tool = get_tool(cap["tools"], "view_board")
-        assert len(tool.description) > 0
+        assert len(self._tool().description) > 0
 
     @pytest.mark.asyncio
     async def test_view_board_calls_callback_no_args(self):
-        cb = AsyncMock(return_value="## Board\n- Todo: Fix bug")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "view_board")
-
-        result = await tool.handler({})
+        cb, result = await self._call("## Board\n- Todo: Fix bug", {})
 
         cb.assert_awaited_once_with()
         assert result["content"][0]["type"] == "text"
-        assert result["content"][0]["text"] == "## Board\n- Todo: Fix bug"
+        assert _text(result) == "## Board\n- Todo: Fix bug"
 
     @pytest.mark.asyncio
     async def test_view_board_returns_callback_text(self):
-        cb = AsyncMock(return_value="Empty board")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "view_board")
-
-        result = await tool.handler({})
-        assert result["content"][0]["text"] == "Empty board"
+        _cb, result = await self._call("Empty board", {})
+        assert _text(result) == "Empty board"
 
     def test_view_board_schema(self):
-        from src.agent.board_view import VIEW_BOARD_SCHEMA
-        assert VIEW_BOARD_SCHEMA["type"] == "object"
-        assert VIEW_BOARD_SCHEMA["properties"] == {}
+        schema = self._schema("VIEW_BOARD_SCHEMA")
+        assert schema["type"] == "object"
+        assert schema["properties"] == {}
 
 
 # ── who_am_i ───────────────────────────────────────────────────────────
 
-class TestWhoAmIServer:
-    def _make(self, cb):
-        from src.agent.who_am_i import create_who_am_i_server
-        return capture_tools("src.agent.who_am_i", create_who_am_i_server, cb)
-
-    def test_server_name_is_who_am_i(self):
-        cap = self._make(AsyncMock(return_value={}))
-        assert cap["name"] == "who_am_i"
-
-    def test_exposes_who_am_i_tool(self):
-        cap = self._make(AsyncMock(return_value={}))
-        tool = get_tool(cap["tools"], "who_am_i")
-        assert tool.name == "who_am_i"
+class TestWhoAmIServer(_SingleToolServer):
+    MODULE = "src.agent.who_am_i"
+    SERVER = "who_am_i"
+    TOOL = "who_am_i"
+    CB_RETURN = {}
 
     def test_who_am_i_has_description(self):
-        cap = self._make(AsyncMock(return_value={}))
-        tool = get_tool(cap["tools"], "who_am_i")
-        assert len(tool.description) > 0
+        assert len(self._tool().description) > 0
 
     @pytest.mark.asyncio
     async def test_who_am_i_calls_callback_no_args(self):
-        cb = AsyncMock(return_value={"id": "abc123", "title": "Plan", "column_name": "doing"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "who_am_i")
-
-        result = await tool.handler({})
+        cb, result = await self._call(
+            {"id": "abc123", "title": "Plan", "column_name": "doing"}, {}
+        )
 
         cb.assert_awaited_once_with()
         assert result["content"][0]["type"] == "text"
 
     @pytest.mark.asyncio
     async def test_who_am_i_includes_item_id_and_deps(self):
-        cb = AsyncMock(return_value={
+        _cb, result = await self._call({
             "id": "abc123",
             "title": "Build foundation",
             "column_name": "doing",
             "dependencies": [{"id": "dep-1"}, {"id": "dep-2"}],
-        })
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "who_am_i")
+        }, {})
 
-        text = (await tool.handler({}))["content"][0]["text"]
+        text = _text(result)
         assert "abc123" in text
         assert "Build foundation" in text
         assert "dep-1" in text and "dep-2" in text
 
     @pytest.mark.asyncio
     async def test_who_am_i_handles_error(self):
-        cb = AsyncMock(return_value={"error": "Board item xyz not found."})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "who_am_i")
-
-        text = (await tool.handler({}))["content"][0]["text"]
-        assert "not found" in text
+        _cb, result = await self._call({"error": "Board item xyz not found."}, {})
+        assert "not found" in _text(result)
 
     def test_who_am_i_schema(self):
-        from src.agent.who_am_i import WHO_AM_I_SCHEMA
-        assert WHO_AM_I_SCHEMA["type"] == "object"
-        assert WHO_AM_I_SCHEMA["properties"] == {}
+        schema = self._schema("WHO_AM_I_SCHEMA")
+        assert schema["type"] == "object"
+        assert schema["properties"] == {}
 
 
 # ── shortcut ───────────────────────────────────────────────────────────
 
-class TestShortcutServer:
-    def _make(self, cb):
-        from src.agent.shortcut import create_shortcut_server
-        return capture_tools("src.agent.shortcut", create_shortcut_server, cb)
-
-    def test_server_name_is_shortcut(self):
-        cap = self._make(AsyncMock(return_value={"name": "x"}))
-        assert cap["name"] == "shortcut"
-
-    def test_exposes_create_shortcut_tool(self):
-        cap = self._make(AsyncMock(return_value={"name": "x"}))
-        tool = get_tool(cap["tools"], "create_shortcut")
-        assert tool.name == "create_shortcut"
+class TestShortcutServer(_SingleToolServer):
+    MODULE = "src.agent.shortcut"
+    SERVER = "shortcut"
+    TOOL = "create_shortcut"
+    CB_RETURN = {"name": "x"}
 
     @pytest.mark.asyncio
     async def test_create_shortcut_passes_name_and_command(self):
-        cb = AsyncMock(return_value={"name": "Run tests"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_shortcut")
-
-        result = await tool.handler({"name": "Run tests", "command": "pytest"})
+        cb, result = await self._call(
+            {"name": "Run tests"}, {"name": "Run tests", "command": "pytest"}
+        )
 
         cb.assert_awaited_once_with("Run tests", "pytest")
         assert result["content"][0]["type"] == "text"
-        assert "Run tests" in result["content"][0]["text"]
+        assert "Run tests" in _text(result)
 
     @pytest.mark.asyncio
     async def test_create_shortcut_uses_callback_name_in_response(self):
-        cb = AsyncMock(return_value={"name": "Normalized Name"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_shortcut")
-
-        result = await tool.handler({"name": "raw name", "command": "npm test"})
-        assert "Normalized Name" in result["content"][0]["text"]
+        _cb, result = await self._call(
+            {"name": "Normalized Name"}, {"name": "raw name", "command": "npm test"}
+        )
+        assert "Normalized Name" in _text(result)
 
     @pytest.mark.asyncio
     async def test_create_shortcut_missing_fields_default_empty(self):
-        cb = AsyncMock(return_value={"name": ""})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_shortcut")
-
-        await tool.handler({})
+        cb, _result = await self._call({"name": ""}, {})
         cb.assert_awaited_once_with("", "")
 
     def test_schema_requires_name_and_command(self):
-        from src.agent.shortcut import CREATE_SHORTCUT_SCHEMA
-        assert "name" in CREATE_SHORTCUT_SCHEMA["required"]
-        assert "command" in CREATE_SHORTCUT_SCHEMA["required"]
+        schema = self._schema("CREATE_SHORTCUT_SCHEMA")
+        assert "name" in schema["required"]
+        assert "command" in schema["required"]
 
 
-# ── tool_access ────────────────────────────────────────────────────────
+# ── tool_access / command_access ───────────────────────────────────────
 
-class TestToolAccessServer:
-    def _make(self, cb):
-        from src.agent.tool_access import create_tool_access_server
-        return capture_tools("src.agent.tool_access", create_tool_access_server, cb)
+class _AccessRequestServer(_SingleToolServer):
+    """request_*_access servers: callback(<FIELD>, reason) -> "approved"/"denied".
 
-    def test_server_name_is_tool_access(self):
-        cap = self._make(AsyncMock(return_value="approved"))
-        assert cap["name"] == "tool_access"
+    Subclasses also set FIELD (the first input key), SCHEMA (schema constant
+    name) and APPROVED_INPUT / DENIED_INPUT as (FIELD value, reason) pairs.
+    """
 
-    def test_exposes_request_tool_access_tool(self):
-        cap = self._make(AsyncMock(return_value="approved"))
-        tool = get_tool(cap["tools"], "request_tool_access")
-        assert tool.name == "request_tool_access"
+    CB_RETURN = "approved"
+    FIELD = ""
+    SCHEMA = ""
+    APPROVED_INPUT = ("", "")
+    DENIED_INPUT = ("", "")
 
-    @pytest.mark.asyncio
-    async def test_approved_response(self):
-        cb = AsyncMock(return_value="approved")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "request_tool_access")
-
-        result = await tool.handler({"tool_name": "WebSearch", "reason": "Need to search docs"})
-
-        cb.assert_awaited_once_with("WebSearch", "Need to search docs")
-        assert result["content"][0]["text"] == "approved"
-
-    @pytest.mark.asyncio
-    async def test_denied_response(self):
-        cb = AsyncMock(return_value="denied")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "request_tool_access")
-
-        result = await tool.handler({"tool_name": "WebFetch", "reason": "Fetch a URL"})
-        assert result["content"][0]["text"] == "denied"
-
-    @pytest.mark.asyncio
-    async def test_missing_fields_default_empty(self):
-        cb = AsyncMock(return_value="denied")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "request_tool_access")
-
-        await tool.handler({})
-        cb.assert_awaited_once_with("", "")
-
-    def test_schema_required_fields(self):
-        from src.agent.tool_access import REQUEST_TOOL_ACCESS_SCHEMA
-        assert "tool_name" in REQUEST_TOOL_ACCESS_SCHEMA["required"]
-        assert "reason" in REQUEST_TOOL_ACCESS_SCHEMA["required"]
-
-
-# ── command_access ─────────────────────────────────────────────────────
-
-class TestCommandAccessServer:
-    def _make(self, cb):
-        from src.agent.command_access import create_command_access_server
-        return capture_tools("src.agent.command_access", create_command_access_server, cb)
-
-    def test_server_name_is_command_access(self):
-        cap = self._make(AsyncMock(return_value="approved"))
-        assert cap["name"] == "command_access"
-
-    def test_exposes_request_command_access_tool(self):
-        cap = self._make(AsyncMock(return_value="approved"))
-        tool = get_tool(cap["tools"], "request_command_access")
-        assert tool.name == "request_command_access"
+    def _input(self, pair):
+        value, reason = pair
+        return {self.FIELD: value, "reason": reason}
 
     @pytest.mark.asyncio
     async def test_approved_response(self):
-        cb = AsyncMock(return_value="approved")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "request_command_access")
+        cb, result = await self._call("approved", self._input(self.APPROVED_INPUT))
 
-        result = await tool.handler({"command": "flutter", "reason": "Build mobile app"})
-
-        cb.assert_awaited_once_with("flutter", "Build mobile app")
-        assert result["content"][0]["text"] == "approved"
+        cb.assert_awaited_once_with(*self.APPROVED_INPUT)
+        assert _text(result) == "approved"
 
     @pytest.mark.asyncio
     async def test_denied_response(self):
-        cb = AsyncMock(return_value="denied")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "request_command_access")
-
-        result = await tool.handler({"command": "rm", "reason": "Clean files"})
-        assert result["content"][0]["text"] == "denied"
+        _cb, result = await self._call("denied", self._input(self.DENIED_INPUT))
+        assert _text(result) == "denied"
 
     @pytest.mark.asyncio
     async def test_missing_fields_default_empty(self):
-        cb = AsyncMock(return_value="denied")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "request_command_access")
-
-        await tool.handler({})
+        cb, _result = await self._call("denied", {})
         cb.assert_awaited_once_with("", "")
 
     def test_schema_required_fields(self):
-        from src.agent.command_access import REQUEST_COMMAND_ACCESS_SCHEMA
-        assert "command" in REQUEST_COMMAND_ACCESS_SCHEMA["required"]
-        assert "reason" in REQUEST_COMMAND_ACCESS_SCHEMA["required"]
+        schema = self._schema(self.SCHEMA)
+        assert self.FIELD in schema["required"]
+        assert "reason" in schema["required"]
+
+
+class TestToolAccessServer(_AccessRequestServer):
+    MODULE = "src.agent.tool_access"
+    SERVER = "tool_access"
+    TOOL = "request_tool_access"
+    FIELD = "tool_name"
+    SCHEMA = "REQUEST_TOOL_ACCESS_SCHEMA"
+    APPROVED_INPUT = ("WebSearch", "Need to search docs")
+    DENIED_INPUT = ("WebFetch", "Fetch a URL")
+
+
+class TestCommandAccessServer(_AccessRequestServer):
+    MODULE = "src.agent.command_access"
+    SERVER = "command_access"
+    TOOL = "request_command_access"
+    FIELD = "command"
+    SCHEMA = "REQUEST_COMMAND_ACCESS_SCHEMA"
+    APPROVED_INPUT = ("flutter", "Build mobile app")
+    DENIED_INPUT = ("rm", "Clean files")
 
 
 # ── clarification ──────────────────────────────────────────────────────
 
-class TestClarificationServer:
-    def _make(self, cb):
-        from src.agent.clarification import create_clarification_server
-        return capture_tools("src.agent.clarification", create_clarification_server, cb)
-
-    def test_server_name_is_clarification(self):
-        cap = self._make(AsyncMock(return_value="answer"))
-        assert cap["name"] == "clarification"
-
-    def test_exposes_ask_user_tool(self):
-        cap = self._make(AsyncMock(return_value="answer"))
-        tool = get_tool(cap["tools"], "ask_user")
-        assert tool.name == "ask_user"
+class TestClarificationServer(_SingleToolServer):
+    MODULE = "src.agent.clarification"
+    SERVER = "clarification"
+    TOOL = "ask_user"
+    CB_RETURN = "answer"
 
     @pytest.mark.asyncio
     async def test_ask_user_with_choices(self):
-        cb = AsyncMock(return_value="Option B")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "ask_user")
-
-        result = await tool.handler({"question": "Which approach?", "choices": ["A", "B", "C"]})
+        cb, result = await self._call(
+            "Option B", {"question": "Which approach?", "choices": ["A", "B", "C"]}
+        )
 
         cb.assert_awaited_once_with("Which approach?", ["A", "B", "C"], None)
         assert result["content"][0]["type"] == "text"
-        assert result["content"][0]["text"] == "Option B"
+        assert _text(result) == "Option B"
 
     @pytest.mark.asyncio
     async def test_ask_user_without_choices_passes_none(self):
-        cb = AsyncMock(return_value="Yes, proceed")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "ask_user")
-
-        result = await tool.handler({"question": "Should I continue?"})
+        cb, result = await self._call("Yes, proceed", {"question": "Should I continue?"})
 
         cb.assert_awaited_once_with("Should I continue?", None, None)
-        assert result["content"][0]["text"] == "Yes, proceed"
+        assert _text(result) == "Yes, proceed"
 
     @pytest.mark.asyncio
     async def test_ask_user_missing_question_defaults_empty(self):
-        cb = AsyncMock(return_value="answer")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "ask_user")
-
-        await tool.handler({})
+        cb, _result = await self._call("answer", {})
         cb.assert_awaited_once_with("", None, None)
 
     @pytest.mark.asyncio
     async def test_ask_user_passes_context(self):
-        cb = AsyncMock(return_value="Approved")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "ask_user")
-
-        await tool.handler({
+        cb, _result = await self._call("Approved", {
             "question": "Approve plan?",
             "choices": ["Yes", "No"],
             "context": "Considered options A and B; chose A.",
@@ -367,74 +302,76 @@ class TestClarificationServer:
         )
 
     def test_schema_includes_context(self):
-        from src.agent.clarification import ASK_USER_SCHEMA
-        assert "context" in ASK_USER_SCHEMA["properties"]
-        assert ASK_USER_SCHEMA["properties"]["context"]["type"] == "string"
+        schema = self._schema("ASK_USER_SCHEMA")
+        assert "context" in schema["properties"]
+        assert schema["properties"]["context"]["type"] == "string"
         # context is optional
-        assert "context" not in ASK_USER_SCHEMA.get("required", [])
+        assert "context" not in schema.get("required", [])
 
     def test_schema_requires_question(self):
-        from src.agent.clarification import ASK_USER_SCHEMA
-        assert "question" in ASK_USER_SCHEMA["required"]
+        assert "question" in self._schema("ASK_USER_SCHEMA")["required"]
 
 
 # ── commit_message ─────────────────────────────────────────────────────
 
-class TestCommitMessageServer:
-    def _make(self, cb):
-        from src.agent.commit_message import create_commit_message_server
-        return capture_tools("src.agent.commit_message", create_commit_message_server, cb)
-
-    def test_server_name_is_commit_message(self):
-        cap = self._make(AsyncMock(return_value="saved"))
-        assert cap["name"] == "commit_message"
-
-    def test_exposes_set_commit_message_tool(self):
-        cap = self._make(AsyncMock(return_value="saved"))
-        tool = get_tool(cap["tools"], "set_commit_message")
-        assert tool.name == "set_commit_message"
+class TestCommitMessageServer(_SingleToolServer):
+    MODULE = "src.agent.commit_message"
+    SERVER = "commit_message"
+    TOOL = "set_commit_message"
+    CB_RETURN = "saved"
 
     @pytest.mark.asyncio
     async def test_set_commit_message_calls_callback_and_returns_result(self):
-        cb = AsyncMock(return_value="Commit message saved")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "set_commit_message")
-
-        result = await tool.handler({"message": "Add user authentication"})
+        cb, result = await self._call(
+            "Commit message saved", {"message": "Add user authentication"}
+        )
 
         cb.assert_awaited_once_with("Add user authentication")
         assert result["content"][0]["type"] == "text"
-        assert result["content"][0]["text"] == "Commit message saved"
+        assert _text(result) == "Commit message saved"
 
     @pytest.mark.asyncio
     async def test_set_commit_message_missing_message_defaults_empty(self):
-        cb = AsyncMock(return_value="saved")
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "set_commit_message")
-
-        await tool.handler({})
+        cb, _result = await self._call("saved", {})
         cb.assert_awaited_once_with("")
 
     def test_schema_requires_message(self):
-        from src.agent.commit_message import SET_COMMIT_MESSAGE_SCHEMA
-        assert "message" in SET_COMMIT_MESSAGE_SCHEMA["required"]
+        assert "message" in self._schema("SET_COMMIT_MESSAGE_SCHEMA")["required"]
 
 
 # ── todo ───────────────────────────────────────────────────────────────
 
+_TODO = {"id": "1", "title": "T"}
+
+
 class TestTodoServer:
+    # Position of each tool's callback in create_todo_server(create, delete, epic).
+    _CALLBACK_SLOT = {"create_todo": 0, "delete_todo": 1, "create_epic": 2}
+
     def _make(self, create_cb, delete_cb=None, epic_cb=None):
         from src.agent.todo import create_todo_server
         return capture_tools(
             "src.agent.todo", create_todo_server, create_cb, delete_cb, epic_cb
         )
 
+    async def _call(self, tool_name, return_value, tool_input):
+        """Invoke tool_name with its callback returning return_value.
+
+        create_todo always gets a callback (it is required); the other
+        optional callback stays None. Returns (callback, result).
+        """
+        callbacks = [AsyncMock(return_value=_TODO), None, None]
+        cb = AsyncMock(return_value=return_value)
+        callbacks[self._CALLBACK_SLOT[tool_name]] = cb
+        tool = get_tool(self._make(*callbacks)["tools"], tool_name)
+        return cb, await tool.handler(tool_input)
+
     def test_server_name_is_todo(self):
-        cap = self._make(AsyncMock(return_value={"id": "1", "title": "T"}))
+        cap = self._make(AsyncMock(return_value=_TODO))
         assert cap["name"] == "todo"
 
     def test_only_create_todo_when_no_optional_callbacks(self):
-        cap = self._make(AsyncMock(return_value={"id": "1", "title": "T"}))
+        cap = self._make(AsyncMock(return_value=_TODO))
         names = [t.name for t in cap["tools"]]
         assert "create_todo" in names
         assert "delete_todo" not in names
@@ -442,7 +379,7 @@ class TestTodoServer:
 
     def test_all_tools_present_with_all_callbacks(self):
         cap = self._make(
-            AsyncMock(return_value={"id": "1", "title": "T"}),
+            AsyncMock(return_value=_TODO),
             AsyncMock(return_value="Deleted"),
             AsyncMock(return_value={"id": "e1", "title": "Epic", "color": "blue"}),
         )
@@ -451,57 +388,115 @@ class TestTodoServer:
         assert "delete_todo" in names
         assert "create_epic" in names
 
+    # Each case: callback return, tool input, expected callback args
+    # (title, description, epic_id, requires, autostart, auto_approve,
+    # use_chrome), substrings expected in the result text.
     @pytest.mark.asyncio
-    async def test_create_todo_basic_calls_callback(self):
-        cb = AsyncMock(return_value={"id": "42", "title": "Write tests"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_todo")
+    @pytest.mark.parametrize("cb_return, tool_input, expected_args, expected_text", [
+        pytest.param(
+            {"id": "42", "title": "Write tests"}, {"title": "Write tests"},
+            ("Write tests", "", None, None, False, 0, False), ["Write tests", "42"],
+            id="basic_calls_callback",
+        ),
+        # auto_approve=1 should be forwarded and surfaced in the result message.
+        pytest.param(
+            {"id": "10", "title": "Reviewed Task"},
+            {"title": "Reviewed Task", "auto_approve": 1},
+            ("Reviewed Task", "", None, None, False, 1, False), ["review mode"],
+            id="auto_approve_review_message",
+        ),
+        # auto_approve=2 should be forwarded and surfaced as direct merge.
+        pytest.param(
+            {"id": "11", "title": "Direct Task"},
+            {"title": "Direct Task", "auto_approve": 2},
+            ("Direct Task", "", None, None, False, 2, False), ["direct merge"],
+            id="auto_approve_direct_message",
+        ),
+        # Both autostart and auto_approve can be set on the same call.
+        pytest.param(
+            {"id": "13", "title": "Both", "autostart_scheduled": True},
+            {"title": "Both", "autostart": True, "auto_approve": 1},
+            ("Both", "", None, None, True, 1, False),
+            ["auto-start scheduled", "review mode"],
+            id="autostart_and_auto_approve_together",
+        ),
+    ])
+    async def test_create_todo_forwards_args_and_reports(
+        self, cb_return, tool_input, expected_args, expected_text
+    ):
+        cb, result = await self._call("create_todo", cb_return, tool_input)
 
-        result = await tool.handler({"title": "Write tests"})
-
-        cb.assert_awaited_once_with("Write tests", "", None, None, False, 0, False)
-        assert "Write tests" in result["content"][0]["text"]
-        assert "42" in result["content"][0]["text"]
+        cb.assert_awaited_once_with(*expected_args)
+        text = _text(result)
+        for fragment in expected_text:
+            assert fragment in text
 
     @pytest.mark.asyncio
-    async def test_create_todo_with_all_fields(self):
-        cb = AsyncMock(return_value={"id": "99", "title": "Full Task"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_todo")
-
-        await tool.handler({
-            "title": "Full Task",
-            "description": "Do all the things",
-            "epic_id": "epic-1",
-            "requires": ["dep-1", "dep-2"],
-            "autostart": True,
-            "auto_approve": 2,
-            "use_chrome": True,
-        })
-
-        cb.assert_awaited_once_with(
-            "Full Task", "Do all the things", "epic-1", ["dep-1", "dep-2"], True, 2, True
-        )
+    @pytest.mark.parametrize("tool_input, expected_args", [
+        pytest.param(
+            {
+                "title": "Full Task",
+                "description": "Do all the things",
+                "epic_id": "epic-1",
+                "requires": ["dep-1", "dep-2"],
+                "autostart": True,
+                "auto_approve": 2,
+                "use_chrome": True,
+            },
+            ("Full Task", "Do all the things", "epic-1", ["dep-1", "dep-2"], True, 2, True),
+            id="with_all_fields",
+        ),
+        # Out-of-range auto_approve values must be coerced to 0 (OFF).
+        pytest.param(
+            {"title": "T", "auto_approve": 7},
+            ("T", "", None, None, False, 0, False),
+            id="auto_approve_invalid_falls_back_to_off",
+        ),
+    ])
+    async def test_create_todo_forwards_args(self, tool_input, expected_args):
+        cb, _result = await self._call("create_todo", _TODO, tool_input)
+        cb.assert_awaited_once_with(*expected_args)
 
     @pytest.mark.asyncio
     async def test_create_todo_use_chrome_defaults_false(self):
-        cb = AsyncMock(return_value={"id": "7", "title": "Code Task"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_todo")
-
-        await tool.handler({"title": "Code Task"})
+        cb, _result = await self._call(
+            "create_todo", {"id": "7", "title": "Code Task"}, {"title": "Code Task"}
+        )
 
         # use_chrome is the 7th positional arg and defaults to False.
         assert cb.await_args.args[6] is False
 
     @pytest.mark.asyncio
-    async def test_create_todo_use_chrome_message(self):
-        cb = AsyncMock(return_value={"id": "8", "title": "Browse Task"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_todo")
-
-        result = await tool.handler({"title": "Browse Task", "use_chrome": True})
-        assert "browser access enabled" in result["content"][0]["text"]
+    @pytest.mark.parametrize("cb_return, tool_input, expected_fragment", [
+        pytest.param(
+            {"id": "8", "title": "Browse Task"},
+            {"title": "Browse Task", "use_chrome": True},
+            "browser access enabled",
+            id="use_chrome_message",
+        ),
+        pytest.param(
+            {"id": "5", "title": "Auto Task", "autostart_scheduled": True},
+            {"title": "Auto Task", "autostart": True},
+            "auto-start scheduled",
+            id="autostart_scheduled_message",
+        ),
+        pytest.param(
+            {"id": "6", "title": "Dep Task"},
+            {"title": "Dep Task", "requires": ["dep-1"], "autostart": True},
+            "dependencies",
+            id="autostart_with_requires_shows_dep_message",
+        ),
+        # autostart=True, no requires, autostart_scheduled missing -> cannot schedule.
+        pytest.param(
+            {"id": "7", "title": "Task"},
+            {"title": "Task", "autostart": True},
+            "could not be scheduled",
+            id="autostart_unscheduled_no_deps_message",
+        ),
+    ])
+    async def test_create_todo_result_message(self, cb_return, tool_input, expected_fragment):
+        _cb, result = await self._call("create_todo", cb_return, tool_input)
+        assert expected_fragment in _text(result)
 
     def test_create_todo_schema_has_use_chrome(self):
         from src.agent.todo import CREATE_TODO_SCHEMA
@@ -509,89 +504,39 @@ class TestTodoServer:
         assert CREATE_TODO_SCHEMA["properties"]["use_chrome"]["type"] == "boolean"
 
     @pytest.mark.asyncio
-    async def test_create_todo_autostart_scheduled_message(self):
-        cb = AsyncMock(return_value={
-            "id": "5", "title": "Auto Task", "autostart_scheduled": True
-        })
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_todo")
-
-        result = await tool.handler({"title": "Auto Task", "autostart": True})
-        assert "auto-start scheduled" in result["content"][0]["text"]
-
-    @pytest.mark.asyncio
-    async def test_create_todo_autostart_with_requires_shows_dep_message(self):
-        cb = AsyncMock(return_value={"id": "6", "title": "Dep Task"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_todo")
-
-        result = await tool.handler({
-            "title": "Dep Task",
-            "requires": ["dep-1"],
-            "autostart": True,
-        })
-        assert "dependencies" in result["content"][0]["text"]
-
-    @pytest.mark.asyncio
-    async def test_create_todo_autostart_unscheduled_no_deps_message(self):
-        """autostart=True, no requires, autostart_scheduled missing -> cannot schedule."""
-        cb = AsyncMock(return_value={"id": "7", "title": "Task"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_todo")
-
-        result = await tool.handler({"title": "Task", "autostart": True})
-        assert "could not be scheduled" in result["content"][0]["text"]
-
-    @pytest.mark.asyncio
     async def test_delete_todo_calls_callback_with_item_id(self):
-        create_cb = AsyncMock(return_value={"id": "1", "title": "T"})
-        delete_cb = AsyncMock(return_value="Item deleted successfully")
-        cap = self._make(create_cb, delete_cb)
-        tool = get_tool(cap["tools"], "delete_todo")
+        cb, result = await self._call(
+            "delete_todo", "Item deleted successfully", {"item_id": "item-123"}
+        )
 
-        result = await tool.handler({"item_id": "item-123"})
-
-        delete_cb.assert_awaited_once_with("item-123")
-        assert result["content"][0]["text"] == "Item deleted successfully"
+        cb.assert_awaited_once_with("item-123")
+        assert _text(result) == "Item deleted successfully"
 
     @pytest.mark.asyncio
     async def test_delete_todo_missing_item_id_defaults_empty(self):
-        create_cb = AsyncMock(return_value={"id": "1", "title": "T"})
-        delete_cb = AsyncMock(return_value="deleted")
-        cap = self._make(create_cb, delete_cb)
-        tool = get_tool(cap["tools"], "delete_todo")
-
-        await tool.handler({})
-        delete_cb.assert_awaited_once_with("")
+        cb, _result = await self._call("delete_todo", "deleted", {})
+        cb.assert_awaited_once_with("")
 
     @pytest.mark.asyncio
     async def test_create_epic_calls_callback(self):
-        create_cb = AsyncMock(return_value={"id": "1", "title": "T"})
-        epic_cb = AsyncMock(return_value={
-            "id": "epic-1", "title": "Auth Feature", "color": "purple"
-        })
-        cap = self._make(create_cb, epic_cb=epic_cb)
-        tool = get_tool(cap["tools"], "create_epic")
+        cb, result = await self._call(
+            "create_epic",
+            {"id": "epic-1", "title": "Auth Feature", "color": "purple"},
+            {"title": "Auth Feature", "color": "purple"},
+        )
 
-        result = await tool.handler({"title": "Auth Feature", "color": "purple"})
-
-        epic_cb.assert_awaited_once_with("Auth Feature", "purple")
-        text = result["content"][0]["text"]
+        cb.assert_awaited_once_with("Auth Feature", "purple")
+        text = _text(result)
         assert "Auth Feature" in text
         assert "epic-1" in text
         assert "purple" in text
 
     @pytest.mark.asyncio
     async def test_create_epic_default_color_is_blue(self):
-        create_cb = AsyncMock(return_value={"id": "1", "title": "T"})
-        epic_cb = AsyncMock(return_value={
-            "id": "e2", "title": "Epic", "color": "blue"
-        })
-        cap = self._make(create_cb, epic_cb=epic_cb)
-        tool = get_tool(cap["tools"], "create_epic")
-
-        await tool.handler({"title": "Epic"})
-        epic_cb.assert_awaited_once_with("Epic", "blue")
+        cb, _result = await self._call(
+            "create_epic", {"id": "e2", "title": "Epic", "color": "blue"}, {"title": "Epic"}
+        )
+        cb.assert_awaited_once_with("Epic", "blue")
 
     def test_create_todo_schema_title_required(self):
         from src.agent.todo import CREATE_TODO_SCHEMA
@@ -604,60 +549,6 @@ class TestTodoServer:
         assert prop is not None, "create_todo schema must expose auto_approve"
         assert prop["type"] == "integer"
         assert prop["enum"] == [0, 1, 2]
-
-    @pytest.mark.asyncio
-    async def test_create_todo_auto_approve_review_message(self):
-        """auto_approve=1 should be forwarded and surfaced in the result message."""
-        cb = AsyncMock(return_value={"id": "10", "title": "Reviewed Task"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_todo")
-
-        result = await tool.handler({"title": "Reviewed Task", "auto_approve": 1})
-
-        cb.assert_awaited_once_with("Reviewed Task", "", None, None, False, 1, False)
-        assert "review mode" in result["content"][0]["text"]
-
-    @pytest.mark.asyncio
-    async def test_create_todo_auto_approve_direct_message(self):
-        """auto_approve=2 should be forwarded and surfaced as direct merge."""
-        cb = AsyncMock(return_value={"id": "11", "title": "Direct Task"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_todo")
-
-        result = await tool.handler({"title": "Direct Task", "auto_approve": 2})
-
-        cb.assert_awaited_once_with("Direct Task", "", None, None, False, 2, False)
-        assert "direct merge" in result["content"][0]["text"]
-
-    @pytest.mark.asyncio
-    async def test_create_todo_auto_approve_invalid_falls_back_to_off(self):
-        """Out-of-range auto_approve values must be coerced to 0 (OFF)."""
-        cb = AsyncMock(return_value={"id": "12", "title": "T"})
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_todo")
-
-        await tool.handler({"title": "T", "auto_approve": 7})
-        cb.assert_awaited_once_with("T", "", None, None, False, 0, False)
-
-    @pytest.mark.asyncio
-    async def test_create_todo_autostart_and_auto_approve_together(self):
-        """Both autostart and auto_approve can be set on the same call."""
-        cb = AsyncMock(return_value={
-            "id": "13", "title": "Both", "autostart_scheduled": True,
-        })
-        cap = self._make(cb)
-        tool = get_tool(cap["tools"], "create_todo")
-
-        result = await tool.handler({
-            "title": "Both",
-            "autostart": True,
-            "auto_approve": 1,
-        })
-
-        cb.assert_awaited_once_with("Both", "", None, None, True, 1, False)
-        text = result["content"][0]["text"]
-        assert "auto-start scheduled" in text
-        assert "review mode" in text
 
     def test_create_epic_schema_title_required(self):
         from src.agent.todo import CREATE_EPIC_SCHEMA

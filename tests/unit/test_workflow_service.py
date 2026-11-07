@@ -2,87 +2,17 @@
 
 import asyncio
 import json
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 
-from src.database import Database
 from src.agent.session import AgentResult
-from src.services.database_service import DatabaseService
-from src.services.git_service import GitService
-from src.services.notification_service import NotificationService
-from src.services.session_service import SessionService
 from src.services.workflow_service import WorkflowService
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-@pytest_asyncio.fixture
-async def tmp_dir():
-    with tempfile.TemporaryDirectory() as d:
-        yield Path(d)
-
-
-@pytest_asyncio.fixture
-async def db(tmp_dir):
-    db_path = tmp_dir / "test.db"
-    database = Database(db_path)
-    await database.initialize()
-    yield database
-
-
-@pytest_asyncio.fixture
-async def db_service(db):
-    return DatabaseService(db)
-
-
-@pytest_asyncio.fixture
-async def workflow(db_service, tmp_dir):
-    git_service = MagicMock(spec=GitService)
-    git_service.target_project = tmp_dir
-    git_service.worktree_dir = tmp_dir / "worktrees"
-    git_service.worktree_dir.mkdir(exist_ok=True)
-    git_service.create_or_reuse_worktree = AsyncMock(
-        return_value=(tmp_dir / "worktrees" / "agent-test", "agent/test", "main", "abc123")
-    )
-    git_service.cleanup_session = AsyncMock()
-    git_service.cleanup_item_resources = AsyncMock()
-    git_service.cleanup_worktree_and_branch = AsyncMock()
-
-    ws_manager = MagicMock()
-    ws_manager.broadcast = AsyncMock()
-    notif_service = NotificationService(ws_manager)
-    notif_service.broadcast_item_updated = AsyncMock()
-    notif_service.broadcast_item_created = AsyncMock()
-    notif_service.broadcast_item_deleted = AsyncMock()
-    notif_service.broadcast_agent_log = AsyncMock()
-    notif_service.broadcast_clarification_requested = AsyncMock()
-    notif_service.broadcast_epic_created = AsyncMock()
-
-    session_service = MagicMock(spec=SessionService)
-    session_service.sessions = {}
-    session_service.cleanup_session = AsyncMock()
-    session_service.cleanup_all_sessions = AsyncMock()
-    session_service.pause_session = AsyncMock(return_value="sess-paused-id")
-    session_service.create_session = AsyncMock(return_value=MagicMock())
-    session_service.start_session_task = AsyncMock()
-    session_service.get_commit_message = MagicMock(return_value=None)
-    session_service.set_commit_message = MagicMock(return_value="ok")
-    session_service.remove_session = MagicMock()
-
-    wf = WorkflowService(db_service, git_service, notif_service, session_service, tmp_dir)
-    yield wf
-
-
-@pytest_asyncio.fixture
-async def item(db_service):
-    """A base todo item."""
-    return await db_service.create_todo_item("Test Task", "Do something useful")
+from tests.unit.workflow_fixtures import (  # noqa: F401
+    db, db_service, fetch_row, item, running_item, stage_item, tmp_dir,
+    work_log_row, workflow,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -93,12 +23,7 @@ class TestLogAndNotify:
     async def test_logs_entry_and_broadcasts(self, workflow, item):
         await workflow._log_and_notify(item["id"], "system", "hello")
         # DB log entry should exist
-        async with workflow.db.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT content FROM work_log WHERE item_id = ? AND entry_type = 'system'",
-                (item["id"],),
-            )
-            row = await cursor.fetchone()
+        row = await work_log_row(workflow, item["id"], entry_type="system")
         assert row is not None
         assert row[0] == "hello"
         workflow.notifications.broadcast_agent_log.assert_awaited()
@@ -106,11 +31,7 @@ class TestLogAndNotify:
     async def test_logs_with_metadata(self, workflow, item):
         meta = json.dumps({"key": "val"})
         await workflow._log_and_notify(item["id"], "tool_use", "ran tool", meta)
-        async with workflow.db.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT metadata FROM work_log WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
+        row = await work_log_row(workflow, item["id"], "metadata")
         assert row[0] == meta
 
 
@@ -146,13 +67,6 @@ class TestCancelAgent:
 # ---------------------------------------------------------------------------
 
 class TestPauseAgent:
-    @pytest_asyncio.fixture
-    async def running_item(self, db_service, item):
-        # Pause is only valid from RUNNING; production never exposes a Pause
-        # button on a backlog item. Move the item there before each test.
-        await db_service.update_item(item["id"], column_name="doing", status="running")
-        return item
-
     async def test_pause_sets_paused_status(self, workflow, running_item):
         result = await workflow.pause_agent(running_item["id"])
         assert result["status"] == "paused"
@@ -190,22 +104,27 @@ class TestPauseAgent:
 # resume_agent — pause-message handling
 # ---------------------------------------------------------------------------
 
+async def pause_with_worktree(workflow, item_id, **fields):
+    """Put the item in the paused state with everything resume_agent
+    expects to find on it."""
+    await stage_item(
+        workflow, item_id, "agent-test",
+        column_name="doing", status="paused", session_id="sess-old", **fields,
+    )
+    return await workflow.db.get_item(item_id)
+
+
+def resume_prompt(workflow):
+    # start_session_task(item_id, session, prompt, attachments, resume_id)
+    return workflow.sessions.start_session_task.await_args.args[2]
+
+
 class TestResumeWithPauseMessage:
     @pytest_asyncio.fixture
-    async def paused_item(self, db_service, tmp_dir, item):
-        # Set up an item in the paused state with everything resume_agent
-        # expects to find on it.
-        worktree = tmp_dir / "worktrees" / "agent-test"
-        worktree.mkdir(parents=True, exist_ok=True)
-        await db_service.update_item(
-            item["id"],
-            column_name="doing",
-            status="paused",
-            worktree_path=str(worktree),
-            session_id="sess-old",
-            pause_message="investigate a simpler approach",
+    async def paused_item(self, workflow, item):
+        return await pause_with_worktree(
+            workflow, item["id"], pause_message="investigate a simpler approach"
         )
-        return await db_service.get_item(item["id"])
 
     async def test_resume_prepends_pause_message_to_prompt(
         self, workflow, paused_item
@@ -228,20 +147,10 @@ class TestResumeWithPauseMessage:
         refreshed = await workflow.db.get_item(paused_item["id"])
         assert refreshed.get("pause_message") in (None, "")
 
-    async def test_resume_without_pause_message_uses_plain_prompt(
-        self, workflow, db_service, tmp_dir, item
-    ):
-        worktree = tmp_dir / "worktrees" / "agent-test"
-        worktree.mkdir(parents=True, exist_ok=True)
-        await db_service.update_item(
-            item["id"],
-            column_name="doing",
-            status="paused",
-            worktree_path=str(worktree),
-            session_id="sess-old",
-        )
+    async def test_resume_without_pause_message_uses_plain_prompt(self, workflow, item):
+        await pause_with_worktree(workflow, item["id"])
         await workflow.resume_agent(item["id"])
-        prompt = workflow.sessions.start_session_task.await_args.args[2]
+        prompt = resume_prompt(workflow)
         assert "paused you with this note" not in prompt
 
     async def test_resume_with_explicit_message_overrides_stored_note(
@@ -251,7 +160,7 @@ class TestResumeWithPauseMessage:
         # note via resume_agent(message=...). When supplied, it should win
         # over whatever pause_message happened to be on the item.
         await workflow.resume_agent(paused_item["id"], message="try plan B instead")
-        prompt = workflow.sessions.start_session_task.await_args.args[2]
+        prompt = resume_prompt(workflow)
         assert "try plan B instead" in prompt
         assert "investigate a simpler approach" not in prompt
 
@@ -261,7 +170,7 @@ class TestResumeWithPauseMessage:
         # Empty/whitespace-only submissions from the Continue form should
         # leave the stored pause_message in effect rather than wipe it out.
         await workflow.resume_agent(paused_item["id"], message="   \n  ")
-        prompt = workflow.sessions.start_session_task.await_args.args[2]
+        prompt = resume_prompt(workflow)
         assert "investigate a simpler approach" in prompt
 
 
@@ -286,11 +195,9 @@ class TestSubmitClarification:
     async def test_updates_db_clarification_response(self, workflow, db_service, item):
         await db_service.store_clarification(item["id"], "What?", None)
         await workflow.submit_clarification(item["id"], "42")
-        async with workflow.db.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT response FROM clarifications WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
+        row = await fetch_row(
+            workflow, "SELECT response FROM clarifications WHERE item_id = ?", item["id"]
+        )
         assert row is not None
         assert row[0] == "42"
 
@@ -439,12 +346,7 @@ class TestOnMessageCallback:
     async def test_logs_agent_message(self, workflow, item):
         cb = workflow._create_on_message_callback(item["id"])
         await cb("Hello from agent")
-        async with workflow.db.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT content FROM work_log WHERE item_id = ? AND entry_type = 'agent_message'",
-                (item["id"],),
-            )
-            row = await cursor.fetchone()
+        row = await work_log_row(workflow, item["id"], entry_type="agent_message")
         assert row is not None
         assert row[0] == "Hello from agent"
 
@@ -457,12 +359,7 @@ class TestOnThinkingCallback:
     async def test_logs_thinking(self, workflow, item):
         cb = workflow._create_on_thinking_callback(item["id"])
         await cb("Thinking deeply...")
-        async with workflow.db.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT content FROM work_log WHERE item_id = ? AND entry_type = 'thinking'",
-                (item["id"],),
-            )
-            row = await cursor.fetchone()
+        row = await work_log_row(workflow, item["id"], entry_type="thinking")
         assert row is not None
         assert row[0] == "Thinking deeply..."
 
@@ -471,39 +368,28 @@ class TestOnThinkingCallback:
 # Callback: _create_on_tool_use_callback
 # ---------------------------------------------------------------------------
 
+async def log_tool_use(workflow, item_id, tool, tool_input):
+    """Run the tool-use callback; return the (entry_type, content) log row."""
+    cb = workflow._create_on_tool_use_callback(item_id)
+    await cb(tool, tool_input)
+    return await work_log_row(workflow, item_id, "entry_type, content")
+
+
 class TestOnToolUseCallback:
     async def test_logs_tool_use(self, workflow, item):
-        cb = workflow._create_on_tool_use_callback(item["id"])
-        await cb("ReadFile", {"path": "/tmp/foo.txt"})
-        async with workflow.db.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT entry_type FROM work_log WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
+        row = await log_tool_use(workflow, item["id"], "ReadFile", {"path": "/tmp/foo.txt"})
         assert row is not None
         assert row[0] == "tool_use"
 
     async def test_yolo_bash_uses_yolo_entry_type(self, workflow, item):
         workflow._yolo_items.add(item["id"])
-        cb = workflow._create_on_tool_use_callback(item["id"])
-        await cb("Bash", {"command": "rm -rf /"})
-        async with workflow.db.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT entry_type, content FROM work_log WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
+        row = await log_tool_use(workflow, item["id"], "Bash", {"command": "rm -rf /"})
         assert row[0] == "yolo_command"
         assert row[1].startswith("⚡")
 
     async def test_non_bash_in_yolo_mode_uses_tool_use(self, workflow, item):
         workflow._yolo_items.add(item["id"])
-        cb = workflow._create_on_tool_use_callback(item["id"])
-        await cb("ReadFile", {"path": "/tmp/x"})
-        async with workflow.db.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT entry_type FROM work_log WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
+        row = await log_tool_use(workflow, item["id"], "ReadFile", {"path": "/tmp/x"})
         assert row[0] == "tool_use"
 
 
@@ -511,61 +397,48 @@ class TestOnToolUseCallback:
 # Callback: _create_on_complete_callback
 # ---------------------------------------------------------------------------
 
-class TestOnCompleteCallback:
-    @pytest_asyncio.fixture
-    async def running_item(self, db_service, item):
-        # on_complete fires when an active agent's session ends — i.e. while
-        # the item is RUNNING (or RESOLVING_CONFLICTS). Mirror production.
-        await db_service.update_item(item["id"], column_name="doing", status="running")
-        return item
+async def complete(workflow, item_id, **result):
+    """Fire on_complete with ``AgentResult(**result)``; return the updated item."""
+    result.setdefault("success", True)
+    result.setdefault("session_id", "sess-abc")
+    cb = workflow._create_on_complete_callback(item_id)
+    await cb(AgentResult(**result))
+    return await workflow.db.get_item(item_id)
 
+
+class TestOnCompleteCallback:
     async def test_success_moves_to_review(self, workflow, running_item):
-        result = AgentResult(success=True, session_id="sess-abc")
-        cb = workflow._create_on_complete_callback(running_item["id"])
-        await cb(result)
-        updated = await workflow.db.get_item(running_item["id"])
+        updated = await complete(workflow, running_item["id"])
         assert updated["column_name"] == "review"
 
     async def test_failure_sets_failed_status(self, workflow, running_item):
-        result = AgentResult(success=False, error="something went wrong", session_id="sess-fail")
-        cb = workflow._create_on_complete_callback(running_item["id"])
-        await cb(result)
-        updated = await workflow.db.get_item(running_item["id"])
+        updated = await complete(workflow, running_item["id"], success=False,
+                                 error="something went wrong", session_id="sess-fail")
         assert updated["status"] == "failed"
 
     async def test_success_stores_commit_message(self, workflow, running_item):
         workflow.sessions.get_commit_message = MagicMock(return_value="feat: my commit")
-        result = AgentResult(success=True, session_id="sess-abc")
-        cb = workflow._create_on_complete_callback(running_item["id"])
-        await cb(result)
-        updated = await workflow.db.get_item(running_item["id"])
+        updated = await complete(workflow, running_item["id"])
         assert updated["commit_message"] == "feat: my commit"
 
     async def test_removes_session_on_complete(self, workflow, running_item):
-        result = AgentResult(success=True, session_id="sess-abc")
-        cb = workflow._create_on_complete_callback(running_item["id"])
-        await cb(result)
+        await complete(workflow, running_item["id"])
         workflow.sessions.remove_session.assert_called_with(running_item["id"])
 
     async def test_clears_yolo_tracking_on_complete(self, workflow, running_item):
         workflow._yolo_items.add(running_item["id"])
-        result = AgentResult(success=True, session_id="sess-abc")
-        cb = workflow._create_on_complete_callback(running_item["id"])
-        await cb(result)
+        await complete(workflow, running_item["id"])
         assert running_item["id"] not in workflow._yolo_items
 
     async def test_broadcasts_item_updated_on_success(self, workflow, running_item):
-        result = AgentResult(success=True, session_id="sess-abc")
-        cb = workflow._create_on_complete_callback(running_item["id"])
-        await cb(result)
+        await complete(workflow, running_item["id"])
         workflow.notifications.broadcast_item_updated.assert_awaited()
 
     async def test_transient_api_failure_notification(self, workflow, running_item):
-        result = AgentResult(success=False, error="[HTTP 529] Overloaded",
-                             session_id="sess-fail", api_error_status=529)
-        cb = workflow._create_on_complete_callback(running_item["id"])
         with patch("src.web.routes.add_notification") as add_notif:
-            await cb(result)
+            await complete(workflow, running_item["id"], success=False,
+                           error="[HTTP 529] Overloaded", session_id="sess-fail",
+                           api_error_status=529)
         msg = add_notif.call_args[0][1]
         assert "HTTP 529" in msg
         assert "transient" in msg.lower()
@@ -576,32 +449,31 @@ class TestOnCompleteCallback:
 # _add_failure_notification — API error classification
 # ---------------------------------------------------------------------------
 
+def failure_message(workflow, error, status):
+    """The notification text _add_failure_notification posts."""
+    with patch("src.web.routes.add_notification") as add_notif:
+        workflow._add_failure_notification("item1234", error, status)
+    return add_notif.call_args[0][1]
+
+
 class TestFailureNotification:
     @pytest.mark.parametrize("status", [429, 500, 502, 503, 529])
     def test_transient_status_marked_retryable(self, workflow, status):
-        with patch("src.web.routes.add_notification") as add_notif:
-            workflow._add_failure_notification("item1234", "boom", status)
-        msg = add_notif.call_args[0][1]
+        msg = failure_message(workflow, "boom", status)
         assert f"HTTP {status}" in msg
         assert "transient" in msg.lower()
 
     def test_non_transient_status_uses_raw_error(self, workflow):
-        with patch("src.web.routes.add_notification") as add_notif:
-            workflow._add_failure_notification("item1234", "real task error", 400)
-        msg = add_notif.call_args[0][1]
+        msg = failure_message(workflow, "real task error", 400)
         assert "real task error" in msg
         assert "transient" not in msg.lower()
 
     def test_no_status_uses_raw_error(self, workflow):
-        with patch("src.web.routes.add_notification") as add_notif:
-            workflow._add_failure_notification("item1234", "plain failure", None)
-        msg = add_notif.call_args[0][1]
+        msg = failure_message(workflow, "plain failure", None)
         assert "plain failure" in msg
 
     def test_error_is_truncated(self, workflow):
-        with patch("src.web.routes.add_notification") as add_notif:
-            workflow._add_failure_notification("item1234", "x" * 500, None)
-        msg = add_notif.call_args[0][1]
+        msg = failure_message(workflow, "x" * 500, None)
         # 200-char cap on the error body (plus the fixed prefix).
         assert msg.count("x") == 200
 
@@ -610,34 +482,28 @@ class TestFailureNotification:
 # Callback: _create_on_error_callback
 # ---------------------------------------------------------------------------
 
-class TestOnErrorCallback:
-    @pytest_asyncio.fixture
-    async def running_item(self, db_service, item):
-        # on_error fires from an active agent — same RUNNING-state setup
-        # as on_complete; FAIL is only valid from RUNNING/RESOLVING_CONFLICTS.
-        await db_service.update_item(item["id"], column_name="doing", status="running")
-        return item
+async def fail(workflow, item_id, error="error"):
+    cb = workflow._create_on_error_callback(item_id)
+    await cb(error)
 
+
+class TestOnErrorCallback:
     async def test_sets_failed_status(self, workflow, running_item):
-        cb = workflow._create_on_error_callback(running_item["id"])
-        await cb("some error")
+        await fail(workflow, running_item["id"], "some error")
         updated = await workflow.db.get_item(running_item["id"])
         assert updated["status"] == "failed"
 
     async def test_removes_session(self, workflow, running_item):
-        cb = workflow._create_on_error_callback(running_item["id"])
-        await cb("error")
+        await fail(workflow, running_item["id"])
         workflow.sessions.remove_session.assert_called_with(running_item["id"])
 
     async def test_broadcasts_item_updated(self, workflow, running_item):
-        cb = workflow._create_on_error_callback(running_item["id"])
-        await cb("error")
+        await fail(workflow, running_item["id"])
         workflow.notifications.broadcast_item_updated.assert_awaited()
 
     async def test_clears_yolo_on_error(self, workflow, running_item):
         workflow._yolo_items.add(running_item["id"])
-        cb = workflow._create_on_error_callback(running_item["id"])
-        await cb("error")
+        await fail(workflow, running_item["id"])
         assert running_item["id"] not in workflow._yolo_items
 
 
@@ -645,121 +511,74 @@ class TestOnErrorCallback:
 # Callback: _create_on_clarify_callback
 # ---------------------------------------------------------------------------
 
+async def ask(workflow, item_id, response, *call_args):
+    """Run the clarify callback with ``response`` already answered.
+
+    Pre-set the response and patch asyncio.Event with a set event so
+    event.wait() returns immediately; return what the callback returns.
+    """
+    cb = workflow._create_on_clarify_callback(item_id)
+    workflow._clarify_responses[item_id] = response
+    pre_set_event = asyncio.Event()
+    pre_set_event.set()
+    with patch("asyncio.Event", return_value=pre_set_event):
+        return await cb(*call_args)
+
+
+def broadcast_context(workflow, *, required):
+    """The ``context`` passed to broadcast_clarification_requested.
+
+    Resolve regardless of positional vs keyword call style.
+    """
+    args, kwargs = workflow.notifications.broadcast_clarification_requested.call_args
+    if "context" in kwargs:
+        return kwargs["context"]
+    if required:
+        assert len(args) >= 4, f"expected context arg, got args={args}"
+    return args[3] if len(args) >= 4 else None
+
+
+async def clarification_row(workflow, item_id, columns):
+    return await fetch_row(
+        workflow, f"SELECT {columns} FROM clarifications WHERE item_id = ?", item_id
+    )
+
+
 class TestOnClarifyCallback:
-    @pytest_asyncio.fixture
-    async def running_item(self, db_service, item):
-        # on_clarify is only invoked by an active agent — i.e. on a RUNNING item.
-        # Move the freshly-created todo item into the RUNNING state so the
-        # ASK transition (RUNNING -> CLARIFY) is valid.
-        await db_service.update_item(item["id"], column_name="doing", status="running")
-        return item
-
     async def test_moves_item_to_questions(self, workflow, running_item):
-        cb = workflow._create_on_clarify_callback(running_item["id"])
-
-        # Pre-set the response so event.wait() returns immediately
-        workflow._clarify_responses[running_item["id"]] = "answer"
-        pre_set_event = asyncio.Event()
-        pre_set_event.set()
-
-        def make_pre_set_event():
-            return pre_set_event
-        with patch("asyncio.Event", side_effect=make_pre_set_event):
-            await cb("What color?", None)
+        await ask(workflow, running_item["id"], "answer", "What color?", None)
         updated = await workflow.db.get_item(running_item["id"])
         assert updated["column_name"] == "doing"  # moved back after response
 
     async def test_returns_user_response(self, workflow, running_item):
-        cb = workflow._create_on_clarify_callback(running_item["id"])
-
-        workflow._clarify_responses[running_item["id"]] = "blue"
-        pre_set_event = asyncio.Event()
-        pre_set_event.set()
-        with patch("asyncio.Event", return_value=pre_set_event):
-            response = await cb("What color?", ["red", "blue"])
+        response = await ask(workflow, running_item["id"], "blue", "What color?", ["red", "blue"])
         assert response == "blue"
 
     async def test_broadcasts_clarification_requested(self, workflow, running_item):
-        cb = workflow._create_on_clarify_callback(running_item["id"])
-
-        workflow._clarify_responses[running_item["id"]] = "yes"
-        pre_set_event = asyncio.Event()
-        pre_set_event.set()
-        with patch("asyncio.Event", return_value=pre_set_event):
-            await cb("Continue?", ["yes", "no"])
+        await ask(workflow, running_item["id"], "yes", "Continue?", ["yes", "no"])
         workflow.notifications.broadcast_clarification_requested.assert_awaited()
 
-    async def test_persists_context_in_clarifications_table(self, workflow, db_service, running_item):
-        cb = workflow._create_on_clarify_callback(running_item["id"])
-
-        workflow._clarify_responses[running_item["id"]] = "ok"
-        pre_set_event = asyncio.Event()
-        pre_set_event.set()
-        with patch("asyncio.Event", return_value=pre_set_event):
-            await cb(
-                "Approve plan?",
-                ["yes", "no"],
-                "Weighed options A and B; chose A.",
-            )
-
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT prompt, context FROM clarifications WHERE item_id = ?",
-                (running_item["id"],),
-            )
-            row = await cursor.fetchone()
+    async def test_persists_context_in_clarifications_table(self, workflow, running_item):
+        await ask(workflow, running_item["id"], "ok",
+                  "Approve plan?", ["yes", "no"], "Weighed options A and B; chose A.")
+        row = await clarification_row(workflow, running_item["id"], "prompt, context")
         assert row is not None
         assert row[0] == "Approve plan?"
         assert row[1] == "Weighed options A and B; chose A."
 
     async def test_broadcast_payload_includes_context(self, workflow, running_item):
-        cb = workflow._create_on_clarify_callback(running_item["id"])
-
-        workflow._clarify_responses[running_item["id"]] = "ok"
-        pre_set_event = asyncio.Event()
-        pre_set_event.set()
-        with patch("asyncio.Event", return_value=pre_set_event):
-            await cb("Approve plan?", ["yes", "no"], "Reasoning here.")
-
-        broadcast = workflow.notifications.broadcast_clarification_requested
-        broadcast.assert_awaited()
-        args, kwargs = broadcast.call_args
-        # Resolve regardless of positional vs keyword call style.
-        if "context" in kwargs:
-            ctx_value = kwargs["context"]
-        else:
-            assert len(args) >= 4, f"expected context arg, got args={args}"
-            ctx_value = args[3]
-        assert ctx_value == "Reasoning here."
+        await ask(workflow, running_item["id"], "ok",
+                  "Approve plan?", ["yes", "no"], "Reasoning here.")
+        workflow.notifications.broadcast_clarification_requested.assert_awaited()
+        assert broadcast_context(workflow, required=True) == "Reasoning here."
 
     async def test_context_omitted_persists_null_and_broadcasts_none(
-        self, workflow, db_service, running_item
+        self, workflow, running_item
     ):
-        cb = workflow._create_on_clarify_callback(running_item["id"])
-
-        workflow._clarify_responses[running_item["id"]] = "ok"
-        pre_set_event = asyncio.Event()
-        pre_set_event.set()
-        with patch("asyncio.Event", return_value=pre_set_event):
-            await cb("Question?", None)
-
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT context FROM clarifications WHERE item_id = ?",
-                (running_item["id"],),
-            )
-            row = await cursor.fetchone()
+        await ask(workflow, running_item["id"], "ok", "Question?", None)
+        row = await clarification_row(workflow, running_item["id"], "context")
         assert row[0] is None
-
-        broadcast = workflow.notifications.broadcast_clarification_requested
-        args, kwargs = broadcast.call_args
-        if "context" in kwargs:
-            ctx_value = kwargs["context"]
-        elif len(args) >= 4:
-            ctx_value = args[3]
-        else:
-            ctx_value = None
-        assert ctx_value is None
+        assert broadcast_context(workflow, required=False) is None
 
     async def test_clarification_stored_before_item_updated_broadcast(
         self, workflow, db_service, running_item
@@ -769,8 +588,6 @@ class TestOnClarifyCallback:
         broadcast, so a client GET racing the broadcast could miss the row.
         The callback must persist the clarification before broadcasting the
         column move so reopen-via-API always finds the latest context."""
-        cb = workflow._create_on_clarify_callback(running_item["id"])
-
         events: list[str] = []
 
         # Wrap store_clarification to record when it runs.
@@ -796,11 +613,7 @@ class TestOnClarifyCallback:
             tracked_broadcast_clar
         )
 
-        workflow._clarify_responses[running_item["id"]] = "ok"
-        pre_set_event = asyncio.Event()
-        pre_set_event.set()
-        with patch("asyncio.Event", return_value=pre_set_event):
-            await cb("Approve?", ["yes", "no"], "Reasoning here.")
+        await ask(workflow, running_item["id"], "ok", "Approve?", ["yes", "no"], "Reasoning here.")
 
         # Filter to the events we care about (broadcast_item_updated may be
         # called again for the move-back-to-doing transition).
@@ -940,12 +753,7 @@ class TestOnSetCommitMessageCallback:
     async def test_logs_commit_message(self, workflow, item):
         cb = workflow._create_on_set_commit_message_callback(item["id"])
         await cb("feat: add feature")
-        async with workflow.db.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT content FROM work_log WHERE item_id = ? AND entry_type = 'system'",
-                (item["id"],),
-            )
-            row = await cursor.fetchone()
+        row = await work_log_row(workflow, item["id"], entry_type="system")
         assert row is not None
         assert "feat: add feature" in row[0]
 
@@ -1071,398 +879,6 @@ class TestRetryAgent:
         result = await workflow.retry_agent(item["id"])
         assert result["status"] == "running"
         assert result["column_name"] == "doing"
-
-
-# ---------------------------------------------------------------------------
-# Auto-approve: items without file changes
-# ---------------------------------------------------------------------------
-
-class TestAutoApproveNoChanges:
-    """Auto-approve must also handle items where the agent finished without
-    producing any file changes — i.e. the review card shows a "Done" button
-    instead of "Approve & Merge". Without this path the card just sits in
-    review forever."""
-
-    @pytest_asyncio.fixture
-    async def review_item(self, db_service, item, tmp_dir):
-        # Item that's landed in review with auto_approve set and a worktree
-        # path. No diff (no commits, no modified files) — this is what
-        # has_file_changes=0 looks like in practice.
-        wt = tmp_dir / "worktrees" / "no-changes"
-        wt.mkdir(parents=True, exist_ok=True)
-        await db_service.update_item(
-            item["id"],
-            column_name="review",
-            status=None,
-            auto_approve=1,
-            has_file_changes=0,
-            worktree_path=str(wt),
-            branch_name="agent/no-changes",
-            base_branch="main",
-        )
-        return item
-
-    async def test_no_changes_path_moves_item_to_done(
-        self, workflow, review_item
-    ):
-        # approve_item internally calls run_git("status") and get_changed_files;
-        # patch both to simulate a clean repo with zero agent-touched files.
-        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
-             patch("src.git.operations.get_changed_files",
-                   new=AsyncMock(return_value=[])):
-            await workflow._auto_approve_no_changes(review_item["id"])
-        updated = await workflow.db.get_item(review_item["id"])
-        assert updated["column_name"] == "done"
-
-    async def test_no_changes_path_skips_merge_call(
-        self, workflow, review_item
-    ):
-        workflow.git.merge_agent_work = AsyncMock(return_value=(True, "ok"))
-        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
-             patch("src.git.operations.get_changed_files",
-                   new=AsyncMock(return_value=[])):
-            await workflow._auto_approve_no_changes(review_item["id"])
-        # No diff → no merge.
-        workflow.git.merge_agent_work.assert_not_called()
-
-    async def test_no_changes_path_broadcasts_item_updated(
-        self, workflow, review_item
-    ):
-        # Regression: the no-changes branch in approve_item used to skip
-        # broadcast_item_updated, so the frontend never saw the column change
-        # and the card stayed in Review until a reload.
-        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
-             patch("src.git.operations.get_changed_files",
-                   new=AsyncMock(return_value=[])):
-            await workflow._auto_approve_no_changes(review_item["id"])
-        # The broadcast must include the post-transition item (column=done).
-        workflow.notifications.broadcast_item_updated.assert_awaited()
-        broadcast_args = [
-            call.args[0]
-            for call in workflow.notifications.broadcast_item_updated.await_args_list
-        ]
-        assert any(
-            arg.get("id") == review_item["id"] and arg.get("column_name") == "done"
-            for arg in broadcast_args
-        ), f"expected a done-column broadcast for {review_item['id']}, got {broadcast_args}"
-
-    async def test_clean_merge_path_broadcasts_item_updated(
-        self, workflow, db_service, review_item
-    ):
-        # Regression: the clean merge-success branch in approve_item also used
-        # to skip broadcast_item_updated, leaving the card stuck in Review on
-        # auto-approve when the agent did produce file changes.
-        # Force the file-changes branch and a successful merge.
-        await db_service.update_item(review_item["id"], has_file_changes=1)
-        workflow.git.merge_agent_work = AsyncMock(
-            return_value=(True, "deadbeefdeadbeef")
-        )
-        workflow.git.base_repo_path = MagicMock(return_value=Path("/tmp"))
-        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
-             patch("src.git.operations.get_changed_files",
-                   new=AsyncMock(return_value=["foo.py"])):
-            await workflow.approve_item(review_item["id"])
-        workflow.notifications.broadcast_item_updated.assert_awaited()
-        broadcast_args = [
-            call.args[0]
-            for call in workflow.notifications.broadcast_item_updated.await_args_list
-        ]
-        assert any(
-            arg.get("id") == review_item["id"] and arg.get("column_name") == "done"
-            for arg in broadcast_args
-        ), f"expected a done-column broadcast for {review_item['id']}, got {broadcast_args}"
-
-    async def test_no_op_when_item_left_review(
-        self, workflow, db_service, review_item
-    ):
-        # User cancelled review before the auto-approve task ran.
-        await db_service.update_item(review_item["id"], column_name="todo")
-        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
-             patch("src.git.operations.get_changed_files",
-                   new=AsyncMock(return_value=[])):
-            await workflow._auto_approve_no_changes(review_item["id"])
-        # Should not have moved out of todo.
-        updated = await workflow.db.get_item(review_item["id"])
-        assert updated["column_name"] == "todo"
-
-    async def test_no_op_when_auto_approve_unset(
-        self, workflow, db_service, review_item
-    ):
-        await db_service.update_item(review_item["id"], auto_approve=0)
-        with patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
-             patch("src.git.operations.get_changed_files",
-                   new=AsyncMock(return_value=[])):
-            await workflow._auto_approve_no_changes(review_item["id"])
-        updated = await workflow.db.get_item(review_item["id"])
-        # Stays in review for human action.
-        assert updated["column_name"] == "review"
-
-    async def test_on_complete_schedules_no_changes_auto_approve(
-        self, workflow, db_service, item, tmp_dir
-    ):
-        """When auto_approve is set and the agent produced no diff, the
-        on_complete callback must dispatch _auto_approve_no_changes — not just
-        no-op the way it did before."""
-        wt = tmp_dir / "worktrees" / "no-changes-2"
-        wt.mkdir(parents=True, exist_ok=True)
-        await db_service.update_item(
-            item["id"],
-            column_name="doing",
-            status="running",
-            auto_approve=1,
-            worktree_path=str(wt),
-            branch_name="agent/no-changes-2",
-            base_branch="main",
-        )
-
-        called: list[str] = []
-
-        async def fake_no_changes(iid):
-            called.append(iid)
-
-        async def fake_run_review(iid):  # would indicate the wrong branch
-            called.append(f"review:{iid}")
-
-        result = AgentResult(success=True, session_id="sess-x")
-        with patch("src.git.operations.get_changed_files",
-                   new=AsyncMock(return_value=[])), \
-             patch.object(workflow, "_auto_approve_no_changes",
-                          side_effect=fake_no_changes), \
-             patch.object(workflow, "_run_auto_review",
-                          side_effect=fake_run_review):
-            cb = workflow._create_on_complete_callback(item["id"])
-            await cb(result)
-            # The two paths are dispatched as background tasks via
-            # asyncio.create_task. Yield once so they get a chance to run.
-            await asyncio.sleep(0)
-
-        assert called == [item["id"]], (
-            f"Expected no-changes path to be dispatched, got {called}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Auto-approve: DIRECT mode (skip review entirely)
-# ---------------------------------------------------------------------------
-
-class TestAutoApproveDirect:
-    """auto_approve=2 (DIRECT) means: merge as soon as the agent finishes — no
-    review-agent pass. The on_complete callback should dispatch
-    _auto_approve_direct, and that helper should call approve_item without
-    spawning the reviewer."""
-
-    @pytest_asyncio.fixture
-    async def review_item_direct(self, db_service, item, tmp_dir):
-        wt = tmp_dir / "worktrees" / "direct"
-        wt.mkdir(parents=True, exist_ok=True)
-        await db_service.update_item(
-            item["id"],
-            column_name="review",
-            status=None,
-            auto_approve=2,  # AUTO_APPROVE_DIRECT
-            has_file_changes=1,
-            worktree_path=str(wt),
-            branch_name="agent/direct",
-            base_branch="main",
-        )
-        return item
-
-    async def test_direct_path_calls_approve_item(
-        self, workflow, review_item_direct
-    ):
-        # Patch approve_item to confirm it's invoked. We don't care about its
-        # internals here — the no-changes/clean-merge tests cover those.
-        with patch.object(
-            workflow, "approve_item", new=AsyncMock()
-        ) as mock_approve:
-            await workflow._auto_approve_direct(review_item_direct["id"])
-            mock_approve.assert_awaited_once_with(review_item_direct["id"])
-
-    async def test_direct_path_skips_review_agent(
-        self, workflow, review_item_direct
-    ):
-        # The reviewer must not be spawned in DIRECT mode — that's the whole
-        # point of this mode vs auto_approve=1.
-        with patch("src.services.workflow_service.run_auto_review",
-                   new=AsyncMock()) as mock_review, \
-             patch.object(workflow, "approve_item", new=AsyncMock()):
-            await workflow._auto_approve_direct(review_item_direct["id"])
-            mock_review.assert_not_called()
-
-    async def test_direct_no_op_when_mode_is_review(
-        self, workflow, db_service, review_item_direct
-    ):
-        # Defense in depth: if something dispatched _auto_approve_direct on an
-        # item that's actually in REVIEW mode (1), bail out — that path is
-        # supposed to go through _run_auto_review, not skip review.
-        await db_service.update_item(review_item_direct["id"], auto_approve=1)
-        with patch.object(workflow, "approve_item", new=AsyncMock()) as mock_approve:
-            await workflow._auto_approve_direct(review_item_direct["id"])
-            mock_approve.assert_not_called()
-
-    async def test_direct_no_op_when_item_left_review(
-        self, workflow, db_service, review_item_direct
-    ):
-        # User cancelled before the background task ran.
-        await db_service.update_item(review_item_direct["id"], column_name="todo")
-        with patch.object(workflow, "approve_item", new=AsyncMock()) as mock_approve:
-            await workflow._auto_approve_direct(review_item_direct["id"])
-            mock_approve.assert_not_called()
-
-    async def test_on_complete_dispatches_direct_path(
-        self, workflow, db_service, item, tmp_dir
-    ):
-        """auto_approve=2 must route to _auto_approve_direct, NOT to
-        _run_auto_review or _auto_approve_no_changes."""
-        wt = tmp_dir / "worktrees" / "direct-2"
-        wt.mkdir(parents=True, exist_ok=True)
-        await db_service.update_item(
-            item["id"],
-            column_name="doing",
-            status="running",
-            auto_approve=2,
-            worktree_path=str(wt),
-            branch_name="agent/direct-2",
-            base_branch="main",
-        )
-
-        called: list[str] = []
-
-        async def fake_direct(iid):
-            called.append(f"direct:{iid}")
-
-        async def fake_review(iid):
-            called.append(f"review:{iid}")
-
-        async def fake_no_changes(iid):
-            called.append(f"no-changes:{iid}")
-
-        result = AgentResult(success=True, session_id="sess-direct")
-        # has_file_changes=1 — pretend the agent did produce a diff. Direct
-        # mode should bypass review either way.
-        with patch("src.git.operations.get_changed_files",
-                   new=AsyncMock(return_value=["foo.py"])), \
-             patch.object(workflow, "_auto_approve_direct",
-                          side_effect=fake_direct), \
-             patch.object(workflow, "_run_auto_review",
-                          side_effect=fake_review), \
-             patch.object(workflow, "_auto_approve_no_changes",
-                          side_effect=fake_no_changes):
-            cb = workflow._create_on_complete_callback(item["id"])
-            await cb(result)
-            await asyncio.sleep(0)
-
-        assert called == [f"direct:{item['id']}"], (
-            f"Expected direct path to be dispatched, got {called}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Auto-review badge tracking
-# ---------------------------------------------------------------------------
-
-class TestAutoReviewBadgeTracking:
-    """The auto-review agent runs outside the regular session manager, so we
-    track in-flight reviews in `_auto_reviewing` and broadcast
-    `auto_review_changed` events. The UI uses both to render a "Reviewing"
-    badge on review-column cards while the diff is being inspected."""
-
-    @pytest_asyncio.fixture
-    async def review_item(self, db_service, item, tmp_dir):
-        wt = tmp_dir / "worktrees" / "review-badge"
-        wt.mkdir(parents=True, exist_ok=True)
-        await db_service.update_item(
-            item["id"],
-            column_name="review",
-            status=None,
-            auto_approve=1,  # AUTO_APPROVE_REVIEW
-            has_file_changes=1,
-            worktree_path=str(wt),
-            branch_name="agent/review-badge",
-            base_branch="main",
-        )
-        return item
-
-    async def test_run_auto_review_marks_and_unmarks_item(
-        self, workflow, review_item
-    ):
-        # While run_auto_review is awaiting, the item should be in the set;
-        # once it resolves, the set should be empty.
-        seen_during_review: list[bool] = []
-
-        async def fake_run_review(**kwargs):
-            seen_during_review.append(
-                review_item["id"] in workflow._auto_reviewing
-            )
-            return {"approved": True, "comments": [], "summary": "ok", "raw": ""}
-
-        with patch("src.services.workflow_service.run_auto_review",
-                   side_effect=fake_run_review), \
-             patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
-             patch.object(workflow, "approve_item", new=AsyncMock()):
-            await workflow._run_auto_review(review_item["id"])
-
-        assert seen_during_review == [True], (
-            "item must be marked as auto-reviewing while run_auto_review runs"
-        )
-        assert review_item["id"] not in workflow._auto_reviewing, (
-            "item must be unmarked once review finishes"
-        )
-
-    async def test_run_auto_review_broadcasts_events(
-        self, workflow, review_item
-    ):
-        async def fake_run_review(**kwargs):
-            return {"approved": True, "comments": [], "summary": "ok", "raw": ""}
-
-        with patch("src.services.workflow_service.run_auto_review",
-                   side_effect=fake_run_review), \
-             patch("src.git.operations.run_git", new=AsyncMock(return_value="")), \
-             patch.object(workflow, "approve_item", new=AsyncMock()):
-            await workflow._run_auto_review(review_item["id"])
-
-        # Two broadcasts: active=True at start, active=False at end.
-        review_calls = [
-            call for call in workflow.notifications.ws_manager.broadcast.await_args_list
-            if call.args and call.args[0] == "auto_review_changed"
-        ]
-        assert len(review_calls) == 2, (
-            f"expected 2 auto_review_changed broadcasts, got {len(review_calls)}: "
-            f"{review_calls}"
-        )
-        assert review_calls[0].args[1] == {
-            "item_id": review_item["id"], "active": True,
-        }
-        assert review_calls[1].args[1] == {
-            "item_id": review_item["id"], "active": False,
-        }
-
-    async def test_run_auto_review_unmarks_on_agent_failure(
-        self, workflow, review_item
-    ):
-        # If the review agent itself raises, we must still clear the badge —
-        # otherwise the UI would show "Reviewing" forever.
-        async def boom(**kwargs):
-            raise RuntimeError("review agent crashed")
-
-        with patch("src.services.workflow_service.run_auto_review",
-                   side_effect=boom), \
-             patch("src.git.operations.run_git", new=AsyncMock(return_value="")):
-            # _run_auto_review swallows exceptions internally (logs + bails).
-            await workflow._run_auto_review(review_item["id"])
-
-        assert review_item["id"] not in workflow._auto_reviewing, (
-            "item must be unmarked even when run_auto_review raises"
-        )
-        # And the active=False broadcast must still go out.
-        review_calls = [
-            call for call in workflow.notifications.ws_manager.broadcast.await_args_list
-            if call.args and call.args[0] == "auto_review_changed"
-        ]
-        assert any(
-            call.args[1] == {"item_id": review_item["id"], "active": False}
-            for call in review_calls
-        ), "expected an active=False broadcast on failure"
 
 
 class TestCreateAgentTodo:

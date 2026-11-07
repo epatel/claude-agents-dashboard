@@ -39,6 +39,7 @@ tests/
 │   ├── test_annotation_prompt.py      # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py     # Annotation summary generation (2 tests)
 │   ├── test_approve_item.py           # approve_item merge pipeline, one test per exit path (7 tests)
+│   ├── test_auto_approve.py           # Auto-approve paths (no-changes / direct / review badge) + on_complete dispatch (15 tests)
 │   ├── test_app.py                    # FastAPI app and middleware (26 tests)
 │   ├── test_create_todo_autostart.py  # Todo creation with auto-start (23 tests)
 │   ├── test_database_service.py       # DatabaseService CRUD (62 tests)
@@ -71,12 +72,14 @@ tests/
 │   ├── test_profiles.py             # Provider profiles + Kimi/Ollama routing (23 tests)
 │   ├── test_tiiny_provider.py       # Tiiny provider: routing, key, env, profile, migration 033 (34 tests)
 │   ├── test_review_agent.py         # Auto-review session options (3 tests)
-│   ├── test_session.py              # ClaudeAgentSession SDK wrapper (98 tests)
+│   ├── test_session.py              # ClaudeAgentSession: receive loop, MCP status, can_use_tool, attachments (67 tests)
+│   ├── test_session_start.py        # ClaudeAgentSession.start(): SDK options and wiring (31 tests)
 │   ├── test_session_service.py      # SessionService lifecycle + provider routing (54 tests)
 │   ├── test_skills_service.py       # SkillsService install/browse/discover (14 tests)
 │   ├── test_use_chrome.py           # Per-task Chrome integration (17 tests)
 │   ├── test_websocket.py            # WebSocket rate limiting (45 tests)
-│   └── test_workflow_service.py     # WorkflowService transitions (115 tests)
+│   ├── test_workflow_service.py     # WorkflowService transitions (100 tests)
+│   └── workflow_fixtures.py         # Shared WorkflowService fixtures (plain module, imported explicitly — not a conftest)
 ├── integration/
 │   └── test_orchestrator_lifecycle.py  # Full agent workflow (14 tests)
 ├── e2e/                                # Node + Playwright, spawns real agents
@@ -103,7 +106,7 @@ Quick checks that core components work:
 - **EpicRepository** (9 tests): CRUD facade and `_WRITABLE_EPIC_COLUMNS` enforcement (replaces the old `ALLOWED_EPIC_COLUMNS` whitelist that lived in `database_service.py`)
 
 ### Unit Tests — Service Layer (305 tests)
-- **WorkflowService** (115 tests): State transitions (driven through the `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
+- **WorkflowService** (115 tests: 100 in `test_workflow_service.py`, 15 auto-approve in `test_auto_approve.py`): State transitions (driven through the `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
 - **approve_item merge pipeline** (7 tests, `test_approve_item.py`): each exit path — blocked (no base branch / dirty overlap), clean merge, rebase-then-merge, restart with previous diff, retry cap, no-diff conflict
 - **DatabaseService** (62 tests): CRUD operations, item dependencies, clarification context column (column whitelisting moved into the repositories)
 - **SessionService** (54 tests): Session lifecycle, commit messages, plugin parsing (incl. enabled-skill plugins), SDK wrapper
@@ -130,7 +133,7 @@ Quick checks that core components work:
 - **Kimi board-tools MCP proxy** (12 tests): stdio subprocess against a stub dashboard API — tools list, agent-todos proxying (requires/autostart), error resilience
 
 ### Unit Tests — Session (250 tests)
-- `ClaudeAgentSession` SDK wrapper, token extraction, event handling, `verbatim_prompts` (98)
+- `ClaudeAgentSession` SDK wrapper, token extraction, event handling, `verbatim_prompts` (98: 67 in `test_session.py`, 31 `start()` tests in `test_session_start.py`)
 - Auto-review session (`review_agent.run_auto_review`): `ClaudeAgentOptions` on both
   the Claude and Ollama branches, prompt passed through unmodified (3)
 - `AbstractAgentSession` contract conformance (4)
@@ -195,6 +198,8 @@ Tests the full orchestrator lifecycle through the service layer:
 | `test_item` | Pre-created item in the test database |
 | `mock_git_operations` | Mocked git/worktree functions |
 | `test_item_data` | Plain dict of item fields, for building items in a test |
+
+WorkflowService unit tests (`test_workflow_service.py`, `test_auto_approve.py`, `test_approve_item.py`) share `tmp_dir` / `db` / `db_service` / `workflow` / `item` / `running_item` and helpers from `tests/unit/workflow_fixtures.py`, imported explicitly. It is deliberately not a `conftest.py`: those generic names would leak into every other test module.
 
 ## Writing Tests
 

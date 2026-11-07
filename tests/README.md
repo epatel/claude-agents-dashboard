@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (1441 tests across 56 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (32 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1441 tests across 58 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (32 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -24,6 +24,7 @@ tests/
 │   ├── test_annotation_prompt.py                # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py               # Annotation summary generation (2 tests)
 │   ├── test_approve_item.py                     # approve_item merge pipeline exit paths (7 tests)
+│   ├── test_auto_approve.py                     # Auto-approve paths + on_complete dispatch (15 tests)
 │   ├── test_app.py                              # FastAPI app creation and middleware (26 tests)
 │   ├── test_create_todo_autostart.py            # Todo creation with auto-start (23 tests)
 │   ├── test_database_service.py                 # DatabaseService CRUD operations (62 tests)
@@ -54,12 +55,14 @@ tests/
 │   ├── test_profiles.py                         # Provider profiles + Kimi/Ollama routing (23 tests)
 │   ├── test_tiiny_provider.py                   # Tiiny provider: routing, key, env, profile, migration 033 (34 tests)
 │   ├── test_review_agent.py                     # Auto-review session options (3 tests)
-│   ├── test_session.py                          # ClaudeAgentSession SDK wrapper (98 tests)
+│   ├── test_session.py                          # ClaudeAgentSession receive loop, MCP status, tools (67 tests)
+│   ├── test_session_start.py                    # ClaudeAgentSession.start() options and wiring (31 tests)
 │   ├── test_session_service.py                  # SessionService lifecycle + provider routing (54 tests)
 │   ├── test_skills_service.py                   # SkillsService install/browse/discover/enable (14 tests)
 │   ├── test_use_chrome.py                       # Per-task Chrome integration (17 tests)
 │   ├── test_websocket.py                        # WebSocket connection and rate limiting (45 tests)
-│   └── test_workflow_service.py                 # WorkflowService state transitions (115 tests)
+│   ├── test_workflow_service.py                 # WorkflowService state transitions (100 tests)
+│   └── workflow_fixtures.py                     # Shared WorkflowService fixtures (not a conftest)
 ├── integration/                                  # Integration tests (slower, multi-component)
 │   └── test_orchestrator_lifecycle.py           # Complete agent lifecycle testing (14 tests)
 ├── smoke/                                        # Smoke tests (basic functionality)
@@ -79,7 +82,7 @@ tests/
 - **EpicRepository** (9 tests) — CRUD facade and column whitelist enforcement
 
 ### 2. Service Layer (302 tests)
-- **WorkflowService** (115 tests) — State transitions (driven through `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
+- **WorkflowService** (115 tests, incl. 15 in `test_auto_approve.py`) — State transitions (driven through `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
 - **approve_item merge pipeline** (7 tests) — each exit path: blocked, clean merge, rebase-then-merge, restart with previous diff, retry cap, no-diff conflict
 - **DatabaseService** (62 tests) — CRUD operations, item dependencies, clarification context column (column whitelisting moved to the repositories)
 - **SessionService** (54 tests) — Session lifecycle, commit messages, plugin parsing (incl. enabled-skill plugins), SDK wrapper
@@ -106,7 +109,7 @@ tests/
 - **graph_query tool** (10 tests) — Read-only knowledge-graph MCP tool server
 
 ### 5b. Session (216 tests)
-- **ClaudeAgentSession** (98 tests) — SDK wrapper, token extraction, event handling, Ollama provider env configuration, `verbatim_prompts`
+- **ClaudeAgentSession** (98 tests, incl. 31 in `test_session_start.py`) — SDK wrapper, token extraction, event handling, Ollama provider env configuration, `verbatim_prompts`
 - **Auto-review session** (3 tests) — `run_auto_review` options on the Claude and Ollama branches, prompt passed through unmodified
 - **KimiAgentSession** (88 tests) — ACP transport, text protocols, permissions, worktree path boundary (AUDIT #15), resume (experimental)
 - **Provider profiles** (23 tests) — Kimi/Ollama routing predicates, env builder, profile gate matrix
