@@ -160,64 +160,65 @@ def scan_directory(
     browserhidden_patterns: list[str] | None = None,
 ) -> list[dict]:
     """Scan a directory and return a tree structure."""
-    entries = []
     project_resolved = project_root.resolve()
+
+    def node_for(entry) -> dict | None:
+        """Tree node for a non-symlink entry, or None if it is hidden or outside the project."""
+        is_dir = entry.is_dir(follow_symlinks=False)
+        if is_excluded_entry(entry.name, is_dir):
+            return None
+        resolved = _resolved_in_project(entry, project_resolved)
+        if resolved is None:
+            return None
+        rel_path = str(resolved.relative_to(project_resolved))
+        # Check .browserhidden patterns (applies to both files and dirs)
+        if browserhidden_patterns and matches_browserhidden(entry.name, rel_path, browserhidden_patterns):
+            return None
+        node = {"name": entry.name, "path": rel_path, "type": "dir" if is_dir else "file"}
+        if is_dir:
+            node["children"] = (
+                scan_directory(resolved, project_root, depth - 1, browserhidden_patterns)
+                if depth > 1 else None
+            )
+        return node
+
+    entries = []
     try:
         with os.scandir(dir_path) as scanner:
             for entry in scanner:
-                # Skip symlinks — don't follow them to prevent
-                # navigation outside the project directory
-                if entry.is_symlink():
-                    # Include symlink as a visual indicator but don't follow it
-                    try:
-                        target = os.readlink(entry.path)
-                    except OSError:
-                        target = "unknown"
-                    rel_path = str(Path(entry.path).relative_to(project_resolved))
-                    entries.append({
-                        "name": entry.name,
-                        "path": rel_path,
-                        "type": "symlink",
-                        "symlink_target": target,
-                    })
-                    continue
-
-                if is_excluded_entry(entry.name, entry.is_dir(follow_symlinks=False)):
-                    continue
-                try:
-                    resolved = Path(entry.path).resolve()
-                    if not resolved.is_relative_to(project_resolved):
-                        continue
-                except (OSError, ValueError):
-                    continue
-
-                rel_path = str(resolved.relative_to(project_resolved))
-
-                # Check .browserhidden patterns (applies to both files and dirs)
-                if browserhidden_patterns and matches_browserhidden(
-                    entry.name, rel_path, browserhidden_patterns
-                ):
-                    continue
-
-                node = {
-                    "name": entry.name,
-                    "path": rel_path,
-                    "type": "dir" if entry.is_dir(follow_symlinks=False) else "file",
-                }
-
-                if entry.is_dir(follow_symlinks=False):
-                    if depth > 1:
-                        node["children"] = scan_directory(
-                            resolved, project_root, depth - 1, browserhidden_patterns
-                        )
-                    else:
-                        node["children"] = None
-                entries.append(node)
+                # Symlinks are listed (as a visual indicator) but never followed,
+                # so the browser can't navigate outside the project directory.
+                node = _symlink_node(entry, project_resolved) if entry.is_symlink() else node_for(entry)
+                if node is not None:
+                    entries.append(node)
     except PermissionError:
         pass
 
     entries.sort(key=lambda e: (0 if e["type"] == "dir" else 1, e["name"].lower()))
     return entries
+
+
+def _symlink_node(entry, project_resolved: Path) -> dict:
+    """Tree node for a symlink: shown with its target, never followed."""
+    try:
+        target = os.readlink(entry.path)
+    except OSError:
+        target = "unknown"
+    return {
+        "name": entry.name,
+        "path": str(Path(entry.path).relative_to(project_resolved)),
+        "type": "symlink",
+        "symlink_target": target,
+    }
+
+
+def _resolved_in_project(entry, project_resolved: Path) -> Path | None:
+    """The entry's resolved path if it stays inside the project, else None."""
+    try:
+        resolved = Path(entry.path).resolve()
+        return resolved if resolved.is_relative_to(project_resolved) else None
+    except (OSError, ValueError):
+        return None
 
 
 # --- File content reading ---

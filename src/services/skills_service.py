@@ -312,37 +312,54 @@ class SkillsService:
         skill_dir = dest_root / "skills" / name
         skill_dir.mkdir(parents=True, exist_ok=True)
 
+        raw_base = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/"
+        description = self._download_blobs(raw_base, blobs, prefix, skill_dir)
+        _write_plugin_manifest(dest_root, name, description, spec)
+        return {"ok": True, "name": name, "description": description, "source": spec}
+
+    def _download_blobs(self, raw_base: str, blobs: List[Dict[str, Any]], prefix: str, skill_dir: Path) -> str:
+        """Download each blob under ``prefix`` into ``skill_dir``; return SKILL.md's description."""
         description = ""
         for node in blobs:
-            rel = node["path"][len(prefix):]
-            if not rel or rel.endswith("/"):
+            rel = _safe_skill_rel_path(node["path"][len(prefix):])
+            if rel is None:
                 continue
-            # The remote tree decides these paths. Git itself cannot store a
-            # ".." component, but assert that locally instead of borrowing the
-            # invariant (AUDIT #16) — same guard as diff / file-browser paths.
-            try:
-                rel = validate_file_path(rel)
-                if rel in (".", ""):  # normalized away to the skill dir itself
-                    raise ValueError("path does not name a file")
-            except ValueError as exc:
-                logger.warning("skills: skipping unsafe path %r: %s", rel, exc)
-                continue
-            raw = self._get(
-                f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{node['path']}"
-            )
+            raw = self._get(raw_base + node["path"])
             target = skill_dir / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(raw)
             if rel == "SKILL.md":
                 description = _parse_frontmatter(raw.decode("utf-8", errors="replace")).get("description", "") or ""
+        return description
 
-        manifest_dir = dest_root / ".claude-plugin"
-        manifest_dir.mkdir(parents=True, exist_ok=True)
-        (manifest_dir / "plugin.json").write_text(
-            json.dumps({
-                "name": name, "version": "1.0.0",
-                "description": description, "source": spec,
-            }, indent=2),
-            encoding="utf-8",
-        )
-        return {"ok": True, "name": name, "description": description, "source": spec}
+
+def _safe_skill_rel_path(rel: str) -> Optional[str]:
+    """A remote tree path (relative to the skill) made safe to write locally, or None to skip.
+
+    The remote tree decides these paths. Git itself cannot store a ".."
+    component, but assert that locally instead of borrowing the invariant
+    (AUDIT #16) — same guard as diff / file-browser paths.
+    """
+    if not rel or rel.endswith("/"):
+        return None
+    try:
+        safe = validate_file_path(rel)
+        if safe in (".", ""):  # normalized away to the skill dir itself
+            raise ValueError("path does not name a file")
+    except ValueError as exc:
+        logger.warning("skills: skipping unsafe path %r: %s", rel, exc)
+        return None
+    return safe
+
+
+def _write_plugin_manifest(dest_root: Path, name: str, description: str, spec: str) -> None:
+    """Write .claude-plugin/plugin.json so the skill loads as a one-skill plugin."""
+    manifest_dir = dest_root / ".claude-plugin"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    (manifest_dir / "plugin.json").write_text(
+        json.dumps({
+            "name": name, "version": "1.0.0",
+            "description": description, "source": spec,
+        }, indent=2),
+        encoding="utf-8",
+    )

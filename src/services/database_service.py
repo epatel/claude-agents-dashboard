@@ -41,19 +41,22 @@ class DatabaseService:
     def __init__(self, db: Database):
         self.db = db
 
+    async def _fetch_dicts(self, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
+        """Run a read query and return every row as a dict."""
+        async with self.db.connect() as conn:
+            cursor = await conn.execute(sql, params)
+            return [dict(row) for row in await cursor.fetchall()]
+
     async def get_all_items(self) -> List[Dict[str, Any]]:
         """Get all items ordered by column and position."""
-        async with self.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT i.id, i.title, i.description, i.column_name, i.status,"
-                " i.done_at, i.updated_at, COALESCE(wl.cnt, 0) AS log_count"
-                " FROM items i"
-                " LEFT JOIN (SELECT item_id, COUNT(*) AS cnt FROM work_log GROUP BY item_id) wl"
-                " ON i.id = wl.item_id"
-                " ORDER BY i.column_name, i.position"
-            )
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+        return await self._fetch_dicts(
+            "SELECT i.id, i.title, i.description, i.column_name, i.status,"
+            " i.done_at, i.updated_at, COALESCE(wl.cnt, 0) AS log_count"
+            " FROM items i"
+            " LEFT JOIN (SELECT item_id, COUNT(*) AS cnt FROM work_log GROUP BY item_id) wl"
+            " ON i.id = wl.item_id"
+            " ORDER BY i.column_name, i.position"
+        )
 
     async def get_item(self, item_id: str) -> Optional[Dict[str, Any]]:
         """Get an item by ID."""
@@ -76,14 +79,11 @@ class DatabaseService:
         needs the git fields (worktree_path, branch_name, base_branch,
         base_commit), so it reads through here instead.
         """
-        async with self.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM items"
-                " WHERE worktree_path IS NOT NULL AND worktree_path != ''"
-                " ORDER BY column_name, position"
-            )
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+        return await self._fetch_dicts(
+            "SELECT * FROM items"
+            " WHERE worktree_path IS NOT NULL AND worktree_path != ''"
+            " ORDER BY column_name, position"
+        )
 
     async def shift_positions_in_column(
         self, column_name: str, from_position: int, exclude_id: str
@@ -154,13 +154,10 @@ class DatabaseService:
 
     async def get_queued_items(self, limit: int = 1) -> List[Dict[str, Any]]:
         """Get queued items in the doing column, ordered by position (top first)."""
-        async with self.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM items WHERE column_name = 'doing' AND status = 'queued' ORDER BY position ASC LIMIT ?",
-                (limit,),
-            )
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+        return await self._fetch_dicts(
+            "SELECT * FROM items WHERE column_name = 'doing' AND status = 'queued' ORDER BY position ASC LIMIT ?",
+            (limit,),
+        )
 
     async def get_agent_config(self) -> Dict[str, Any]:
         """Get the agent configuration with JSON-text fields decoded to
@@ -314,13 +311,10 @@ class DatabaseService:
 
     async def get_attachments(self, item_id: str) -> List[Dict[str, Any]]:
         """Get all attachments for an item."""
-        async with self.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM attachments WHERE item_id = ? ORDER BY created_at",
-                (item_id,),
-            )
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+        return await self._fetch_dicts(
+            "SELECT * FROM attachments WHERE item_id = ? ORDER BY created_at",
+            (item_id,),
+        )
 
     async def save_token_usage(self, item_id: str, result: AgentResult):
         """Save token usage statistics to the database."""
@@ -473,16 +467,13 @@ class DatabaseService:
 
     async def get_item_dependencies(self, item_id: str) -> List[Dict[str, Any]]:
         """Get items that this item depends on (requires)."""
-        async with self.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT i.id, i.title, i.column_name, i.status "
-                "FROM item_dependencies d "
-                "JOIN items i ON d.requires_item_id = i.id "
-                "WHERE d.item_id = ?",
-                (item_id,),
-            )
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+        return await self._fetch_dicts(
+            "SELECT i.id, i.title, i.column_name, i.status "
+            "FROM item_dependencies d "
+            "JOIN items i ON d.requires_item_id = i.id "
+            "WHERE d.item_id = ?",
+            (item_id,),
+        )
 
     async def set_item_dependencies(self, item_id: str, required_ids: List[str]) -> List[Dict[str, Any]]:
         """Replace all dependencies for an item with the given list of required item IDs."""
@@ -520,16 +511,13 @@ class DatabaseService:
 
     async def get_blocking_items(self, item_id: str) -> List[Dict[str, Any]]:
         """Get items that are blocking this one (required but not yet done/archived)."""
-        async with self.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT i.id, i.title, i.column_name, i.status "
-                "FROM item_dependencies d "
-                "JOIN items i ON d.requires_item_id = i.id "
-                "WHERE d.item_id = ? AND i.column_name NOT IN ('done', 'archive')",
-                (item_id,),
-            )
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+        return await self._fetch_dicts(
+            "SELECT i.id, i.title, i.column_name, i.status "
+            "FROM item_dependencies d "
+            "JOIN items i ON d.requires_item_id = i.id "
+            "WHERE d.item_id = ? AND i.column_name NOT IN ('done', 'archive')",
+            (item_id,),
+        )
 
     async def get_dependent_items(self, item_id: str) -> List[str]:
         """Get IDs of items that depend on the given item."""

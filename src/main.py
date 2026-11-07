@@ -115,7 +115,7 @@ def _discover_subrepos(parent: Path) -> list[str]:
     )
 
 
-def main():
+def _parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Agents Dashboard — scrum board for Claude agents")
     parser.add_argument("target", nargs="?", default=str(Path.cwd()),
                         help="Path to the target git project (default: current directory)")
@@ -133,76 +133,69 @@ def main():
     parser.add_argument("--ui-map", action="store_true", default=False,
                         help="Enable PROJECT_MAP UI overlays (data-map-name discovery + spacing visualizer). "
                              "See AGENT_FILES/CARDS/PROJECT_MAP.md.")
-    args = parser.parse_args()
+    return parser.parse_args(argv)
 
-    target_project = Path(args.target).resolve()
-    host = args.host
 
-    # Detect mode:
-    #   single — target is itself a git repo (original behavior)
-    #   multi  — target is a folder containing ≥1 git subdirectory (repos live side-by-side)
+def _detect_repos(target_project: Path) -> list[str] | None:
+    """None in single-repo mode; the subrepo names in multi-repo mode. Exits if neither.
+
+    single — target is itself a git repo (original behavior)
+    multi  — target is a folder containing ≥1 git subdirectory (repos live side-by-side)
+    """
     if _is_git_repo(target_project):
-        repos: list[str] | None = None
+        return None
+    subrepos = _discover_subrepos(target_project)
+    if not subrepos:
+        print(
+            f"Error: {target_project} is not a git repository and contains no git subdirectories"
+        )
+        sys.exit(1)
+    return subrepos
+
+
+def _ensure_data_dir_ignored(target_project: Path) -> None:
+    """Add agents-lab/ to the target repo's .gitignore and commit that change.
+
+    Single-repo mode only — in multi mode the parent isn't a git repo, and each
+    subrepo's git scope doesn't include paths outside itself.
+    """
+    gitignore = target_project / ".gitignore"
+    ignore_entry = DATA_DIR_NAME + "/"
+    if not gitignore.exists():
+        gitignore.write_text(f"{ignore_entry}\n")
     else:
-        subrepos = _discover_subrepos(target_project)
-        if not subrepos:
-            print(
-                f"Error: {target_project} is not a git repository and contains no git subdirectories"
-            )
-            sys.exit(1)
-        repos = subrepos
+        content = gitignore.read_text()
+        if ignore_entry in content.splitlines():
+            return
+        with gitignore.open("a") as f:
+            if not content.endswith("\n"):
+                f.write("\n")
+            f.write(f"{ignore_entry}\n")
 
-    # Initialize agents-lab directory (lives at target_project root in both modes)
-    data_dir = target_project / DATA_DIR_NAME
-    data_dir.mkdir(exist_ok=True)
-    (data_dir / "assets").mkdir(exist_ok=True)
+    subprocess.run(
+        ["git", "-C", str(target_project), "add", ".gitignore"],
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(target_project), "commit", "-m", "Add agents-lab/ to .gitignore"],
+        capture_output=True,
+    )
 
-    # Ensure agents-lab/ is in .gitignore of the target repo (single-mode only —
-    # in multi mode the parent isn't a git repo, and each subrepo's git scope
-    # doesn't include paths outside itself so nothing needs ignoring there).
-    if repos is None:
-        gitignore = target_project / ".gitignore"
-        ignore_entry = DATA_DIR_NAME + "/"
-        gitignore_changed = False
-        if gitignore.exists():
-            content = gitignore.read_text()
-            if ignore_entry not in content.splitlines():
-                with gitignore.open("a") as f:
-                    if not content.endswith("\n"):
-                        f.write("\n")
-                    f.write(f"{ignore_entry}\n")
-                gitignore_changed = True
-        else:
-            gitignore.write_text(f"{ignore_entry}\n")
-            gitignore_changed = True
 
-        if gitignore_changed:
-            subprocess.run(
-                ["git", "-C", str(target_project), "add", ".gitignore"],
-                capture_output=True,
-            )
-            subprocess.run(
-                ["git", "-C", str(target_project), "commit", "-m", "Add agents-lab/ to .gitignore"],
-                capture_output=True,
-            )
+def _display_host(host: str) -> str:
+    """The address to show and call back on (0.0.0.0 binds everywhere; use loopback)."""
+    return "127.0.0.1" if host == "0.0.0.0" else host
 
-    if args.port is not None:
-        port = args.port
-    else:
-        port = find_available_port(host)
-    project_name = get_project_name(target_project)
 
-    display_host = "127.0.0.1" if host == "0.0.0.0" else host
-    # The dashboard's own base URL, for out-of-process tool proxies (e.g. the
-    # Kimi board-tools MCP server) that call back into the HTTP API.
-    os.environ["DASHBOARD_BASE_URL"] = f"http://{display_host}:{port}"
-    print(f"Agents Dashboard for: {project_name}")
+def _print_banner(args, target_project: Path, repos, port: int) -> None:
+    display_host = _display_host(args.host)
+    print(f"Agents Dashboard for: {get_project_name(target_project)}")
     print(f"Target project: {target_project}")
     if repos:
         print(f"Multi-repo mode — {len(repos)} repo(s): {', '.join(repos)}")
-    print(f"Data directory: {data_dir}")
+    print(f"Data directory: {target_project / DATA_DIR_NAME}")
     print(f"Starting on: http://{display_host}:{port}")
-    if host == "0.0.0.0":
+    if args.host == "0.0.0.0":
         print(f"⚠️  Accepting connections from all network interfaces")
     if args.experimental:
         print(f"🧪 Experimental features enabled (Ollama + Tiiny + Kimi providers)")
@@ -211,9 +204,9 @@ def main():
     if args.ui_map:
         print(f"🗺  UI map overlays enabled (AGENT_FILES/CARDS/PROJECT_MAP.md)")
 
+
+def _configure_logging() -> None:
     import logging
-    import uvicorn
-    from .web.app import create_app
 
     # Configure app logging to match uvicorn's INFO level
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(message)s")
@@ -224,6 +217,32 @@ def main():
             return "/api/stats" not in record.getMessage()
 
     logging.getLogger("uvicorn.access").addFilter(_QuietStatsFilter())
+
+
+def main():
+    args = _parse_args()
+    target_project = Path(args.target).resolve()
+    host = args.host
+    repos = _detect_repos(target_project)
+
+    # Initialize agents-lab directory (lives at target_project root in both modes)
+    data_dir = target_project / DATA_DIR_NAME
+    data_dir.mkdir(exist_ok=True)
+    (data_dir / "assets").mkdir(exist_ok=True)
+    if repos is None:
+        _ensure_data_dir_ignored(target_project)
+
+    port = args.port if args.port is not None else find_available_port(host)
+    display_host = _display_host(host)
+    # The dashboard's own base URL, for out-of-process tool proxies (e.g. the
+    # Kimi board-tools MCP server) that call back into the HTTP API.
+    os.environ["DASHBOARD_BASE_URL"] = f"http://{display_host}:{port}"
+    _print_banner(args, target_project, repos, port)
+
+    import uvicorn
+    from .web.app import create_app
+
+    _configure_logging()
 
     # Register cleanup handlers to kill child processes (Claude agents) on exit.
     # This prevents orphaned processes when the macOS wrapper terminates the server.

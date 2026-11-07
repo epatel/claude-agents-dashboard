@@ -100,7 +100,16 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     Original scope — split `KimiAgentSession._run` (118 lines) along the same stages; also
     `SessionService._parse_plugins` (cognitive 48), `review_agent._parse_decision` /
     `run_auto_review`, `kimi_board_mcp.call_tool`. Needs a live Kimi run.
-  - [ ] 5 — Small src dedups: `git/operations.py` (`get_changed_files` / `get_diff`; `run_git`
+  - [x] 5 — Done 2026-11-07: `operations.py` 5.50 → 7.90 (shared `_untracked_files`,
+    `_parse_name_status`, `_git_or_empty`, `_resolve_diff_base`; `communicate_or_kill` now also used
+    by `GraphService._exec`), `routes.py` 5.70 → 7.07 (`_archive_done_items`, `_item_worktree_root`,
+    stats SQL → `_STATS_SUMMARY_SQL` + `_cached_stats` / `_usage_stats`), `database_service.py`
+    7.02 → 9.07 (`_fetch_dicts` for six read methods), `main.py` 7.45 → 9.42, `file_routes.py`
+    7.35 → 8.86, `skills_service.py` 6.64 → 7.34. **Scoring note:** aihealth was reinstalled
+    mid-session (2026-11-07 13:01) and now also scans JavaScript — the 27 `src/static/js/` files
+    (5.88) pull the headline project score to 7.21. On the baseline's file set (non-JS) the project
+    is 7.64, vs 7.14 at baseline. Compare like with like from here on.
+    Original scope — small src dedups: `git/operations.py` (`get_changed_files` / `get_diff`; `run_git`
     vs `GraphService._exec`), `web/routes.py` (archive-by-date/epic, worktree tree/content
     helpers, `_get_optimized_stats`), `database_service.py` query builders, `main()`,
     `file_routes.scan_directory`, `SkillsService._install_sync`.
@@ -218,7 +227,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-07): steps 0–4 done; next is 5 (then 6, then optional 7).** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 in flight (2026-11-07): steps 0–5 done; next is 6 (then optional 7). JS (`src/static/js/`, 5.88) is newly scanned and not yet in the plan.** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above

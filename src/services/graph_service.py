@@ -78,17 +78,8 @@ class GraphService:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        try:
-            out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        except asyncio.TimeoutError:
-            if proc.returncode is None:
-                try:
-                    proc.terminate()
-                    await asyncio.wait_for(proc.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    proc.kill()
-                    await proc.wait()
-            raise
+        from ..git.operations import communicate_or_kill
+        out, err = await communicate_or_kill(proc, timeout)
         return (
             proc.returncode,
             out.decode(errors="replace"),

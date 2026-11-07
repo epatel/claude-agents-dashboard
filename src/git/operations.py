@@ -20,21 +20,31 @@ async def run_git(cwd: Path, *args: str, timeout: float | None = None) -> str:
     if timeout is None:
         timeout = GIT_MERGE_TIMEOUT if args and args[0] == "merge" else GIT_OPERATION_TIMEOUT
 
+    proc = await asyncio.create_subprocess_exec(
+        "git", *args,
+        cwd=str(cwd),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "git", *args,
-            cwd=str(cwd),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        if proc.returncode != 0:
-            raise subprocess.CalledProcessError(
-                proc.returncode, ["git", *args], stdout, stderr
-            )
-        return stdout.decode().strip()
+        stdout, stderr = await communicate_or_kill(proc, timeout)
     except asyncio.TimeoutError:
-        # Kill the process if it's still running
+        raise asyncio.TimeoutError(f"Git command timed out after {timeout}s: git {' '.join(args)}")
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(
+            proc.returncode, ["git", *args], stdout, stderr
+        )
+    return stdout.decode().strip()
+
+
+async def communicate_or_kill(proc, timeout: float) -> tuple[bytes, bytes]:
+    """``proc.communicate()`` with a timeout; on timeout stop the process and re-raise.
+
+    Stopping is terminate, then kill if it hasn't exited within 5s.
+    """
+    try:
+        return await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
         if proc.returncode is None:
             try:
                 proc.terminate()
@@ -42,7 +52,7 @@ async def run_git(cwd: Path, *args: str, timeout: float | None = None) -> str:
             except asyncio.TimeoutError:
                 proc.kill()
                 await proc.wait()
-        raise asyncio.TimeoutError(f"Git command timed out after {timeout}s: git {' '.join(args)}")
+        raise
 
 
 async def get_main_branch(repo: Path) -> str:
@@ -89,56 +99,24 @@ async def get_diff(repo: Path, branch: str, base: str | None = None,
             branch name. This ensures diffs are stable even when the base branch
             moves forward (e.g., after other items are merged).
     """
-    # Prefer base_commit (immutable SHA) over base branch name (moving target)
-    diff_base = base_commit or base
-    if diff_base is None:
-        diff_base = await get_main_branch(repo)
-
-    if worktree_path and worktree_path.exists():
-        # Diff base against the worktree's working directory (includes uncommitted changes)
-        # First get committed diff
-        committed = ""
-        try:
-            committed = await run_git(repo, "diff", diff_base, branch)
-        except subprocess.CalledProcessError:
-            pass
-
-        # Then get uncommitted changes in the worktree (staged + unstaged + new files)
-        uncommitted = ""
-        try:
-            uncommitted = await run_git(worktree_path, "diff", "HEAD")
-        except subprocess.CalledProcessError:
-            pass
-
-        # Also get new untracked files
-        new_files_diff = ""
-        try:
-            untracked = await run_git(worktree_path, "ls-files", "--others", "--exclude-standard")
-            for f in untracked.split("\n"):
-                if not f.strip():
-                    continue
-                try:
-                    # Validate filename to prevent path traversal
-                    validated = validate_file_path(f.strip())
-                    full_path = (worktree_path / validated).resolve()
-                    # Ensure resolved path is within the worktree
-                    if not str(full_path).startswith(str(worktree_path.resolve()) + os.sep) and full_path != worktree_path.resolve():
-                        continue
-                    content = await asyncio.to_thread(full_path.read_text)
-                    new_files_diff += f"diff --git a/{validated} b/{validated}\nnew file mode 100644\n--- /dev/null\n+++ b/{validated}\n"
-                    lines = content.split("\n")
-                    new_files_diff += f"@@ -0,0 +1,{len(lines)} @@\n"
-                    new_files_diff += "\n".join(f"+{line}" for line in lines) + "\n"
-                except (ValueError, Exception):
-                    pass
-        except subprocess.CalledProcessError:
-            pass
-
-        # Combine: committed changes + uncommitted changes + new files
-        parts = [p for p in [committed, uncommitted, new_files_diff] if p.strip()]
-        return "\n".join(parts)
-    else:
+    diff_base = await _resolve_diff_base(repo, base, base_commit)
+    if not (worktree_path and worktree_path.exists()):
         return await run_git(repo, "diff", diff_base, branch)
+
+    # Diff base against the worktree's working directory: committed changes +
+    # uncommitted changes (staged + unstaged) + new untracked files.
+    committed = await _git_or_empty(repo, "diff", diff_base, branch)
+    uncommitted = await _git_or_empty(worktree_path, "diff", "HEAD")
+    new_files_diff = ""
+    for path, full_path in await _untracked_files(worktree_path):
+        try:
+            content = await asyncio.to_thread(full_path.read_text)
+        except Exception:
+            continue
+        new_files_diff += _new_file_diff(path, content)
+
+    parts = [p for p in [committed, uncommitted, new_files_diff] if p.strip()]
+    return "\n".join(parts)
 
 
 async def get_changed_files(repo: Path, branch: str, base: str | None = None,
@@ -149,62 +127,81 @@ async def get_changed_files(repo: Path, branch: str, base: str | None = None,
         base_commit: If provided, use this exact commit SHA instead of the base
             branch name for stable results.
     """
-    diff_base = base_commit or base
-    if diff_base is None:
-        diff_base = await get_main_branch(repo)
-
+    diff_base = await _resolve_diff_base(repo, base, base_commit)
     status_labels = {"A": "Added", "M": "Modified", "D": "Deleted", "R": "Renamed"}
-    files = {}
 
-    # Get committed changes between base and branch
-    try:
-        output = await run_git(repo, "diff", "--name-status", diff_base, branch)
-        for line in output.split("\n"):
-            if not line.strip():
-                continue
-            parts = line.split("\t", 1)
-            status_code = parts[0][0]
-            path = parts[1] if len(parts) > 1 else ""
-            files[path] = status_code
-    except subprocess.CalledProcessError:
-        pass
-
-    # Get uncommitted changes in worktree
+    # Committed changes between base and branch, then (later entries win)
+    # uncommitted and untracked changes in the worktree.
+    files = _parse_name_status(await _git_or_empty(repo, "diff", "--name-status", diff_base, branch))
     if worktree_path and worktree_path.exists():
-        try:
-            output = await run_git(worktree_path, "diff", "--name-status", "HEAD")
-            for line in output.split("\n"):
-                if not line.strip():
-                    continue
-                parts = line.split("\t", 1)
-                status_code = parts[0][0]
-                path = parts[1] if len(parts) > 1 else ""
-                files[path] = status_code
-        except subprocess.CalledProcessError:
-            pass
-
-        # Get untracked files
-        try:
-            untracked = await run_git(worktree_path, "ls-files", "--others", "--exclude-standard")
-            for f in untracked.split("\n"):
-                if not f.strip():
-                    continue
-                try:
-                    validated = validate_file_path(f.strip())
-                    full_path = (worktree_path / validated).resolve()
-                    # Ensure resolved path is within the worktree
-                    if not str(full_path).startswith(str(worktree_path.resolve()) + os.sep) and full_path != worktree_path.resolve():
-                        continue
-                    files[validated] = "A"
-                except ValueError:
-                    pass
-        except subprocess.CalledProcessError:
-            pass
+        files.update(_parse_name_status(
+            await _git_or_empty(worktree_path, "diff", "--name-status", "HEAD")
+        ))
+        for path, _ in await _untracked_files(worktree_path):
+            files[path] = "A"
 
     return [
         {"status": s, "status_label": status_labels.get(s, s), "path": p}
         for p, s in sorted(files.items())
     ]
+
+
+async def _resolve_diff_base(repo: Path, base: str | None, base_commit: str | None) -> str:
+    """Prefer base_commit (immutable SHA) over the base branch name (a moving target)."""
+    diff_base = base_commit or base
+    if diff_base is None:
+        diff_base = await get_main_branch(repo)
+    return diff_base
+
+
+async def _git_or_empty(cwd: Path, *args: str) -> str:
+    """run_git output, or '' if the git command fails."""
+    try:
+        return await run_git(cwd, *args)
+    except subprocess.CalledProcessError:
+        return ""
+
+
+def _parse_name_status(output: str) -> dict[str, str]:
+    """``git diff --name-status`` output as {path: one-letter status}."""
+    files = {}
+    for line in output.split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split("\t", 1)
+        files[parts[1] if len(parts) > 1 else ""] = parts[0][0]
+    return files
+
+
+async def _untracked_files(worktree_path: Path) -> list[tuple[str, Path]]:
+    """Untracked, non-ignored files as (validated relative path, resolved path).
+
+    Paths that fail validation or resolve outside the worktree are skipped.
+    """
+    output = await _git_or_empty(worktree_path, "ls-files", "--others", "--exclude-standard")
+    root = worktree_path.resolve()
+    found = []
+    for name in output.split("\n"):
+        if not name.strip():
+            continue
+        try:
+            validated = validate_file_path(name.strip())
+            full_path = (worktree_path / validated).resolve()
+        except (ValueError, OSError):
+            continue
+        if full_path == root or str(full_path).startswith(str(root) + os.sep):
+            found.append((validated, full_path))
+    return found
+
+
+def _new_file_diff(path: str, content: str) -> str:
+    """A unified diff that adds ``path`` with ``content``."""
+    lines = content.split("\n")
+    return (
+        f"diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n"
+        f"@@ -0,0 +1,{len(lines)} @@\n"
+        + "\n".join(f"+{line}" for line in lines) + "\n"
+    )
 
 
 def validate_file_path(file_path: str) -> str:
