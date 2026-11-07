@@ -139,60 +139,88 @@ def _items():
     return data if isinstance(data, list) else data.get("items", [])
 
 
+def _create_todo(args):
+    body = {
+        "title": args["title"],
+        "description": args.get("description", ""),
+        "requires": args.get("requires") or [],
+        "autostart": bool(args.get("autostart", False)),
+        "auto_approve": args.get("auto_approve", 0),
+        "use_chrome": bool(args.get("use_chrome", False)),
+    }
+    if args.get("epic_id"):
+        body["epic_id"] = args["epic_id"]
+    item = _http("POST", f"/api/items/{ITEM_ID}/agent-todos", body)
+    if item.get("autostart_scheduled"):
+        note = " (agent auto-starting)"
+    elif body["requires"] or body["autostart"]:
+        note = " (starts after its dependencies merge)"
+    else:
+        note = ""
+    return f"Created todo {item['id']}: {item['title']}{note}"
+
+
+def _delete_todo(args):
+    _http("DELETE", f"/api/items/{args['item_id']}")
+    return f"Deleted todo {args['item_id']}"
+
+
+def _create_epic(args):
+    body = {"title": args["title"]}
+    if args.get("color"):
+        body["color"] = args["color"]
+    epic = _http("POST", "/api/epics", body)
+    return f"Created epic {epic.get('id', '?')}: {args['title']}"
+
+
+def _create_shortcut(args):
+    sc = _http("POST", "/api/shortcuts", {"name": args["name"], "command": args["command"]})
+    return f"Created shortcut {sc.get('id', '?')}: {args['name']}"
+
+
+def _view_board(args):
+    lines = [
+        f"{i.get('id')} | {i.get('column_name')} | {i.get('status') or '-'} | {i.get('title')}"
+        for i in _items()
+    ]
+    return "\n".join(lines) if lines else "(board is empty)"
+
+
+def _peek_worktree(args):
+    query = {}
+    if args.get("item_id"):
+        query["target_item_id"] = args["item_id"]
+    if args.get("path"):
+        query["path"] = args["path"]
+    qs = f"?{urllib.parse.urlencode(query)}" if query else ""
+    data = _http("GET", f"/api/items/{ITEM_ID}/peek{qs}")
+    return (data or {}).get("text") or "(no worktree information available)"
+
+
+def _who_am_i(args):
+    for i in _items():
+        if i.get("id") == ITEM_ID:
+            return json.dumps(i, ensure_ascii=False)
+    return f"(item {ITEM_ID} not found on the board)"
+
+
+_TOOL_HANDLERS = {
+    "create_todo": _create_todo,
+    "delete_todo": _delete_todo,
+    "create_epic": _create_epic,
+    "create_shortcut": _create_shortcut,
+    "view_board": _view_board,
+    "peek_worktree": _peek_worktree,
+    "who_am_i": _who_am_i,
+}
+
+
 def call_tool(name, args):
     """Run a board tool; returns the text result (raises on failure)."""
-    if name == "create_todo":
-        body = {
-            "title": args["title"],
-            "description": args.get("description", ""),
-            "requires": args.get("requires") or [],
-            "autostart": bool(args.get("autostart", False)),
-            "auto_approve": args.get("auto_approve", 0),
-            "use_chrome": bool(args.get("use_chrome", False)),
-        }
-        if args.get("epic_id"):
-            body["epic_id"] = args["epic_id"]
-        item = _http("POST", f"/api/items/{ITEM_ID}/agent-todos", body)
-        if item.get("autostart_scheduled"):
-            note = " (agent auto-starting)"
-        elif body["requires"] or body["autostart"]:
-            note = " (starts after its dependencies merge)"
-        else:
-            note = ""
-        return f"Created todo {item['id']}: {item['title']}{note}"
-    if name == "delete_todo":
-        _http("DELETE", f"/api/items/{args['item_id']}")
-        return f"Deleted todo {args['item_id']}"
-    if name == "create_epic":
-        body = {"title": args["title"]}
-        if args.get("color"):
-            body["color"] = args["color"]
-        epic = _http("POST", "/api/epics", body)
-        return f"Created epic {epic.get('id', '?')}: {args['title']}"
-    if name == "create_shortcut":
-        sc = _http("POST", "/api/shortcuts", {"name": args["name"], "command": args["command"]})
-        return f"Created shortcut {sc.get('id', '?')}: {args['name']}"
-    if name == "view_board":
-        lines = [
-            f"{i.get('id')} | {i.get('column_name')} | {i.get('status') or '-'} | {i.get('title')}"
-            for i in _items()
-        ]
-        return "\n".join(lines) if lines else "(board is empty)"
-    if name == "peek_worktree":
-        query = {}
-        if args.get("item_id"):
-            query["target_item_id"] = args["item_id"]
-        if args.get("path"):
-            query["path"] = args["path"]
-        qs = f"?{urllib.parse.urlencode(query)}" if query else ""
-        data = _http("GET", f"/api/items/{ITEM_ID}/peek{qs}")
-        return (data or {}).get("text") or "(no worktree information available)"
-    if name == "who_am_i":
-        for i in _items():
-            if i.get("id") == ITEM_ID:
-                return json.dumps(i, ensure_ascii=False)
-        return f"(item {ITEM_ID} not found on the board)"
-    raise KeyError(name)
+    handler = _TOOL_HANDLERS.get(name)
+    if handler is None:
+        raise KeyError(name)
+    return handler(args)
 
 
 def respond(req_id, result):

@@ -49,6 +49,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from .base import AbstractAgentSession, AgentResult
 from .command_filter import _contains_shell_operators, _extract_command_name
@@ -325,6 +326,136 @@ class _PendingToolCall:
         return input_dict
 
 
+def _import_acp():
+    """The ACP client classes from kimi_agent_sdk, or None if the SDK is missing.
+
+    Imported at run time (not module load) so the dashboard runs without the
+    optional Kimi SDK installed.
+    """
+    try:
+        from kimi_agent_sdk.acp import (
+            AcpClient,
+            AgentMessageChunk,
+            AgentThoughtChunk,
+            PermissionCancelled,
+            PermissionSelected,
+            ToolCallProgress,
+            ToolCallStart,
+            TurnEnded,
+        )
+    except ImportError:
+        logger.error("kimi_agent_sdk.acp import failed", exc_info=True)
+        return None
+    return SimpleNamespace(
+        AcpClient=AcpClient,
+        AgentMessageChunk=AgentMessageChunk,
+        AgentThoughtChunk=AgentThoughtChunk,
+        PermissionCancelled=PermissionCancelled,
+        PermissionSelected=PermissionSelected,
+        ToolCallProgress=ToolCallProgress,
+        ToolCallStart=ToolCallStart,
+        TurnEnded=TurnEnded,
+    )
+
+
+def _pick_permission_option(request, kinds, acp):
+    """Select the first offered option whose kind is in ``kinds`` (in that order)."""
+    for kind in kinds:
+        for option in request.options:
+            if option.kind == kind:
+                return acp.PermissionSelected(option_id=option.option_id)
+    return None
+
+
+class _TurnStream:
+    """Turns one prompt turn's ACP update stream into work-log callbacks.
+
+    ACP streams partial chunks; they are aggregated so the work log gets
+    message-sized entries (like ClaudeAgentSession's blocks). Tool calls are
+    held until their input arrives (see _PendingToolCall). Marked lines in the
+    text carry the commit message and an ASK_USER question.
+    """
+
+    def __init__(self, agent: "KimiAgentSession", acp):
+        self.agent = agent
+        self.acp = acp
+        self.text_buf: list[str] = []
+        self.thought_buf: list[str] = []
+        self.pending_tool: _PendingToolCall | None = None
+        self.question: str | None = None
+        self.stop_reason = None
+
+    async def feed(self, item) -> None:
+        acp = self.acp
+        if isinstance(item, acp.AgentMessageChunk):
+            self.text_buf.append(_content_text(item.content))
+        elif isinstance(item, acp.AgentThoughtChunk):
+            self.thought_buf.append(_content_text(item.content))
+        elif isinstance(item, acp.ToolCallStart):
+            await self._tool_started(item)
+        elif isinstance(item, acp.ToolCallProgress):
+            await self._tool_progressed(item)
+        elif isinstance(item, acp.TurnEnded):
+            self.stop_reason = item.stop_reason
+
+    async def finish(self) -> None:
+        await self.emit_pending()
+        await self.flush()
+
+    async def _tool_started(self, item) -> None:
+        await self.flush()
+        await self.emit_pending()
+        self.pending_tool = _PendingToolCall(item)
+        if self.pending_tool.raw_input is not None:
+            await self.emit_pending()
+
+    async def _tool_progressed(self, item) -> None:
+        pending = self.pending_tool
+        if pending is None or pending.tool_call_id != item.tool_call_id:
+            return
+        pending.merge_progress(item)
+        if pending.raw_input is not None or item.status in ("completed", "failed"):
+            await self.emit_pending()
+
+    async def flush(self) -> None:
+        agent = self.agent
+        if self.thought_buf and agent.on_thinking:
+            await agent.on_thinking("".join(self.thought_buf))
+        self.thought_buf.clear()
+        text = await self._take_markers("".join(self.text_buf))
+        self.text_buf.clear()
+        if text.strip() and agent.on_message:
+            await agent.on_message(text)
+
+    async def _take_markers(self, text: str) -> str:
+        """Strip the commit-message and ASK_USER marker lines, acting on them."""
+        return self._take_question(await self._take_commit_message(text))
+
+    async def _take_commit_message(self, text: str) -> str:
+        if not self.agent.on_set_commit_message:
+            return text
+        text, commit_message = _extract_commit_message(text)
+        if commit_message:
+            await self.agent.on_set_commit_message(commit_message)
+        return text
+
+    def _take_question(self, text: str) -> str:
+        if not self.agent.on_clarify:
+            return text
+        text, question = _extract_ask_user(text)
+        if question:
+            self.question = question
+        return text
+
+    async def emit_pending(self) -> None:
+        pending, self.pending_tool = self.pending_tool, None
+        if pending is None:
+            return
+        self.agent.audit_tool_call_scope(pending)
+        if self.agent.on_tool_use:
+            await self.agent.on_tool_use(pending.title, pending.input)
+
+
 class KimiAgentSession(AbstractAgentSession):
     """Wraps a `kimi acp` subprocess (via the SDK's ACP client) for one item's run."""
 
@@ -422,19 +553,8 @@ class KimiAgentSession(AbstractAgentSession):
 
     async def _run(self, full_prompt: str, resume_session_id: str | None) -> None:
         try:
-            try:
-                from kimi_agent_sdk.acp import (
-                    AcpClient,
-                    AgentMessageChunk,
-                    AgentThoughtChunk,
-                    PermissionCancelled,
-                    PermissionSelected,
-                    ToolCallProgress,
-                    ToolCallStart,
-                    TurnEnded,
-                )
-            except ImportError:
-                logger.error("kimi_agent_sdk.acp import failed", exc_info=True)
+            acp = _import_acp()
+            if acp is None:
                 if self.on_error:
                     await self.on_error(KIMI_SDK_INSTALL_HINT)
                 return
@@ -449,159 +569,18 @@ class KimiAgentSession(AbstractAgentSession):
             if board_cfg:
                 logger.info("Kimi mode: board tools MCP proxy enabled")
 
-            def _pick(request, kinds):
-                for kind in kinds:
-                    for option in request.options:
-                        if option.kind == kind:
-                            return PermissionSelected(option_id=option.option_id)
-                return None
-
             async def permission_handler(request):
-                decision, command = _decide_permission(
-                    request.tool_call, self.allowed_commands, self.bash_yolo,
-                    self.path_scope,
-                )
-                if decision == "ask":
-                    if self.on_request_command:
-                        response = await self.on_request_command(
-                            command,
-                            "Kimi agent wants to run a command that is not in the allowlist",
-                        )
-                        decision = "allow" if str(response).lower().startswith("approv") else "deny"
-                    else:
-                        decision = "deny"
-                if decision == "allow":
-                    outcome = _pick(request, ("allow_once", "allow_always"))
-                else:
-                    logger.info(f"Kimi mode: denied permission for: {command!r}")
-                    outcome = _pick(request, ("reject_once", "reject_always"))
-                return outcome or PermissionCancelled()
+                return await self._handle_permission(request, acp)
 
-            async with await AcpClient.connect(
+            async with await acp.AcpClient.connect(
                 yolo=False, permission_handler=permission_handler, env=env
             ) as client:
-                session = None
-                if resume_session_id:
-                    try:
-                        session = await client.load_session(
-                            resume_session_id, cwd=self.worktree_path,
-                            mcp_servers=mcp_servers,
-                        )
-                        logger.info(f"Kimi mode: resumed ACP session {resume_session_id}")
-                    except Exception as e:
-                        logger.warning(
-                            f"Kimi mode: could not resume session {resume_session_id} "
-                            f"({e}) — starting fresh"
-                        )
-                if session is None:
-                    session = await client.new_session(
-                        cwd=self.worktree_path, mcp_servers=mcp_servers
-                    )
+                session = await self._open_session(client, resume_session_id, mcp_servers)
                 self._acp_session = session
                 self.current_session_id = session.id
+                await self._select_model(client, session)
 
-                # Select the model the way the ACP ecosystem does (see
-                # flutter_kimi_sdk): session/set_config_option. The env var is
-                # kept as a fallback for kimi-cli-era servers; kimi-code has
-                # no ACP model flag. Best-effort — an unsupported option must
-                # not kill the run (the CLI default model is used instead).
-                if self.model:
-                    try:
-                        await client.connection.request(
-                            "session/set_config_option",
-                            {"sessionId": session.id, "configId": "model",
-                             "value": self.model},
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Kimi mode: could not select model {self.model} via ACP "
-                            f"({e}) — the CLI default model will be used"
-                        )
-
-                # ACP streams partial chunks; aggregate them so the work log
-                # gets message-sized entries (like ClaudeAgentSession's blocks).
-                text_buf: list[str] = []
-                thought_buf: list[str] = []
-
-                state = {"question": None}
-
-                async def flush() -> None:
-                    if thought_buf and self.on_thinking:
-                        await self.on_thinking("".join(thought_buf))
-                    thought_buf.clear()
-                    text = "".join(text_buf)
-                    text_buf.clear()
-                    if self.on_set_commit_message:
-                        text, commit_message = _extract_commit_message(text)
-                        if commit_message:
-                            await self.on_set_commit_message(commit_message)
-                    if self.on_clarify:
-                        text, question = _extract_ask_user(text)
-                        if question:
-                            state["question"] = question
-                    if text.strip() and self.on_message:
-                        await self.on_message(text)
-
-                pending_tool: _PendingToolCall | None = None
-
-                async def emit_pending() -> None:
-                    nonlocal pending_tool
-                    if pending_tool is not None:
-                        self.audit_tool_call_scope(pending_tool)
-                        if self.on_tool_use:
-                            await self.on_tool_use(
-                                pending_tool.title, pending_tool.input
-                            )
-                    pending_tool = None
-
-                # Turn loop: normally one turn, but an ASK_USER line chains a
-                # follow-up turn on the same (stateful) ACP session carrying
-                # the user's answer.
-                next_input = full_prompt
-                while True:
-                    state["question"] = None
-                    stop_reason = None
-                    async for item in session.prompt(next_input):
-                        if self._cancelled:
-                            return
-                        if isinstance(item, AgentMessageChunk):
-                            text_buf.append(_content_text(item.content))
-                        elif isinstance(item, AgentThoughtChunk):
-                            thought_buf.append(_content_text(item.content))
-                        elif isinstance(item, ToolCallStart):
-                            await flush()
-                            await emit_pending()
-                            pending_tool = _PendingToolCall(item)
-                            if pending_tool.raw_input is not None:
-                                await emit_pending()
-                        elif isinstance(item, ToolCallProgress):
-                            if (pending_tool is not None
-                                    and pending_tool.tool_call_id == item.tool_call_id):
-                                pending_tool.merge_progress(item)
-                                if (pending_tool.raw_input is not None
-                                        or item.status in ("completed", "failed")):
-                                    await emit_pending()
-                        elif isinstance(item, TurnEnded):
-                            stop_reason = item.stop_reason
-                    await emit_pending()
-                    await flush()
-
-                    if self._cancelled or stop_reason == "cancelled":
-                        return
-                    if stop_reason in _ABNORMAL_STOP_REASONS:
-                        if self.on_error:
-                            await self.on_error(f"Kimi run stopped early: {stop_reason}")
-                        return
-                    if state["question"] and self.on_clarify:
-                        # Blocks until the user answers (Clarify column flow).
-                        answer = await self.on_clarify(state["question"], None)
-                        if self._cancelled:
-                            return
-                        next_input = f"User's answer: {answer}"
-                        continue
-                    break
-
-                if self.on_complete:
+                if await self._run_turns(session, full_prompt, acp) and self.on_complete:
                     await self.on_complete(
                         AgentResult(success=True, session_id=self.current_session_id)
                     )
@@ -615,6 +594,105 @@ class KimiAgentSession(AbstractAgentSession):
                 await self.on_error(str(e))
         finally:
             self._acp_session = None
+
+    async def _handle_permission(self, request, acp):
+        """Answer an ACP session/request_permission: allow, deny, or ask the user."""
+        decision, command = _decide_permission(
+            request.tool_call, self.allowed_commands, self.bash_yolo, self.path_scope,
+        )
+        if decision == "ask":
+            decision = await self._ask_command_permission(command)
+        if decision == "allow":
+            outcome = _pick_permission_option(request, ("allow_once", "allow_always"), acp)
+        else:
+            logger.info(f"Kimi mode: denied permission for: {command!r}")
+            outcome = _pick_permission_option(request, ("reject_once", "reject_always"), acp)
+        return outcome or acp.PermissionCancelled()
+
+    async def _ask_command_permission(self, command) -> str:
+        """Ask the user to allow a non-allowlisted command; "allow" or "deny"."""
+        if not self.on_request_command:
+            return "deny"
+        response = await self.on_request_command(
+            command, "Kimi agent wants to run a command that is not in the allowlist",
+        )
+        return "allow" if str(response).lower().startswith("approv") else "deny"
+
+    async def _open_session(self, client, resume_session_id: str | None, mcp_servers):
+        """Resume the saved ACP session if possible, else start a new one."""
+        if resume_session_id:
+            try:
+                session = await client.load_session(
+                    resume_session_id, cwd=self.worktree_path, mcp_servers=mcp_servers,
+                )
+                logger.info(f"Kimi mode: resumed ACP session {resume_session_id}")
+                return session
+            except Exception as e:
+                logger.warning(
+                    f"Kimi mode: could not resume session {resume_session_id} "
+                    f"({e}) — starting fresh"
+                )
+        return await client.new_session(cwd=self.worktree_path, mcp_servers=mcp_servers)
+
+    async def _select_model(self, client, session) -> None:
+        """Select the model the way the ACP ecosystem does (see flutter_kimi_sdk).
+
+        Uses session/set_config_option. The env var is kept as a fallback for
+        kimi-cli-era servers; kimi-code has no ACP model flag. Best-effort — an
+        unsupported option must not kill the run (the CLI default model is used
+        instead).
+        """
+        if not self.model:
+            return
+        try:
+            await client.connection.request(
+                "session/set_config_option",
+                {"sessionId": session.id, "configId": "model", "value": self.model},
+            )
+        except Exception as e:
+            logger.warning(
+                f"Kimi mode: could not select model {self.model} via ACP "
+                f"({e}) — the CLI default model will be used"
+            )
+
+    async def _run_turns(self, session, full_prompt: str, acp) -> bool:
+        """Drive the prompt turn(s). True when the run completed normally.
+
+        Normally one turn, but an ASK_USER line chains a follow-up turn on the
+        same (stateful) ACP session carrying the user's answer.
+        """
+        next_input = full_prompt
+        while True:
+            turn = await self._play_turn(session, next_input, acp)
+            if turn is None or not await self._turn_ended_cleanly(turn):
+                return False
+            if not (turn.question and self.on_clarify):
+                return True
+            # Blocks until the user answers (Clarify column flow).
+            answer = await self.on_clarify(turn.question, None)
+            if self._cancelled:
+                return False
+            next_input = f"User's answer: {answer}"
+
+    async def _play_turn(self, session, prompt_input: str, acp) -> "_TurnStream | None":
+        """Stream one prompt turn into the work log. None if cancelled mid-turn."""
+        turn = _TurnStream(self, acp)
+        async for item in session.prompt(prompt_input):
+            if self._cancelled:
+                return None
+            await turn.feed(item)
+        await turn.finish()
+        return turn
+
+    async def _turn_ended_cleanly(self, turn: "_TurnStream") -> bool:
+        """False (after reporting an abnormal stop) when the run must end here."""
+        if self._cancelled or turn.stop_reason == "cancelled":
+            return False
+        if turn.stop_reason in _ABNORMAL_STOP_REASONS:
+            if self.on_error:
+                await self.on_error(f"Kimi run stopped early: {turn.stop_reason}")
+            return False
+        return True
 
     async def cancel(self) -> None:
         """Stop the run: ask ACP to cancel, then tear down the task/subprocess."""

@@ -270,56 +270,72 @@ class SessionService:
         After Phase 3, `plugins` arrives as a real list (db.get_agent_config
         decodes JSON before handing it back). A string is still tolerated
         for legacy callers."""
-        result = []
         root = Path(__file__).parent.parent.parent
-
-        # Auto-discover plugins from the dashboard's plugins/ directory
-        plugins_dir = root / "plugins"
-        if plugins_dir.is_dir():
-            for entry in sorted(plugins_dir.iterdir()):
-                manifest = entry / ".claude-plugin" / "plugin.json"
-                if entry.is_dir() and manifest.exists():
-                    logger.info(f"Auto-discovered plugin: {entry.name} ({entry.resolve()})")
-                    result.append({"type": "local", "path": str(entry.resolve())})
-
-        # Tolerate a JSON string for callers that haven't migrated yet.
-        if isinstance(plugins, str):
-            try:
-                plugins = json.loads(plugins) if plugins else []
-            except (json.JSONDecodeError, TypeError):
-                plugins = []
-
-        if isinstance(plugins, list) and plugins:
-            seen = {p["path"] for p in result}
-            for entry in plugins:
-                path = None
-                if isinstance(entry, str) and entry.strip():
-                    path = entry.strip()
-                elif isinstance(entry, dict) and entry.get("path"):
-                    path = entry["path"]
-                if path and path not in seen:
-                    result.append({"type": "local", "path": path})
-                    seen.add(path)
-
-        # Per-project enabled library skills (each is a one-skill plugin).
-        if isinstance(enabled_skills, str):
-            try:
-                enabled_skills = json.loads(enabled_skills) if enabled_skills else []
-            except (json.JSONDecodeError, TypeError):
-                enabled_skills = []
-        if isinstance(enabled_skills, list) and enabled_skills:
-            seen = {p["path"] for p in result}
-            library_dir = root / "skill-library"
-            for name in enabled_skills:
-                if not isinstance(name, str) or not name:
-                    continue
-                skill_dir = library_dir / name
-                if (skill_dir / ".claude-plugin" / "plugin.json").exists():
-                    path = str(skill_dir.resolve())
-                    if path not in seen:
-                        result.append({"type": "local", "path": path})
-                        seen.add(path)
+        result = [{"type": "local", "path": path} for path in _bundled_plugin_paths(root / "plugins")]
+        seen = {p["path"] for p in result}
+        extra_paths = _configured_plugin_paths(plugins) + _enabled_skill_paths(
+            root / "skill-library", enabled_skills
+        )
+        for path in extra_paths:
+            if path not in seen:
+                result.append({"type": "local", "path": path})
+                seen.add(path)
 
         if result:
             logger.info(f"Loaded {len(result)} plugin(s): {', '.join(p['path'].rsplit('/', 1)[-1] for p in result)}")
         return result if result else None
+
+
+def _decode_json_list(value: Any) -> Any:
+    """Decode a JSON string (legacy callers); anything else passes through.
+
+    An empty or malformed string becomes [].
+    """
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value) if value else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def _bundled_plugin_paths(plugins_dir: Path) -> List[str]:
+    """Plugins shipped in the dashboard's plugins/ directory (auto-discovered)."""
+    if not plugins_dir.is_dir():
+        return []
+    paths = []
+    for entry in sorted(plugins_dir.iterdir()):
+        manifest = entry / ".claude-plugin" / "plugin.json"
+        if entry.is_dir() and manifest.exists():
+            logger.info(f"Auto-discovered plugin: {entry.name} ({entry.resolve()})")
+            paths.append(str(entry.resolve()))
+    return paths
+
+
+def _configured_plugin_paths(plugins: Any) -> List[str]:
+    """Plugin paths from agent config: a list of path strings or {"path": ...} dicts."""
+    plugins = _decode_json_list(plugins)
+    if not isinstance(plugins, list):
+        return []
+    paths = []
+    for entry in plugins:
+        if isinstance(entry, str) and entry.strip():
+            paths.append(entry.strip())
+        elif isinstance(entry, dict) and entry.get("path"):
+            paths.append(entry["path"])
+    return paths
+
+
+def _enabled_skill_paths(library_dir: Path, enabled_skills: Any) -> List[str]:
+    """The project's enabled library skills that are installed (each a one-skill plugin)."""
+    enabled_skills = _decode_json_list(enabled_skills)
+    if not isinstance(enabled_skills, list):
+        return []
+    paths = []
+    for name in enabled_skills:
+        if not isinstance(name, str) or not name:
+            continue
+        skill_dir = library_dir / name
+        if (skill_dir / ".claude-plugin" / "plugin.json").exists():
+            paths.append(str(skill_dir.resolve()))
+    return paths

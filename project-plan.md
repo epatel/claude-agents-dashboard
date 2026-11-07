@@ -89,7 +89,15 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     Original scope — split `ClaudeAgentSession.start` (391 lines, cyclomatic 91): options building,
     `can_use_tool`, prompt/attachments (`build_attachment_prompt`); flatten `_receive_loop`
     (depth 6) into per-message-type dispatch. Needs a live agent run, not just unit tests.
-  - [ ] 4 — Split `KimiAgentSession._run` (118 lines) along the same stages; also
+  - [x] 4 — Done 2026-11-07 (live-verified: one real `KimiAgentSession` on kimi-for-coding in a
+    scratch repo streamed thinking + tool calls, wrote a file, ran `ls`, and its commit-message
+    marker reached set_commit_message; success): `kimi_session.py` 5.93 → 7.27
+    (`_run` → `_handle_permission`, `_open_session`, `_select_model`, `_run_turns` / `_play_turn` /
+    `_turn_ended_cleanly`, plus a per-turn `_TurnStream` for chunk buffering and pending tool calls),
+    `session_service.py` 6.10 → 7.68 (`_parse_plugins` → bundled / configured / enabled-skill path
+    helpers), `review_agent.py` 6.97 → 9.32 (`_collect_review_text`, `_bullet_comments`; both
+    `ClaudeAgentOptions` call sites kept), `kimi_board_mcp.py` 7.89 → 10.00 (name → handler table).
+    Original scope — split `KimiAgentSession._run` (118 lines) along the same stages; also
     `SessionService._parse_plugins` (cognitive 48), `review_agent._parse_decision` /
     `run_auto_review`, `kimi_board_mcp.call_tool`. Needs a live Kimi run.
   - [ ] 5 — Small src dedups: `git/operations.py` (`get_changed_files` / `get_diff`; `run_git`
@@ -210,7 +218,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-07): steps 0–3 done; next are 4 and 5.** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 in flight (2026-11-07): steps 0–4 done; next is 5 (then 6, then optional 7).** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above

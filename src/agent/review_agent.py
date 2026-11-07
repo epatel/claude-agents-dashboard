@@ -180,21 +180,7 @@ async def run_auto_review(
     try:
         await client.connect()
         await client.query(prompt)
-        try:
-            async with asyncio.timeout(timeout):
-                async for message in client.receive_messages():
-                    if isinstance(message, AssistantMessage):
-                        for block in message.content:
-                            if isinstance(block, TextBlock) and block.text:
-                                chunks.append(block.text)
-                    elif isinstance(message, ResultMessage):
-                        break
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Auto-review timed out after %.0fs for task %r",
-                timeout,
-                item_title,
-            )
+        await _collect_review_text(client, chunks, timeout, item_title)
     except Exception as e:
         logger.exception("Auto-review session failed: %s", e)
     finally:
@@ -205,6 +191,29 @@ async def run_auto_review(
 
     raw = "\n".join(chunks).strip()
     return _parse_decision(raw)
+
+
+async def _collect_review_text(client, chunks: list[str], timeout: float, item_title: str) -> None:
+    """Append the reviewer's text blocks to ``chunks`` until its result (or the timeout).
+
+    Appends in place so text gathered before a timeout or error is kept.
+    """
+    try:
+        async with asyncio.timeout(timeout):
+            async for message in client.receive_messages():
+                if isinstance(message, ResultMessage):
+                    break
+                if isinstance(message, AssistantMessage):
+                    chunks.extend(
+                        block.text for block in message.content
+                        if isinstance(block, TextBlock) and block.text
+                    )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Auto-review timed out after %.0fs for task %r",
+            timeout,
+            item_title,
+        )
 
 
 def _parse_decision(raw: str) -> dict:
@@ -241,15 +250,20 @@ def _parse_decision(raw: str) -> dict:
         summary = sm.group(1).strip() if sm else ""
         return {"approved": True, "comments": [], "summary": summary, "raw": raw}
 
-    # CHANGES_REQUESTED — gather bullet comments under the COMMENTS: header.
+    comments = _bullet_comments(raw) or [
+        "Auto-reviewer requested changes but did not provide specific comments."
+    ]
+    return {"approved": False, "comments": comments, "summary": "", "raw": raw}
+
+
+def _bullet_comments(raw: str) -> list[str]:
+    """Bullet comments under the reviewer's COMMENTS: header (continuation lines joined)."""
+    lines = [line.strip() for line in raw.splitlines()]
+    header = next((i for i, line in enumerate(lines) if line.upper().startswith("COMMENTS:")), None)
+    if header is None:
+        return []
     comments: list[str] = []
-    in_comments = False
-    for line in raw.splitlines():
-        stripped = line.strip()
-        if not in_comments:
-            if stripped.upper().startswith("COMMENTS:"):
-                in_comments = True
-            continue
+    for stripped in lines[header + 1:]:
         if not stripped:
             continue
         if stripped.startswith(("- ", "* ", "• ")):
@@ -257,10 +271,4 @@ def _parse_decision(raw: str) -> dict:
         elif comments:
             # Continuation of the previous bullet.
             comments[-1] = (comments[-1] + " " + stripped).strip()
-
-    if not comments:
-        comments = [
-            "Auto-reviewer requested changes but did not provide specific comments."
-        ]
-
-    return {"approved": False, "comments": comments, "summary": "", "raw": raw}
+    return comments
