@@ -26,102 +26,126 @@ const ConfigDialog = {
     async openConfig() {
         try {
             const config = await Api.request('GET', '/api/config');
-            document.getElementById('config-model').value = config.model || window.__DEFAULT_MODEL__;
-            document.getElementById('config-wip-limit').value = config.wip_limit || 0;
-            document.getElementById('config-system-prompt').value = config.system_prompt || '';
-            document.getElementById('config-project-context').value = config.project_context || '';
-            document.getElementById('config-mcp-enabled').checked = config.mcp_enabled || false;
-            const mcpServers = config.mcp_servers || '{}';
-            document.getElementById('config-mcp-servers').value = typeof mcpServers === 'object' ? JSON.stringify(mcpServers, null, 2) : mcpServers;
-
-            // Load Ollama settings
-            document.getElementById('config-ollama-enabled').checked = config.ollama_enabled || false;
-            document.getElementById('config-ollama-base-url').value = config.ollama_base_url || window.__DEFAULT_OLLAMA_URL__;
-            document.getElementById('config-ollama-load-claude-md').checked = config.ollama_load_claude_md || false;
-
-            // Reset connection status
-            const statusEl = document.getElementById('ollama-connection-status');
-            if (statusEl) statusEl.innerHTML = '';
-
-            // Auto-fetch Ollama models if enabled (experimental only)
-            if (config.ollama_enabled && window.__EXPERIMENTAL__) {
-                this.refreshOllamaModels();
-            }
-
-            // Load Tiiny settings
-            document.getElementById('config-tiiny-enabled').checked = !!config.tiiny_enabled;
-            document.getElementById('config-tiiny-base-url').value = config.tiiny_base_url || window.__DEFAULT_TIINY_URL__;
-            document.getElementById('config-tiiny-load-claude-md').checked = !!config.tiiny_load_claude_md;
-            this._setTiinyStatus('', '');
-            document.getElementById('tiiny-test-result').innerHTML = '';
-            if (config.tiiny_enabled && window.__EXPERIMENTAL__) {
-                this.refreshTiinyModels();
-            }
-
-            // Load plugins
-            try {
-                this._configPlugins = JSON.parse(config.plugins || '[]');
-            } catch {
-                this._configPlugins = [];
-            }
+            this._loadGeneral(config);
+            this._loadOllama(config);
+            this._loadTiiny(config);
+            this._configPlugins = this._parseJsonList(config.plugins);
             this._renderPluginsList();
-
-            // Load allowed commands + yolo mode
-            try {
-                this._configAllowedCommands = JSON.parse(config.allowed_commands || '[]');
-            } catch {
-                this._configAllowedCommands = [];
-            }
-            document.getElementById('config-bash-yolo').checked = config.bash_yolo || false;
-            this._renderAllowedCommandsList();
-            this._updateYoloState(config.bash_yolo || false);
-
-            // Load built-in tools
-            try {
-                this._configBuiltinTools = JSON.parse(config.allowed_builtin_tools || '[]');
-            } catch {
-                this._configBuiltinTools = [];
-            }
-            try {
-                this._availableBuiltinTools = await Api.request('GET', '/api/config/available-tools');
-            } catch {
-                this._availableBuiltinTools = [
-                    {name: 'WebSearch', label: 'Web Search', description: 'Search the web for information'},
-                    {name: 'WebFetch', label: 'Web Fetch', description: 'Fetch content from URLs'},
-                ];
-            }
-            this._renderBuiltinToolsList();
-
-            // Load flame settings
-            document.getElementById('config-flame-enabled').checked = config.flame_enabled !== false && config.flame_enabled !== 0;
-            const intensitySlider = document.getElementById('config-flame-intensity');
-            const intensityVal = parseFloat(config.flame_intensity_multiplier) || 1.0;
-            intensitySlider.value = intensityVal;
-            document.getElementById('config-flame-intensity-value').textContent = intensityVal.toFixed(1);
-
-            // Load graphify settings
-            document.getElementById('config-graphify-enabled').checked = config.graphify_enabled === true || config.graphify_enabled === 1;
-            document.getElementById('config-graphify-auto-refresh').checked = config.graphify_auto_refresh !== false && config.graphify_auto_refresh !== 0;
-            document.getElementById('config-graphify-backend').value = config.graphify_backend || 'ast';
-            this.refreshGraphifyStatus();
-
+            this._loadAllowedCommands(config);
+            await this._loadBuiltinTools(config);
+            this._loadFlame(config);
+            this._loadGraphify(config);
             // Load skills library (installed + enabled flags)
             this.refreshSkills();
-
-            // Populate Ollama models in the config model dropdown
-            if (config.ollama_enabled && this._ollamaModels.length > 0) {
-                this._updateModelSelect('config-model', false);
-            } else {
-                // Still populate from shared cache
-                await DialogUtils.populateOllamaOptions(document.getElementById('config-model'));
-            }
-            await DialogUtils.populateTiinyOptions(document.getElementById('config-model'));
+            await this._populateConfigModels(config);
 
             this.switchConfigTab('general');
             DialogCore.open('config-dialog');
         } catch (err) {
             console.error('Failed to load config:', err);
         }
+    },
+
+    _el(id) {
+        return document.getElementById(id);
+    },
+
+    /** A JSON list stored as a string (``[]`` when missing or malformed). */
+    _parseJsonList(json) {
+        try {
+            return JSON.parse(json || '[]');
+        } catch {
+            return [];
+        }
+    },
+
+    /** Settings that default to on: only an explicit false / 0 turns them off. */
+    _defaultOn(value) {
+        return value !== false && value !== 0;
+    },
+
+    _loadGeneral(config) {
+        this._el('config-model').value = config.model || window.__DEFAULT_MODEL__;
+        this._el('config-wip-limit').value = config.wip_limit || 0;
+        this._el('config-system-prompt').value = config.system_prompt || '';
+        this._el('config-project-context').value = config.project_context || '';
+        this._el('config-mcp-enabled').checked = !!config.mcp_enabled;
+        const mcpServers = config.mcp_servers || '{}';
+        this._el('config-mcp-servers').value = typeof mcpServers === 'object' ? JSON.stringify(mcpServers, null, 2) : mcpServers;
+    },
+
+    _loadOllama(config) {
+        this._el('config-ollama-enabled').checked = !!config.ollama_enabled;
+        this._el('config-ollama-base-url').value = config.ollama_base_url || window.__DEFAULT_OLLAMA_URL__;
+        this._el('config-ollama-load-claude-md').checked = !!config.ollama_load_claude_md;
+
+        // Reset connection status
+        const statusEl = this._el('ollama-connection-status');
+        if (statusEl) statusEl.innerHTML = '';
+
+        // Auto-fetch Ollama models if enabled (experimental only)
+        if (config.ollama_enabled && window.__EXPERIMENTAL__) {
+            this.refreshOllamaModels();
+        }
+    },
+
+    _loadTiiny(config) {
+        this._el('config-tiiny-enabled').checked = !!config.tiiny_enabled;
+        this._el('config-tiiny-base-url').value = config.tiiny_base_url || window.__DEFAULT_TIINY_URL__;
+        this._el('config-tiiny-load-claude-md').checked = !!config.tiiny_load_claude_md;
+        this._setTiinyStatus('', '');
+        this._el('tiiny-test-result').innerHTML = '';
+        if (config.tiiny_enabled && window.__EXPERIMENTAL__) {
+            this.refreshTiinyModels();
+        }
+    },
+
+    _loadAllowedCommands(config) {
+        this._configAllowedCommands = this._parseJsonList(config.allowed_commands);
+        this._el('config-bash-yolo').checked = !!config.bash_yolo;
+        this._renderAllowedCommandsList();
+        this._updateYoloState(!!config.bash_yolo);
+    },
+
+    _defaultBuiltinTools: [
+        {name: 'WebSearch', label: 'Web Search', description: 'Search the web for information'},
+        {name: 'WebFetch', label: 'Web Fetch', description: 'Fetch content from URLs'},
+    ],
+
+    async _loadBuiltinTools(config) {
+        this._configBuiltinTools = this._parseJsonList(config.allowed_builtin_tools);
+        try {
+            this._availableBuiltinTools = await Api.request('GET', '/api/config/available-tools');
+        } catch {
+            this._availableBuiltinTools = this._defaultBuiltinTools.map(tool => ({ ...tool }));
+        }
+        this._renderBuiltinToolsList();
+    },
+
+    _loadFlame(config) {
+        this._el('config-flame-enabled').checked = this._defaultOn(config.flame_enabled);
+        const intensityVal = parseFloat(config.flame_intensity_multiplier) || 1.0;
+        this._el('config-flame-intensity').value = intensityVal;
+        this._el('config-flame-intensity-value').textContent = intensityVal.toFixed(1);
+    },
+
+    _loadGraphify(config) {
+        this._el('config-graphify-enabled').checked = config.graphify_enabled === true || config.graphify_enabled === 1;
+        this._el('config-graphify-auto-refresh').checked = this._defaultOn(config.graphify_auto_refresh);
+        this._el('config-graphify-backend').value = config.graphify_backend || 'ast';
+        this.refreshGraphifyStatus();
+    },
+
+    /** Add the local-provider models to the config model dropdown. */
+    async _populateConfigModels(config) {
+        const select = this._el('config-model');
+        if (config.ollama_enabled && this._ollamaModels.length > 0) {
+            this._updateModelSelect('config-model', false);
+        } else {
+            // Still populate from shared cache
+            await DialogUtils.populateOllamaOptions(select);
+        }
+        await DialogUtils.populateTiinyOptions(select);
     },
 
     _renderPluginsList() {
@@ -233,16 +257,40 @@ const ConfigDialog = {
         }
     },
 
+    /** A status dot (connected / checking / disconnected) plus a message. */
+    _statusDotHtml(state, message) {
+        const dotCls = state === 'connected' || state === 'checking' ? state : 'disconnected';
+        return `<span class="ollama-status-dot ${dotCls}"></span>${message || ''}`;
+    },
+
     _updateConnectionStatus(state, message) {
-        const el = document.getElementById('ollama-connection-status');
-        if (!el) return;
-        const dotCls = state === 'connected' ? 'connected' : state === 'checking' ? 'checking' : 'disconnected';
-        el.innerHTML = `<span class="ollama-status-dot ${dotCls}"></span>${message || ''}`;
+        const el = this._el('ollama-connection-status');
+        if (el) el.innerHTML = this._statusDotHtml(state, message);
+    },
+
+    /** Escape text for HTML (falsy values render as empty). */
+    _escText(s) {
+        return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    },
+
+    _warningHtml(message) {
+        return `<span style="color:var(--warning);">⚠ ${message}</span>`;
+    },
+
+    _mutedHtml(message) {
+        return `<span style="color:var(--text-muted);">${message}</span>`;
+    },
+
+    /** Register display names for fetched local models. */
+    _rememberModelNames(models) {
+        for (const m of models) {
+            window.__MODEL_NAMES__[m.name] = m.display_name;
+        }
     },
 
     async refreshOllamaModels() {
-        const listEl = document.getElementById('ollama-models-list');
-        if (listEl) listEl.innerHTML = '<span style="color:var(--text-muted);">Fetching models…</span>';
+        const listEl = this._el('ollama-models-list');
+        if (listEl) listEl.innerHTML = this._mutedHtml('Fetching models…');
         this._updateConnectionStatus('checking', 'Connecting…');
 
         try {
@@ -250,106 +298,99 @@ const ConfigDialog = {
             this._ollamaModels = result.models || [];
             this._ollamaEnabled = result.enabled !== false;
 
+            const count = this._ollamaModels.length;
             if (result.error) {
                 this._updateConnectionStatus('disconnected', 'Not available');
             } else {
-                const count = this._ollamaModels.length;
                 this._updateConnectionStatus('connected', `Connected (${count} model${count !== 1 ? 's' : ''})`);
             }
+            if (listEl) listEl.innerHTML = this._ollamaListHtml(result.error, this._ollamaModels);
 
-            if (listEl) {
-                if (result.error) {
-                    listEl.innerHTML = `<span style="color:var(--warning);">⚠ ${result.error}</span>`;
-                } else if (this._ollamaModels.length === 0) {
-                    listEl.innerHTML = '<span style="color:var(--text-muted);">No models found. Pull one with: <code>ollama pull qwen3.5</code></span>';
-                } else {
-                    listEl.innerHTML = this._ollamaModels.map(m => {
-                        const sizeGB = m.size ? (m.size / 1e9).toFixed(1) + ' GB' : '';
-                        return `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:3px;">
-                            <code style="flex:1;font-size:12px;">${m.name}</code>
-                            <span style="font-size:11px;color:var(--text-muted);">${m.parameter_size || ''}</span>
-                            <span style="font-size:11px;color:var(--text-muted);">${m.quantization_level || ''}</span>
-                            <span style="font-size:11px;color:var(--text-muted);">${sizeGB}</span>
-                        </div>`;
-                    }).join('');
-                }
-            }
-
-            // Update model names map for display
-            for (const m of this._ollamaModels) {
-                window.__MODEL_NAMES__[m.name] = m.display_name;
-            }
-
+            this._rememberModelNames(this._ollamaModels);
             // Sync with shared DialogUtils cache
             DialogUtils._ollamaCache = {
                 models: this._ollamaModels,
                 enabled: this._ollamaEnabled,
                 fetched: true,
             };
-
             // Update all model dropdowns
             this._updateModelDropdowns();
         } catch (err) {
             console.error('Failed to fetch Ollama models:', err);
             this._updateConnectionStatus('disconnected', 'Not available');
-            if (listEl) listEl.innerHTML = '<span style="color:var(--warning);">⚠ Failed to fetch models</span>';
+            if (listEl) listEl.innerHTML = this._warningHtml('Failed to fetch models');
         }
     },
 
+    _ollamaListHtml(error, models) {
+        if (error) return this._warningHtml(error);
+        if (models.length === 0) {
+            return this._mutedHtml('No models found. Pull one with: <code>ollama pull qwen3.5</code>');
+        }
+        return models.map(m => this._ollamaModelRow(m)).join('');
+    },
+
+    _ollamaModelRow(m) {
+        const sizeGB = m.size ? (m.size / 1e9).toFixed(1) + ' GB' : '';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:3px;">
+                            <code style="flex:1;font-size:12px;">${m.name}</code>
+                            <span style="font-size:11px;color:var(--text-muted);">${m.parameter_size || ''}</span>
+                            <span style="font-size:11px;color:var(--text-muted);">${m.quantization_level || ''}</span>
+                            <span style="font-size:11px;color:var(--text-muted);">${sizeGB}</span>
+                        </div>`;
+    },
+
     _setTiinyStatus(state, message) {
-        const el = document.getElementById('tiiny-connection-status');
-        if (!el) return;
-        if (!state) { el.innerHTML = ''; return; }
-        const dotCls = state === 'connected' ? 'connected' : state === 'checking' ? 'checking' : 'disconnected';
-        el.innerHTML = `<span class="ollama-status-dot ${dotCls}"></span>${message || ''}`;
+        const el = this._el('tiiny-connection-status');
+        if (el) el.innerHTML = state ? this._statusDotHtml(state, message) : '';
     },
 
     async refreshTiinyModels() {
-        const listEl = document.getElementById('tiiny-models-list');
-        const keyEl = document.getElementById('tiiny-key-status');
-        if (listEl) listEl.innerHTML = '<span style="color:var(--text-muted);">Fetching models…</span>';
+        const listEl = this._el('tiiny-models-list');
+        const keyEl = this._el('tiiny-key-status');
+        if (listEl) listEl.innerHTML = this._mutedHtml('Fetching models…');
         this._setTiinyStatus('checking', 'Connecting…');
         try {
             const result = await Api.request('GET', '/api/tiiny/models?force=true');
             const models = result.models || [];
-            if (keyEl) {
-                keyEl.innerHTML = result.key_present
-                    ? '<span style="color:var(--success, #4caf50);">✓ API key found</span>'
-                    : '<span style="color:var(--warning);">⚠ No API key found</span>';
-            }
-            this._setTiinyStatus(result.error ? 'disconnected' : 'connected', result.error ? 'Not available' : 'Reachable');
-            if (listEl) {
-                const esc = s => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-                const rows = models.map(m => `<div style="padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:3px;"><code style="font-size:12px;">${esc(m.name)}</code></div>`).join('');
-                listEl.innerHTML = (result.error ? `<div style="color:var(--warning);margin-bottom:4px;">⚠ ${esc(result.error)}</div>` : '') + rows;
-            }
-            for (const m of models) {
-                window.__MODEL_NAMES__[m.name] = m.display_name;
-            }
+            if (keyEl) keyEl.innerHTML = this._tiinyKeyHtml(result.key_present);
+            this._setTiinyStatus(...(result.error ? ['disconnected', 'Not available'] : ['connected', 'Reachable']));
+            if (listEl) listEl.innerHTML = this._tiinyListHtml(result.error, models);
+            this._rememberModelNames(models);
             DialogUtils._tiinyCache = { models, enabled: result.enabled !== false, fetched: true };
             this._updateModelDropdowns();
         } catch (err) {
             console.error('Failed to fetch Tiiny models:', err);
             this._setTiinyStatus('disconnected', 'Not available');
-            if (listEl) listEl.innerHTML = '<span style="color:var(--warning);">⚠ Failed to fetch models</span>';
+            if (listEl) listEl.innerHTML = this._warningHtml('Failed to fetch models');
         }
     },
 
+    _tiinyKeyHtml(keyPresent) {
+        return keyPresent
+            ? '<span style="color:var(--success, #4caf50);">✓ API key found</span>'
+            : this._warningHtml('No API key found');
+    },
+
+    _tiinyListHtml(error, models) {
+        const rows = models.map(m => `<div style="padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius-sm);margin-bottom:3px;"><code style="font-size:12px;">${this._escText(m.name)}</code></div>`).join('');
+        return (error ? `<div style="color:var(--warning);margin-bottom:4px;">⚠ ${this._escText(error)}</div>` : '') + rows;
+    },
+
     async testTiinyConnection() {
-        const out = document.getElementById('tiiny-test-result');
-        if (out) out.innerHTML = '<span style="color:var(--text-muted);">Sending "Reply with the word OK"… (first call after a model load can be slow)</span>';
+        const out = this._el('tiiny-test-result');
+        if (out) out.innerHTML = this._mutedHtml('Sending "Reply with the word OK"… (first call after a model load can be slow)');
         try {
             const result = await Api.request('POST', '/api/tiiny/test', {
-                base_url: document.getElementById('config-tiiny-base-url').value,
+                base_url: this._el('config-tiiny-base-url').value,
             });
-            const esc = s => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
             if (out) {
                 out.innerHTML = result.ok
-                    ? `<span style="color:var(--success, #4caf50);">✓ ${esc(result.model || 'model')} replied: “${esc(result.reply)}”</span>`
-                    : `<span style="color:var(--warning);">⚠ ${esc(result.message)}</span>`;
+                    ? `<span style="color:var(--success, #4caf50);">✓ ${this._escText(result.model || 'model')} replied: “${this._escText(result.reply)}”</span>`
+                    : this._warningHtml(this._escText(result.message));
             }
         } catch (err) {
-            if (out) out.innerHTML = '<span style="color:var(--warning);">⚠ Test request failed</span>';
+            if (out) out.innerHTML = this._warningHtml('Test request failed');
         }
     },
 
@@ -360,77 +401,71 @@ const ConfigDialog = {
     },
 
     _updateModelSelect(selectId, hasDefaultOption) {
-        const select = document.getElementById(selectId);
+        const select = this._el(selectId);
         if (!select) return;
 
         // Remember current selection
         const currentValue = select.value;
 
-        // Remove existing Ollama optgroup if any
-        const existingGroup = select.querySelector('optgroup[label="Ollama Models"]');
-        if (existingGroup) existingGroup.remove();
-
-        // Add Ollama models if enabled and available
-        if (this._ollamaEnabled && this._ollamaModels.length > 0) {
-            const optgroup = document.createElement('optgroup');
-            optgroup.label = 'Ollama Models';
-            for (const m of this._ollamaModels) {
-                const opt = document.createElement('option');
-                opt.value = m.name;
-                const sizeStr = m.size ? ` (${(m.size / 1e9).toFixed(1)}GB)` : '';
-                const paramStr = m.parameter_size ? `:${m.parameter_size}` : '';
-                opt.textContent = `${m.display_name}${paramStr}${sizeStr}`;
-                optgroup.appendChild(opt);
-            }
-            select.appendChild(optgroup);
-        }
-
-        // Tiiny models (from the shared cache) after Ollama
-        const tiinyGroup = select.querySelector('optgroup[label="Tiiny Models"]');
-        if (tiinyGroup) tiinyGroup.remove();
+        // Ollama models if enabled, then Tiiny models (from the shared cache)
+        this._replaceOptgroup(select, 'Ollama Models', this._ollamaEnabled ? this._ollamaModels : [], m => {
+            const sizeStr = m.size ? ` (${(m.size / 1e9).toFixed(1)}GB)` : '';
+            const paramStr = m.parameter_size ? `:${m.parameter_size}` : '';
+            return `${m.display_name}${paramStr}${sizeStr}`;
+        });
         const tiiny = DialogUtils._tiinyCache;
-        if (tiiny.enabled && tiiny.models.length > 0) {
-            const optgroup = document.createElement('optgroup');
-            optgroup.label = 'Tiiny Models';
-            for (const m of tiiny.models) {
-                const opt = document.createElement('option');
-                opt.value = m.name;
-                opt.textContent = m.display_name;
-                optgroup.appendChild(opt);
-            }
-            select.appendChild(optgroup);
-        }
+        this._replaceOptgroup(select, 'Tiiny Models', tiiny.enabled ? tiiny.models : [], m => m.display_name);
 
-        // Restore selection
+        // Restore selection; if the option is gone, fall back
         select.value = currentValue;
-        // If the value couldn't be set (removed option), fallback
         if (select.value !== currentValue) {
             select.value = hasDefaultOption ? '' : select.options[0]?.value || '';
         }
     },
 
+    /** Drop the ``label`` optgroup, then re-add it with ``models`` (none if empty). */
+    _replaceOptgroup(select, label, models, optionText) {
+        const existing = select.querySelector(`optgroup[label="${label}"]`);
+        if (existing) existing.remove();
+        if (models.length === 0) return;
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = label;
+        for (const m of models) {
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.textContent = optionText(m);
+            optgroup.appendChild(opt);
+        }
+        select.appendChild(optgroup);
+    },
+
     _renderGraphifyStatus(st) {
-        const el = document.getElementById('graphify-status');
-        const upgradeRow = document.getElementById('graphify-upgrade-row');
+        const el = this._el('graphify-status');
+        const upgradeRow = this._el('graphify-upgrade-row');
         if (!el) return;
-        const installed = st.installed_version || 'not installed';
         const latest = st.latest_version;
         const behind = latest && st.installed_version && latest !== st.installed_version;
-        const g = st.graph || {};
-        let graphLine;
-        if (st.building) {
-            graphLine = '<span style="color:var(--accent);">● building…</span>';
-        } else if (g.exists) {
-            const built = g.last_built ? new Date(g.last_built).toLocaleString() : 'unknown';
-            graphLine = `graph: ${g.nodes} nodes · ${g.edges} edges · ${g.communities} communities<br>last built ${built}`;
-            if (g.cost && g.cost.total_output_tokens) {
-                graphLine += `<br>semantic cost: ${g.cost.total_output_tokens.toLocaleString()} output tokens`;
-            }
-        } else {
-            graphLine = '<span style="color:var(--text-muted);">no graph built yet</span>';
-        }
-        el.innerHTML = `graphify ${installed}${latest ? ` · latest ${latest}` : ''}${behind ? ' <span style="color:var(--warning);">(update available)</span>' : ' ✓'}<br>${graphLine}`;
+        el.innerHTML = `${this._graphifyVersionHtml(st, behind)}<br>${this._graphLineHtml(st)}`;
         if (upgradeRow) upgradeRow.style.display = behind ? '' : 'none';
+    },
+
+    _graphifyVersionHtml(st, behind) {
+        const installed = st.installed_version || 'not installed';
+        const latest = st.latest_version ? ` · latest ${st.latest_version}` : '';
+        const mark = behind ? ' <span style="color:var(--warning);">(update available)</span>' : ' ✓';
+        return `graphify ${installed}${latest}${mark}`;
+    },
+
+    _graphLineHtml(st) {
+        const g = st.graph || {};
+        if (st.building) return '<span style="color:var(--accent);">● building…</span>';
+        if (!g.exists) return this._mutedHtml('no graph built yet');
+        const built = g.last_built ? new Date(g.last_built).toLocaleString() : 'unknown';
+        let line = `graph: ${g.nodes} nodes · ${g.edges} edges · ${g.communities} communities<br>last built ${built}`;
+        if (g.cost && g.cost.total_output_tokens) {
+            line += `<br>semantic cost: ${g.cost.total_output_tokens.toLocaleString()} output tokens`;
+        }
+        return line;
     },
 
     async refreshGraphifyStatus() {
@@ -600,30 +635,34 @@ const ConfigDialog = {
     // "Add by URL" — scan the repo/path for SKILL.md files, then install or
     // present a picker when a repo contains more than one skill.
     async installSkill() {
-        const input = document.getElementById('skill-add-input');
+        const input = this._el('skill-add-input');
         const value = (input ? input.value : '').trim();
         if (!value) return;
-        const el = document.getElementById('skills-browse-list');
+        const el = this._el('skills-browse-list');
         if (el) el.textContent = 'Scanning repo…';
-        let found;
-        try {
-            const data = await Api.request('POST', '/api/skills/discover', { spec: value });
-            found = data.skills || [];
-        } catch (err) {
-            if (el) el.innerHTML = '<span style="color:var(--warning);">⚠ could not scan that repo (not found, or GitHub rate limit?)</span>';
+        const found = await this._discoverSkills(value, el);
+        if (!found) return;
+        if (found.length > 1) {
+            this._renderSkillChoices(el, found, `Found ${found.length} skills — choose which to install:`);
             return;
         }
-        if (found.length === 0) {
-            if (el) el.innerHTML = '<span style="color:var(--text-muted);">No SKILL.md found in that repo/path.</span>';
-            return;
+        if (el) el.innerHTML = '';
+        await this.installExact(found[0].spec, found[0].name);
+        if (input) input.value = '';
+    },
+
+    /** Skills found at ``spec``, or null (with a message in ``el``) when none or the scan failed. */
+    async _discoverSkills(spec, el) {
+        const found = await Api.request('POST', '/api/skills/discover', { spec })
+            .then(data => data.skills || [])
+            .catch(() => null);
+        if (found && found.length > 0) return found;
+        if (el) {
+            el.innerHTML = found
+                ? this._mutedHtml('No SKILL.md found in that repo/path.')
+                : this._warningHtml('could not scan that repo (not found, or GitHub rate limit?)');
         }
-        if (found.length === 1) {
-            if (el) el.innerHTML = '';
-            await this.installExact(found[0].spec, found[0].name);
-            if (input) input.value = '';
-            return;
-        }
-        this._renderSkillChoices(el, found, `Found ${found.length} skills — choose which to install:`);
+        return null;
     },
 
     // Install one resolved skill spec (from browse, a repo scan, or a single hit).
