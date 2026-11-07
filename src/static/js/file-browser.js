@@ -100,18 +100,8 @@ const FileBrowser = {
         if (this._activeTab >= 0) {
             const tab = this._openTabs[this._activeTab];
             try {
-                const data = await Api.request('GET', `/api/files/content?path=${encodeURIComponent(tab.path)}`);
-                tab.content = data.content;
-                tab.language = data.language;
-                tab.binary = data.binary;
-                tab.mimeType = data.mime_type || null;
-                tab.hidden = data.hidden || false;
-                tab.truncated = data.truncated || false;
-                tab.size = data.size;
-                tab.lines = data.lines;
-                tab.viewer = data.viewer || null;
-                tab.modelFormat = data.model_format || null;
-                tab.archiveEntries = data.archive_entries || null;
+                const data = await Api.request('GET', this._contentUrl(tab.path));
+                Object.assign(tab, this._contentFields(data));
                 this._renderContent();
             } catch (err) { /* file may have been deleted */ }
         }
@@ -152,6 +142,27 @@ const FileBrowser = {
         return path ? `/api/files/tree?path=${encodeURIComponent(path)}` : '/api/files/tree';
     },
 
+    _contentUrl(path) {
+        return `/api/files/content?path=${encodeURIComponent(path)}`;
+    },
+
+    /** The tab fields taken from a /api/files/content response. */
+    _contentFields(data) {
+        return {
+            content: data.content,
+            language: data.language,
+            binary: data.binary,
+            mimeType: data.mime_type || null,
+            hidden: data.hidden || false,
+            truncated: data.truncated || false,
+            size: data.size,
+            lines: data.lines,
+            viewer: data.viewer || null,
+            modelFormat: data.model_format || null,
+            archiveEntries: data.archive_entries || null,
+        };
+    },
+
     _renderSymlinkNode(container, node, indent) {
         const item = this._newTreeItem(node, indent, 'symlink', 'file-tree-symlink');
 
@@ -179,22 +190,8 @@ const FileBrowser = {
 
         // Fetch file content
         try {
-            const data = await Api.request('GET', `/api/files/content?path=${encodeURIComponent(path)}`);
-            const tab = {
-                path: data.path,
-                name: name,
-                content: data.content,
-                language: data.language,
-                binary: data.binary,
-                mimeType: data.mime_type || null,
-                hidden: data.hidden || false,
-                truncated: data.truncated || false,
-                size: data.size,
-                lines: data.lines,
-                viewer: data.viewer || null,
-                modelFormat: data.model_format || null,
-                archiveEntries: data.archive_entries || null,
-            };
+            const data = await Api.request('GET', this._contentUrl(path));
+            const tab = { path: data.path, name, ...this._contentFields(data) };
 
             // Enforce max tabs
             if (this._openTabs.length >= this._maxTabs) {
@@ -338,31 +335,15 @@ const FileBrowser = {
     },
 
     _renderMarkdownContent(mdDiv, content, filePath) {
-        if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
-            mdDiv.innerHTML = DOMPurify.sanitize(marked.parse(content), {
-                ADD_TAGS: ['img'],
-                ADD_ATTR: ['src', 'alt', 'height', 'width'],
-            });
-        } else {
+        if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
             mdDiv.textContent = content;
             return;
         }
-        // Rewrite relative image paths to load via API
-        if (filePath) {
-            const dir = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : '';
-            mdDiv.querySelectorAll('img').forEach(img => {
-                const src = img.getAttribute('src');
-                if (src && !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('/')) {
-                    const imgPath = dir ? `${dir}/${src}` : src;
-                    // Load image via API and replace src with base64
-                    Api.request('GET', `/api/files/content?path=${encodeURIComponent(imgPath)}`).then(data => {
-                        if (data.content && data.binary) {
-                            img.src = data.content;
-                        }
-                    }).catch(() => {});
-                }
-            });
-        }
+        mdDiv.innerHTML = DOMPurify.sanitize(marked.parse(content), {
+            ADD_TAGS: ['img'],
+            ADD_ATTR: ['src', 'alt', 'height', 'width'],
+        });
+        if (filePath) this._loadRelativeImages(mdDiv, filePath);
         // Render mermaid diagrams (rewrite code blocks → div.mermaid, then run)
         mdDiv.querySelectorAll('code.language-mermaid').forEach(code => {
             const mermaidDiv = document.createElement('div');
@@ -371,6 +352,26 @@ const FileBrowser = {
             code.parentElement.replaceWith(mermaidDiv);
         });
         DialogUtils.runMermaid(mdDiv);
+    },
+
+    /** Relative image paths load through the API (as base64) from the markdown file's directory. */
+    _loadRelativeImages(mdDiv, filePath) {
+        const dir = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : '';
+        mdDiv.querySelectorAll('img').forEach(img => {
+            const src = img.getAttribute('src');
+            if (!this._isRelativeSrc(src)) return;
+            const imgPath = dir ? `${dir}/${src}` : src;
+            Api.request('GET', this._contentUrl(imgPath)).then(data => {
+                if (data.content && data.binary) {
+                    img.src = data.content;
+                }
+            }).catch(() => {});
+        });
+    },
+
+    _isRelativeSrc(src) {
+        if (!src) return false;
+        return !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('/');
     },
 
     _renderMarkdown(container, tab) {
@@ -422,106 +423,12 @@ const FileBrowser = {
         try {
             const THREE = await import('three');
             const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
-
             const canvas = document.getElementById('three-canvas');
-            const wrap = canvas.parentElement;
-            const width = wrap.clientWidth || 800;
-            const height = wrap.clientHeight || 600;
-
-            // Scene setup
-            const scene = new THREE.Scene();
-            scene.background = new THREE.Color(getComputedStyle(document.documentElement)
-                .getPropertyValue('--bg-primary').trim() || '#1a1a2e');
-
-            const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 10000);
-            const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-            renderer.setSize(width, height);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-            // Controls
-            const controls = new OrbitControls(camera, canvas);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.08;
-
-            // Lighting
-            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            dirLight.position.set(5, 10, 7);
-            scene.add(dirLight);
-            const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
-            dirLight2.position.set(-5, -3, -5);
-            scene.add(dirLight2);
-
-            // Decode base64 data
-            const binaryStr = atob(tab.content);
-            const bytes = new Uint8Array(binaryStr.length);
-            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-
-            let geometry;
-            if (tab.modelFormat === 'stl') {
-                const { STLLoader } = await import('three/addons/loaders/STLLoader.js');
-                const loader = new STLLoader();
-                geometry = loader.parse(bytes.buffer);
-                const material = new THREE.MeshPhongMaterial({
-                    color: 0x4a9eff, specular: 0x222222, shininess: 60,
-                    flatShading: false,
-                });
-                geometry.computeVertexNormals();
-                const mesh = new THREE.Mesh(geometry, material);
-                scene.add(mesh);
-            } else if (tab.modelFormat === 'obj') {
-                const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js');
-                const loader = new OBJLoader();
-                const text = new TextDecoder().decode(bytes);
-                const obj = loader.parse(text);
-                obj.traverse(child => {
-                    if (child.isMesh) {
-                        child.material = new THREE.MeshPhongMaterial({
-                            color: 0x4a9eff, specular: 0x222222, shininess: 60,
-                        });
-                    }
-                });
-                scene.add(obj);
-            }
-
-            // Fit camera to model
-            const box = new THREE.Box3().setFromObject(scene);
-            const size = box.getSize(new THREE.Vector3());
-            const center = box.getCenter(new THREE.Vector3());
-            const maxDim = Math.max(size.x, size.y, size.z);
-            const dist = maxDim * 1.8;
-            camera.position.set(center.x + dist * 0.5, center.y + dist * 0.5, center.z + dist);
-            camera.lookAt(center);
-            controls.target.copy(center);
-            controls.update();
-
-            // Animation loop
-            let animId;
-            const animate = () => {
-                animId = requestAnimationFrame(animate);
-                controls.update();
-                renderer.render(scene, camera);
-            };
-            animate();
-
-            // Resize handling
-            const observer = new ResizeObserver(() => {
-                const w = wrap.clientWidth;
-                const h = wrap.clientHeight;
-                camera.aspect = w / h;
-                camera.updateProjectionMatrix();
-                renderer.setSize(w, h);
-            });
-            observer.observe(wrap);
-
-            // Cleanup when tab changes
-            this._cleanup3D = () => {
-                cancelAnimationFrame(animId);
-                observer.disconnect();
-                renderer.dispose();
-                controls.dispose();
-                this._cleanup3D = null;
-            };
+            const view = this._create3DView(THREE, OrbitControls, canvas);
+            const model = await this._load3DModel(THREE, tab.modelFormat, this._decodeBase64(tab.content));
+            if (model) view.scene.add(model);
+            this._fitCameraToScene(THREE, view);
+            this._start3DView(view, canvas.parentElement);
         } catch (err) {
             container.innerHTML = `
                 <div class="file-binary-placeholder">
@@ -529,6 +436,102 @@ const FileBrowser = {
                     <p>Failed to load 3D model: ${this._escapeHtml(err.message)}</p>
                 </div>`;
         }
+    },
+
+    /** Scene (theme background, three lights), camera, renderer and orbit controls for the canvas. */
+    _create3DView(THREE, OrbitControls, canvas) {
+        const wrap = canvas.parentElement;
+        const width = wrap.clientWidth || 800;
+        const height = wrap.clientHeight || 600;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(getComputedStyle(document.documentElement)
+            .getPropertyValue('--bg-primary').trim() || '#1a1a2e');
+
+        const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 10000);
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 7);
+        scene.add(dirLight);
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+        dirLight2.position.set(-5, -3, -5);
+        scene.add(dirLight2);
+        return { scene, camera, renderer, controls };
+    },
+
+    _decodeBase64(content) {
+        const binaryStr = atob(content);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+        return bytes;
+    },
+
+    /** The STL or OBJ model as a blue Phong-shaded object (null for other formats). */
+    async _load3DModel(THREE, format, bytes) {
+        const material = () => new THREE.MeshPhongMaterial({ color: 0x4a9eff, specular: 0x222222, shininess: 60 });
+        if (format === 'stl') {
+            const { STLLoader } = await import('three/addons/loaders/STLLoader.js');
+            const geometry = new STLLoader().parse(bytes.buffer);
+            const mat = material();  // flatShading defaults to false
+            geometry.computeVertexNormals();
+            return new THREE.Mesh(geometry, mat);
+        }
+        if (format === 'obj') {
+            const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js');
+            const obj = new OBJLoader().parse(new TextDecoder().decode(bytes));
+            obj.traverse(child => {
+                if (child.isMesh) child.material = material();
+            });
+            return obj;
+        }
+        return null;
+    },
+
+    _fitCameraToScene(THREE, { scene, camera, controls }) {
+        const box = new THREE.Box3().setFromObject(scene);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const dist = Math.max(size.x, size.y, size.z) * 1.8;
+        camera.position.set(center.x + dist * 0.5, center.y + dist * 0.5, center.z + dist);
+        camera.lookAt(center);
+        controls.target.copy(center);
+        controls.update();
+    },
+
+    /** Animation loop + resize tracking; ``_cleanup3D`` stops both when the tab changes. */
+    _start3DView({ scene, camera, renderer, controls }, wrap) {
+        let animId;
+        const animate = () => {
+            animId = requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        };
+        animate();
+
+        const observer = new ResizeObserver(() => {
+            const w = wrap.clientWidth;
+            const h = wrap.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        });
+        observer.observe(wrap);
+
+        this._cleanup3D = () => {
+            cancelAnimationFrame(animId);
+            observer.disconnect();
+            renderer.dispose();
+            controls.dispose();
+            this._cleanup3D = null;
+        };
     },
 
     _cleanup3D: null,

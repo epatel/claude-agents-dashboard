@@ -48,157 +48,35 @@ behavior change** — every step keeps the full test suite green and `aihealth d
   Anthropic endpoint as the shared lean *local* profile of the Claude runtime (Ollama profile
   generalized); migration 033, Settings ▸ Tiiny tab, `/api/tiiny/{models,test}`, key from env/Keychain;
   1434 tests; live-verified in the dashboard on a real device (2026-11-06)
-- [ ] M12 — Code-health pass driven by `aihealth` (owner: —, status: in progress). One PR per
-  step; steps 1→2 and 3→4 are sequential, 5 runs in parallel, 6 waits for 1–5, 8 follows 6.
-  - [x] 0 — Baseline (2026-11-07): scan #1 saved to `.aihealth/health.db` (7.14; 73 healthy /
-    53 warning / 2 alert); `.aihealth/` self-ignores via its own `.gitignore`; 1434 tests green.
-  - [x] 1 — Done 2026-11-07: file 3.17 → 4.73, project 7.14 → 7.25, −178 lines. New helpers
-    `_launch_session` / `_session_callbacks` / `_track_yolo` / `_untrack_yolo` /
-    `_release_session` / `_request_permission` / `_auto_approvable_item` /
-    `_approve_without_review`. Two drifts fixed by unifying: the merge-conflict and
-    permission restarts now get the `create_shortcut` tool, and `request_changes` honours the
-    item's model (it used the config model). Only `approve_item`'s self-duplication is left (step 2).
-    Original scope — `WorkflowService` session-launch dedup (file score 3.17): one `_launch_session`
-    helper for `_start_agent_internal` / `resume_agent` / `retry_agent` / `request_changes` /
-    `approve_item` / `_restart_session_with_new_permissions` (17–60 shared lines each); merge
-    `on_request_command` + `on_request_tool`, `on_complete` + `on_error`, and the shared tail of
-    `_auto_approve_no_changes` / `_auto_approve_direct` / `_run_auto_review`.
-  - [x] 2 — Done 2026-11-07: file 4.73 → 5.71, project 7.25 → 7.31; `approve_item` has no
-    findings left (phases: `_block_merge`, `_dirty_overlap`, `_has_changes_to_merge`,
-    `_finish_without_merge`, `_finish_merge`, `_rebase_and_retry_merge`,
-    `_restart_for_conflicts`). Added `tests/unit/test_approve_item.py` (7 characterization
-    tests, written and passed against the old code first). `peek_worktree` split into
-    `_peek_item` / `_peek_overview`. Only visible change: on a rebase-then-merge, the item
-    broadcast now precedes the dependents notification, as on the plain merge path. Not done:
-    the optional auto-review extraction; the file is still over the Large File limit (1303 LoC).
-    Original scope — split `approve_item` (209 lines, cyclomatic 49) into validate → merge → conflicts →
-    cleanup/unblock phases; simplify `peek_worktree`. Extracting auto-review into its own
-    collaborator is optional — flag here before doing it.
-  - [x] 3 — Done 2026-11-07 (live-verified: one real Haiku `ClaudeAgentSession` in a scratch repo
-    used who_am_i, Write, Bash past the command filter and set_commit_message; success, $0.04): `session.py` 5.72 → 8.05,
-    project 7.31 → 7.38. `start` is now cyclomatic 14 (`_build_mcp_servers`,
-    `_build_system_prompt` + note helpers and module-level `_*_NOTE` constants, `_build_allowed_tools`,
-    `_build_plugins`, `_build_hooks`, `_build_can_use_tool`, `_stage_attachments`), driven by the
-    `_BOARD_SERVERS` / `_BUILTIN_SERVER_TOOLS` tables; `_receive_loop` dispatches to
-    `_handle_content_block` / `_handle_result` / `_handle_system_message`; `build_attachment_prompt`
-    split. Proof of no behavior change: a snapshot of every SDK option, the full system prompt,
-    hooks, `can_use_tool` verdicts and the final query across 6 configs (minimal, full multi-repo +
-    attachments + resume, YOLO, bad MCP JSON, Ollama, Tiiny) is byte-identical before/after under a
-    fixed `PYTHONHASHSEED` (`OPTIONAL_TOOL_NAMES` is a set, so its whitelist order already varied
-    per process). Left: `__init__`'s 35 parameters (the shared session constructor contract).
-    Original scope — split `ClaudeAgentSession.start` (391 lines, cyclomatic 91): options building,
-    `can_use_tool`, prompt/attachments (`build_attachment_prompt`); flatten `_receive_loop`
-    (depth 6) into per-message-type dispatch. Needs a live agent run, not just unit tests.
-  - [x] 4 — Done 2026-11-07 (live-verified: one real `KimiAgentSession` on kimi-for-coding in a
-    scratch repo streamed thinking + tool calls, wrote a file, ran `ls`, and its commit-message
-    marker reached set_commit_message; success): `kimi_session.py` 5.93 → 7.27
-    (`_run` → `_handle_permission`, `_open_session`, `_select_model`, `_run_turns` / `_play_turn` /
-    `_turn_ended_cleanly`, plus a per-turn `_TurnStream` for chunk buffering and pending tool calls),
-    `session_service.py` 6.10 → 7.68 (`_parse_plugins` → bundled / configured / enabled-skill path
-    helpers), `review_agent.py` 6.97 → 9.32 (`_collect_review_text`, `_bullet_comments`; both
-    `ClaudeAgentOptions` call sites kept), `kimi_board_mcp.py` 7.89 → 10.00 (name → handler table).
-    Original scope — split `KimiAgentSession._run` (118 lines) along the same stages; also
-    `SessionService._parse_plugins` (cognitive 48), `review_agent._parse_decision` /
-    `run_auto_review`, `kimi_board_mcp.call_tool`. Needs a live Kimi run.
-  - [x] 5 — Done 2026-11-07: `operations.py` 5.50 → 7.90 (shared `_untracked_files`,
-    `_parse_name_status`, `_git_or_empty`, `_resolve_diff_base`; `communicate_or_kill` now also used
-    by `GraphService._exec`), `routes.py` 5.70 → 7.07 (`_archive_done_items`, `_item_worktree_root`,
-    stats SQL → `_STATS_SUMMARY_SQL` + `_cached_stats` / `_usage_stats`), `database_service.py`
-    7.02 → 9.07 (`_fetch_dicts` for six read methods), `main.py` 7.45 → 9.42, `file_routes.py`
-    7.35 → 8.86, `skills_service.py` 6.64 → 7.34. **Scoring note:** aihealth was reinstalled
-    mid-session (2026-11-07 13:01) and now also scans JavaScript — the 27 `src/static/js/` files
-    (5.88) pull the headline project score to 7.21. On the baseline's file set (non-JS) the project
-    is 7.64, vs 7.14 at baseline. Compare like with like from here on.
-    Original scope — small src dedups: `git/operations.py` (`get_changed_files` / `get_diff`; `run_git`
-    vs `GraphService._exec`), `web/routes.py` (archive-by-date/epic, worktree tree/content
-    helpers, `_get_optimized_stats`), `database_service.py` query builders, `main()`,
-    `file_routes.scan_directory`, `SkillsService._install_sync`.
-  - [x] 6 — Done 2026-11-07 (three parallel agents, disjoint files): all six files 3.07–5.68 → 10.00.
-    New `test_session_start.py` (31 `start()` tests out of test_session.py), `test_auto_approve.py`
-    (15 out of test_workflow_service.py), and `tests/unit/workflow_fixtures.py` — shared WorkflowService
-    fixtures as a plain module imported explicitly, NOT a conftest (generic names like `db`/`item`
-    would leak). Verified: per-file counts sum to the same 342, full suite 1441, and a runtime count
-    of executed asserts (HEAD vs tree) is equal or higher per group. Non-JS project 8.30, tests 8.60.
-    Original scope — test duplication via shared fixtures + `parametrize`: `test_create_todo_autostart.py`,
-    `test_session.py` (Ollama `TestStart`), `test_workflow_service.py`, `test_diff_mixing.py`,
-    `test_allowed_commands.py`, `test_mcp_tool_servers.py`.
-  - [ ] 7 — Optional: `.aihealth.toml` + `aihealth scan --fail-under` gate in `make`/CI; Swift
-    wrapper (`ProjectManager.swift`, `InstallSheet.swift`, `DashboardTabsView.swift`).
-  - [ ] 8 — Frontend JavaScript (`src/static/js/`, 27 files, 5.88; newly scanned by aihealth):
-    worst first — `file-browser.js` 3.50 and `review-dialog.js` 4.12 (12 duplication findings
-    each), `annotate.js` 4.27 and `board.js` 4.69 (complex / high-cognitive methods), then
-    `spacing_overlay.js`, `shortcuts.js`, `config-dialog.js`. Totals: 58 complex methods,
-    50 duplications, 41 high-cognitive. **Risk:** the JS has no unit tests — only the 7 Node
-    Playwright E2E tests, which spawn real agents (paid; confirm first) — so each file needs a
-    browser check of the affected UI (the `run` skill / Chrome) besides the E2E suite. Do this
-    after step 6; it does not depend on 7.
-    - [x] 8a — 2026-11-07: the two file browsers (`FileBrowser`, `ReviewFileBrowser`) now share
-      tree / tab / breadcrumb / filter code via `src/static/js/file-tree.js` (`FileTreeBase`, spread
-      into both; per-browser ids/classes in `_tree`, differences as hooks). Verified with a browser
-      harness: 30 DOM snapshots (tree, tabs, breadcrumb, content) across both browsers on a scratch
-      target, identical to the old code except a trailing space inside one class attribute
-      (`classList.toggle` vs `remove`; no rendering effect). file-tree.js 10.00; file-browser.js
-      3.50 → 4.86, review-dialog.js 4.12 → 5.43 (scan). Left in those two: `FileBrowser._renderContent`
-      / `init` / `_render3DModel` / `_renderArchive`, `ReviewFileBrowser._renderInlineDiff`,
-      `ReviewDialog.showReview` (duplicates `DetailDialog.showDetail`).
-      8b — 2026-11-07: `ReviewFileBrowser._renderInlineDiff` (137 lines, cyclomatic 41) split into
-      `_indexHunkChanges` / `_buildDiffMinimap` / `_changeRuns` / `_attachMinimapViewport`; its
-      separator-row branches were dead (the full-file view shows every line) and are gone with
-      `_createSeparatorRow` (CSS `.inline-diff-separator` / `.inline-diff-expand` now unused).
-      `FileBrowser`: `_renderContent` → `_contentViewer` + `_contentRenderers` table, `init` →
-      four `_wire*` methods, `_renderArchive` → header/row builders, `refresh` / `_navigateToDir`
-      share `_ensureChildrenLoaded` / `_rerenderTree`. Harness extended to 41 snapshots (multi-hunk
-      inline diff, Diff/Full toggle, deleted file, image / binary / zip / .env / STL viewers): all
-      identical; minimap click/drag, font controls, keyboard wiring and refresh checked directly.
-      file-browser.js → 8.40, review-dialog.js → 6.17. Left: `FileBrowser._render3DModel` (large,
-      WebGL — not snapshot-verifiable), `ReviewDialog.showReview` (+ duplication with
-      `DetailDialog.showDetail` / `switchDetailTab`). Harness: scratch target + dashboard on :8017,
-      script and baseline kept in that origin's localStorage (`__fb_script`, `__fb_baseline`).
-      Scores now: headline 7.89, non-JS 8.29, JS 6.63.
-      8c — 2026-11-07: `board.js` 4.69 → 8.39. Done/Archive columns share
-      `_renderDayGroupedColumn` / `_renderDayGroup` (were 60-line copies); Todo epic and No-Epic groups
-      share `_renderTodoGroup`; `renderCard` (cyclomatic 48) → per-part `_card*Html` builders with
-      actions split by column (`_todo/_doing/_reviewActionsHtml`); `updateCard` (cyclomatic 36) →
-      one rule (re-render the grouped column left, then the one entered, else `_insertCard`).
-      Verified with a board harness: ~26 synthetic items covering every card/column branch, rendered
-      through the real methods and stepped through collapsing, epic filter, 10 `updateCard` moves,
-      removals and unblocking — 27 snapshots × 6 columns identical to the old code; plus the live
-      WebSocket create → move → delete round trip. (Board harness: `__bd_script` / `__bd_baseline`
-      in the :8017 origin's localStorage.) JS now 7.09, headline 8.00.
-      8d — 2026-11-07: `annotate.js` 4.27 → 10.00. `render` → three layer passes over
-      `_drawAnnotation` + `_drawCheckerboard` / `_drawImage`; `_drawShape` and `_hitAnnotation` →
-      per-type `_shapePainters` / `_annotationHits` tables; text measuring shared (`_measureText`);
-      mouse handlers → `_selectAt`, `_resizeImage` (one rule for all four handles), `_dragTo` /
-      `_moveShape`, `_shapeFromDrawing` + `_styledAnnotation`; both JPG exports → `_renderJpeg`;
-      paste paths → `_firstClipboardImage` / `_firstImageFile`; `_distToLine` takes points.
-      Verified with a canvas harness that runs the old copy and the new file in one page through
-      49 scripted steps (paste / drop / Clipboard API, select, move, 4-handle resize, wheel, every
-      tool on both layers, text create / edit / Escape, drag of each type, delete, exports): pixels,
-      model state, a 6-px hit-test grid, export JPGs and return values identical at every step, and
-      the recorded 2D-context call log identical except that text sets `textBaseline` after
-      measuring instead of before (no pixel effect). Plus real mouse drawing in the dialog.
-      JS now 7.82, headline 8.19.
-      8e — 2026-11-07: detail / review dialogs. `DialogUtils` gained `fetchItem`, `loadWorkLog`
-      (the three copies of the work-log render), `markActiveTab` and `showTab` (detail and review
-      tab switching; config uses `markActiveTab`). `DetailDialog.showDetail` (cyclomatic 37) →
-      `_modelInfoHtml` / `_mergeCommitHtml` / `_wireCopyShaButtons` + `_copyText` /
-      `_setupHeaderActions` + `_columnButtons` / `_setupAutoApprove` + `_autoApproveMode` /
-      `_setupResumeForm`; `ReviewDialog.showReview` (cyclomatic 27) → `_renderResult` / `_loadDiff` /
-      `_renderChangedFiles` / `_scrollToDiffFile` / `_updateFilesTabCount` / `_wireReviewButtons`.
-      `switchReviewTab` keeps its unscoped selectors (it also resets the other dialogs' tabs, as
-      before). detail-dialog.js 7.45 → 10.00, review-dialog.js 6.90 → 8.06. Verified with a dialog
-      harness that loads the old and new copies of the four files side by side with stubbed
-      Api / Board / DialogCore / clipboard: 79 steps (every column and status, model / default /
-      config-error, merge commit, header buttons, auto-approve change ok / fail, resume, copy SHA
-      with clipboard fallback, the questions fallback view, review with files / no files + result /
-      log error / diff error, file-badge scroll, approve / done / changes / cancel, all tab switches)
-      — DOM of all three dialogs and the recorded calls identical; plus the live review dialog.
-      JS now 8.08, headline 8.25. Next: `FileBrowser._render3DModel`, then `spacing_overlay.js`,
-      `shortcuts.js`, `config-dialog.js`.
-      Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
-      empty (the summary query yields one all-NULL row) → `stats.js` throws every 10 s; (2) the review
-      browser auto-expands folders holding changed files but doesn't load their children, so changed
-      files deeper than the initial tree depth stay hidden until the folder is toggled twice.
+- [ ] M12 — Code-health pass driven by `aihealth` (status: in progress). One commit per step;
+  details of each done step are in its commit message (`git log --grep 'M12 step'`).
+  - [x] 0 — Baseline 2026-11-07: 7.14 project (`.aihealth/health.db`, self-ignored), 1434 tests.
+  - [x] 1 — `WorkflowService` session-launch dedup (`_launch_session` + helpers). Visible change:
+    merge-conflict / permission restarts get `create_shortcut`; `request_changes` uses the item's model.
+  - [x] 2 — `approve_item` split into merge phases; new `tests/unit/test_approve_item.py`. Visible
+    change: on rebase-then-merge the item broadcast now precedes the dependents notification.
+  - [x] 3 — `ClaudeAgentSession.start` → `_build_*` builders, `_receive_loop` dispatch; SDK options
+    snapshot byte-identical; live Haiku run. Left: `__init__`'s 35 parameters (shared contract).
+  - [x] 4 — `KimiAgentSession._run`, `_parse_plugins`, reviewer, `kimi_board_mcp` split; live Kimi run.
+  - [x] 5 — small `src/` dedups (git operations, routes, DB reads, `main()`, file routes, skills).
+  - [x] 6 — test dedup via `tests/unit/workflow_fixtures.py` (plain module, NOT a conftest — generic
+    fixture names would leak) and `parametrize`; 1441 tests.
+  - [ ] 7 — Optional: `.aihealth.toml` + `aihealth scan --fail-under` gate; Swift wrapper files.
+  - [ ] 8 — Frontend JS (`src/static/js/`). **Risk:** no JS unit tests; the 7 Node E2E tests spawn
+    paid agents (confirm first). Each file was verified with an old-vs-new browser harness on a
+    scratch target (dashboard on :8017; harness scripts/baselines in that origin's localStorage,
+    `__fb_*` / `__bd_*` / `__an_*`) plus a live check of the UI.
+    Done: 8a `file-tree.js` (`FileTreeBase`, shared by both file browsers), 8b file-browser /
+    inline-diff splits (dead separator rows removed; CSS `.inline-diff-separator` / `-expand` now
+    unused), 8c `board.js`, 8d `annotate.js`, 8e detail / review dialogs (`DialogUtils.fetchItem` /
+    `loadWorkLog` / `showTab`), 8f `file-browser.js` 3D / markdown. Next: `spacing_overlay.js`,
+    `shortcuts.js`, `config-dialog.js`, then the rest of `ReviewFileBrowser`.
+  - **Scores** (2026-11-07, after 8f): headline 8.27, JS 8.20. aihealth started scanning JS
+    mid-pass, so compare like with like (baseline 7.14 had no JS).
+  - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
+    empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
+    auto-expands folders holding changed files without loading their children, so deeper changed
+    files stay hidden until the folder is toggled twice.
 
 ## Decisions
 
@@ -308,7 +186,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-07): steps 0–6 done; next is 8 (frontend JS); 7 is optional.** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 in flight (2026-11-08): steps 0–6 and 8a–8f done; step 8 continues; 7 is optional.** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above
