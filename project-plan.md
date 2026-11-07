@@ -141,6 +141,20 @@ behavior change** — every step keeps the full test suite green and `aihealth d
       3.50 → 4.86, review-dialog.js 4.12 → 5.43 (scan). Left in those two: `FileBrowser._renderContent`
       / `init` / `_render3DModel` / `_renderArchive`, `ReviewFileBrowser._renderInlineDiff`,
       `ReviewDialog.showReview` (duplicates `DetailDialog.showDetail`).
+      8b — 2026-11-07: `ReviewFileBrowser._renderInlineDiff` (137 lines, cyclomatic 41) split into
+      `_indexHunkChanges` / `_buildDiffMinimap` / `_changeRuns` / `_attachMinimapViewport`; its
+      separator-row branches were dead (the full-file view shows every line) and are gone with
+      `_createSeparatorRow` (CSS `.inline-diff-separator` / `.inline-diff-expand` now unused).
+      `FileBrowser`: `_renderContent` → `_contentViewer` + `_contentRenderers` table, `init` →
+      four `_wire*` methods, `_renderArchive` → header/row builders, `refresh` / `_navigateToDir`
+      share `_ensureChildrenLoaded` / `_rerenderTree`. Harness extended to 41 snapshots (multi-hunk
+      inline diff, Diff/Full toggle, deleted file, image / binary / zip / .env / STL viewers): all
+      identical; minimap click/drag, font controls, keyboard wiring and refresh checked directly.
+      file-browser.js → 8.40, review-dialog.js → 6.17. Left: `FileBrowser._render3DModel` (large,
+      WebGL — not snapshot-verifiable), `ReviewDialog.showReview` (+ duplication with
+      `DetailDialog.showDetail` / `switchDetailTab`). Harness: scratch target + dashboard on :8017,
+      script and baseline kept in that origin's localStorage (`__fb_script`, `__fb_baseline`).
+      Scores now: headline 7.89, non-JS 8.29, JS 6.63.
       Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
       empty (the summary query yields one all-NULL row) → `stats.js` throws every 10 s; (2) the review
       browser auto-expands folders holding changed files but doesn't load their children, so changed

@@ -15,53 +15,60 @@ const FileBrowser = {
     _fontSize: parseInt(localStorage.getItem('fileBrowserFontSize')) || 13,
 
     init() {
+        this._wireFilterInput();
+        this._wireDialogClose();
+        this._wireFindShortcut();
+        this._wireTreeKeys();
+    },
+
+    _wireFilterInput() {
         const filterInput = document.getElementById('file-tree-filter');
-        if (filterInput) {
-            filterInput.addEventListener('input', (e) => this._filterTree(e.target.value));
-            filterInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') {
-                    e.target.value = '';
-                    this._filterTree('');
-                }
-            });
-        }
+        if (!filterInput) return;
+        filterInput.addEventListener('input', (e) => this._filterTree(e.target.value));
+        filterInput.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            e.target.value = '';
+            this._filterTree('');
+        });
+    },
 
-        // Close dialog on Escape
+    /** Reset the filter whenever the dialog closes (Escape or close button). */
+    _wireDialogClose() {
         const dialog = document.getElementById('file-browser-dialog');
-        if (dialog) {
-            dialog.addEventListener('close', () => {
-                // Reset filter on close
-                const filter = document.getElementById('file-tree-filter');
-                if (filter) filter.value = '';
-            });
-        }
+        if (!dialog) return;
+        dialog.addEventListener('close', () => {
+            const filter = document.getElementById('file-tree-filter');
+            if (filter) filter.value = '';
+        });
+    },
 
-        // Ctrl/Cmd + F focuses filter when dialog is open
+    /** Ctrl/Cmd + F focuses the filter while the dialog is open. */
+    _wireFindShortcut() {
         document.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-                const dialog = document.getElementById('file-browser-dialog');
-                if (dialog && dialog.open) {
-                    e.preventDefault();
-                    const filter = document.getElementById('file-tree-filter');
-                    if (filter) filter.focus();
-                }
+            const isFind = (e.ctrlKey || e.metaKey) && e.key === 'f';
+            if (!isFind) return;
+            const dialog = document.getElementById('file-browser-dialog');
+            if (!dialog || !dialog.open) return;
+            e.preventDefault();
+            const filter = document.getElementById('file-tree-filter');
+            if (filter) filter.focus();
+        });
+    },
+
+    /** Arrow keys move through the tree; Enter opens / toggles the current item. */
+    _wireTreeKeys() {
+        const treeEl = document.getElementById('file-tree');
+        if (!treeEl) return;
+        treeEl.setAttribute('tabindex', '0');
+        treeEl.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                this._navigateTree(e.key === 'ArrowDown' ? 1 : -1);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                this._activateCurrentTreeItem();
             }
         });
-
-        // Arrow key navigation in tree
-        const treeEl = document.getElementById('file-tree');
-        if (treeEl) {
-            treeEl.setAttribute('tabindex', '0');
-            treeEl.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    this._navigateTree(e.key === 'ArrowDown' ? 1 : -1);
-                } else if (e.key === 'Enter') {
-                    e.preventDefault();
-                    this._activateCurrentTreeItem();
-                }
-            });
-        }
     },
 
     open() {
@@ -83,21 +90,11 @@ const FileBrowser = {
         this._treeData = null;
         await this._loadTree('');
 
-        // Re-expand previously expanded directories
+        // Re-expand previously expanded directories (dirs that no longer exist are skipped)
         for (const dirPath of this._expandedDirs) {
-            const node = this._findTreeNode(this._treeData, dirPath);
-            if (node && node.children === null) {
-                try {
-                    const data = await Api.request('GET', `/api/files/tree?path=${encodeURIComponent(dirPath)}`);
-                    node.children = data.tree;
-                } catch (err) { /* skip dirs that no longer exist */ }
-            }
+            await this._ensureChildrenLoaded(dirPath);
         }
-        // Re-render tree with expanded state restored
-        if (this._treeData) {
-            const treeEl = document.getElementById('file-tree');
-            this._renderTreeNodes(treeEl, this._treeData, 0);
-        }
+        this._rerenderTree();
 
         // Refresh the active tab's content
         if (this._activeTab >= 0) {
@@ -133,8 +130,7 @@ const FileBrowser = {
         const treeEl = document.getElementById('file-tree');
         treeEl.innerHTML = '<div class="file-tree-loading">Loading...</div>';
         try {
-            const url = path ? `/api/files/tree?path=${encodeURIComponent(path)}` : '/api/files/tree';
-            const data = await Api.request('GET', url);
+            const data = await Api.request('GET', this._treeUrl(path));
             if (!path) {
                 this._treeData = data.tree;
             }
@@ -221,22 +217,25 @@ const FileBrowser = {
             this._expandedDirs.add(current);
         }
 
-        // Find the tree node and lazy-load if needed
-        const node = this._findTreeNode(this._treeData, dirPath);
-        if (node && node.children === null) {
-            try {
-                const data = await Api.request('GET', `/api/files/tree?path=${encodeURIComponent(dirPath)}`);
-                node.children = data.tree;
-            } catch (err) {
-                // Silently fail — tree will show expanded but empty
-            }
-        }
+        // Lazy-load the target (on failure it shows expanded but empty)
+        await this._ensureChildrenLoaded(dirPath);
+        this._rerenderTree();
+    },
 
-        // Re-render tree to show expanded state
-        if (this._treeData) {
-            const treeEl = document.getElementById('file-tree');
-            this._renderTreeNodes(treeEl, this._treeData, 0);
-        }
+    /** Fetch a loaded-but-unexpanded dir's children; failures are ignored. */
+    async _ensureChildrenLoaded(dirPath) {
+        const node = this._findTreeNode(this._treeData, dirPath);
+        if (!node || node.children !== null) return;
+        try {
+            const data = await Api.request('GET', this._treeUrl(dirPath));
+            node.children = data.tree;
+        } catch (err) { /* dir may no longer exist */ }
+    },
+
+    /** Re-render the whole tree from _treeData, keeping the expanded state. */
+    _rerenderTree() {
+        if (!this._treeData) return;
+        this._renderTreeNodes(document.getElementById('file-tree'), this._treeData, 0);
     },
 
     _findTreeNode(nodes, path) {
@@ -256,77 +255,69 @@ const FileBrowser = {
         if (this._cleanup3D) this._cleanup3D();
 
         const contentEl = document.getElementById('file-content');
-        const fontControls = document.getElementById('file-font-controls');
+        const tab = this._activeTab < 0 ? null : this._openTabs[this._activeTab];
+        const viewer = this._contentViewer(tab);
+        this._contentRenderers[viewer].call(this, contentEl, tab);
 
-        if (this._activeTab < 0) {
+        // Font size controls only apply to the text viewers
+        const fontControls = document.getElementById('file-font-controls');
+        if (fontControls) fontControls.style.display = (viewer === 'markdown' || viewer === 'code') ? 'flex' : 'none';
+    },
+
+    /** Which viewer shows ``tab`` (null = no file open). */
+    _contentViewer(tab) {
+        if (!tab) return 'empty';
+        if (tab.hidden) return 'hidden';  // secret file
+        const special = this._specialViewer(tab);
+        if (special) return special;
+        if (tab.binary) return this._isImage(tab) ? 'image' : 'binary';
+        return tab.language === 'markdown' ? 'markdown' : 'code';
+    },
+
+    /** The server-chosen viewer ('3d' / 'archive') when its data is present, else null. */
+    _specialViewer(tab) {
+        if (tab.viewer === '3d' && tab.content) return '3d';
+        if (tab.viewer === 'archive' && tab.archiveEntries) return 'archive';
+        return null;
+    },
+
+    _isImage(tab) {
+        return Boolean(tab.mimeType?.startsWith('image/') && tab.content);
+    },
+
+    _contentRenderers: {
+        empty(contentEl) {
             contentEl.innerHTML = `
                 <div class="file-empty-state">
                     <div class="file-empty-icon">📂</div>
                     <p>Select a file from the tree to view it</p>
                 </div>`;
-            if (fontControls) fontControls.style.display = 'none';
-            return;
-        }
-
-        const tab = this._openTabs[this._activeTab];
-
-        // Hidden (secret) file
-        if (tab.hidden) {
+        },
+        hidden(contentEl) {
             contentEl.innerHTML = `
                 <div class="file-hidden-placeholder">
                     <div class="file-binary-icon">🔒</div>
                     <p>Hidden for security</p>
                 </div>`;
-            if (fontControls) fontControls.style.display = 'none';
-            return;
-        }
-
-        // 3D model viewer
-        if (tab.viewer === '3d' && tab.content) {
-            this._render3DModel(contentEl, tab);
-            if (fontControls) fontControls.style.display = 'none';
-            return;
-        }
-
-        // Archive contents viewer
-        if (tab.viewer === 'archive' && tab.archiveEntries) {
-            this._renderArchive(contentEl, tab);
-            if (fontControls) fontControls.style.display = 'none';
-            return;
-        }
-
-        // Image
-        if (tab.binary && tab.mimeType && tab.mimeType.startsWith('image/') && tab.content) {
+        },
+        '3d'(contentEl, tab) { this._render3DModel(contentEl, tab); },
+        archive(contentEl, tab) { this._renderArchive(contentEl, tab); },
+        image(contentEl, tab) {
             contentEl.innerHTML = `
                 <div class="file-image-viewer">
                     <img src="${tab.content}" alt="${this._escapeHtml(tab.name)}">
                     <div class="file-image-info">${this._formatSize(tab.size)}</div>
                 </div>`;
-            if (fontControls) fontControls.style.display = 'none';
-            return;
-        }
-
-        // Binary (non-image)
-        if (tab.binary) {
+        },
+        binary(contentEl, tab) {
             contentEl.innerHTML = `
                 <div class="file-binary-placeholder">
                     <div class="file-binary-icon">📦</div>
                     <p>Binary file — ${this._formatSize(tab.size)}</p>
                 </div>`;
-            if (fontControls) fontControls.style.display = 'none';
-            return;
-        }
-
-        // Markdown
-        if (tab.language === 'markdown') {
-            this._renderMarkdown(contentEl, tab);
-            if (fontControls) fontControls.style.display = 'flex';
-            return;
-        }
-
-        // Code / text
-        this._renderCode(contentEl, tab);
-        if (fontControls) fontControls.style.display = 'flex';
+        },
+        markdown(contentEl, tab) { this._renderMarkdown(contentEl, tab); },
+        code(contentEl, tab) { this._renderCode(contentEl, tab); },
     },
 
     _renderCode(container, tab) {
@@ -544,21 +535,10 @@ const FileBrowser = {
 
     _renderArchive(container, tab) {
         const entries = tab.archiveEntries || [];
-        const fileEntries = entries.filter(e => !e.is_dir);
-        const dirEntries = entries.filter(e => e.is_dir);
-        const totalUncompressed = fileEntries.reduce((sum, e) => sum + (e.size || 0), 0);
-        const totalCompressed = fileEntries.reduce((sum, e) => sum + (e.compressed_size || 0), 0);
-
-        let html = `
+        const rows = entries.map(entry => this._archiveRowHtml(entry)).join('');
+        container.innerHTML = `
             <div class="file-archive-viewer">
-                <div class="file-archive-header">
-                    <span class="file-archive-title">📦 ${this._escapeHtml(tab.name)}</span>
-                    <span class="file-archive-stats">
-                        ${fileEntries.length} files, ${dirEntries.length} folders —
-                        ${this._formatSize(totalUncompressed)} uncompressed
-                        ${totalCompressed ? `(${this._formatSize(totalCompressed)} compressed, ${totalUncompressed ? Math.round((1 - totalCompressed/totalUncompressed) * 100) : 0}% saved)` : ''}
-                    </span>
-                </div>
+                ${this._archiveHeaderHtml(tab.name, entries)}
                 <table class="file-archive-table">
                     <thead>
                         <tr>
@@ -568,31 +548,48 @@ const FileBrowser = {
                             <th>Date</th>
                         </tr>
                     </thead>
-                    <tbody>`;
+                    <tbody>${rows}</tbody></table></div>`;
+    },
 
-        for (const entry of entries) {
-            if (entry.error) {
-                html += `<tr class="archive-error"><td colspan="4">${this._escapeHtml(entry.name)}</td></tr>`;
-                continue;
-            }
-            if (entry.truncated) {
-                html += `<tr class="archive-truncated"><td colspan="4">${this._escapeHtml(entry.name)}</td></tr>`;
-                continue;
-            }
-            const icon = entry.is_dir ? '📁' : this._getFileIcon(entry.name);
-            const indent = (entry.name.match(/\//g) || []).length;
-            const displayName = entry.name.endsWith('/') ? entry.name.slice(0, -1) : entry.name;
-            html += `
+    /** Archive title plus file/folder counts and compression totals. */
+    _archiveHeaderHtml(name, entries) {
+        const fileEntries = entries.filter(e => !e.is_dir);
+        const dirCount = entries.length - fileEntries.length;
+        const totalUncompressed = fileEntries.reduce((sum, e) => sum + (e.size || 0), 0);
+        const totalCompressed = fileEntries.reduce((sum, e) => sum + (e.compressed_size || 0), 0);
+        const savedPct = totalUncompressed ? Math.round((1 - totalCompressed / totalUncompressed) * 100) : 0;
+        const compressedNote = totalCompressed
+            ? `(${this._formatSize(totalCompressed)} compressed, ${savedPct}% saved)`
+            : '';
+        return `<div class="file-archive-header">
+                    <span class="file-archive-title">📦 ${this._escapeHtml(name)}</span>
+                    <span class="file-archive-stats">
+                        ${fileEntries.length} files, ${dirCount} folders —
+                        ${this._formatSize(totalUncompressed)} uncompressed
+                        ${compressedNote}
+                    </span>
+                </div>`;
+    },
+
+    /** One archive table row (error / truncated entries span the whole row). */
+    _archiveRowHtml(entry) {
+        if (entry.error) {
+            return `<tr class="archive-error"><td colspan="4">${this._escapeHtml(entry.name)}</td></tr>`;
+        }
+        if (entry.truncated) {
+            return `<tr class="archive-truncated"><td colspan="4">${this._escapeHtml(entry.name)}</td></tr>`;
+        }
+        const icon = entry.is_dir ? '📁' : this._getFileIcon(entry.name);
+        const indent = (entry.name.match(/\//g) || []).length;
+        const displayName = entry.name.endsWith('/') ? entry.name.slice(0, -1) : entry.name;
+        const dash = (value) => entry.is_dir ? '—' : this._formatSize(value);
+        return `
                 <tr class="${entry.is_dir ? 'archive-dir' : ''}">
                     <td style="padding-left:${8 + indent * 12}px">${icon} ${this._escapeHtml(displayName)}</td>
-                    <td>${entry.is_dir ? '—' : this._formatSize(entry.size)}</td>
-                    <td>${entry.is_dir ? '—' : this._formatSize(entry.compressed_size)}</td>
+                    <td>${dash(entry.size)}</td>
+                    <td>${dash(entry.compressed_size)}</td>
                     <td>${entry.date || '—'}</td>
                 </tr>`;
-        }
-
-        html += `</tbody></table></div>`;
-        container.innerHTML = html;
     },
 
     _showError(message, path) {

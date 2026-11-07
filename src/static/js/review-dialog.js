@@ -342,233 +342,163 @@ const ReviewFileBrowser = {
 
     /**
      * Render GitHub-style inline diff: full file content with changes highlighted,
-     * dual line number gutters (old/new), and expandable context.
+     * dual line number gutters (old/new), and a scrollbar minimap of the changes.
      */
     _renderInlineDiff(container, tab) {
         // Full file view — wrapper inside outer handles scrolling, minimap overlays
         container.style.overflow = 'hidden';
 
         const hunks = this._parseDiffHunks(tab.diff_lines || []);
-        const fileContent = tab.content || '';
-        const fileLines = fileContent.split('\n');
+        const fileLines = (tab.content || '').split('\n');
         // Remove trailing empty line from split if file ends with newline
         if (fileLines.length > 0 && fileLines[fileLines.length - 1] === '') {
             fileLines.pop();
         }
-
-        // Build a map of new-line-number -> hunk line info for changed lines
-        // and old-line-number -> hunk line info for deleted lines
-        const addedLines = new Map();    // newLineNum -> {text}
-        const deletedLines = [];         // [{oldLine, newLine (insert before), text}]
-        const contextRanges = [];        // [{newStart, newEnd}] — ranges covered by hunks
-
-        for (const hunk of hunks) {
-            let hunkNewStart = Infinity;
-            let hunkNewEnd = 0;
-            for (const hl of hunk.lines) {
-                if (hl.type === 'add') {
-                    addedLines.set(hl.newLine, hl);
-                    hunkNewStart = Math.min(hunkNewStart, hl.newLine);
-                    hunkNewEnd = Math.max(hunkNewEnd, hl.newLine);
-                } else if (hl.type === 'del') {
-                    deletedLines.push({ ...hl, insertBeforeNew: this._findInsertPoint(hunk, hl) });
-                    if (hl.oldLine !== null) {
-                        hunkNewStart = Math.min(hunkNewStart, this._findInsertPoint(hunk, hl));
-                    }
-                } else if (hl.type === 'context') {
-                    hunkNewStart = Math.min(hunkNewStart, hl.newLine);
-                    hunkNewEnd = Math.max(hunkNewEnd, hl.newLine);
-                }
-            }
-            if (hunkNewStart !== Infinity) {
-                contextRanges.push({ newStart: hunkNewStart, newEnd: hunkNewEnd });
-            }
-        }
-
-        // Group deleted lines by their insertion point (before which new line they appear)
-        const deletedByInsertPoint = new Map();
-        for (const dl of deletedLines) {
-            const key = dl.insertBeforeNew;
-            if (!deletedByInsertPoint.has(key)) deletedByInsertPoint.set(key, []);
-            deletedByInsertPoint.get(key).push(dl);
-        }
-
-        // Build the full rendered output
-        const wrapper = document.createElement('div');
-        wrapper.className = 'rfb-inline-diff-full';
-
-        // Create table for alignment
-        const table = document.createElement('table');
-        table.className = 'inline-diff-table';
-
-        // Show all lines — full file view
-        const visibleNewLines = new Set();
-        for (let i = 1; i <= fileLines.length; i++) {
-            visibleNewLines.add(i);
-        }
-
-        // For computing old line numbers for unchanged lines, track the offset
-        // oldLine = newLine - offset, where offset changes with adds/dels
+        const { addedLines, deletedByInsertPoint } = this._indexHunkChanges(hunks);
         const oldLineForNew = this._buildOldLineMap(hunks, fileLines.length);
 
-        let lastRenderedLine = 0;
-
-        for (let newLineNum = 1; newLineNum <= fileLines.length; newLineNum++) {
-            // Insert deleted lines that go before this new line
-            if (deletedByInsertPoint.has(newLineNum)) {
-                for (const dl of deletedByInsertPoint.get(newLineNum)) {
-                    const row = this._createDiffRow(dl.oldLine, null, 'del', dl.text);
-                    table.appendChild(row);
-                }
+        const table = document.createElement('table');
+        table.className = 'inline-diff-table';
+        // Deleted lines are shown just before the new line they precede
+        const appendDeleted = (newLineNum) => {
+            for (const dl of deletedByInsertPoint.get(newLineNum) || []) {
+                table.appendChild(this._createDiffRow(dl.oldLine, null, 'del', dl.text));
             }
-
-            if (!visibleNewLines.has(newLineNum)) {
-                // If we just rendered lines and now hit a gap, show a separator
-                if (lastRenderedLine > 0 && visibleNewLines.has(lastRenderedLine)) {
-                    const sepRow = this._createSeparatorRow(newLineNum);
-                    table.appendChild(sepRow);
-                }
-                continue;
-            }
-
-            // Show separator at the start if we're skipping initial lines
-            if (lastRenderedLine === 0 && newLineNum > 1) {
-                const sepRow = this._createSeparatorRow(1);
-                table.appendChild(sepRow);
-            }
-            // Show separator if there's a gap from the last rendered line
-            if (lastRenderedLine > 0 && newLineNum > lastRenderedLine + 1 && !visibleNewLines.has(lastRenderedLine + 1)) {
-                // Already handled above
-            }
-
-            const lineText = fileLines[newLineNum - 1];
+        };
+        fileLines.forEach((lineText, i) => {
+            const newLineNum = i + 1;
+            appendDeleted(newLineNum);
             const isAdded = addedLines.has(newLineNum);
-            const oldNum = oldLineForNew.get(newLineNum);
-            const type = isAdded ? 'add' : 'context';
+            table.appendChild(this._createDiffRow(
+                isAdded ? null : oldLineForNew.get(newLineNum), newLineNum,
+                isAdded ? 'add' : 'context', lineText,
+            ));
+        });
+        appendDeleted(fileLines.length + 1);  // deletions at the very end of the file
 
-            const row = this._createDiffRow(isAdded ? null : oldNum, newLineNum, type, lineText);
-            table.appendChild(row);
-            lastRenderedLine = newLineNum;
-        }
-
-        // Handle deleted lines at the very end of the file
-        const afterLast = fileLines.length + 1;
-        if (deletedByInsertPoint.has(afterLast)) {
-            for (const dl of deletedByInsertPoint.get(afterLast)) {
-                const row = this._createDiffRow(dl.oldLine, null, 'del', dl.text);
-                table.appendChild(row);
-            }
-        }
-
-        // If file ends before the last visible, show trailing separator
-        if (lastRenderedLine < fileLines.length && lastRenderedLine > 0) {
-            const sepRow = this._createSeparatorRow(lastRenderedLine + 1);
-            table.appendChild(sepRow);
-        }
-
+        const wrapper = document.createElement('div');
+        wrapper.className = 'rfb-inline-diff-full';
         wrapper.appendChild(table);
 
         // Wrap in outer container for minimap overlay
         const outer = document.createElement('div');
         outer.className = 'inline-diff-outer';
         outer.appendChild(wrapper);
-
-        // Build scrollbar minimap showing change locations
-        const totalRows = table.rows.length;
-        if (totalRows > 0) {
-            const minimap = document.createElement('div');
-            minimap.className = 'inline-diff-minimap';
-
-            // Merge adjacent same-type markers into bands for cleaner look
-            let runStart = -1;
-            let runType = null;
-            const addMarker = (type, startIdx, endIdx) => {
-                const marker = document.createElement('div');
-                marker.className = `inline-diff-minimap-marker inline-diff-minimap-${type}`;
-                const topPct = (startIdx / totalRows) * 100;
-                const span = ((endIdx - startIdx + 1) / totalRows) * 100;
-                marker.style.top = `${topPct}%`;
-                marker.style.height = `${Math.max(span, 0.3)}%`;
-                minimap.appendChild(marker);
-            };
-
-            for (let i = 0; i < totalRows; i++) {
-                const row = table.rows[i];
-                let color = null;
-                if (row.classList.contains('inline-diff-add')) color = 'add';
-                else if (row.classList.contains('inline-diff-del')) color = 'del';
-
-                if (color === runType && runStart >= 0) {
-                    // Continue the run
-                } else {
-                    // Flush previous run
-                    if (runType) addMarker(runType, runStart, i - 1);
-                    runStart = color ? i : -1;
-                    runType = color;
-                }
-            }
-            if (runType) addMarker(runType, runStart, totalRows - 1);
-
-            // Click on minimap scrolls to that position in the wrapper
-            minimap.addEventListener('click', (e) => {
-                const rect = minimap.getBoundingClientRect();
-                const fraction = (e.clientY - rect.top) / rect.height;
-                wrapper.scrollTop = fraction * wrapper.scrollHeight;
-            });
-
-            // Show viewport indicator
-            const viewport = document.createElement('div');
-            viewport.className = 'inline-diff-minimap-viewport';
-            minimap.appendChild(viewport);
-
-            const updateViewport = () => {
-                const sh = wrapper.scrollHeight;
-                const ch = wrapper.clientHeight;
-                if (sh <= ch) {
-                    viewport.style.display = 'none';
-                    return;
-                }
-                viewport.style.display = '';
-                const topPct = (wrapper.scrollTop / sh) * 100;
-                const heightPct = (ch / sh) * 100;
-                viewport.style.top = `${topPct}%`;
-                viewport.style.height = `${heightPct}%`;
-            };
-            wrapper.addEventListener('scroll', updateViewport, { passive: true });
-            // Initial update after render
-            requestAnimationFrame(updateViewport);
-
-            // Drag viewport handle to scroll (replaces native scrollbar)
-            let dragStartY = 0;
-            let dragStartScrollTop = 0;
-            const onDragMove = (e) => {
-                e.preventDefault();
-                const minimapRect = minimap.getBoundingClientRect();
-                const deltaY = e.clientY - dragStartY;
-                const scrollRange = wrapper.scrollHeight - wrapper.clientHeight;
-                const minimapRange = minimapRect.height;
-                wrapper.scrollTop = dragStartScrollTop + (deltaY / minimapRange) * wrapper.scrollHeight;
-            };
-            const onDragEnd = () => {
-                viewport.classList.remove('dragging');
-                document.removeEventListener('mousemove', onDragMove);
-                document.removeEventListener('mouseup', onDragEnd);
-            };
-            viewport.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                viewport.classList.add('dragging');
-                dragStartY = e.clientY;
-                dragStartScrollTop = wrapper.scrollTop;
-                document.addEventListener('mousemove', onDragMove);
-                document.addEventListener('mouseup', onDragEnd);
-            });
-
-            outer.appendChild(minimap);
+        if (table.rows.length > 0) {
+            outer.appendChild(this._buildDiffMinimap(table, wrapper));
         }
 
         container.innerHTML = '';
         container.appendChild(outer);
+    },
+
+    /**
+     * Index a file's hunks: added lines by new line number, and deleted lines
+     * grouped by the new line number they appear before.
+     */
+    _indexHunkChanges(hunks) {
+        const addedLines = new Map();            // newLineNum -> hunk line
+        const deletedByInsertPoint = new Map();  // newLineNum -> [deleted hunk lines]
+        for (const hunk of hunks) {
+            for (const hl of hunk.lines) {
+                if (hl.type === 'add') {
+                    addedLines.set(hl.newLine, hl);
+                } else if (hl.type === 'del') {
+                    const key = this._findInsertPoint(hunk, hl);
+                    deletedByInsertPoint.set(key, [...(deletedByInsertPoint.get(key) || []), hl]);
+                }
+            }
+        }
+        return { addedLines, deletedByInsertPoint };
+    },
+
+    /** Scrollbar minimap: change bands, click-to-scroll and a draggable viewport. */
+    _buildDiffMinimap(table, wrapper) {
+        const minimap = document.createElement('div');
+        minimap.className = 'inline-diff-minimap';
+        const totalRows = table.rows.length;
+        for (const run of this._changeRuns(table)) {
+            const marker = document.createElement('div');
+            marker.className = `inline-diff-minimap-marker inline-diff-minimap-${run.type}`;
+            const span = ((run.end - run.start + 1) / totalRows) * 100;
+            marker.style.top = `${(run.start / totalRows) * 100}%`;
+            marker.style.height = `${Math.max(span, 0.3)}%`;
+            minimap.appendChild(marker);
+        }
+
+        // Click on minimap scrolls to that position in the wrapper
+        minimap.addEventListener('click', (e) => {
+            const rect = minimap.getBoundingClientRect();
+            const fraction = (e.clientY - rect.top) / rect.height;
+            wrapper.scrollTop = fraction * wrapper.scrollHeight;
+        });
+        this._attachMinimapViewport(minimap, wrapper);
+        return minimap;
+    },
+
+    /** Runs of adjacent added / deleted rows, merged into bands: [{type, start, end}]. */
+    _changeRuns(table) {
+        const runs = [];
+        let runStart = -1;
+        let runType = null;
+        const rowCount = table.rows.length;
+        for (let i = 0; i < rowCount; i++) {
+            const classes = table.rows[i].classList;
+            const color = classes.contains('inline-diff-add') ? 'add'
+                : classes.contains('inline-diff-del') ? 'del' : null;
+            if (color === runType && runStart >= 0) continue;  // the run continues
+            if (runType) runs.push({ type: runType, start: runStart, end: i - 1 });
+            runStart = color ? i : -1;
+            runType = color;
+        }
+        if (runType) runs.push({ type: runType, start: runStart, end: rowCount - 1 });
+        return runs;
+    },
+
+    /** Viewport indicator on the minimap that tracks scrolling and can be dragged. */
+    _attachMinimapViewport(minimap, wrapper) {
+        const viewport = document.createElement('div');
+        viewport.className = 'inline-diff-minimap-viewport';
+        minimap.appendChild(viewport);
+
+        const updateViewport = () => {
+            const sh = wrapper.scrollHeight;
+            const ch = wrapper.clientHeight;
+            if (sh <= ch) {
+                viewport.style.display = 'none';
+                return;
+            }
+            viewport.style.display = '';
+            viewport.style.top = `${(wrapper.scrollTop / sh) * 100}%`;
+            viewport.style.height = `${(ch / sh) * 100}%`;
+        };
+        wrapper.addEventListener('scroll', updateViewport, { passive: true });
+        // Initial update after render
+        requestAnimationFrame(updateViewport);
+
+        // Drag viewport handle to scroll (replaces native scrollbar)
+        let dragStartY = 0;
+        let dragStartScrollTop = 0;
+        const onDragMove = (e) => {
+            e.preventDefault();
+            const deltaY = e.clientY - dragStartY;
+            const minimapRange = minimap.getBoundingClientRect().height;
+            wrapper.scrollTop = dragStartScrollTop + (deltaY / minimapRange) * wrapper.scrollHeight;
+        };
+        const onDragEnd = () => {
+            viewport.classList.remove('dragging');
+            document.removeEventListener('mousemove', onDragMove);
+            document.removeEventListener('mouseup', onDragEnd);
+        };
+        viewport.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            viewport.classList.add('dragging');
+            dragStartY = e.clientY;
+            dragStartScrollTop = wrapper.scrollTop;
+            document.addEventListener('mousemove', onDragMove);
+            document.addEventListener('mouseup', onDragEnd);
+        });
     },
 
     /** Find the new line number before which a deleted line should appear */
@@ -641,19 +571,6 @@ const ReviewFileBrowser = {
         row.appendChild(newGutter);
         row.appendChild(marker);
         row.appendChild(content);
-        return row;
-    },
-
-    _createSeparatorRow(lineNum) {
-        const row = document.createElement('tr');
-        row.className = 'inline-diff-row inline-diff-separator';
-
-        const td = document.createElement('td');
-        td.colSpan = 4;
-        td.className = 'inline-diff-expand';
-        td.innerHTML = `<span class="inline-diff-expand-icon">⋯</span>`;
-
-        row.appendChild(td);
         return row;
     },
 
