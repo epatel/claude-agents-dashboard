@@ -14,8 +14,9 @@
      When no active objective is in flight, the goal is simply: keep the dashboard correct,
      tested, and shippable on the latest Claude models. -->
 
-Keep the dashboard correct, well-tested, and shippable on the latest Claude models.
-Replace this with the specific objective the moment one is in flight.
+**M12 — Code-health pass:** raise the `aihealth` score (baseline **7.14** project, **6.65**
+for `src/`, 2026-11-07) by removing duplication and splitting the worst methods, with **no
+behavior change** — every step keeps the full test suite green and `aihealth delta` not worse.
 
 ## Non-goals
 
@@ -47,7 +48,32 @@ Replace this with the specific objective the moment one is in flight.
   Anthropic endpoint as the shared lean *local* profile of the Claude runtime (Ollama profile
   generalized); migration 033, Settings ▸ Tiiny tab, `/api/tiiny/{models,test}`, key from env/Keychain;
   1434 tests; live-verified in the dashboard on a real device (2026-11-06)
-- [ ] M12 — <next objective — fill in when work is fanned out> (owner: —, status: not started)
+- [ ] M12 — Code-health pass driven by `aihealth` (owner: —, status: not started). One PR per
+  step; steps 1→2 and 3→4 are sequential, 5 runs in parallel, 6 waits for 1–5.
+  - [ ] 0 — Baseline: `aihealth scan . --save`, gitignore `.aihealth/`, confirm `./run-tests.sh` green.
+  - [ ] 1 — `WorkflowService` session-launch dedup (file score 3.17): one `_launch_session`
+    helper for `_start_agent_internal` / `resume_agent` / `retry_agent` / `request_changes` /
+    `approve_item` / `_restart_session_with_new_permissions` (17–60 shared lines each); merge
+    `on_request_command` + `on_request_tool`, `on_complete` + `on_error`, and the shared tail of
+    `_auto_approve_no_changes` / `_auto_approve_direct` / `_run_auto_review`.
+  - [ ] 2 — Split `approve_item` (209 lines, cyclomatic 49) into validate → merge → conflicts →
+    cleanup/unblock phases; simplify `peek_worktree`. Extracting auto-review into its own
+    collaborator is optional — flag here before doing it.
+  - [ ] 3 — Split `ClaudeAgentSession.start` (391 lines, cyclomatic 91): options building,
+    `can_use_tool`, prompt/attachments (`build_attachment_prompt`); flatten `_receive_loop`
+    (depth 6) into per-message-type dispatch. Needs a live agent run, not just unit tests.
+  - [ ] 4 — Split `KimiAgentSession._run` (118 lines) along the same stages; also
+    `SessionService._parse_plugins` (cognitive 48), `review_agent._parse_decision` /
+    `run_auto_review`, `kimi_board_mcp.call_tool`. Needs a live Kimi run.
+  - [ ] 5 — Small src dedups: `git/operations.py` (`get_changed_files` / `get_diff`; `run_git`
+    vs `GraphService._exec`), `web/routes.py` (archive-by-date/epic, worktree tree/content
+    helpers, `_get_optimized_stats`), `database_service.py` query builders, `main()`,
+    `file_routes.scan_directory`, `SkillsService._install_sync`.
+  - [ ] 6 — Test duplication via shared fixtures + `parametrize`: `test_create_todo_autostart.py`,
+    `test_session.py` (Ollama `TestStart`), `test_workflow_service.py`, `test_diff_mixing.py`,
+    `test_allowed_commands.py`, `test_mcp_tool_servers.py`.
+  - [ ] 7 — Optional: `.aihealth.toml` + `aihealth scan --fail-under` gate in `make`/CI; Swift
+    wrapper (`ProjectManager.swift`, `InstallSheet.swift`, `DashboardTabsView.swift`).
 
 ## Decisions
 
@@ -157,11 +183,16 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-No objective in flight. Last change (2026-11-06, M11): Tiiny provider — `scripts/tiiny-smoke.sh` and a
-real dashboard agent run both verified on the user's device. Previous change (2026-10-14, M10): the hardening pass — the security audit
-(`AGENT_FILES/AUDIT.md`, rev 14) has no open actionable finding. 2026-10-15: agentic setup
-refreshed against ai.memention.net/setup (record in `.claude/agent-setup.json`). 2026-10-23: shared
-Python >= 3.12 venv bootstrap (`scripts/python-env.sh`); the macOS wrapper delegates venv setup to `run.sh`.
+**M12 in flight (2026-11-07), no step started.** `aihealth` is set up for the repo (`.mcp.json`,
+hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
+step whose prerequisites are done, check it off here when its PR lands, and record the new
+`aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above
+(ItemState FSM for every transition, `ClaudeAgentOptions` built at its call sites so test patch
+targets hold, `verbatim_prompts=True`, `PathScope` as the single path check). Line numbers in
+`aihealth` output count code lines only — locate functions by name.
+
+Previous change (2026-11-06, M11): Tiiny provider, live-verified on the user's device. The
+security audit (`AGENT_FILES/AUDIT.md`, rev 14) has no open actionable finding.
 
 Authoritative counts, re-verified by collection/grep — trust these over prose: **33 migrations
 (001–033)**; **1434 tests = 20 smoke + 1400 unit + 14 integration** (plus 7 Node E2E tests,
@@ -174,8 +205,7 @@ has an SDK older than the `>=0.2.165` floor: `./run-tests.sh` reinstalls require
 
 History is not repeated here: see Milestones, the cards for how things work now, and `git log`.
 
-The next agent to pick up real work should set **Goal**, fill in **M11**, and rewrite this
-note as the running handoff — keep it a short handoff, not a log.
+Keep this note a short handoff, not a log.
 
 ## Open questions
 
