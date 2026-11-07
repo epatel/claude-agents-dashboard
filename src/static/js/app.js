@@ -18,24 +18,45 @@ const App = {
     init() {
         Theme.init();
         Sound.init();
+        Board.init(this._serverRenderedItems());
+        this._wireTopBar();
+        // Initialize notification polling
+        NotificationDialog.init();
+        this._wireDialogKeys();
+        this._wireConnectionHandling();
+        this._wireTooltips();
+        this._collapseArchiveColumn();
+        this._wireUnload();
 
-        // Initialize board with server-rendered items (include data attrs so
-        // renderDoneColumn() can group done cards by date instead of clearing them)
-        const cards = document.querySelectorAll('.card');
-        const items = [];
-        cards.forEach(card => {
+        // Initialize shortcuts bar
+        if (typeof Shortcuts !== 'undefined') {
+            Shortcuts.init();
+        }
+
+        // Connect WebSocket
+        this.connectWS();
+    },
+
+    /** Card ``data-*`` attribute → item field, copied when present. */
+    _cardFields: [
+        ['status', 'status'], ['title', 'title'], ['doneAt', 'done_at'],
+        ['updatedAt', 'updated_at'], ['epicId', 'epic_id'],
+    ],
+
+    // Items for the server-rendered cards (include data attrs so
+    // renderDoneColumn() can group done cards by date instead of clearing them)
+    _serverRenderedItems() {
+        return Array.from(document.querySelectorAll('.card'), card => {
             const item = { id: card.dataset.id, column_name: card.dataset.column };
-            if (card.dataset.status) item.status = card.dataset.status;
-            if (card.dataset.title) item.title = card.dataset.title;
-            if (card.dataset.doneAt) item.done_at = card.dataset.doneAt;
-            if (card.dataset.updatedAt) item.updated_at = card.dataset.updatedAt;
-            if (card.dataset.epicId) item.epic_id = card.dataset.epicId;
+            for (const [attr, field] of this._cardFields) {
+                if (card.dataset[attr]) item[field] = card.dataset[attr];
+            }
             if (card.dataset.startCopy === 'true') item.start_copy = true;
-            items.push(item);
+            return item;
         });
-        Board.init(items);
+    },
 
-        // Wire up top bar buttons
+    _wireTopBar() {
         document.getElementById('new-item-btn')?.addEventListener('click', () => {
             Dialogs.openNewItem();
         });
@@ -45,115 +66,118 @@ const App = {
         document.getElementById('config-btn')?.addEventListener('click', () => {
             Dialogs.openConfig();
         });
+    },
 
-        // Initialize notification polling
-        NotificationDialog.init();
-
-        // Close dialogs on backdrop click
+    /** Backdrop click and Escape close dialogs; Ctrl+Shift+R forces a WebSocket reconnect. */
+    _wireDialogKeys() {
         document.querySelectorAll('.modal').forEach(dialog => {
             dialog.addEventListener('click', (e) => {
                 if (e.target === dialog) dialog.close();
             });
         });
-
-        // Escape key closes dialogs, Ctrl+R forces WebSocket reconnect
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 document.querySelectorAll('.modal[open]').forEach(d => d.close());
-            } else if (e.ctrlKey && e.key === 'r' && e.shiftKey) {
+            } else if (this._isReconnectKey(e)) {
                 e.preventDefault();
                 this.forceReconnect();
             }
         });
+    },
 
-        // Page visibility handling for connection management
-        document.addEventListener('visibilitychange', () => {
-            this.isPageVisible = !document.hidden;
+    _isReconnectKey(e) {
+        if (e.key !== 'r') return false;
+        return e.ctrlKey && e.shiftKey;
+    },
 
-            if (this.isPageVisible) {
-                console.log('Page became visible, checking WebSocket connection');
-                // If we're disconnected and page became visible, try to reconnect
-                if (this.connectionState === 'disconnected' || this.connectionState === 'error') {
-                    this.connectWS();
-                }
-            } else {
-                console.log('Page became hidden, pausing reconnection attempts');
-                // Clear any pending reconnect timers when page is hidden
-                if (this.reconnectTimer) {
-                    clearTimeout(this.reconnectTimer);
-                    this.reconnectTimer = null;
-                }
-            }
-        });
-
-        // Allow clicking connection status to manually reconnect
+    /** Reconnect when the page becomes visible; click the status dot to reconnect. */
+    _wireConnectionHandling() {
+        document.addEventListener('visibilitychange', () => this._onVisibilityChange());
         document.addEventListener('click', (e) => {
             if (e.target && e.target.id === 'connection-status') {
                 this.forceReconnect();
             }
         });
+    },
 
-        // Tooltips — append inside the nearest dialog (top layer) or body
+    _onVisibilityChange() {
+        this.isPageVisible = !document.hidden;
+        if (this.isPageVisible) {
+            console.log('Page became visible, checking WebSocket connection');
+            // If we're disconnected and page became visible, try to reconnect
+            if (this.connectionState === 'disconnected' || this.connectionState === 'error') {
+                this.connectWS();
+            }
+            return;
+        }
+        console.log('Page became hidden, pausing reconnection attempts');
+        // Clear any pending reconnect timers when page is hidden
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+    },
+
+    // Tooltips — append inside the nearest dialog (top layer) or body
+    _wireTooltips() {
         let tipEl = null;
         document.addEventListener('mouseenter', (e) => {
             if (!e.target || !e.target.closest) return;
             const t = e.target.closest('[data-tip-html]');
-            if (!t) return;
-            const html = t.getAttribute('data-tip-html');
-            if (!html) return;
-            tipEl = document.createElement('div');
-            tipEl.className = 'tooltip-popup';
-            tipEl.innerHTML = html;
-            // Append inside the open dialog so it's in the top layer
-            const dialog = t.closest('dialog[open]');
-            const container = dialog || document.body;
-            container.appendChild(tipEl);
-            const rect = t.getBoundingClientRect();
-            const tipRect = tipEl.getBoundingClientRect();
-            let top = rect.top - tipRect.height - 8;
-            let left = rect.left + rect.width / 2 - tipRect.width / 2;
-            if (top < 4) top = rect.bottom + 8;
-            if (left < 4) left = 4;
-            if (left + tipRect.width > window.innerWidth - 4) left = window.innerWidth - tipRect.width - 4;
-            tipEl.style.top = top + 'px';
-            tipEl.style.left = left + 'px';
+            const html = t && t.getAttribute('data-tip-html');
+            if (html) tipEl = this._showTooltip(t, html);
         }, true);
         document.addEventListener('mouseleave', (e) => {
             // Ensure we have an Element (not a text node or other node type)
             const target = e.target.nodeType === Node.ELEMENT_NODE ? e.target : e.target.parentElement;
-            if (target && target.closest('[data-tip-html]') && tipEl) {
+            if (!tipEl || !target) return;
+            if (target.closest('[data-tip-html]')) {
                 tipEl.remove();
                 tipEl = null;
             }
         }, true);
+    },
 
-        // Collapse archive column by default
+    /** A tooltip for ``t``, above it (below if no room) and kept inside the window. */
+    _showTooltip(t, html) {
+        const tipEl = document.createElement('div');
+        tipEl.className = 'tooltip-popup';
+        tipEl.innerHTML = html;
+        // Append inside the open dialog so it's in the top layer
+        (t.closest('dialog[open]') || document.body).appendChild(tipEl);
+        const rect = t.getBoundingClientRect();
+        const tipRect = tipEl.getBoundingClientRect();
+        let top = rect.top - tipRect.height - 8;
+        if (top < 4) top = rect.bottom + 8;
+        const maxLeft = window.innerWidth - tipRect.width - 4;
+        let left = Math.max(4, rect.left + rect.width / 2 - tipRect.width / 2);
+        if (left > maxLeft) left = maxLeft;
+        tipEl.style.top = top + 'px';
+        tipEl.style.left = left + 'px';
+        return tipEl;
+    },
+
+    // Collapse archive column by default
+    _collapseArchiveColumn() {
         const archiveCol = document.querySelector('.column[data-column="archive"]');
-        if (archiveCol) {
-            archiveCol.classList.add('collapsed');
-            archiveCol.querySelector('.column-header').addEventListener('click', () => {
-                archiveCol.classList.toggle('collapsed');
-            });
-        }
+        if (!archiveCol) return;
+        archiveCol.classList.add('collapsed');
+        archiveCol.querySelector('.column-header').addEventListener('click', () => {
+            archiveCol.classList.toggle('collapsed');
+        });
+    },
 
-        // Handle page unload to cleanup WebSocket connection.
-        // Both events are registered because 'pagehide' fires more
-        // reliably in WKWebView (macOS wrapper) while 'beforeunload'
-        // is the traditional fallback for regular browsers.
+    // Handle page unload to cleanup WebSocket connection.
+    // Both events are registered because 'pagehide' fires more
+    // reliably in WKWebView (macOS wrapper) while 'beforeunload'
+    // is the traditional fallback for regular browsers.
+    _wireUnload() {
         window.addEventListener('beforeunload', () => {
             this.cleanup();
         });
         window.addEventListener('pagehide', () => {
             this.cleanup();
         });
-
-        // Initialize shortcuts bar
-        if (typeof Shortcuts !== 'undefined') {
-            Shortcuts.init();
-        }
-
-        // Connect WebSocket
-        this.connectWS();
     },
 
     cleanup() {
@@ -269,39 +293,17 @@ const App = {
         this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxReconnectDelay);
     },
 
+    _connectionStates: {
+        'connecting': { text: 'Connecting...', color: '#ff9800' },
+        'connected': { text: 'Connected', color: '#4caf50' },
+        'disconnected': { text: 'Disconnected', color: '#f44336' },
+        'error': { text: 'Connection Error', color: '#f44336' }
+    },
+
     updateConnectionStatus() {
-        // Add/update connection status indicator as a colored dot
-        let statusEl = document.getElementById('connection-status');
-        if (!statusEl) {
-            statusEl = document.createElement('div');
-            statusEl.id = 'connection-status';
-            statusEl.style.cssText = `
-                width: 8px;
-                height: 8px;
-                border-radius: 50%;
-                margin-left: 8px;
-                transition: all 0.3s ease;
-                cursor: pointer;
-            `;
-
-            // Insert the dot after the theme toggle button
-            const themeToggle = document.getElementById('theme-toggle');
-            if (themeToggle && themeToggle.parentNode) {
-                themeToggle.parentNode.appendChild(statusEl);
-            } else {
-                // Fallback to body if theme toggle not found
-                document.body.appendChild(statusEl);
-            }
-        }
-
-        const states = {
-            'connecting': { text: 'Connecting...', color: '#ff9800' },
-            'connected': { text: 'Connected', color: '#4caf50' },
-            'disconnected': { text: 'Disconnected', color: '#f44336' },
-            'error': { text: 'Connection Error', color: '#f44336' }
-        };
-
-        const state = states[this.connectionState] || states.disconnected;
+        const statusEl = this._connectionStatusEl();
+        const states = this._connectionStates;
+        const state = Object.hasOwn(states, this.connectionState) ? states[this.connectionState] : states.disconnected;
         statusEl.style.backgroundColor = state.color;
         statusEl.style.boxShadow = `0 0 4px ${state.color}40`;
 
@@ -318,6 +320,26 @@ const App = {
         } else {
             statusEl.style.opacity = '1';
         }
+    },
+
+    /** The connection status dot, created after the theme toggle (or in body) on first use. */
+    _connectionStatusEl() {
+        const existing = document.getElementById('connection-status');
+        if (existing) return existing;
+        const statusEl = document.createElement('div');
+        statusEl.id = 'connection-status';
+        statusEl.style.cssText = `
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                margin-left: 8px;
+                transition: all 0.3s ease;
+                cursor: pointer;
+            `;
+        // Insert the dot after the theme toggle button, falling back to body
+        const themeToggle = document.getElementById('theme-toggle');
+        (themeToggle?.parentNode || document.body).appendChild(statusEl);
+        return statusEl;
     },
 
     // Manual reconnection method
@@ -338,111 +360,36 @@ const App = {
         this._epicRefreshTimer = setTimeout(() => Board.loadEpics(), 500);
     },
 
+    /** WebSocket event type → handler method (called with ``data, type``). */
+    _eventHandlers: {
+        item_created: '_onItemChanged',
+        item_updated: '_onItemChanged',
+        item_moved: '_onItemChanged',
+        item_deleted: '_onItemDeleted',
+        agent_log: '_onAgentLog',
+        clarification_requested: '_onClarificationRequested',
+        permission_requested: '_onPermissionRequested',
+        merge_blocked: '_onMergeBlocked',
+        tool_permission_requested: '_onToolPermissionRequested',
+        dependencies_changed: '_onDependenciesChanged',
+        dependencies_resolved: '_onDependenciesChanged',
+        blocked_status_changed: '_onBlockedStatusChanged',
+        notification_added: '_onNotificationAdded',
+        shortcut_created: '_onShortcutCreated',
+        yolo_mode_changed: '_onYoloModeChanged',
+        auto_review_changed: '_onAutoReviewChanged',
+        epic_created: '_onEpicChanged',
+        epic_updated: '_onEpicChanged',
+        epic_deleted: '_onEpicChanged',
+        graph_build_progress: '_onGraphProgress',
+        graph_ready: '_onGraphProgress',
+    },
+
     handleEvent(type, data) {
-        switch (type) {
-            case 'item_created':
-            case 'item_updated':
-            case 'item_moved':
-                Board.updateCard(data);
-                // Re-render epic sidebar immediately — progress is computed live
-                // from Board.items, so the archive button on a freshly-completed
-                // epic appears without waiting for the debounced API refresh.
-                Board._renderEpicPanel();
-                // Still refresh epic progress from server (debounced) — covers
-                // any case where the items cache lags behind (e.g. WS gaps).
-                this._refreshEpicsDebounced();
-
-                // Play notification sound only when an agent moves an item (not user actions)
-                if (data._source === 'agent' && data.column_name && data.column_name !== 'doing' && data.column_name !== 'todo') {
-                    Sound.playChime();
-                }
-
-                // Auto-transition: if the detail dialog is open for this item
-                // and the task ended (moved column or status changed), transition
-                // to the appropriate dialog (review, clarify, or refreshed detail)
-                if (data.id && Dialogs._currentItemId === data.id) {
-                    const detailDialog = document.getElementById('detail-dialog');
-                    if (detailDialog && detailDialog.open) {
-                        const itemId = data.id;
-                        const movedOut = data.column_name && data.column_name !== 'doing';
-                        const ended = data.status && data.status !== 'running' && data.status !== 'resolving_conflicts';
-                        if (movedOut || ended) {
-                            Dialogs.close('detail-dialog');
-                            // showDetail auto-routes to review/questions dialogs based on column
-                            Dialogs.showDetail(itemId);
-                        }
-                    }
-                }
-                break;
-            case 'item_deleted':
-                Board.removeCard(data.id);
-                Board._renderEpicPanel();
-                this._refreshEpicsDebounced();
-                break;
-            case 'agent_log':
-                this.appendLog(data);
-                this.incrementLogCount(data.item_id);
-                break;
-            case 'clarification_requested':
-                Dialogs.showClarification(
-                    data.item_id,
-                    data.prompt,
-                    data.choices ? JSON.parse(data.choices) : [],
-                    data.context
-                );
-                break;
-            case 'permission_requested':
-                ClarificationDialog.showPermissionRequest(
-                    data.item_id, data.command, data.reason
-                );
-                break;
-            case 'merge_blocked':
-                ClarificationDialog.showMergeBlocked(data.item_id, data.message);
-                break;
-            case 'tool_permission_requested':
-                ClarificationDialog.showToolPermissionRequest(
-                    data.item_id, data.tool_name, data.reason
-                );
-                break;
-            case 'dependencies_changed':
-            case 'dependencies_resolved':
-                // Refresh blocked status when dependencies change or are resolved
-                Board.loadBlockedStatus().then(() => Board.renderTodoColumn());
-                break;
-            case 'blocked_status_changed':
-                Board.updateBlockedStatus(data.blocked || {});
-                break;
-            case 'notification_added':
-                NotificationDialog.addFromEvent(data);
-                break;
-            case 'shortcut_created':
-                if (typeof Shortcuts !== 'undefined') {
-                    Shortcuts.load().then(() => Shortcuts.render());
-                }
-                break;
-            case 'yolo_mode_changed':
-                Board.setYoloMode(data.item_id, data.active);
-                break;
-            case 'auto_review_changed':
-                Board.setAutoReviewing(data.item_id, data.active);
-                break;
-            case 'epic_created':
-            case 'epic_updated':
-            case 'epic_deleted':
-                Board.loadEpics();
-                if (type === 'epic_deleted') {
-                    Board.loadAndRender();
-                }
-                break;
-            case 'graph_build_progress':
-            case 'graph_ready':
-                // Refresh the Graphify settings tab status if the dialog is open
-                if (typeof ConfigDialog !== 'undefined' && document.getElementById('graphify-status')) {
-                    ConfigDialog.refreshGraphifyStatus();
-                }
-                break;
-            default:
-                console.log('Unknown event:', type, data);
+        if (Object.hasOwn(this._eventHandlers, type)) {
+            this[this._eventHandlers[type]](data, type);
+        } else {
+            console.log('Unknown event:', type, data);
         }
 
         // Update stats for relevant events
@@ -451,35 +398,148 @@ const App = {
         }
     },
 
+    _onItemChanged(data) {
+        Board.updateCard(data);
+        // Re-render epic sidebar immediately — progress is computed live
+        // from Board.items, so the archive button on a freshly-completed
+        // epic appears without waiting for the debounced API refresh.
+        Board._renderEpicPanel();
+        // Still refresh epic progress from server (debounced) — covers
+        // any case where the items cache lags behind (e.g. WS gaps).
+        this._refreshEpicsDebounced();
+
+        // Play notification sound only when an agent moves an item (not user actions)
+        if (data._source === 'agent' && this._leftActiveColumns(data)) {
+            Sound.playChime();
+        }
+        this._refreshOpenDetail(data);
+    },
+
+    /** The item moved to a column other than Todo / Doing. */
+    _leftActiveColumns(data) {
+        if (!data.column_name) return false;
+        return data.column_name !== 'doing' && data.column_name !== 'todo';
+    },
+
+    // Auto-transition: if the detail dialog is open for this item
+    // and the task ended (moved column or status changed), transition
+    // to the appropriate dialog (review, clarify, or refreshed detail)
+    _refreshOpenDetail(data) {
+        if (!data.id || Dialogs._currentItemId !== data.id) return;
+        const detailDialog = document.getElementById('detail-dialog');
+        if (!detailDialog || !detailDialog.open) return;
+        if (this._movedOutOfDoing(data) || this._runEnded(data)) {
+            Dialogs.close('detail-dialog');
+            // showDetail auto-routes to review/questions dialogs based on column
+            Dialogs.showDetail(data.id);
+        }
+    },
+
+    _movedOutOfDoing(data) {
+        return data.column_name && data.column_name !== 'doing';
+    },
+
+    _runEnded(data) {
+        if (!data.status) return false;
+        return data.status !== 'running' && data.status !== 'resolving_conflicts';
+    },
+
+    _onItemDeleted(data) {
+        Board.removeCard(data.id);
+        Board._renderEpicPanel();
+        this._refreshEpicsDebounced();
+    },
+
+    _onAgentLog(data) {
+        this.appendLog(data);
+        this.incrementLogCount(data.item_id);
+    },
+
+    _onClarificationRequested(data) {
+        Dialogs.showClarification(
+            data.item_id,
+            data.prompt,
+            data.choices ? JSON.parse(data.choices) : [],
+            data.context
+        );
+    },
+
+    _onPermissionRequested(data) {
+        ClarificationDialog.showPermissionRequest(data.item_id, data.command, data.reason);
+    },
+
+    _onMergeBlocked(data) {
+        ClarificationDialog.showMergeBlocked(data.item_id, data.message);
+    },
+
+    _onToolPermissionRequested(data) {
+        ClarificationDialog.showToolPermissionRequest(data.item_id, data.tool_name, data.reason);
+    },
+
+    // Refresh blocked status when dependencies change or are resolved
+    _onDependenciesChanged() {
+        Board.loadBlockedStatus().then(() => Board.renderTodoColumn());
+    },
+
+    _onBlockedStatusChanged(data) {
+        Board.updateBlockedStatus(data.blocked || {});
+    },
+
+    _onNotificationAdded(data) {
+        NotificationDialog.addFromEvent(data);
+    },
+
+    _onShortcutCreated() {
+        if (typeof Shortcuts !== 'undefined') {
+            Shortcuts.load().then(() => Shortcuts.render());
+        }
+    },
+
+    _onYoloModeChanged(data) {
+        Board.setYoloMode(data.item_id, data.active);
+    },
+
+    _onAutoReviewChanged(data) {
+        Board.setAutoReviewing(data.item_id, data.active);
+    },
+
+    _onEpicChanged(data, type) {
+        Board.loadEpics();
+        if (type === 'epic_deleted') {
+            Board.loadAndRender();
+        }
+    },
+
+    // Refresh the Graphify settings tab status if the dialog is open
+    _onGraphProgress() {
+        if (typeof ConfigDialog !== 'undefined' && document.getElementById('graphify-status')) {
+            ConfigDialog.refreshGraphifyStatus();
+        }
+    },
+
     appendLog(data) {
         // Only append logs if they're for the currently open item
-        if (!data.item_id || !Dialogs._currentItemId || data.item_id !== Dialogs._currentItemId) {
-            return; // Skip logs for other items
+        if (!this._isCurrentItem(data.item_id)) return;
+        // Append to the detail and review dialog logs (whichever exist)
+        for (const id of ['detail-log', 'review-log']) {
+            const logEl = document.getElementById(id);
+            if (logEl) this._appendLogEntry(logEl, data);
         }
+    },
 
-        // Append to detail dialog log if it's open for this item
-        const detailLogEl = document.getElementById('detail-log');
-        if (detailLogEl) {
-            const entry = document.createElement('div');
-            entry.className = `log-entry log-entry-${data.entry_type}`;
-            entry.innerHTML = `<span class="log-meta">[${data.entry_type}]</span> <div class="log-content">${Dialogs.renderMarkdown(data.content)}</div>`;
-            detailLogEl.appendChild(entry);
-            Dialogs.runMermaid(entry);
-            // Use the reliable auto-scroll utility
-            this.autoScroll(detailLogEl);
-        }
+    _isCurrentItem(itemId) {
+        if (!itemId || !Dialogs._currentItemId) return false;
+        return itemId === Dialogs._currentItemId;
+    },
 
-        // Also append to review dialog log if it's open for this item
-        const reviewLogEl = document.getElementById('review-log');
-        if (reviewLogEl) {
-            const entry = document.createElement('div');
-            entry.className = `log-entry log-entry-${data.entry_type}`;
-            entry.innerHTML = `<span class="log-meta">[${data.entry_type}]</span> <div class="log-content">${Dialogs.renderMarkdown(data.content)}</div>`;
-            reviewLogEl.appendChild(entry);
-            Dialogs.runMermaid(entry);
-            // Use the reliable auto-scroll utility
-            this.autoScroll(reviewLogEl);
-        }
+    _appendLogEntry(logEl, data) {
+        const entry = document.createElement('div');
+        entry.className = `log-entry log-entry-${data.entry_type}`;
+        entry.innerHTML = `<span class="log-meta">[${data.entry_type}]</span> <div class="log-content">${Dialogs.renderMarkdown(data.content)}</div>`;
+        logEl.appendChild(entry);
+        Dialogs.runMermaid(entry);
+        // Use the reliable auto-scroll utility
+        this.autoScroll(logEl);
     },
 
     incrementLogCount(itemId) {
@@ -493,19 +553,20 @@ const App = {
             const current = parseInt(el.textContent.replace(/\D/g, ''), 10) || 0;
             el.textContent = `${current + 1}`;
         } else {
-            // Card exists but no counter yet — add one inside card-bottom
-            const card = document.querySelector(`.card[data-id="${itemId}"]`);
-            if (card) {
-                const bottom = card.querySelector('.card-bottom');
-                if (bottom) {
-                    const counter = document.createElement('div');
-                    counter.className = 'card-log-count';
-                    counter.setAttribute('data-log-count', itemId);
-                    counter.textContent = '1';
-                    bottom.appendChild(counter);
-                }
-            }
+            this._addLogCounter(itemId);
         }
+    },
+
+    // Card exists but no counter yet — add one inside card-bottom
+    _addLogCounter(itemId) {
+        const card = document.querySelector(`.card[data-id="${itemId}"]`);
+        const bottom = card && card.querySelector('.card-bottom');
+        if (!bottom) return;
+        const counter = document.createElement('div');
+        counter.className = 'card-log-count';
+        counter.setAttribute('data-log-count', itemId);
+        counter.textContent = '1';
+        bottom.appendChild(counter);
     },
 };
 
