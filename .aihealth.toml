@@ -1,0 +1,5 @@
+# aihealth settings, merged over its built-in defaults.
+
+[scan]
+# `run` is a local, untracked launcher script, not part of the dashboard.
+exclude = ["run"]
