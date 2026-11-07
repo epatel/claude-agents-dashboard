@@ -69,9 +69,10 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     Done: 8a `file-tree.js` (`FileTreeBase`, shared by both file browsers), 8b file-browser /
     inline-diff splits (dead separator rows removed; CSS `.inline-diff-separator` / `-expand` now
     unused), 8c `board.js`, 8d `annotate.js`, 8e detail / review dialogs (`DialogUtils.fetchItem` /
-    `loadWorkLog` / `showTab`), 8f `file-browser.js` 3D / markdown. Next: `spacing_overlay.js`,
-    `shortcuts.js`, `config-dialog.js`, then the rest of `ReviewFileBrowser`.
-  - **Scores** (2026-11-07, after 8f): headline 8.27, JS 8.20. aihealth started scanning JS
+    `loadWorkLog` / `showTab`), 8f `file-browser.js` 3D / markdown, 8g `spacing_overlay.js` (side
+    table + gap helpers; harness: 31 steps of overlay DOM identical). Next: `shortcuts.js`,
+    `config-dialog.js`, then the rest of `ReviewFileBrowser`.
+  - **Scores** (2026-11-08, after 8g): headline 8.31, JS 8.30. aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser

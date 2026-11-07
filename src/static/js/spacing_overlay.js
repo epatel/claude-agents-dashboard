@@ -114,13 +114,14 @@
         if (layer) layer.innerHTML = '';
     }
 
-    function makeBand(left, top, width, height, bg) {
+    /** A coloured band over ``[left, top, width, height]``. */
+    function makeBand(box, bg) {
         const b = document.createElement('div');
         b.className = 'ps-band';
-        b.style.left = left + 'px';
-        b.style.top = top + 'px';
-        b.style.width = Math.max(0, width) + 'px';
-        b.style.height = Math.max(0, height) + 'px';
+        b.style.left = box[0] + 'px';
+        b.style.top = box[1] + 'px';
+        b.style.width = Math.max(0, box[2]) + 'px';
+        b.style.height = Math.max(0, box[3]) + 'px';
         b.style.background = bg;
         return b;
     }
@@ -135,111 +136,110 @@
         return l;
     }
 
-    function drawBoxModel(rect, cs) {
-        const pt = parseFloat(cs.paddingTop) || 0;
-        const pr = parseFloat(cs.paddingRight) || 0;
-        const pb = parseFloat(cs.paddingBottom) || 0;
-        const pl = parseFloat(cs.paddingLeft) || 0;
-        const mt = parseFloat(cs.marginTop) || 0;
-        const mr = parseFloat(cs.marginRight) || 0;
-        const mb = parseFloat(cs.marginBottom) || 0;
-        const ml = parseFloat(cs.marginLeft) || 0;
+    /** One measured band plus its label; ``kind`` is padding / margin / gap. */
+    function drawMeasured(kind, box, labelAt, text) {
+        layer.appendChild(makeBand(box, COLORS[kind]));
+        layer.appendChild(makeLabel(labelAt[0], labelAt[1], text, COLORS[kind + 'Label']));
+    }
 
+    /** ``[property, size, band box, label point]`` for each padding and margin side, in draw order. */
+    function boxModelBands(rect, cs) {
+        const size = function (prop) { return parseFloat(cs[prop]) || 0; };
+        const pt = size('paddingTop'), pr = size('paddingRight');
+        const pb = size('paddingBottom'), pl = size('paddingLeft');
+        const mt = size('marginTop'), mr = size('marginRight');
+        const mb = size('marginBottom'), ml = size('marginLeft');
         const left = rect.left, top = rect.top, w = rect.width, h = rect.height;
+        return [
+            // Padding bands (inside the element)
+            ['padding-top', pt, [left, top, w, pt], [left + w / 2, top + pt / 2]],
+            ['padding-bottom', pb, [left, top + h - pb, w, pb], [left + w / 2, top + h - pb / 2]],
+            ['padding-left', pl, [left, top + pt, pl, h - pt - pb], [left + pl / 2, top + h / 2]],
+            ['padding-right', pr, [left + w - pr, top + pt, pr, h - pt - pb], [left + w - pr / 2, top + h / 2]],
+            // Margin bands (outside the element)
+            ['margin-top', mt, [left, top - mt, w, mt], [left + w / 2, top - mt / 2]],
+            ['margin-bottom', mb, [left, top + h, w, mb], [left + w / 2, top + h + mb / 2]],
+            ['margin-left', ml, [left - ml, top, ml, h], [left - ml / 2, top + h / 2]],
+            ['margin-right', mr, [left + w, top, mr, h], [left + w + mr / 2, top + h / 2]],
+        ];
+    }
 
-        // Padding bands (inside the element)
-        if (pt > 0) {
-            layer.appendChild(makeBand(left, top, w, pt, COLORS.padding));
-            layer.appendChild(makeLabel(left + w / 2, top + pt / 2, `padding-top: ${px(pt)}`, COLORS.paddingLabel));
-        }
-        if (pb > 0) {
-            layer.appendChild(makeBand(left, top + h - pb, w, pb, COLORS.padding));
-            layer.appendChild(makeLabel(left + w / 2, top + h - pb / 2, `padding-bottom: ${px(pb)}`, COLORS.paddingLabel));
-        }
-        if (pl > 0) {
-            layer.appendChild(makeBand(left, top + pt, pl, h - pt - pb, COLORS.padding));
-            layer.appendChild(makeLabel(left + pl / 2, top + h / 2, `padding-left: ${px(pl)}`, COLORS.paddingLabel));
-        }
-        if (pr > 0) {
-            layer.appendChild(makeBand(left + w - pr, top + pt, pr, h - pt - pb, COLORS.padding));
-            layer.appendChild(makeLabel(left + w - pr / 2, top + h / 2, `padding-right: ${px(pr)}`, COLORS.paddingLabel));
-        }
-
-        // Margin bands (outside the element)
-        if (mt > 0) {
-            layer.appendChild(makeBand(left, top - mt, w, mt, COLORS.margin));
-            layer.appendChild(makeLabel(left + w / 2, top - mt / 2, `margin-top: ${px(mt)}`, COLORS.marginLabel));
-        }
-        if (mb > 0) {
-            layer.appendChild(makeBand(left, top + h, w, mb, COLORS.margin));
-            layer.appendChild(makeLabel(left + w / 2, top + h + mb / 2, `margin-bottom: ${px(mb)}`, COLORS.marginLabel));
-        }
-        if (ml > 0) {
-            layer.appendChild(makeBand(left - ml, top, ml, h, COLORS.margin));
-            layer.appendChild(makeLabel(left - ml / 2, top + h / 2, `margin-left: ${px(ml)}`, COLORS.marginLabel));
-        }
-        if (mr > 0) {
-            layer.appendChild(makeBand(left + w, top, mr, h, COLORS.margin));
-            layer.appendChild(makeLabel(left + w + mr / 2, top + h / 2, `margin-right: ${px(mr)}`, COLORS.marginLabel));
+    function drawBoxModel(rect, cs) {
+        for (const [prop, size, box, labelAt] of boxModelBands(rect, cs)) {
+            if (size > 0) drawMeasured(prop.split('-')[0], box, labelAt, `${prop}: ${px(size)}`);
         }
     }
 
-    function drawGap(el, rect, cs) {
-        const display = cs.display;
-        const isFlex = display === 'flex' || display === 'inline-flex';
-        const isGrid = display === 'grid' || display === 'inline-grid';
-        if (!isFlex && !isGrid) return;
+    const GAP_LAYOUTS = { flex: 'flex', 'inline-flex': 'flex', grid: 'grid', 'inline-grid': 'grid' };
+
+    /**
+     * Which gaps to look for: ``{horiz, vert}``, or null when the element is not
+     * a flex / grid container with a gap. Wrapping flex containers also get
+     * vertical gaps (between wrapped lines).
+     */
+    function gapAxes(cs) {
+        const layout = GAP_LAYOUTS[cs.display];
+        if (!layout) return null;
 
         const rowGap = parseFloat(cs.rowGap) || 0;
         const colGap = parseFloat(cs.columnGap) || 0;
-        if (rowGap <= 0 && colGap <= 0) return;
+        if (rowGap <= 0 && colGap <= 0) return null;
 
-        // Visualize gap by overlaying bands between adjacent visible children
-        const children = Array.from(el.children).filter(function (c) {
-            const r = c.getBoundingClientRect();
-            return r.width > 0 && r.height > 0;
-        });
-        if (children.length < 2) return;
+        if (layout === 'grid') return { horiz: colGap > 0, vert: rowGap > 0 };
+        return flexGapAxes(cs, rowGap, colGap);
+    }
 
-        const rects = children.map(function (c) { return c.getBoundingClientRect(); });
-
-        // Determine direction(s)
+    function flexGapAxes(cs, rowGap, colGap) {
         const flexDir = (cs.flexDirection || 'row').replace('-reverse', '');
-        const horiz = isGrid ? colGap > 0 : (flexDir === 'row' && colGap > 0);
-        const vert = isGrid ? rowGap > 0 : (flexDir === 'column' && rowGap > 0);
+        return {
+            horiz: flexDir === 'row' && colGap > 0,
+            vert: (flexDir === 'column' && rowGap > 0) || cs.flexWrap !== 'nowrap',
+        };
+    }
 
-        // For flex-row we also have to consider wrap → row gap between wrapped lines.
-        // Keep it pragmatic: compare adjacent rects and draw a band where there's a real gap.
+    function visibleChildRects(el) {
+        return Array.from(el.children)
+            .map(function (c) { return c.getBoundingClientRect(); })
+            .filter(function (r) { return r.width > 0 && r.height > 0; });
+    }
+
+    /** Horizontal neighbours: same row, ``b`` starts right of ``a``. */
+    function drawRowGap(a, b) {
+        if (Math.abs(a.top - b.top) >= 1 || b.left <= a.right) return;
+        const gw = b.left - a.right;
+        drawMeasured('gap', [a.right, a.top, gw, a.height], [a.right + gw / 2, a.top + a.height / 2], `gap: ${px(gw)}`);
+    }
+
+    /** Vertical neighbours: ``b`` starts below ``a`` and overlaps its column. */
+    function drawColumnGap(a, b) {
+        const gh = b.top - a.bottom;
+        if (gh <= 0 || Math.abs(a.left - b.left) >= a.width) return;
+        drawMeasured('gap', [a.left, a.bottom, a.width, gh], [a.left + a.width / 2, a.bottom + gh / 2], `gap: ${px(gh)}`);
+    }
+
+    // Visualize gap by overlaying bands between adjacent visible children.
+    // Keep it pragmatic: compare adjacent rects and draw a band where there's a real gap.
+    function drawGap(el, cs) {
+        const axes = gapAxes(cs);
+        if (!axes) return;
+        const rects = visibleChildRects(el);
         for (let i = 0; i < rects.length - 1; i++) {
-            const a = rects[i];
-            const b = rects[i + 1];
-            // Horizontal neighbors (same row, adjacent x)
-            if (horiz && Math.abs(a.top - b.top) < 1 && b.left > a.right) {
-                const gw = b.left - a.right;
-                if (gw > 0) {
-                    layer.appendChild(makeBand(a.right, a.top, gw, a.height, COLORS.gap));
-                    layer.appendChild(makeLabel(a.right + gw / 2, a.top + a.height / 2, `gap: ${px(gw)}`, COLORS.gapLabel));
-                }
-            }
-            // Vertical neighbors (same col, adjacent y)
-            if ((vert || (isFlex && cs.flexWrap !== 'nowrap')) && b.top > a.bottom) {
-                const gh = b.top - a.bottom;
-                if (gh > 0 && Math.abs(a.left - b.left) < a.width) {
-                    layer.appendChild(makeBand(a.left, a.bottom, a.width, gh, COLORS.gap));
-                    layer.appendChild(makeLabel(a.left + a.width / 2, a.bottom + gh / 2, `gap: ${px(gh)}`, COLORS.gapLabel));
-                }
-            }
+            if (axes.horiz) drawRowGap(rects[i], rects[i + 1]);
+            if (axes.vert) drawColumnGap(rects[i], rects[i + 1]);
         }
     }
 
+    /** The badge or anything inside it (``contains`` includes the node itself). */
+    function isOnBadge(el) { return badge !== null && badge.contains(el); }
+
     function render(el) {
         clearLayer();
-        if (!el || el === badge || (badge && badge.contains(el))) return;
+        if (!el || isOnBadge(el)) return;
         const rect = el.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return;
         const cs = getComputedStyle(el);
         drawBoxModel(rect, cs);
-        drawGap(el, rect, cs);
+        drawGap(el, cs);
     }
 
     function onMouseMove(e) {
