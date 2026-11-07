@@ -13,6 +13,7 @@ docs/superpowers/
 .claude/*
 !.claude/skills/
 !.claude/agent-setup.json
+!.claude/settings.json
 graphify-out/
 
 # Exclude annotation images
