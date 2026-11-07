@@ -17,9 +17,7 @@ const ConfigDialog = {
     _ollamaEnabled: false,
 
     switchConfigTab(tabName) {
-        document.querySelectorAll('#config-dialog .review-tab').forEach(t => {
-            t.classList.toggle('active', t.dataset.tab === tabName);
-        });
+        DialogUtils.markActiveTab('#config-dialog .review-tab', tabName);
         document.querySelectorAll('#config-dialog .config-tab-content').forEach(c => {
             c.style.display = c.dataset.configTab === tabName ? '' : 'none';
         });

@@ -250,4 +250,61 @@ const DialogUtils = {
             }
         });
     },
+
+    /** The item with ``itemId`` from a fresh board fetch, or undefined. */
+    async fetchItem(itemId) {
+        const items = await Api.getItems();
+        return items.find(i => i.id === itemId);
+    },
+
+    /**
+     * Render an item's work log into ``logEl`` and scroll it to the end.
+     * Returns the entries ([] when loading or rendering fails; the log is then blank).
+     */
+    async loadWorkLog(itemId, logEl) {
+        try {
+            const log = await Api.getWorkLog(itemId);
+            if (log.length > 0) {
+                logEl.innerHTML = log.map(e =>
+                    `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${this.renderMarkdown(e.content)}</div></div>`
+                ).join('');
+                this.runMermaid(logEl);
+                DialogCore.forceAutoScroll(logEl);
+            } else {
+                logEl.innerHTML = '<div class="log-entry">No work log entries</div>';
+            }
+            return log;
+        } catch {
+            logEl.innerHTML = '';
+            return [];
+        }
+    },
+
+    /** Mark the tab buttons matching ``selector`` active iff their data-tab is ``tabName``. */
+    markActiveTab(selector, tabName) {
+        document.querySelectorAll(selector).forEach(t => {
+            t.classList.toggle('active', t.dataset.tab === tabName);
+        });
+    },
+
+    /**
+     * Show one panel of a tabbed dialog. ``spec``: tab button / panel selectors, the
+     * panel id prefix, and the work-log tab + element (scrolled to the end when shown —
+     * an explicit user action).
+     */
+    showTab(tabName, { tabs, panels, panelIdPrefix, logTab, logId }) {
+        this.markActiveTab(tabs, tabName);
+        document.querySelectorAll(panels).forEach(c => {
+            c.style.display = 'none';
+            c.classList.remove('active');
+        });
+        const active = document.getElementById(panelIdPrefix + tabName);
+        if (!active) return;
+        active.style.display = '';
+        active.classList.add('active');
+        const logEl = tabName === logTab && document.getElementById(logId);
+        if (logEl && logEl.children.length > 0) {
+            DialogCore.forceAutoScroll(logEl);
+        }
+    },
 };

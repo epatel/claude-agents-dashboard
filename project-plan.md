@@ -177,8 +177,24 @@ behavior change** — every step keeps the full test suite green and `aihealth d
       model state, a 6-px hit-test grid, export JPGs and return values identical at every step, and
       the recorded 2D-context call log identical except that text sets `textBaseline` after
       measuring instead of before (no pixel effect). Plus real mouse drawing in the dialog.
-      JS now 7.82, headline 8.19. Next: `ReviewDialog.showReview` / `DetailDialog` duplication,
-      `FileBrowser._render3DModel`, then `spacing_overlay.js`, `shortcuts.js`, `config-dialog.js`.
+      JS now 7.82, headline 8.19.
+      8e — 2026-11-07: detail / review dialogs. `DialogUtils` gained `fetchItem`, `loadWorkLog`
+      (the three copies of the work-log render), `markActiveTab` and `showTab` (detail and review
+      tab switching; config uses `markActiveTab`). `DetailDialog.showDetail` (cyclomatic 37) →
+      `_modelInfoHtml` / `_mergeCommitHtml` / `_wireCopyShaButtons` + `_copyText` /
+      `_setupHeaderActions` + `_columnButtons` / `_setupAutoApprove` + `_autoApproveMode` /
+      `_setupResumeForm`; `ReviewDialog.showReview` (cyclomatic 27) → `_renderResult` / `_loadDiff` /
+      `_renderChangedFiles` / `_scrollToDiffFile` / `_updateFilesTabCount` / `_wireReviewButtons`.
+      `switchReviewTab` keeps its unscoped selectors (it also resets the other dialogs' tabs, as
+      before). detail-dialog.js 7.45 → 10.00, review-dialog.js 6.90 → 8.06. Verified with a dialog
+      harness that loads the old and new copies of the four files side by side with stubbed
+      Api / Board / DialogCore / clipboard: 79 steps (every column and status, model / default /
+      config-error, merge commit, header buttons, auto-approve change ok / fail, resume, copy SHA
+      with clipboard fallback, the questions fallback view, review with files / no files + result /
+      log error / diff error, file-badge scroll, approve / done / changes / cancel, all tab switches)
+      — DOM of all three dialogs and the recorded calls identical; plus the live review dialog.
+      JS now 8.08, headline 8.25. Next: `FileBrowser._render3DModel`, then `spacing_overlay.js`,
+      `shortcuts.js`, `config-dialog.js`.
       Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
       empty (the summary query yields one all-NULL row) → `stats.js` throws every 10 s; (2) the review
       browser auto-expands folders holding changed files but doesn't load their children, so changed

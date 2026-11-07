@@ -594,136 +594,126 @@ const ReviewFileBrowser = {
  * Review dialog functionality
  */
 const ReviewDialog = {
+    // Unscoped selectors: switching also resets the other dialogs' tabs (as before).
+    _tabs: {
+        tabs: '.review-tab',
+        panels: '.review-tab-content',
+        panelIdPrefix: 'review-tab-',
+        logTab: 'log',
+        logId: 'review-log',
+    },
+
     async showReview(itemId) {
-        const items = await Api.getItems();
-        const item = items.find(i => i.id === itemId);
+        const item = await DialogUtils.fetchItem(itemId);
         if (!item) return;
 
         document.getElementById('review-title').textContent = item.title;
+        document.getElementById('review-column-badge').textContent = '👀 Review';
 
-        // Set column badge
-        const badge = document.getElementById('review-column-badge');
-        badge.textContent = '👀 Review';
-
-        // Populate description tab
+        // Description tab
         const descEl = document.getElementById('review-description');
         descEl.innerHTML = DialogUtils.renderMarkdown(item.description || '(no description)');
         DialogUtils.runMermaid(descEl);
 
-        // Populate work log tab + capture last agent_message for the Result tab
-        const logEl = document.getElementById('review-log');
-        const resultEl = document.getElementById('review-result');
-        const resultTabBtn = document.getElementById('review-tab-btn-result');
-        let lastAgentMessage = null;
-        try {
-            const log = await Api.getWorkLog(itemId);
-            if (log.length > 0) {
-                logEl.innerHTML = log.map(e =>
-                    `<div class="log-entry log-entry-${e.entry_type}"><span class="log-meta">[${e.timestamp}] ${e.entry_type}:</span> <div class="log-content">${DialogUtils.renderMarkdown(e.content)}</div></div>`
-                ).join('');
-                DialogUtils.runMermaid(logEl);
-                // Scroll to end after initial load
-                DialogCore.forceAutoScroll(logEl);
-                // Find most recent agent_message for the Result tab
-                for (let i = log.length - 1; i >= 0; i--) {
-                    if (log[i].entry_type === 'agent_message' && log[i].content) {
-                        lastAgentMessage = log[i];
-                        break;
-                    }
-                }
-            } else {
-                logEl.innerHTML = '<div class="log-entry">No work log entries</div>';
-            }
-        } catch {
-            logEl.innerHTML = '';
-        }
+        // Work log tab; its last agent_message fills the Result tab
+        const log = await DialogUtils.loadWorkLog(itemId, document.getElementById('review-log'));
+        const lastAgentMessage = log.findLast(e => e.entry_type === 'agent_message' && e.content) || null;
+        this._renderResult(lastAgentMessage);
 
-        // Populate Result tab if we have a final agent message
-        if (resultEl && resultTabBtn) {
-            if (lastAgentMessage) {
-                resultEl.innerHTML =
-                    `<div class="result-meta" style="opacity:0.7;font-size:12px;margin-bottom:8px">Final agent message — ${lastAgentMessage.timestamp}</div>` +
-                    `<div class="result-body">${DialogUtils.renderMarkdown(lastAgentMessage.content)}</div>`;
-                DialogUtils.runMermaid(resultEl);
-                resultTabBtn.style.display = '';
-            } else {
-                resultEl.innerHTML = '';
-                resultTabBtn.style.display = 'none';
-            }
-        }
-
-        // Load diff tab
-        const diffContainer = document.getElementById('review-diff');
-        diffContainer.innerHTML = '<p>Loading diff...</p>';
-
-        let diffData = null;
-        try {
-            diffData = await Api.request('GET', `/api/items/${itemId}/diff`);
-            DiffViewer.render(diffData.diff, diffContainer);
-
-            const filesContainer = document.getElementById('review-files');
-            if (diffData.files && diffData.files.length > 0) {
-                filesContainer.innerHTML = '<div class="changed-files-list">' +
-                    diffData.files.map(f => {
-                        const cls = f.status === 'A' ? 'file-added' : f.status === 'D' ? 'file-deleted' : 'file-modified';
-                        const escapedPath = f.path.replace(/"/g, '&quot;');
-                        return `<button type="button" class="file-badge ${cls}" data-target-file="${escapedPath}">${f.status_label || f.status} ${f.path}</button>`;
-                    }).join('') + '</div>';
-
-                // Wire up scroll-to-diff on click
-                filesContainer.querySelectorAll('.file-badge[data-target-file]').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        // Switch to diff tab first
-                        ReviewDialog.switchReviewTab('diff');
-                        // Find matching diff-file element and scroll to it
-                        const targetPath = btn.dataset.targetFile;
-                        const diffContainer = document.getElementById('review-diff');
-                        const diffFile = diffContainer.querySelector(`.diff-file[data-file-path="${CSS.escape(targetPath)}"]`);
-                        if (diffFile) {
-                            // Ensure the diff body is expanded
-                            const body = diffFile.querySelector('.diff-file-body');
-                            if (body && body.style.display === 'none') {
-                                body.style.display = '';
-                            }
-                            diffFile.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }
-                    });
-                });
-            } else {
-                filesContainer.innerHTML = '';
-            }
-        } catch (err) {
-            diffContainer.innerHTML = `<p>Error loading diff: ${err.message}</p>`;
-        }
-
-        // Load review file browser (reuses diff data to avoid double fetch)
+        // Diff tab and changed-file badges; the file browser reuses the diff data
+        const diffData = await this._loadDiff(itemId);
         ReviewFileBrowser.load(itemId, diffData);
+        this._updateFilesTabCount(diffData);
 
-        // Update Files tab badge with changed file count
-        const filesTab = document.querySelector('.review-tab[data-tab="files"]');
-        if (filesTab && diffData?.files?.length) {
-            const badge = filesTab.querySelector('.column-count') || document.createElement('span');
-            badge.className = 'column-count';
-            badge.textContent = diffData.files.length;
-            if (!filesTab.querySelector('.column-count')) filesTab.appendChild(badge);
-        }
-
-        // Update approve button based on whether there are file changes
-        const approveBtn = document.getElementById('review-approve-btn');
         const hasChanges = diffData?.files?.length > 0;
-        approveBtn.textContent = hasChanges ? '✓ Approve & Merge' : '✓ Done';
+        document.getElementById('review-approve-btn').textContent = hasChanges ? '✓ Approve & Merge' : '✓ Done';
 
         // Preselect tab: when there are no file changes and the agent left a
         // closing message, surface it on the Result tab so it isn't lost when
         // pressing Done; otherwise fall back to the Work Log tab.
-        if (!hasChanges && lastAgentMessage) {
-            this.switchReviewTab('result');
-        } else {
-            this.switchReviewTab('log');
-        }
+        this.switchReviewTab(!hasChanges && lastAgentMessage ? 'result' : 'log');
+        this._wireReviewButtons(itemId, hasChanges);
 
-        // Wire up buttons
-        approveBtn.onclick = async () => {
+        // Track current item ID for work log filtering
+        DialogCore._currentItemId = itemId;
+        DialogCore.open('review-dialog');
+    },
+
+    /** Show the Result tab with the agent's final message, or hide it. */
+    _renderResult(lastAgentMessage) {
+        const resultEl = document.getElementById('review-result');
+        const resultTabBtn = document.getElementById('review-tab-btn-result');
+        if (!resultEl || !resultTabBtn) return;
+        if (!lastAgentMessage) {
+            resultEl.innerHTML = '';
+            resultTabBtn.style.display = 'none';
+            return;
+        }
+        resultEl.innerHTML =
+            `<div class="result-meta" style="opacity:0.7;font-size:12px;margin-bottom:8px">Final agent message — ${lastAgentMessage.timestamp}</div>` +
+            `<div class="result-body">${DialogUtils.renderMarkdown(lastAgentMessage.content)}</div>`;
+        DialogUtils.runMermaid(resultEl);
+        resultTabBtn.style.display = '';
+    },
+
+    /** Render the diff and changed-file list; returns the diff data (null if the fetch failed). */
+    async _loadDiff(itemId) {
+        const diffContainer = document.getElementById('review-diff');
+        diffContainer.innerHTML = '<p>Loading diff...</p>';
+        let diffData = null;
+        try {
+            diffData = await Api.request('GET', `/api/items/${itemId}/diff`);
+            DiffViewer.render(diffData.diff, diffContainer);
+            this._renderChangedFiles(diffData.files);
+        } catch (err) {
+            diffContainer.innerHTML = `<p>Error loading diff: ${err.message}</p>`;
+        }
+        return diffData;
+    },
+
+    /** One badge per changed file; clicking it scrolls the Diff tab to that file. */
+    _renderChangedFiles(files) {
+        const filesContainer = document.getElementById('review-files');
+        if (!files || files.length === 0) {
+            filesContainer.innerHTML = '';
+            return;
+        }
+        filesContainer.innerHTML = '<div class="changed-files-list">' +
+            files.map(f => {
+                const cls = f.status === 'A' ? 'file-added' : f.status === 'D' ? 'file-deleted' : 'file-modified';
+                const escapedPath = f.path.replace(/"/g, '&quot;');
+                return `<button type="button" class="file-badge ${cls}" data-target-file="${escapedPath}">${f.status_label || f.status} ${f.path}</button>`;
+            }).join('') + '</div>';
+        filesContainer.querySelectorAll('.file-badge[data-target-file]').forEach(btn => {
+            btn.addEventListener('click', () => this._scrollToDiffFile(btn.dataset.targetFile));
+        });
+    },
+
+    _scrollToDiffFile(targetPath) {
+        ReviewDialog.switchReviewTab('diff');
+        const diffContainer = document.getElementById('review-diff');
+        const diffFile = diffContainer.querySelector(`.diff-file[data-file-path="${CSS.escape(targetPath)}"]`);
+        if (!diffFile) return;
+        // Ensure the diff body is expanded
+        const body = diffFile.querySelector('.diff-file-body');
+        if (body && body.style.display === 'none') {
+            body.style.display = '';
+        }
+        diffFile.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+
+    /** Changed-file count on the Files tab button. */
+    _updateFilesTabCount(diffData) {
+        const filesTab = document.querySelector('.review-tab[data-tab="files"]');
+        if (!filesTab || !diffData?.files?.length) return;
+        const badge = filesTab.querySelector('.column-count') || document.createElement('span');
+        badge.className = 'column-count';
+        badge.textContent = diffData.files.length;
+        if (!filesTab.querySelector('.column-count')) filesTab.appendChild(badge);
+    },
+
+    _wireReviewButtons(itemId, hasChanges) {
+        document.getElementById('review-approve-btn').onclick = async () => {
             if (hasChanges) {
                 await Board.approveItem(itemId);
             } else {
@@ -741,34 +731,9 @@ const ReviewDialog = {
                 DialogCore.close('review-dialog');
             }
         };
-
-        // Track current item ID for work log filtering
-        DialogCore._currentItemId = itemId;
-        DialogCore.open('review-dialog');
     },
 
     switchReviewTab(tabName) {
-        // Update tab buttons
-        document.querySelectorAll('.review-tab').forEach(t => {
-            t.classList.toggle('active', t.dataset.tab === tabName);
-        });
-        // Show/hide tab content
-        document.querySelectorAll('.review-tab-content').forEach(c => {
-            c.style.display = 'none';
-            c.classList.remove('active');
-        });
-        const active = document.getElementById(`review-tab-${tabName}`);
-        if (active) {
-            active.style.display = '';
-            active.classList.add('active');
-
-            // Force scroll to end when switching to work log tab (explicit user action)
-            if (tabName === 'log') {
-                const logEl = document.getElementById('review-log');
-                if (logEl && logEl.children.length > 0) {
-                    DialogCore.forceAutoScroll(logEl);
-                }
-            }
-        }
+        DialogUtils.showTab(tabName, this._tabs);
     },
 };
