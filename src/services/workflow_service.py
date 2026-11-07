@@ -36,6 +36,19 @@ _PEEK_MAX_FILES_DETAIL = 200
 _PEEK_MAX_DIFF_LINES = 400
 
 
+def _worktree_of(item: Dict[str, Any]) -> Optional[Path]:
+    """The item's worktree path, or None if it has none recorded."""
+    return Path(item["worktree_path"]) if item.get("worktree_path") else None
+
+
+def _short_file_list(paths: set, limit: int = 5) -> str:
+    """Sorted, comma-separated paths, capped at ``limit`` with a '(+N more)' tail."""
+    file_list = ", ".join(sorted(paths)[:limit])
+    if len(paths) > limit:
+        file_list += f" (+{len(paths) - limit} more)"
+    return file_list
+
+
 class WorkflowService:
     """Coordinates workflows and state transitions between services."""
 
@@ -442,14 +455,19 @@ class WorkflowService:
         await self._launch_session(item, config, prompt, attachments=attachments, resume_id=resume_id)
         return item
 
-    async def approve_item(self, item_id: str) -> Dict[str, Any]:
-        """Approve a reviewed item — merge back into the base branch."""
-        item = await self.items.get_or_raise(item_id)
+    # How many times a merge conflict may restart the agent with its previous
+    # diff before the item is left in the conflict state for a human.
+    _MAX_MERGE_RETRIES = 2
 
-        branch = item["branch_name"]
-        base_branch = item.get("base_branch")
-        worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
-        commit_msg = item.get("commit_message")
+    async def approve_item(self, item_id: str) -> Dict[str, Any]:
+        """Approve a reviewed item — merge back into the base branch.
+
+        Phases: refuse without a recorded base branch → refuse when the base
+        repo has uncommitted changes to the same files → mark done without a
+        merge when there are no changes → merge → on failure, auto-rebase and
+        retry → on failure again, restart the agent with its previous diff.
+        """
+        item = await self.items.get_or_raise(item_id)
 
         # Refuse to merge without an explicit base_branch. The agent's
         # worktree was forked from a specific branch (recorded as
@@ -457,249 +475,239 @@ class WorkflowService:
         # merge target. If it's missing — e.g. a legacy item, or a corrupted
         # record — we must not silently pick a fallback like "main" or "the
         # current HEAD of the target repo"; doing so was the original bug.
-        if not base_branch:
-            await self._log_and_notify(item_id, "system",
+        if not item.get("base_branch"):
+            return await self._block_merge(
+                item_id,
                 "Cannot merge — item is missing base_branch (the branch this "
                 "worktree was forked from). Refusing to guess a merge target. "
-                "Set base_branch on the item, or recreate the worktree.")
-            item = await self.items.transition(item_id, Event.MERGE_BLOCKED)
-            await self.notifications.broadcast_item_updated(item)
-            await self.notifications.ws_manager.broadcast("merge_blocked", {
-                "item_id": item_id,
-                "message": "Cannot merge — item has no recorded base branch. "
-                           "The merge target is unknown.",
-            })
-            return item
-
-        # Check if base repo has dirty files that overlap with the agent's changes
-        from ..git.operations import run_git
-        try:
-            # Get locally modified tracked files (exclude untracked with no '??' prefix)
-            status_output = await run_git(self.git.base_repo_path(item.get("repo")), "status", "--porcelain")
-            dirty_files = set()
-            for line in status_output.strip().splitlines():
-                if not line or line.startswith("??"):
-                    continue  # skip untracked files
-                # porcelain format: XY<space>filename (XY = 2 status chars)
-                # Use --porcelain -z would be cleaner, but just find first non-space after pos 1
-                rest = line[2:]  # skip XY status chars
-                filepath = rest.lstrip(" ").split(" -> ")[-1].strip()
-                if filepath:
-                    dirty_files.add(filepath)
-
-            if dirty_files and worktree_path:
-                # Get files changed by the agent's branch (committed + uncommitted)
-                base = base_branch or "main"
-                agent_files = set()
-                try:
-                    # Committed changes vs base
-                    committed = await run_git(
-                        worktree_path, "diff", "--name-only", base, "HEAD")
-                    agent_files.update(f.strip() for f in committed.strip().splitlines() if f.strip())
-                except Exception:
-                    pass
-                try:
-                    # Uncommitted changes in the worktree
-                    uncommitted = await run_git(worktree_path, "diff", "--name-only")
-                    agent_files.update(f.strip() for f in uncommitted.strip().splitlines() if f.strip())
-                    # Staged but not committed
-                    staged = await run_git(worktree_path, "diff", "--name-only", "--cached")
-                    agent_files.update(f.strip() for f in staged.strip().splitlines() if f.strip())
-                except Exception as e:
-                    logger.warning(f"Failed to get worktree uncommitted files: {e}")
-
-                overlap = dirty_files & agent_files
-                if overlap:
-                    file_list = ", ".join(sorted(overlap)[:5])
-                    if len(overlap) > 5:
-                        file_list += f" (+{len(overlap) - 5} more)"
-                    await self._log_and_notify(item_id, "system",
-                        f"Cannot merge — conflicting uncommitted changes in: {file_list}")
-                    item = await self.items.transition(item_id, Event.MERGE_BLOCKED)
-                    await self.notifications.broadcast_item_updated(item)
-                    await self.notifications.ws_manager.broadcast("merge_blocked", {
-                        "item_id": item_id,
-                        "message": f"Cannot merge because these files have uncommitted changes "
-                                   f"in the target repo: {file_list}. "
-                                   f"Please commit or stash your changes, then try again.",
-                    })
-                    return item
-        except Exception as e:
-            logger.warning(f"Failed to check repo status: {e}")
-
-        # Check if there are any changed files — skip merge if none
-        has_changes = True
-        if worktree_path and branch:
-            from ..git.operations import get_changed_files
-            try:
-                base = base_branch or "main"
-                base_commit = item.get("base_commit")
-                changed = await get_changed_files(
-                    worktree_path, branch, base, worktree_path, base_commit
-                )
-                has_changes = len(changed) > 0
-            except Exception as e:
-                logger.warning(f"Failed to check changed files, assuming changes exist: {e}")
-
-        if not has_changes:
-            # No modified files — skip merge, just clean up and move to done
-            await self._log_and_notify(item_id, "system",
-                "No modified files — skipping merge")
-            if worktree_path:
-                await self.git.cleanup_worktree_and_branch(worktree_path, branch, repo=item.get("repo"))
-            item = await self.items.transition(
-                item_id, Event.REQUEST_MERGE, worktree_path=None,
+                "Set base_branch on the item, or recreate the worktree.",
+                "Cannot merge — item has no recorded base branch. "
+                "The merge target is unknown.",
             )
-            # Broadcast BEFORE notify_and_auto_start_dependents — without this,
-            # the frontend never sees the column change and the card stays in
-            # Review until a reload. notify_and_auto_start_dependents only
-            # fires a "dependencies_resolved" event, and only when dependents
-            # exist, so it can't be relied on to refresh the moving card.
-            await self.notifications.broadcast_item_updated(item)
-            await self.notify_and_auto_start_dependents(item_id)
-            return item
+
+        overlap = await self._dirty_overlap(item)
+        if overlap:
+            file_list = _short_file_list(overlap)
+            return await self._block_merge(
+                item_id,
+                f"Cannot merge — conflicting uncommitted changes in: {file_list}",
+                f"Cannot merge because these files have uncommitted changes "
+                f"in the target repo: {file_list}. "
+                f"Please commit or stash your changes, then try again.",
+            )
+
+        if not await self._has_changes_to_merge(item):
+            return await self._finish_without_merge(item)
 
         success, message = await self.git.merge_agent_work(
-            branch, base_branch, worktree_path, commit_msg, repo=item.get("repo"),
+            item["branch_name"], item["base_branch"], _worktree_of(item),
+            item.get("commit_message"), repo=item.get("repo"),
         )
-
         if success:
-            self._merge_retries.pop(item_id, None)
-            self._auto_approve_retries.pop(item_id, None)
-            self._last_agent_message.pop(item_id, None)
-            merge_sha = message  # on success, message contains the merge commit SHA
-            target = base_branch or "current branch"
-            short_sha = merge_sha[:8] if merge_sha else ""
-            await self._log_and_notify(item_id, "system",
-                f"Merged {branch} into {target} ({short_sha})")
+            return await self._finish_merge(item, merge_sha=message)
 
-            # Clean up worktree
-            if worktree_path:
-                await self.git.cleanup_worktree_and_branch(worktree_path, branch, repo=item.get("repo"))
+        await self._log_and_notify(item_id, "system",
+            f"Merge failed — {message[:200]}. Attempting auto-rebase...")
+        if _worktree_of(item):
+            merged = await self._rebase_and_retry_merge(item)
+            if merged:
+                return merged
+        return await self._restart_for_conflicts(item)
 
-            item = await self.items.transition(
-                item_id, Event.REQUEST_MERGE,
-                worktree_path=None, merge_commit=merge_sha,
+    async def _block_merge(self, item_id: str, log_message: str, ui_message: str) -> Dict[str, Any]:
+        """Move the item to merge_blocked and tell the user why."""
+        await self._log_and_notify(item_id, "system", log_message)
+        item = await self.items.transition(item_id, Event.MERGE_BLOCKED)
+        await self.notifications.broadcast_item_updated(item)
+        await self.notifications.ws_manager.broadcast("merge_blocked", {
+            "item_id": item_id, "message": ui_message,
+        })
+        return item
+
+    async def _dirty_overlap(self, item: Dict[str, Any]) -> set:
+        """Files with uncommitted changes in the base repo that the agent also changed.
+
+        Fails open: if git can't be read, no overlap is reported.
+        """
+        worktree_path = _worktree_of(item)
+        try:
+            dirty_files = await self._dirty_base_files(item.get("repo"))
+            if not (dirty_files and worktree_path):
+                return set()
+            return dirty_files & await self._agent_changed_files(worktree_path, item["base_branch"])
+        except Exception as e:
+            logger.warning(f"Failed to check repo status: {e}")
+            return set()
+
+    async def _dirty_base_files(self, repo: Optional[str]) -> set:
+        """Tracked files with uncommitted changes in the base repo (untracked ignored)."""
+        from ..git.operations import run_git
+        status_output = await run_git(self.git.base_repo_path(repo), "status", "--porcelain")
+        dirty_files = set()
+        for line in status_output.strip().splitlines():
+            if not line or line.startswith("??"):
+                continue  # skip untracked files
+            # porcelain format: XY<space>filename (XY = 2 status chars);
+            # renames read "old -> new" and we want the new name.
+            filepath = line[2:].lstrip(" ").split(" -> ")[-1].strip()
+            if filepath:
+                dirty_files.add(filepath)
+        return dirty_files
+
+    async def _agent_changed_files(self, worktree_path: Path, base: str) -> set:
+        """Files the agent changed: committed vs base, plus unstaged and staged."""
+        from ..git.operations import run_git
+
+        def names(output: str) -> set:
+            return {f.strip() for f in output.strip().splitlines() if f.strip()}
+
+        agent_files = set()
+        try:
+            agent_files |= names(await run_git(worktree_path, "diff", "--name-only", base, "HEAD"))
+        except Exception:
+            pass
+        try:
+            agent_files |= names(await run_git(worktree_path, "diff", "--name-only"))
+            agent_files |= names(await run_git(worktree_path, "diff", "--name-only", "--cached"))
+        except Exception as e:
+            logger.warning(f"Failed to get worktree uncommitted files: {e}")
+        return agent_files
+
+    async def _has_changes_to_merge(self, item: Dict[str, Any]) -> bool:
+        """Whether the agent's branch changed any files. Assumes yes when unsure."""
+        worktree_path, branch = _worktree_of(item), item.get("branch_name")
+        if not (worktree_path and branch):
+            return True
+        from ..git.operations import get_changed_files
+        try:
+            changed = await get_changed_files(
+                worktree_path, branch, item["base_branch"], worktree_path, item.get("base_commit")
             )
+            return len(changed) > 0
+        except Exception as e:
+            logger.warning(f"Failed to check changed files, assuming changes exist: {e}")
+            return True
 
-            # Broadcast the column change to the frontend. The
-            # notify_and_auto_start_dependents call below only emits
-            # "dependencies_resolved" (and only when dependents exist), so
-            # without this broadcast the card stays in Review until a reload.
-            # The rebase-retry success branch below already does this — keep
-            # the two paths in sync.
-            await self.notifications.broadcast_item_updated(item)
-            await self.notify_and_auto_start_dependents(item_id)
-            await self._maybe_refresh_graph_after_merge()
-        else:
+    async def _finish_without_merge(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """No modified files — skip the merge, clean up and move to done."""
+        item_id, worktree_path = item["id"], _worktree_of(item)
+        await self._log_and_notify(item_id, "system", "No modified files — skipping merge")
+        if worktree_path:
+            await self.git.cleanup_worktree_and_branch(worktree_path, item["branch_name"], repo=item.get("repo"))
+        item = await self.items.transition(item_id, Event.REQUEST_MERGE, worktree_path=None)
+        # Broadcast BEFORE notify_and_auto_start_dependents — that only fires
+        # "dependencies_resolved" (and only when dependents exist), so without
+        # this the card stays in Review until a reload.
+        await self.notifications.broadcast_item_updated(item)
+        await self.notify_and_auto_start_dependents(item_id)
+        return item
+
+    async def _finish_merge(self, item: Dict[str, Any], merge_sha: str, note: str = "") -> Dict[str, Any]:
+        """Record a successful merge: clean up, move to done, unblock dependents."""
+        item_id, branch, worktree_path = item["id"], item["branch_name"], _worktree_of(item)
+        self._merge_retries.pop(item_id, None)
+        self._auto_approve_retries.pop(item_id, None)
+        self._last_agent_message.pop(item_id, None)
+        short_sha = merge_sha[:8] if merge_sha else ""
+        await self._log_and_notify(item_id, "system",
+            f"Merged {branch} into {item['base_branch']} ({short_sha}){note}")
+
+        if worktree_path:
+            await self.git.cleanup_worktree_and_branch(worktree_path, branch, repo=item.get("repo"))
+        item = await self.items.transition(
+            item_id, Event.REQUEST_MERGE, worktree_path=None, merge_commit=merge_sha,
+        )
+        # Broadcast the column change BEFORE notify_and_auto_start_dependents,
+        # for the same reason as in _finish_without_merge.
+        await self.notifications.broadcast_item_updated(item)
+        await self.notify_and_auto_start_dependents(item_id)
+        await self._maybe_refresh_graph_after_merge()
+        return item
+
+    async def _rebase_and_retry_merge(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Rebase the worktree onto its base and merge again. The done item, or None."""
+        from ..git.operations import commit_worktree_changes
+        item_id, branch, base = item["id"], item["branch_name"], item["base_branch"]
+        worktree_path, commit_msg = _worktree_of(item), item.get("commit_message")
+
+        # Commit any uncommitted work first
+        try:
+            await commit_worktree_changes(worktree_path, commit_msg or f"Agent work on {branch}")
+        except Exception:
+            pass
+
+        rebase_ok, rebase_msg = await self.git.rebase_onto_base(worktree_path, base)
+        if not rebase_ok:
             await self._log_and_notify(item_id, "system",
-                f"Merge failed — {message[:200]}. Attempting auto-rebase...")
+                f"Auto-rebase failed ({rebase_msg[:100]}), falling back to agent restart")
+            return None
 
-            # Phase 1: Try automatic rebase before resorting to agent restart
-            if worktree_path:
-                from ..git.operations import run_git, get_current_branch
+        await self._log_and_notify(item_id, "system",
+            f"Auto-rebase onto {base} succeeded, retrying merge")
+        success, message = await self.git.merge_agent_work(
+            branch, base, worktree_path, commit_msg, repo=item.get("repo"),
+        )
+        if success:
+            return await self._finish_merge(item, merge_sha=message, note=" after rebase")
+        await self._log_and_notify(item_id, "system",
+            f"Merge still failed after rebase: {message[:200]}")
+        return None
 
-                # Commit any uncommitted work first
-                from ..git.operations import commit_worktree_changes
-                try:
-                    await commit_worktree_changes(worktree_path, commit_msg or f"Agent work on {branch}")
-                except Exception:
-                    pass
+    async def _restart_for_conflicts(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Restart the agent on the updated base with its previous diff as context.
 
-                base = base_branch or await get_current_branch(self.git.base_repo_path(item.get("repo")))
-                rebase_ok, rebase_msg = await self.git.rebase_onto_base(worktree_path, base)
+        Gives up (conflict state) after _MAX_MERGE_RETRIES restarts, or when no
+        diff of the agent's work can be captured.
+        """
+        item_id, base, worktree_path = item["id"], item["base_branch"], _worktree_of(item)
+        merge_retries = self._merge_retries.get(item_id, 0)
+        if merge_retries >= self._MAX_MERGE_RETRIES:
+            await self._log_and_notify(item_id, "system",
+                f"Conflict resolution failed after {merge_retries} retries. Manual intervention needed.")
+            return await self._mark_conflict(item_id)
 
-                if rebase_ok:
-                    await self._log_and_notify(item_id, "system",
-                        f"Auto-rebase onto {base} succeeded, retrying merge")
+        agent_diff = await self._capture_agent_diff(worktree_path, base)
+        if not (agent_diff and worktree_path):
+            return await self._mark_conflict(item_id)
 
-                    # Retry the merge after successful rebase
-                    success2, message2 = await self.git.merge_agent_work(
-                        branch, base_branch, worktree_path, commit_msg, repo=item.get("repo"),
-                    )
-                    if success2:
-                        self._merge_retries.pop(item_id, None)
-                        self._auto_approve_retries.pop(item_id, None)
-                        self._last_agent_message.pop(item_id, None)
-                        merge_sha = message2
-                        target = base_branch or "current branch"
-                        short_sha = merge_sha[:8] if merge_sha else ""
-                        await self._log_and_notify(item_id, "system",
-                            f"Merged {branch} into {target} ({short_sha}) after rebase")
+        from ..git.operations import run_git
+        try:
+            # Worktrees share refs with the parent repo, so reset straight to
+            # the base branch — no fetch needed (the target project is local).
+            await run_git(worktree_path, "reset", "--hard", base)
+            await self._log_and_notify(item_id, "system",
+                f"Reset worktree to latest {base}, restarting agent with previous diff "
+                f"(retry {merge_retries + 1}/{self._MAX_MERGE_RETRIES})")
+        except Exception as e:
+            logger.warning(f"Failed to reset worktree: {e}")
 
-                        if worktree_path:
-                            await self.git.cleanup_worktree_and_branch(worktree_path, branch, repo=item.get("repo"))
+        self._merge_retries[item_id] = merge_retries + 1
+        item = await self.items.transition(item_id, Event.RESOLVE_CONFLICTS)
+        await self.notifications.broadcast_item_updated(item)
 
-                        item = await self.items.transition(
-                            item_id, Event.REQUEST_MERGE,
-                            worktree_path=None, merge_commit=merge_sha,
-                        )
+        config = await self.db.get_agent_config()
+        conflict_prompt = (
+            f"Your previous changes caused a merge conflict. The base branch has been updated.\n\n"
+            f"Here is the diff of your previous work — please reapply these changes to the "
+            f"updated codebase, resolving any conflicts:\n\n```diff\n{agent_diff}\n```\n\n"
+            f"Original task: {item['title']}\n\n{item['description']}"
+        )
+        await self._launch_session(item, config, conflict_prompt)
+        return item
 
-                        await self.notify_and_auto_start_dependents(item_id)
-                        await self.notifications.broadcast_item_updated(item)
-                        await self._maybe_refresh_graph_after_merge()
-                        return item
-                    else:
-                        await self._log_and_notify(item_id, "system",
-                            f"Merge still failed after rebase: {message2[:200]}")
-                else:
-                    await self._log_and_notify(item_id, "system",
-                        f"Auto-rebase failed ({rebase_msg[:100]}), falling back to agent restart")
+    async def _capture_agent_diff(self, worktree_path: Optional[Path], base: str) -> str:
+        """The agent's work as a diff (last commit, else vs base); '' if unavailable."""
+        from ..git.operations import run_git
+        try:
+            agent_diff = await run_git(worktree_path, "diff", "HEAD~1", "HEAD")
+            if not agent_diff.strip():
+                agent_diff = await run_git(worktree_path, "diff", base, "HEAD")
+            return agent_diff
+        except Exception:
+            return ""
 
-            # Phase 2: Rebase didn't work — fall back to agent restart with diff
-            # Check retry counter to prevent infinite loops
-            merge_retries = self._merge_retries.get(item_id, 0)
-            MAX_MERGE_RETRIES = 2
-            if merge_retries >= MAX_MERGE_RETRIES:
-                await self._log_and_notify(item_id, "system",
-                    f"Conflict resolution failed after {merge_retries} retries. Manual intervention needed.")
-                item = await self.items.transition(item_id, Event.CONFLICT_DETECTED)
-                await self.notifications.broadcast_item_updated(item)
-                return item
-
-            # Capture the agent's work as a diff before resetting
-            try:
-                from ..git.operations import run_git, get_current_branch
-                agent_diff = await run_git(worktree_path, "diff", "HEAD~1", "HEAD")
-                if not agent_diff.strip():
-                    # Try diff against base
-                    base = base_branch or await get_current_branch(self.git.base_repo_path(item.get("repo")))
-                    agent_diff = await run_git(worktree_path, "diff", base, "HEAD")
-            except Exception:
-                agent_diff = ""
-
-            if agent_diff and worktree_path:
-                # Reset worktree to latest base branch
-                try:
-                    base = base_branch or await get_current_branch(self.git.base_repo_path(item.get("repo")))
-                    # Worktrees share refs with the parent repo, so just reset
-                    # directly to the base branch — no fetch needed (target project
-                    # is local, not a remote clone).
-                    await run_git(worktree_path, "reset", "--hard", base)
-                    await self._log_and_notify(item_id, "system",
-                        f"Reset worktree to latest {base}, restarting agent with previous diff "
-                        f"(retry {merge_retries + 1}/{MAX_MERGE_RETRIES})")
-                except Exception as e:
-                    logger.warning(f"Failed to reset worktree: {e}")
-
-                # Increment retry counter and restart agent with the diff as context
-                self._merge_retries[item_id] = merge_retries + 1
-                item = await self.items.transition(item_id, Event.RESOLVE_CONFLICTS)
-                await self.notifications.broadcast_item_updated(item)
-
-                config = await self.db.get_agent_config()
-                conflict_prompt = (
-                    f"Your previous changes caused a merge conflict. The base branch has been updated.\n\n"
-                    f"Here is the diff of your previous work — please reapply these changes to the "
-                    f"updated codebase, resolving any conflicts:\n\n```diff\n{agent_diff}\n```\n\n"
-                    f"Original task: {item['title']}\n\n{item['description']}"
-                )
-                await self._launch_session(item, config, conflict_prompt)
-                return item
-
-            # Fallback: no diff captured, show conflict status
-            item = await self.items.transition(item_id, Event.CONFLICT_DETECTED)
-
+    async def _mark_conflict(self, item_id: str) -> Dict[str, Any]:
+        item = await self.items.transition(item_id, Event.CONFLICT_DETECTED)
         await self.notifications.broadcast_item_updated(item)
         return item
 
@@ -1347,31 +1355,46 @@ class WorkflowService:
         if self_item_id and self_item_id in by_id:
             own_paths = {f["path"] for f in await self._changed_paths(by_id[self_item_id])}
 
-        if target_item_id:
-            item = by_id.get(target_item_id)
-            if not item:
-                known = ", ".join(i["id"] for i in active if i["id"] != self_item_id)
-                return (
-                    f"No active worktree for item {target_item_id}. "
-                    f"Worktrees on disk right now: {known or '(none)'}."
-                )
-            if path:
-                return await self._peek_file_diff(item, path)
-            files = await self._changed_paths(item)
-            lines = [self._peek_item_header(item), f"{len(files)} changed file(s)"]
-            for f in files[:_PEEK_MAX_FILES_DETAIL]:
-                mark = "  <-- YOU ARE ALSO CHANGING THIS" if f["path"] in own_paths else ""
-                lines.append(f"  {f['status']} {f['path']}{mark}")
-            if len(files) > _PEEK_MAX_FILES_DETAIL:
-                lines.append(f"  ... and {len(files) - _PEEK_MAX_FILES_DETAIL} more")
-            lines.append("")
-            lines.append(
-                f"For the actual diff of one file: peek_worktree(item_id=\"{item['id']}\", "
-                "path=\"<file>\")."
+        if not target_item_id:
+            return await self._peek_overview(
+                [i for i in active if i["id"] != self_item_id], own_paths
             )
-            return "\n".join(lines)
+        item = by_id.get(target_item_id)
+        if not item:
+            known = ", ".join(i["id"] for i in active if i["id"] != self_item_id)
+            return (
+                f"No active worktree for item {target_item_id}. "
+                f"Worktrees on disk right now: {known or '(none)'}."
+            )
+        if path:
+            return await self._peek_file_diff(item, path)
+        return await self._peek_item(item, own_paths)
 
-        others = [i for i in active if i["id"] != self_item_id]
+    @staticmethod
+    def _peek_file_lines(files: List[Dict[str, Any]], marked: set, limit: int) -> List[str]:
+        """One line per changed file (capped at ``limit``), flagging files in ``marked``."""
+        lines = []
+        for f in files[:limit]:
+            mark = "  <-- YOU ARE ALSO CHANGING THIS" if f["path"] in marked else ""
+            lines.append(f"  {f['status']} {f['path']}{mark}")
+        if len(files) > limit:
+            lines.append(f"  ... and {len(files) - limit} more")
+        return lines
+
+    async def _peek_item(self, item: Dict[str, Any], own_paths: set) -> str:
+        """Full changed-file list for one other agent's worktree."""
+        files = await self._changed_paths(item)
+        lines = [self._peek_item_header(item), f"{len(files)} changed file(s)"]
+        lines += self._peek_file_lines(files, own_paths, _PEEK_MAX_FILES_DETAIL)
+        lines.append("")
+        lines.append(
+            f"For the actual diff of one file: peek_worktree(item_id=\"{item['id']}\", "
+            "path=\"<file>\")."
+        )
+        return "\n".join(lines)
+
+    async def _peek_overview(self, others: List[Dict[str, Any]], own_paths: set) -> str:
+        """Summary of every other active worktree, with overlapping files called out."""
         if not others:
             return (
                 "No other agent has a worktree on disk right now — nothing in "
@@ -1388,28 +1411,30 @@ class WorkflowService:
             lines.append(self._peek_item_header(item))
             if not files:
                 lines.append("  (no changes yet)")
-            for f in files[:_PEEK_MAX_FILES_PER_ITEM]:
-                mark = "  <-- YOU ARE ALSO CHANGING THIS" if f["path"] in shared else ""
-                lines.append(f"  {f['status']} {f['path']}{mark}")
-            if len(files) > _PEEK_MAX_FILES_PER_ITEM:
-                lines.append(f"  ... and {len(files) - _PEEK_MAX_FILES_PER_ITEM} more")
+            lines += self._peek_file_lines(files, set(shared), _PEEK_MAX_FILES_PER_ITEM)
             lines.append("")
 
         header = [f"Active worktrees besides yours: {len(others)}"]
-        if overlaps:
-            header.append("")
-            header.append("CONFLICT RISK - files you and another agent are both changing:")
-            for other_id, shared in overlaps.items():
-                header.append(f"  [{other_id}] {', '.join(shared)}")
-            header.append(
-                "Read their version before you edit further (peek_worktree with "
-                "item_id + path), and keep your change compatible or narrow it."
-            )
+        header += self._peek_conflict_warning(overlaps)
         header.append("")
         return "\n".join(header + lines).rstrip() + (
             "\n\nFull file list: peek_worktree(item_id=\"<id>\"). "
             "One file's diff: peek_worktree(item_id=\"<id>\", path=\"<file>\")."
         )
+
+    @staticmethod
+    def _peek_conflict_warning(overlaps: Dict[str, List[str]]) -> List[str]:
+        """The CONFLICT RISK block for files this agent shares with others (or nothing)."""
+        if not overlaps:
+            return []
+        warning = ["", "CONFLICT RISK - files you and another agent are both changing:"]
+        for other_id, shared in overlaps.items():
+            warning.append(f"  [{other_id}] {', '.join(shared)}")
+        warning.append(
+            "Read their version before you edit further (peek_worktree with "
+            "item_id + path), and keep your change compatible or narrow it."
+        )
+        return warning
 
     async def _peek_file_diff(self, item: Dict[str, Any], path: str) -> str:
         """One file's diff from another agent's worktree, capped."""

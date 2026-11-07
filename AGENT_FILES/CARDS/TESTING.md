@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1434 tests
+./run-tests.sh              # Run all 1441 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -38,6 +38,7 @@ tests/
 │   ├── test_allowed_commands.py       # Command filter + access MCP (26 tests)
 │   ├── test_annotation_prompt.py      # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py     # Annotation summary generation (2 tests)
+│   ├── test_approve_item.py           # approve_item merge pipeline, one test per exit path (7 tests)
 │   ├── test_app.py                    # FastAPI app and middleware (26 tests)
 │   ├── test_create_todo_autostart.py  # Todo creation with auto-start (23 tests)
 │   ├── test_database_service.py       # DatabaseService CRUD (62 tests)
@@ -86,7 +87,7 @@ tests/
 
 ## Test Categories
 
-**1434 total** = 20 smoke + 1400 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1400 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
+**1441 total** = 20 smoke + 1407 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1407 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
 
 ### Smoke Tests (20 tests)
 Quick checks that core components work:
@@ -101,8 +102,9 @@ Quick checks that core components work:
 - **ItemRepository** (25 tests): Read APIs, `transition()`, `update_fields()`, `move_to_column()`, `_WRITABLE_ITEM_COLUMNS` enforcement
 - **EpicRepository** (9 tests): CRUD facade and `_WRITABLE_EPIC_COLUMNS` enforcement (replaces the old `ALLOWED_EPIC_COLUMNS` whitelist that lived in `database_service.py`)
 
-### Unit Tests — Service Layer (298 tests)
+### Unit Tests — Service Layer (305 tests)
 - **WorkflowService** (115 tests): State transitions (driven through the `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
+- **approve_item merge pipeline** (7 tests, `test_approve_item.py`): each exit path — blocked (no base branch / dirty overlap), clean merge, rebase-then-merge, restart with previous diff, retry cap, no-diff conflict
 - **DatabaseService** (62 tests): CRUD operations, item dependencies, clarification context column (column whitelisting moved into the repositories)
 - **SessionService** (54 tests): Session lifecycle, commit messages, plugin parsing (incl. enabled-skill plugins), SDK wrapper
 - **NotificationService** (41 tests): WebSocket broadcasting, tool formatting, event types
@@ -228,7 +230,7 @@ async def test_apply_migration(self, raw_db, runner):
 ### Adding New Tests
 
 1. Place in the appropriate directory (`unit/`, `integration/`, `smoke/`)
-2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1400. Select by path (`./run-tests.sh tests/unit/`), not by marker.
+2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1407. Select by path (`./run-tests.sh tests/unit/`), not by marker.
 3. Async tests work automatically (no `@pytest.mark.asyncio` needed)
 4. Run `./run-tests.sh` to verify all tests pass
 5. Put a new test file in one of the category buckets above and update that bucket's count and the totals here and in `tests/README.md` — the buckets partition the unit tests exactly, and unmaintained counts drift silently.

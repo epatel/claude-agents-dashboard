@@ -63,7 +63,15 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     `approve_item` / `_restart_session_with_new_permissions` (17–60 shared lines each); merge
     `on_request_command` + `on_request_tool`, `on_complete` + `on_error`, and the shared tail of
     `_auto_approve_no_changes` / `_auto_approve_direct` / `_run_auto_review`.
-  - [ ] 2 — Split `approve_item` (209 lines, cyclomatic 49) into validate → merge → conflicts →
+  - [x] 2 — Done 2026-11-07: file 4.73 → 5.71, project 7.25 → 7.31; `approve_item` has no
+    findings left (phases: `_block_merge`, `_dirty_overlap`, `_has_changes_to_merge`,
+    `_finish_without_merge`, `_finish_merge`, `_rebase_and_retry_merge`,
+    `_restart_for_conflicts`). Added `tests/unit/test_approve_item.py` (7 characterization
+    tests, written and passed against the old code first). `peek_worktree` split into
+    `_peek_item` / `_peek_overview`. Only visible change: on a rebase-then-merge, the item
+    broadcast now precedes the dependents notification, as on the plain merge path. Not done:
+    the optional auto-review extraction; the file is still over the Large File limit (1303 LoC).
+    Original scope — split `approve_item` (209 lines, cyclomatic 49) into validate → merge → conflicts →
     cleanup/unblock phases; simplify `peek_worktree`. Extracting auto-review into its own
     collaborator is optional — flag here before doing it.
   - [ ] 3 — Split `ClaudeAgentSession.start` (391 lines, cyclomatic 91): options building,
@@ -190,7 +198,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-07): steps 0–1 done; next are steps 2, 3 and 5.** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 in flight (2026-11-07): steps 0–2 done; next are steps 3 and 5.** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above
@@ -202,7 +210,7 @@ Previous change (2026-11-06, M11): Tiiny provider, live-verified on the user's d
 security audit (`AGENT_FILES/AUDIT.md`, rev 14) has no open actionable finding.
 
 Authoritative counts, re-verified by collection/grep — trust these over prose: **33 migrations
-(001–033)**; **1434 tests = 20 smoke + 1400 unit + 14 integration** (plus 7 Node E2E tests,
+(001–033)**; **1441 tests = 20 smoke + 1407 unit + 14 integration** (plus 7 Node E2E tests,
 counted separately); **7 services**; **10 MCP tool servers exposing 12 tools** (`todo.py`
 serves three); skills ship as plugins, not as an MCP tool.
 

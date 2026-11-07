@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (1434 tests across 55 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (32 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1441 tests across 56 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (32 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -23,6 +23,7 @@ tests/
 │   ├── test_allowed_commands.py                 # Command filter + access MCP tool (26 tests)
 │   ├── test_annotation_prompt.py                # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py               # Annotation summary generation (2 tests)
+│   ├── test_approve_item.py                     # approve_item merge pipeline exit paths (7 tests)
 │   ├── test_app.py                              # FastAPI app creation and middleware (26 tests)
 │   ├── test_create_todo_autostart.py            # Todo creation with auto-start (23 tests)
 │   ├── test_database_service.py                 # DatabaseService CRUD operations (62 tests)
@@ -77,8 +78,9 @@ tests/
 - **ItemRepository** (25 tests) — Read APIs, `transition()`, `update_fields()`, `move_to_column()`, column whitelist enforcement
 - **EpicRepository** (9 tests) — CRUD facade and column whitelist enforcement
 
-### 2. Service Layer (295 tests)
+### 2. Service Layer (302 tests)
 - **WorkflowService** (115 tests) — State transitions (driven through `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
+- **approve_item merge pipeline** (7 tests) — each exit path: blocked, clean merge, rebase-then-merge, restart with previous diff, retry cap, no-diff conflict
 - **DatabaseService** (62 tests) — CRUD operations, item dependencies, clarification context column (column whitelisting moved to the repositories)
 - **SessionService** (54 tests) — Session lifecycle, commit messages, plugin parsing (incl. enabled-skill plugins), SDK wrapper
 - **NotificationService** (41 tests) — WebSocket broadcasting, tool formatting, event types
@@ -162,7 +164,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 1434 tests
+# Run all 1441 tests
 ./run-tests.sh
 
 # Run specific test categories (any path narrows the run)
@@ -185,7 +187,7 @@ pytest tests/unit/migrations/
 
 # Select by path, not by marker. The unit/integration/smoke markers exist in
 # pytest.ini but are applied to only a minority of files — `pytest -m unit`
-# collects ~94 of 1400 unit tests and silently skips the rest.
+# collects ~94 of 1407 unit tests and silently skips the rest.
 pytest tests/unit/
 pytest tests/integration/
 pytest tests/smoke/
