@@ -5,6 +5,34 @@ const Shortcuts = {
     _runState: {},      // shortcut_id → { status, output, exit_code }
     _autoReset: {},     // shortcut_id → true if auto-reset enabled
 
+    /** Per run status: status line, CSS suffix (status line + bar button), reset button label. */
+    _statusViews: {
+        running: { text: () => '⟳ Running...', cls: 'running', resetLabel: 'Stop' },
+        failed: { text: (s) => `✕ Failed (exit code: ${s.exit_code})`, cls: 'failed', resetLabel: 'Reset' },
+        stopped: { text: () => '⏹ Stopped', cls: 'failed', resetLabel: 'Reset' },
+        done: { text: () => '✓ Completed', cls: 'done', resetLabel: 'Reset' },
+    },
+
+    _statusView(state) {
+        return state && Object.hasOwn(this._statusViews, state.status) ? this._statusViews[state.status] : null;
+    },
+
+    _isRunning(state) {
+        return !!state && state.status === 'running';
+    },
+
+    /** A run that already has something to show: still running, or finished with output. */
+    _hasRunToShow(state) {
+        if (this._isRunning(state)) return true;
+        return this._statusView(state) !== null && !!state.output;
+    },
+
+    _stopPolling(id) {
+        if (!this._pollTimers[id]) return;
+        clearInterval(this._pollTimers[id]);
+        delete this._pollTimers[id];
+    },
+
     async init() {
         await this.load();
         this.render();
@@ -26,27 +54,7 @@ const Shortcuts = {
         btns.innerHTML = '';
 
         for (const sc of this.shortcuts) {
-            const btn = document.createElement('button');
-            btn.className = 'shortcut-btn';
-            btn.textContent = sc.name;
-            btn.title = sc.command;
-            btn.dataset.id = sc.id;
-            btn.dataset.mapName = 'shortcuts.btn-shortcut';
-
-            // Reflect current run state
-            const state = this._runState[sc.id];
-            if (state) {
-                if (state.status === 'running') {
-                    btn.classList.add('shortcut-running');
-                } else if (state.status === 'failed' || state.status === 'stopped') {
-                    btn.classList.add('shortcut-failed');
-                } else if (state.status === 'done') {
-                    btn.classList.add('shortcut-done');
-                }
-            }
-
-            btn.addEventListener('click', () => this.runOrShow(sc));
-            btns.appendChild(btn);
+            btns.appendChild(this._shortcutButton(sc));
         }
 
         const visible = this.shortcuts.length > 0;
@@ -60,16 +68,23 @@ const Shortcuts = {
         document.body.classList.toggle('has-shortcuts', visible);
     },
 
-    async runOrShow(sc) {
-        const state = this._runState[sc.id];
-        if (state && state.status === 'running') {
-            // Already running — just show progress dialog
-            this.showProgress(sc);
-            return;
-        }
+    _shortcutButton(sc) {
+        const btn = document.createElement('button');
+        btn.className = 'shortcut-btn';
+        btn.textContent = sc.name;
+        btn.title = sc.command;
+        btn.dataset.id = sc.id;
+        btn.dataset.mapName = 'shortcuts.btn-shortcut';
+        // Reflect current run state
+        const view = this._statusView(this._runState[sc.id]);
+        if (view) btn.classList.add(`shortcut-${view.cls}`);
+        btn.addEventListener('click', () => this.runOrShow(sc));
+        return btn;
+    },
 
-        // If there's a finished log, show it instead of re-running
-        if (state && (state.status === 'done' || state.status === 'failed' || state.status === 'stopped') && state.output) {
+    async runOrShow(sc) {
+        // Already running, or a finished log: show it instead of re-running
+        if (this._hasRunToShow(this._runState[sc.id])) {
             this.showProgress(sc);
             return;
         }
@@ -93,10 +108,7 @@ const Shortcuts = {
     },
 
     _startPolling(sc) {
-        // Clear existing timer if any
-        if (this._pollTimers[sc.id]) {
-            clearInterval(this._pollTimers[sc.id]);
-        }
+        this._stopPolling(sc.id);
 
         const poll = async () => {
             try {
@@ -111,8 +123,7 @@ const Shortcuts = {
                 this._updateProgressContent(sc.id);
 
                 if (data.status !== 'running') {
-                    clearInterval(this._pollTimers[sc.id]);
-                    delete this._pollTimers[sc.id];
+                    this._stopPolling(sc.id);
 
                     // Auto-reset: clear state so next click re-runs (only on success)
                     if (this._autoReset[sc.id]) {
@@ -154,68 +165,59 @@ const Shortcuts = {
 
         // If it was a finished state (failed/done), and user clicks button again,
         // restart polling in case the process was re-run
-        const state = this._runState[sc.id];
-        if (state && state.status === 'running' && !this._pollTimers[sc.id]) {
+        if (this._isRunning(this._runState[sc.id]) && !this._pollTimers[sc.id]) {
             this._startPolling(sc);
         }
     },
 
     _updateProgressContent(shortcutId) {
         const dialog = document.getElementById('shortcut-progress-dialog');
-        if (!dialog || !dialog.open || dialog.dataset.shortcutId !== shortcutId) return;
+        if (!this._isShowing(dialog, shortcutId)) return;
 
         const state = this._runState[shortcutId] || { status: 'idle', output: '', exit_code: null };
-        const outputEl = document.getElementById('shortcut-progress-output');
-        const statusEl = document.getElementById('shortcut-progress-status');
-        const resetBtn = document.getElementById('shortcut-reset-btn');
-        const autoResetBtn = document.getElementById('shortcut-auto-reset-btn');
+        this._renderProgressOutput(state.output);
+        this._renderProgressButtons(state);
+        this._renderProgressStatus(state);
+    },
 
-        // Update output — auto-scroll if at bottom
+    _isShowing(dialog, shortcutId) {
+        if (!dialog || !dialog.open) return false;
+        return dialog.dataset.shortcutId === shortcutId;
+    },
+
+    /** Output, kept scrolled to the bottom if it was there. */
+    _renderProgressOutput(output) {
+        const outputEl = document.getElementById('shortcut-progress-output');
         const isAtBottom = outputEl.scrollHeight - outputEl.scrollTop - outputEl.clientHeight < 30;
-        if (state.output) {
-            outputEl.innerHTML = this._ansiToHtml(state.output);
+        if (output) {
+            outputEl.innerHTML = this._ansiToHtml(output);
         } else {
             outputEl.textContent = '(waiting for output...)';
         }
         if (isAtBottom) {
             outputEl.scrollTop = outputEl.scrollHeight;
         }
+    },
 
-        // Update reset/stop button label based on state
+    /** Stop while running, Reset once finished; Auto-reset only while running. */
+    _renderProgressButtons(state) {
+        const view = this._statusView(state);
+        const resetBtn = document.getElementById('shortcut-reset-btn');
         if (resetBtn) {
-            if (state.status === 'running') {
-                resetBtn.textContent = 'Stop';
-                resetBtn.style.display = '';
-            } else if (state.status === 'done' || state.status === 'failed' || state.status === 'stopped') {
-                resetBtn.textContent = 'Reset';
-                resetBtn.style.display = '';
-            } else {
-                resetBtn.style.display = 'none';
-            }
+            if (view) resetBtn.textContent = view.resetLabel;
+            resetBtn.style.display = view ? '' : 'none';
         }
-
-        // Auto-reset button only available while running
+        const autoResetBtn = document.getElementById('shortcut-auto-reset-btn');
         if (autoResetBtn) {
             autoResetBtn.style.display = state.status === 'running' ? '' : 'none';
         }
+    },
 
-        // Update status indicator
-        if (state.status === 'running') {
-            statusEl.textContent = '⟳ Running...';
-            statusEl.className = 'shortcut-status shortcut-status-running';
-        } else if (state.status === 'failed') {
-            statusEl.textContent = `✕ Failed (exit code: ${state.exit_code})`;
-            statusEl.className = 'shortcut-status shortcut-status-failed';
-        } else if (state.status === 'stopped') {
-            statusEl.textContent = '⏹ Stopped';
-            statusEl.className = 'shortcut-status shortcut-status-failed';
-        } else if (state.status === 'done') {
-            statusEl.textContent = '✓ Completed';
-            statusEl.className = 'shortcut-status shortcut-status-done';
-        } else {
-            statusEl.textContent = '';
-            statusEl.className = 'shortcut-status';
-        }
+    _renderProgressStatus(state) {
+        const statusEl = document.getElementById('shortcut-progress-status');
+        const view = this._statusView(state);
+        statusEl.textContent = view ? view.text(state) : '';
+        statusEl.className = view ? `shortcut-status shortcut-status-${view.cls}` : 'shortcut-status';
     },
 
     closeProgress() {
@@ -240,10 +242,7 @@ const Shortcuts = {
         const id = dialog.dataset.shortcutId;
         if (!id) return;
 
-        const state = this._runState[id];
-        const isRunning = state && state.status === 'running';
-
-        if (isRunning) {
+        if (this._isRunning(this._runState[id])) {
             // Stop the process but keep the log visible
             try {
                 await Api.request('POST', `/api/shortcuts/${id}/stop`);
@@ -254,11 +253,7 @@ const Shortcuts = {
 
         // Reset: clear everything (for stopped/done/failed states)
 
-        // Stop polling
-        if (this._pollTimers[id]) {
-            clearInterval(this._pollTimers[id]);
-            delete this._pollTimers[id];
-        }
+        this._stopPolling(id);
 
         // Reset server-side state
         try {
@@ -270,9 +265,7 @@ const Shortcuts = {
 
         // Reset dialog UI
         document.getElementById('shortcut-progress-output').textContent = '(waiting for output...)';
-        const statusEl = document.getElementById('shortcut-progress-status');
-        statusEl.textContent = '';
-        statusEl.className = 'shortcut-status';
+        this._renderProgressStatus({ status: 'idle' });
 
         // Re-render buttons to remove running/done/failed styling
         this.render();
@@ -299,17 +292,30 @@ const Shortcuts = {
 
     async submitAdd(event) {
         event.preventDefault();
-        const name = document.getElementById('shortcut-add-name').value.trim();
-        const command = document.getElementById('shortcut-add-command').value.trim();
-        if (!name || !command) return;
+        const fields = this._formFields('shortcut-add');
+        if (!fields) return;
+        await this._save(() => Api.request('POST', '/api/shortcuts', fields),
+            () => this.closeAddDialog(), 'Failed to add shortcut: ', false);
+    },
 
+    /** Trimmed name and command from ``<prefix>-name`` / ``<prefix>-command``, or null if either is empty. */
+    _formFields(prefix) {
+        const name = document.getElementById(`${prefix}-name`).value.trim();
+        const command = document.getElementById(`${prefix}-command`).value.trim();
+        if (!name || !command) return null;
+        return { name, command };
+    },
+
+    /** Send a change, then close its dialog and reload; alert on failure. */
+    async _save(request, close, failureMessage, refreshManageList) {
         try {
-            await Api.request('POST', '/api/shortcuts', { name, command });
-            this.closeAddDialog();
+            await request();
+            close();
             await this.load();
             this.render();
+            if (refreshManageList) this._renderManageList();
         } catch (e) {
-            alert('Failed to add shortcut: ' + e.message);
+            alert(failureMessage + e.message);
         }
     },
 
@@ -356,11 +362,7 @@ const Shortcuts = {
     async deleteShortcut(id) {
         try {
             await Api.request('DELETE', `/api/shortcuts/${id}`);
-            // Stop polling if running
-            if (this._pollTimers[id]) {
-                clearInterval(this._pollTimers[id]);
-                delete this._pollTimers[id];
-            }
+            this._stopPolling(id);
             delete this._runState[id];
             await this.load();
             this.render();
@@ -396,34 +398,30 @@ const Shortcuts = {
         const id = dialog.dataset.shortcutId;
         if (!id) return;
 
-        const name = document.getElementById('shortcut-edit-name').value.trim();
-        const command = document.getElementById('shortcut-edit-command').value.trim();
-        if (!name || !command) return;
-
-        try {
-            await Api.request('PUT', `/api/shortcuts/${id}`, { name, command });
-            this.closeEditDialog();
-            await this.load();
-            this.render();
-            this._renderManageList();
-        } catch (e) {
-            alert('Failed to update shortcut: ' + e.message);
-        }
+        const fields = this._formFields('shortcut-edit');
+        if (!fields) return;
+        await this._save(() => Api.request('PUT', `/api/shortcuts/${id}`, fields),
+            () => this.closeEditDialog(), 'Failed to update shortcut: ', true);
     },
 
     _setupCtrlEnter(textareaId, dialog) {
         const ta = document.getElementById(textareaId);
         if (!ta) return;
         // Remove previous listener if any
-        ta._ctrlEnterHandler && ta.removeEventListener('keydown', ta._ctrlEnterHandler);
+        if (ta._ctrlEnterHandler) ta.removeEventListener('keydown', ta._ctrlEnterHandler);
         ta._ctrlEnterHandler = (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            if (this._isCtrlEnter(e)) {
                 e.preventDefault();
                 const form = ta.closest('form');
                 if (form) form.requestSubmit();
             }
         };
         ta.addEventListener('keydown', ta._ctrlEnterHandler);
+    },
+
+    _isCtrlEnter(e) {
+        if (e.key !== 'Enter') return false;
+        return e.ctrlKey || e.metaKey;
     },
 
     _esc(str) {
@@ -445,137 +443,146 @@ const Shortcuts = {
         // how a terminal would render carriage-returned progress bars.
         text = text.replace(/\r\n/g, '\n').replace(/^[^\n]*\r(?!\n)/gm, '');
 
-        // SGR colors — standard 16
-        const FG = {
-            30: '#000000', 31: '#cd3131', 32: '#0dbc79', 33: '#e5e510',
-            34: '#2472c8', 35: '#bc3fbc', 36: '#11a8cd', 37: '#e5e5e5',
-            90: '#666666', 91: '#f14c4c', 92: '#23d18b', 93: '#f5f543',
-            94: '#3b8eea', 95: '#d670d6', 96: '#29b8db', 97: '#ffffff',
-        };
-        const BG = {
-            40: '#000000', 41: '#cd3131', 42: '#0dbc79', 43: '#e5e510',
-            44: '#2472c8', 45: '#bc3fbc', 46: '#11a8cd', 47: '#e5e5e5',
-            100: '#666666', 101: '#f14c4c', 102: '#23d18b', 103: '#f5f543',
-            104: '#3b8eea', 105: '#d670d6', 106: '#29b8db', 107: '#ffffff',
-        };
-        // xterm 256-color palette: 0-15 (system) + 16-231 (216 cube) + 232-255 (grayscale)
-        const sys256 = [
-            '#000000', '#cd3131', '#0dbc79', '#e5e510', '#2472c8', '#bc3fbc', '#11a8cd', '#e5e5e5',
-            '#666666', '#f14c4c', '#23d18b', '#f5f543', '#3b8eea', '#d670d6', '#29b8db', '#ffffff',
-        ];
-        const palette256 = (n) => {
-            if (n < 16) return sys256[n];
-            if (n < 232) {
-                n -= 16;
-                const r = Math.floor(n / 36), g = Math.floor((n % 36) / 6), b = n % 6;
-                const c = (v) => v === 0 ? 0 : 55 + v * 40;
-                return `rgb(${c(r)},${c(g)},${c(b)})`;
-            }
-            const v = 8 + (n - 232) * 10;
-            return `rgb(${v},${v},${v})`;
-        };
-
-        // State: a stack of style attributes the current span carries.
-        let style = { fg: null, bg: null, bold: false, dim: false, italic: false, underline: false };
-        const styleStr = (s) => {
-            const parts = [];
-            if (s.fg) parts.push(`color:${s.fg}`);
-            if (s.bg) parts.push(`background-color:${s.bg}`);
-            if (s.bold) parts.push('font-weight:bold');
-            if (s.dim) parts.push('opacity:0.7');
-            if (s.italic) parts.push('font-style:italic');
-            if (s.underline) parts.push('text-decoration:underline');
-            return parts.join(';');
-        };
-        const isActive = (s) => s.fg || s.bg || s.bold || s.dim || s.italic || s.underline;
-
-        // Apply one SGR parameter list (e.g. "1;31" or "38;5;202") to `style`.
-        const applySGR = (params) => {
-            const codes = params === '' ? [0] : params.split(';').map(Number);
-            for (let i = 0; i < codes.length; i++) {
-                const c = codes[i];
-                if (c === 0 || Number.isNaN(c)) {
-                    style = { fg: null, bg: null, bold: false, dim: false, italic: false, underline: false };
-                } else if (c === 1) style.bold = true;
-                else if (c === 2) style.dim = true;
-                else if (c === 3) style.italic = true;
-                else if (c === 4) style.underline = true;
-                else if (c === 22) { style.bold = false; style.dim = false; }
-                else if (c === 23) style.italic = false;
-                else if (c === 24) style.underline = false;
-                else if (c === 39) style.fg = null;
-                else if (c === 49) style.bg = null;
-                else if (FG[c] !== undefined) style.fg = FG[c];
-                else if (BG[c] !== undefined) style.bg = BG[c];
-                else if (c === 38 || c === 48) {
-                    // Extended color: 38;5;N (256-color) or 38;2;R;G;B (truecolor)
-                    const target = c === 38 ? 'fg' : 'bg';
-                    const mode = codes[i + 1];
-                    if (mode === 5 && codes[i + 2] !== undefined) {
-                        style[target] = palette256(codes[i + 2]);
-                        i += 2;
-                    } else if (mode === 2 && codes[i + 4] !== undefined) {
-                        style[target] = `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`;
-                        i += 4;
-                    }
-                }
-            }
-        };
-
-        // Walk the text. Match SGR (CSI ... m) and strip other CSI / OSC sequences.
-        // \x1b[ ... letter is CSI; \x1b] ... \x07|\x1b\\ is OSC.
-        const ESC = '\u001b';
-        let out = '';
-        let openSpan = false;
-        const pushText = (chunk) => {
-            if (!chunk) return;
-            const escaped = this._esc(chunk);
-            if (isActive(style)) {
-                if (!openSpan) {
-                    out += `<span style="${styleStr(style)}">`;
-                    openSpan = true;
-                }
-                out += escaped;
-            } else {
-                if (openSpan) { out += '</span>'; openSpan = false; }
-                out += escaped;
-            }
-        };
-        const reopenSpan = () => {
-            if (openSpan) { out += '</span>'; openSpan = false; }
-        };
-
+        // Walk the text: plain runs are escaped, escape sequences update the style.
+        const r = { out: '', openSpan: false, style: this._plainStyle() };
         let i = 0;
         while (i < text.length) {
-            const ch = text[i];
-            if (ch !== ESC) {
-                // Find next ESC and emit the chunk in one go.
-                const next = text.indexOf(ESC, i);
-                const end = next === -1 ? text.length : next;
-                pushText(text.slice(i, end));
-                i = end;
-                continue;
-            }
-            // ESC sequence — try CSI first.
-            const csi = /^\u001b\[([0-9;?]*)([@-~])/.exec(text.slice(i));
-            if (csi) {
-                const [match, params, final] = csi;
-                if (final === 'm') {
-                    reopenSpan();
-                    applySGR(params);
-                }
-                // All other CSI sequences (cursor moves, erase, etc.) are stripped.
-                i += match.length;
-                continue;
-            }
-            // OSC: ESC ] ... BEL or ESC \
-            const osc = /^\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/.exec(text.slice(i));
-            if (osc) { i += osc[0].length; continue; }
-            // Two-char escape (e.g. ESC =).
-            if (i + 1 < text.length) { i += 2; continue; }
-            i += 1;
+            i = text[i] === this._ESC ? this._ansiEscape(text, i, r) : this._ansiText(text, i, r);
         }
-        if (openSpan) out += '</span>';
-        return out;
-    }
+        if (r.openSpan) r.out += '</span>';
+        return r.out;
+    },
+
+    _ESC: '\u001b',
+
+    /** The 16 system colors: 30–37 / 40–47, then the bright 90–97 / 100–107. */
+    _ansiPalette: [
+        '#000000', '#cd3131', '#0dbc79', '#e5e510', '#2472c8', '#bc3fbc', '#11a8cd', '#e5e5e5',
+        '#666666', '#f14c4c', '#23d18b', '#f5f543', '#3b8eea', '#d670d6', '#29b8db', '#ffffff',
+    ],
+
+    _sgrChanges: null,  // SGR code → style fields it sets; built on first use
+
+    _sgrChange(code) {
+        if (!this._sgrChanges) this._sgrChanges = this._buildSgrChanges();
+        return this._sgrChanges[code];
+    },
+
+    _buildSgrChanges() {
+        const changes = {
+            1: { bold: true }, 2: { dim: true }, 3: { italic: true }, 4: { underline: true },
+            22: { bold: false, dim: false }, 23: { italic: false }, 24: { underline: false },
+            39: { fg: null }, 49: { bg: null },
+        };
+        this._ansiPalette.forEach((color, n) => {
+            const fg = n < 8 ? 30 + n : 90 + n - 8;
+            changes[fg] = { fg: color };
+            changes[fg + 10] = { bg: color };
+        });
+        return changes;
+    },
+
+    _plainStyle() {
+        return { fg: null, bg: null, bold: false, dim: false, italic: false, underline: false };
+    },
+
+    // xterm 256-color palette: 0-15 (system) + 16-231 (216 cube) + 232-255 (grayscale)
+    _palette256(n) {
+        if (n < 16) return this._ansiPalette[n];
+        if (n < 232) {
+            n -= 16;
+            const r = Math.floor(n / 36), g = Math.floor((n % 36) / 6), b = n % 6;
+            const c = (v) => v === 0 ? 0 : 55 + v * 40;
+            return `rgb(${c(r)},${c(g)},${c(b)})`;
+        }
+        const v = 8 + (n - 232) * 10;
+        return `rgb(${v},${v},${v})`;
+    },
+
+    /** Extended color at ``codes[i]``: 38;5;N (256-color) or 38;2;R;G;B (truecolor). */
+    _extendedColor(codes, i) {
+        const mode = codes[i + 1];
+        if (mode === 5 && codes[i + 2] !== undefined) {
+            return { color: this._palette256(codes[i + 2]), used: 2 };
+        }
+        if (mode === 2 && codes[i + 4] !== undefined) {
+            return { color: `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`, used: 4 };
+        }
+        return null;
+    },
+
+    // Apply one SGR parameter list (e.g. "1;31" or "38;5;202") to `style`; returns the new style.
+    _applySGR(style, params) {
+        const codes = params === '' ? [0] : params.split(';').map(Number);
+        for (let i = 0; i < codes.length; i++) {
+            const c = codes[i];
+            if (c === 0 || Number.isNaN(c)) {
+                style = this._plainStyle();
+                continue;
+            }
+            const ext = (c === 38 || c === 48) ? this._extendedColor(codes, i) : null;
+            if (ext) {
+                style[c === 38 ? 'fg' : 'bg'] = ext.color;
+                i += ext.used;
+            } else {
+                Object.assign(style, this._sgrChange(c));
+            }
+        }
+        return style;
+    },
+
+    _styleActive(s) {
+        return s.fg || s.bg || s.bold || s.dim || s.italic || s.underline;
+    },
+
+    _styleCss(s) {
+        const parts = [];
+        if (s.fg) parts.push(`color:${s.fg}`);
+        if (s.bg) parts.push(`background-color:${s.bg}`);
+        if (s.bold) parts.push('font-weight:bold');
+        if (s.dim) parts.push('opacity:0.7');
+        if (s.italic) parts.push('font-style:italic');
+        if (s.underline) parts.push('text-decoration:underline');
+        return parts.join(';');
+    },
+
+    /** Plain text up to the next ESC; returns where it ended. */
+    _ansiText(text, i, r) {
+        const next = text.indexOf(this._ESC, i);
+        const end = next === -1 ? text.length : next;
+        const escaped = this._esc(text.slice(i, end));
+        if (!this._styleActive(r.style)) {
+            this._closeSpan(r);
+        } else if (!r.openSpan) {
+            r.out += `<span style="${this._styleCss(r.style)}">`;
+            r.openSpan = true;
+        }
+        r.out += escaped;
+        return end;
+    },
+
+    _closeSpan(r) {
+        if (r.openSpan) { r.out += '</span>'; r.openSpan = false; }
+    },
+
+    /**
+     * One escape sequence at ``text[i]``; returns where it ended. SGR (CSI … m)
+     * changes the style; other CSI (cursor moves, erase, …) and OSC
+     * (ESC ] … BEL or ESC \) sequences are stripped.
+     */
+    _ansiEscape(text, i, r) {
+        const rest = text.slice(i);
+        const csi = /^\u001b\[([0-9;?]*)([@-~])/.exec(rest);
+        if (csi) {
+            if (csi[2] === 'm') {
+                this._closeSpan(r);
+                r.style = this._applySGR(r.style, csi[1]);
+            }
+            return i + csi[0].length;
+        }
+        const osc = /^\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/.exec(rest);
+        if (osc) return i + osc[0].length;
+        // Two-char escape (e.g. ESC =), or a lone ESC at the end.
+        return i + 1 < text.length ? i + 2 : i + 1;
+    },
 };
