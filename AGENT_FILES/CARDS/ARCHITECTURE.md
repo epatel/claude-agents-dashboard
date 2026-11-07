@@ -86,7 +86,8 @@ Vanilla JS in `src/static/js/`, **no build step**.
 - Jinja2 server-renders the initial board (`templates/base.html`, `templates/board.html`, `templates/partials/card.html`)
 - JS handles updates via WebSocket + fetch
 - `dialogs.js` coordinates the specialized dialog modules (clarification, config, detail, item, notification, request-changes, review, attachments, annotation-canvas); `search-dialog.js`, `file-browser.js` and `shortcuts.js` are standalone namespaces wired directly from `base.html`, not routed through `Dialogs`
-- `dialog-core.js` + `dialog-utils.js` are the shared infrastructure
+- `dialog-core.js` + `dialog-utils.js` are the shared infrastructure (`DialogUtils` also holds the shared item fetch, work-log render and tab switching)
+- `file-tree.js` (`FileTreeBase`) holds the tree / tab / breadcrumb / filter code shared by `FileBrowser` and `ReviewFileBrowser` (in `review-dialog.js`); each spreads it in and sets its ids and classes in `_tree`
 - **Sync requirement**: JavaScript-rendered cards (in `board.js`) and the server-rendered Jinja2 `partials/card.html` partial must stay in sync.
 
 ## Adding a feature: where things go
