@@ -22,7 +22,7 @@ import re
 import shutil
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NamedTuple, Optional
 
 import yaml
 
@@ -61,6 +61,59 @@ def _parse_frontmatter(text: str) -> Dict[str, Any]:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def _description_of(skill_md: str) -> str:
+    """The ``description`` from a SKILL.md's frontmatter ('' if none)."""
+    return _parse_frontmatter(skill_md).get("description", "") or ""
+
+
+class RepoRef(NamedTuple):
+    """A GitHub repo at a resolved ref."""
+    owner: str
+    repo: str
+    ref: str
+
+    def raw_url(self, path: str) -> str:
+        return f"https://raw.githubusercontent.com/{self.owner}/{self.repo}/{self.ref}/{path}"
+
+
+def _is_blob_under(node: Dict[str, Any], prefix: str) -> bool:
+    """True for a tree node that is a file (blob) whose path starts with ``prefix``."""
+    return node.get("type") == "blob" and node.get("path", "").startswith(prefix)
+
+
+def _is_skill_md_under(node: Dict[str, Any], prefix: str) -> bool:
+    """True for a tree blob named SKILL.md (at any depth) whose path starts with ``prefix``."""
+    if not _is_blob_under(node, prefix):
+        return False
+    p = node.get("path", "")
+    return p.endswith("/SKILL.md") or p == "SKILL.md"
+
+
+def _top_level_skill_names(tree: List[Dict[str, Any]], prefix: str) -> List[str]:
+    """Sorted names of the skills directly under ``prefix`` (``<prefix><name>/SKILL.md``)."""
+    names = set()
+    for node in tree:
+        p = node.get("path", "")
+        if not _is_blob_under(node, prefix) or not p.endswith("/SKILL.md"):
+            continue
+        name = p[len(prefix):-len("/SKILL.md")]
+        if "/" not in name and _valid_name(name):
+            names.add(name)
+    return sorted(names)
+
+
+def _parse_github_url(url: str, ref: Optional[str]):
+    """(owner, repo, ref, path) from a github.com URL; a /tree/<ref>/ or /blob/<ref>/
+    segment supplies the ref unless ``ref`` (from an ``@ref`` suffix) is set."""
+    tail = url.split("github.com/", 1)[-1].strip("/")
+    parts = [p for p in tail.split("/") if p]
+    owner, repo = parts[0], parts[1]
+    if len(parts) > 2 and parts[2] in ("tree", "blob"):
+        ref = ref or (parts[3] if len(parts) > 3 else None)
+        return owner, repo, ref, "/".join(parts[4:])
+    return owner, repo, ref, "/".join(parts[2:])
 
 
 class SkillsService:
@@ -183,32 +236,40 @@ class SkillsService:
         return skills
 
     def _browse_anthropic(self) -> List[Dict[str, Any]]:
-        url = (f"https://api.github.com/repos/{ANTHROPIC_OWNER}/{ANTHROPIC_REPO}"
-               f"/git/trees/main?recursive=1")
-        tree = self._get_json(url).get("tree", [])
-        names = []
+        tree = self._repo_tree(ANTHROPIC_OWNER, ANTHROPIC_REPO, "main")
         prefix = ANTHROPIC_BASE + "/"
-        for node in tree:
-            p = node.get("path", "")
-            if node.get("type") == "blob" and p.startswith(prefix) and p.endswith("/SKILL.md"):
-                name = p[len(prefix):-len("/SKILL.md")]
-                if "/" not in name and _valid_name(name):
-                    names.append(name)
         out = []
-        for name in sorted(set(names)):
-            description = ""
-            try:
-                raw = (f"https://raw.githubusercontent.com/{ANTHROPIC_OWNER}/"
-                       f"{ANTHROPIC_REPO}/main/{prefix}{name}/SKILL.md")
-                description = _parse_frontmatter(self._get_text(raw)).get("description", "") or ""
-            except Exception:
-                pass
+        for name in _top_level_skill_names(tree, prefix):
+            raw = (f"https://raw.githubusercontent.com/{ANTHROPIC_OWNER}/"
+                   f"{ANTHROPIC_REPO}/main/{prefix}{name}/SKILL.md")
             out.append({
                 "name": name,
-                "description": description,
+                "description": self._remote_description(raw),
                 "spec": f"{ANTHROPIC_OWNER}/{ANTHROPIC_REPO}/{prefix}{name}",
             })
         return out
+
+    # ---- GitHub reads shared by browse / discover / install ---------------
+
+    def _resolve_ref(self, owner: str, repo: str, ref: Optional[str]) -> str:
+        """``ref`` if given, else the repo's default branch (asks GitHub)."""
+        if ref:
+            return ref
+        info = self._get_json(f"https://api.github.com/repos/{owner}/{repo}")
+        return info.get("default_branch", "main")
+
+    def _repo_tree(self, owner: str, repo: str, ref: str) -> List[Dict[str, Any]]:
+        """Every node of the repo's tree at ``ref`` (recursive)."""
+        return self._get_json(
+            f"https://api.github.com/repos/{owner}/{repo}/git/trees/{ref}?recursive=1"
+        ).get("tree", [])
+
+    def _remote_description(self, raw_url: str) -> str:
+        """The frontmatter description of a remote SKILL.md ('' if it can't be read)."""
+        try:
+            return _description_of(self._get_text(raw_url))
+        except Exception:
+            return ""
 
     async def discover(self, spec: str) -> List[Dict[str, Any]]:
         """Find every skill (a folder with a SKILL.md) in a repo/path.
@@ -221,39 +282,36 @@ class SkillsService:
 
     def _discover_sync(self, spec: str) -> List[Dict[str, Any]]:
         owner, repo, ref, path = self._parse_spec(spec)
-        if not ref:
-            info = self._get_json(f"https://api.github.com/repos/{owner}/{repo}")
-            ref = info.get("default_branch", "main")
-        tree = self._get_json(
-            f"https://api.github.com/repos/{owner}/{repo}/git/trees/{ref}?recursive=1"
-        ).get("tree", [])
+        ref = self._resolve_ref(owner, repo, ref)
+        tree = self._repo_tree(owner, repo, ref)
         prefix = (path.rstrip("/") + "/") if path else ""
+        source = RepoRef(owner, repo, ref)
         found = []
         for node in tree:
-            p = node.get("path", "")
-            if node.get("type") != "blob" or not p.startswith(prefix):
-                continue
-            if not (p.endswith("/SKILL.md") or p == "SKILL.md"):
-                continue
-            skill_path = p[: -len("SKILL.md")].rstrip("/")  # folder holding SKILL.md
-            name = (skill_path.split("/")[-1] if skill_path else repo).lower()
-            if not _valid_name(name):
-                continue
-            description = ""
-            try:
-                raw = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{p}"
-                description = _parse_frontmatter(self._get_text(raw)).get("description", "") or ""
-            except Exception:
-                pass
-            install_spec = f"{owner}/{repo}" + (f"/{skill_path}" if skill_path else "") + f"@{ref}"
-            found.append({
-                "name": name,
-                "path": skill_path,
-                "description": description,
-                "spec": install_spec,
-            })
+            entry = self._discovered_skill(node, prefix, source)
+            if entry:
+                found.append(entry)
         found.sort(key=lambda s: s["name"])
         return found
+
+    def _discovered_skill(self, node: Dict[str, Any], prefix: str,
+                          source: RepoRef) -> Optional[Dict[str, Any]]:
+        """The discover() entry for a tree node that is a SKILL.md under ``prefix``, else None."""
+        p = node.get("path", "")
+        if not _is_skill_md_under(node, prefix):
+            return None
+        skill_path = p[: -len("SKILL.md")].rstrip("/")  # folder holding SKILL.md
+        name = (skill_path.split("/")[-1] if skill_path else source.repo).lower()
+        if not _valid_name(name):
+            return None
+        description = self._remote_description(source.raw_url(p))
+        install_spec = f"{source.owner}/{source.repo}" + (f"/{skill_path}" if skill_path else "") + f"@{source.ref}"
+        return {
+            "name": name,
+            "path": skill_path,
+            "description": description,
+            "spec": install_spec,
+        }
 
     @staticmethod
     def _parse_spec(spec: str):
@@ -266,16 +324,7 @@ class SkillsService:
         if "@" in spec:
             spec, ref = spec.rsplit("@", 1)
         if spec.startswith(("http://", "https://")):
-            tail = spec.split("github.com/", 1)[-1].strip("/")
-            parts = [p for p in tail.split("/") if p]
-            owner, repo = parts[0], parts[1]
-            path = ""
-            if len(parts) > 2 and parts[2] in ("tree", "blob"):
-                ref = ref or (parts[3] if len(parts) > 3 else None)
-                path = "/".join(parts[4:])
-            else:
-                path = "/".join(parts[2:])
-            return owner, repo, ref, path
+            return _parse_github_url(spec, ref)
         parts = [p for p in spec.split("/") if p]
         owner, repo = parts[0], parts[1]
         path = "/".join(parts[2:])
@@ -290,32 +339,32 @@ class SkillsService:
 
     def _install_sync(self, spec: str) -> Dict[str, Any]:
         owner, repo, ref, path = self._parse_spec(spec)
-        if not ref:
-            info = self._get_json(f"https://api.github.com/repos/{owner}/{repo}")
-            ref = info.get("default_branch", "main")
+        ref = self._resolve_ref(owner, repo, ref)
         name = (path.rstrip("/").split("/")[-1] if path else repo).lower()
         if not _valid_name(name):
             return {"ok": False, "error": f"invalid skill name '{name}'"}
 
-        tree = self._get_json(
-            f"https://api.github.com/repos/{owner}/{repo}/git/trees/{ref}?recursive=1"
-        ).get("tree", [])
+        tree = self._repo_tree(owner, repo, ref)
         prefix = (path.rstrip("/") + "/") if path else ""
-        blobs = [n for n in tree if n.get("type") == "blob" and n.get("path", "").startswith(prefix)]
+        blobs = [n for n in tree if _is_blob_under(n, prefix)]
         if not blobs:
             return {"ok": False, "error": "no files found at that path"}
 
         dest_root = self.library_dir / name
+        skill_dir = self._fresh_skill_dir(dest_root, name)
+        raw_base = RepoRef(owner, repo, ref).raw_url("")
+        description = self._download_blobs(raw_base, blobs, prefix, skill_dir)
+        _write_plugin_manifest(dest_root, name, description, spec)
+        return {"ok": True, "name": name, "description": description, "source": spec}
+
+    def _fresh_skill_dir(self, dest_root: Path, name: str) -> Path:
+        """Empty ``dest_root`` (replacing an earlier install) and create its skills/<name>/ dir."""
         self._ensure_gitignore()
         if dest_root.exists():
             shutil.rmtree(dest_root)
         skill_dir = dest_root / "skills" / name
         skill_dir.mkdir(parents=True, exist_ok=True)
-
-        raw_base = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/"
-        description = self._download_blobs(raw_base, blobs, prefix, skill_dir)
-        _write_plugin_manifest(dest_root, name, description, spec)
-        return {"ok": True, "name": name, "description": description, "source": spec}
+        return skill_dir
 
     def _download_blobs(self, raw_base: str, blobs: List[Dict[str, Any]], prefix: str, skill_dir: Path) -> str:
         """Download each blob under ``prefix`` into ``skill_dir``; return SKILL.md's description."""
@@ -329,7 +378,7 @@ class SkillsService:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(raw)
             if rel == "SKILL.md":
-                description = _parse_frontmatter(raw.decode("utf-8", errors="replace")).get("description", "") or ""
+                description = _description_of(raw.decode("utf-8", errors="replace"))
         return description
 
 

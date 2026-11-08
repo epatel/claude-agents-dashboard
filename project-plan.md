@@ -134,7 +134,12 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     before. No name defined twice across the MRO; 52 harness cases identical vs 10a; 1441 tests.
     `aihealth delta` says DEGRADED only because findings that moved count as new in new files
     (tool-contract parameter counts, primitive-heavy signatures); `src/` rose 9.14 → 9.24.
-  - **Scores** (2026-11-08, after 10b): headline 8.92, src 9.24, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+    10c `skills_service.py` 7.34 → 9.35 — shared GitHub reads (`_resolve_ref`, `_repo_tree`,
+    `_remote_description`), `RepoRef` (owner / repo / ref + `raw_url`), `_parse_github_url`,
+    `_top_level_skill_names`, `_discovered_skill`, `_fresh_skill_dir`; network calls keep their order.
+    Harness: a fake GitHub behind `_get` (and a stubbed `_ensure_gitignore`), 32 cases of browse /
+    discover / install / list / `_parse_spec` identical in result, URL sequence and files written.
+  - **Scores** (2026-11-08, after 10c): headline 8.93, src 9.27, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
