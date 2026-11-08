@@ -70,35 +70,17 @@
         document.head.appendChild(styleEl);
     }
 
-    function topOpenDialog() {
-        const dialogs = document.querySelectorAll('dialog[open]');
-        let last = null;
-        for (const d of dialogs) {
-            try { if (d.matches(':modal')) last = d; } catch (_) { last = d; }
-        }
-        return last;
-    }
-
-    function overlayParent() { return topOpenDialog() || document.body; }
+    const { overlayParent, placeIn, createBadge } = window.__overlayDom;
 
     function reparent() {
         const parent = overlayParent();
-        const inDialog = parent !== document.body;
-        if (badge) {
-            if (badge.parentElement !== parent) parent.appendChild(badge);
-            badge.style.position = inDialog ? 'absolute' : 'fixed';
-        }
-        if (layer && layer.parentElement !== parent) parent.appendChild(layer);
+        placeIn(badge, parent, true);
+        placeIn(layer, parent, false);
     }
 
     function ensureBadge() {
         if (badge) return;
-        badge = document.createElement('div');
-        badge.className = 'ps-overlay-badge';
-        badge.textContent = 'SPACING ON';
-        badge.title = 'Click to dismiss for this session';
-        badge.addEventListener('click', deactivate);
-        overlayParent().appendChild(badge);
+        badge = createBadge('ps-overlay-badge', 'SPACING ON', deactivate);
     }
 
     function ensureLayer() {

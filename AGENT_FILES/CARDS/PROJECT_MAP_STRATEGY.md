@@ -43,7 +43,7 @@ Sibling names like `flow.merge` and `card.btn-merge` make the connection obvious
 The `--ui-map` server flag loads a small debug script, which Cmd+Shift+M then cycles through its modes:
 - Hover any element with `data-map-name` → tooltip showing the name.
 - Click → copy name to clipboard.
-- Lives at `src/static/js/map_overlay.js` plus `spacing_overlay.js` and `map_coordinator.js` (~640 lines of vanilla JS total), loaded only when `--ui-map` is passed, so there is zero cost in normal use.
+- Lives at `src/static/js/map_overlay.js` plus `spacing_overlay.js`, `map_coordinator.js` and their shared DOM helpers `overlay_dom.js` (~640 lines of vanilla JS total), loaded only when `--ui-map` is passed, so there is zero cost in normal use.
 - No build step, in keeping with the rest of the frontend.
 
 **Why overlay-on-real-app over a clickable mockup:** mockups go stale instantly, can't capture dialogs or hover/drag states, and need separate maintenance. The overlay always shows real state.

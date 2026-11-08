@@ -43,16 +43,7 @@
         document.head.appendChild(styleEl);
     }
 
-    function topOpenDialog() {
-        const dialogs = document.querySelectorAll('dialog[open]');
-        let last = null;
-        for (const d of dialogs) {
-            try { if (d.matches(':modal')) last = d; } catch (_) { last = d; }
-        }
-        return last;
-    }
-
-    function pillParent() { return topOpenDialog() || document.body; }
+    const { overlayParent: pillParent, placeIn } = window.__overlayDom;
 
     function ensurePill() {
         if (pill) return;
@@ -65,10 +56,7 @@
         injectStyles();
         ensurePill();
         // Re-parent each time so the pill renders above any open dialog.
-        const parent = pillParent();
-        if (pill.parentElement !== parent) parent.appendChild(pill);
-        // <dialog> has overflow:hidden — switch from fixed to absolute when inside.
-        pill.style.position = parent === document.body ? 'fixed' : 'absolute';
+        placeIn(pill, pillParent(), true);
         pill.textContent = 'OVERLAY: ' + text;
         // Force reflow so transition replays.
         pill.classList.remove('pmc-show');

@@ -93,12 +93,13 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     8o `clarification-dialog.js` (`reopenClarification` → `_requestPrefixes` table + `_showPending`;
     command / tool permission prompts share `_showAccessRequest` / `_answerAccessRequest`; Node
     replay of 4884 cases identical bar one console error's wording for a non-string prompt; live
-    command / tool / question prompts). Lowest JS files in a **directory** scan (2026-11-08) — the
-    per-file scan misses cross-file duplication: `map_overlay.js` 7.80 (`reparent` /
-    `topOpenDialog` / `ensureBadge` duplicated with `spacing_overlay.js` 8.62 and
-    `map_coordinator.js`), `diff.js` 8.88 (`render` ≈ `ReviewFileBrowser._renderDiff`),
-    `dialog-utils.js` 9.26. `.aihealth.toml` excludes the local untracked `run` script.
-  - **Scores** (2026-11-08, after 8o): headline 8.67, JS 9.81. aihealth started scanning JS
+    command / tool / question prompts), 8p `--ui-map` overlays (new `overlay_dom.js`, loaded first:
+    `topOpenDialog` / `overlayParent` / `placeIn` / `createBadge` shared by `map_overlay.js`,
+    `spacing_overlay.js`, `map_coordinator.js`; harness: old vs new scripts in two iframes, 34 steps ×
+    3 initial states identical). Lowest JS files in a **directory** scan (2026-11-08) — the per-file
+    scan misses cross-file duplication: `diff.js` 8.88 (`render` ≈ `ReviewFileBrowser._renderDiff`),
+    `dialog-utils.js` 9.26; all others ≥ 9.53. `.aihealth.toml` excludes the local untracked `run` script.
+  - **Scores** (2026-11-08, after 8p): headline 8.69, JS 9.92. aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
