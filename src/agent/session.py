@@ -52,16 +52,43 @@ def _server_result_text(content) -> str:
     if isinstance(content, str):
         return content.strip()
     if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-            elif isinstance(item, dict):
-                parts.append(item.get("text") or item.get("content") or "")
-            else:
-                parts.append(getattr(item, "text", "") or "")
+        parts = [_result_block_text(item) for item in content]
         return "\n".join(p for p in parts if p).strip()
     return str(content).strip()
+
+
+def _result_block_text(item) -> str:
+    """Text of one server-tool result block: a string, a dict's text/content, or `.text`."""
+    if isinstance(item, str):
+        return item
+    if isinstance(item, dict):
+        return item.get("text") or item.get("content") or ""
+    return getattr(item, "text", "") or ""
+
+
+def _prefix_allowed_tools(mcp_servers: dict, chrome_enabled: bool) -> list[str]:
+    """Tool-name prefixes can_use_tool allows besides plugins: external MCP servers
+    and the CLI-registered Chrome server (SDK wildcard patterns don't work)."""
+    external_mcp_prefixes = [f"mcp__{name}__" for name in _external_server_names(mcp_servers)]
+    chrome_prefixes = ["mcp__claude-in-chrome__"] if chrome_enabled else []
+    return external_mcp_prefixes + chrome_prefixes
+
+
+def _add_chrome_flag(options_kwargs: dict, profile, chrome_enabled: bool) -> None:
+    """Set the `--chrome` extra arg where the profile allows it.
+
+    `--chrome` registers the Claude-in-Chrome MCP server and its browser tools.
+    Enabled per-task via the item's use_chrome flag.
+    """
+    if profile.allow_chrome_extra_args:
+        options_kwargs["extra_args"] = {"chrome": None} if chrome_enabled else {}
+
+
+def _apply_resume(options, resume_session_id: str | None) -> None:
+    """Make the options resume (and continue) an earlier SDK session, if given."""
+    if resume_session_id:
+        options.resume = resume_session_id
+        options.continue_conversation = True
 
 
 _ANNOTATION_PREFIX_RE = re.compile(r"^(annotation_\d+)_(original|annotated)\.jpg$")
@@ -77,28 +104,34 @@ def build_attachment_prompt(attachments: list[dict]) -> str:
         return ""
 
     groups, ungrouped = _group_annotation_attachments(attachments)
-    lines = []
+    lines = _annotation_group_lines(groups, ungrouped)
+    lines += _plain_attachment_lines(ungrouped, after_groups=bool(lines))
+    if lines:
+        lines += ["", _STUDY_ATTACHMENTS_NOTE]
+    return "\n".join(lines)
 
-    # Render grouped annotation pairs
+
+def _annotation_group_lines(groups: dict, ungrouped: list) -> list[str]:
+    """Lines for each complete annotation pair; an unpaired file is appended to
+    ``ungrouped`` to be listed as a plain attachment."""
+    lines = []
     for group in groups.values():
         if "original" in group and "annotated" in group:
             lines += _annotation_pair_lines(group)
             continue
-        # Unpaired — treat as simple attachment
         dest = group.get("original") or group.get("annotated")
         if dest:
             ungrouped.append({"dest": dest})
+    return lines
 
-    # Render ungrouped / plain attachments
-    if ungrouped:
-        if lines:
-            lines.append("")
-        lines.append("Attached reference images (use Read tool to view):")
-        lines += [f"- {att['dest']}" for att in ungrouped]
 
-    if lines:
-        lines += ["", _STUDY_ATTACHMENTS_NOTE]
-    return "\n".join(lines)
+def _plain_attachment_lines(ungrouped: list, after_groups: bool) -> list[str]:
+    """The "Attached reference images" list (blank line first when it follows pairs)."""
+    if not ungrouped:
+        return []
+    lines = [""] if after_groups else []
+    lines.append("Attached reference images (use Read tool to view):")
+    return lines + [f"- {att['dest']}" for att in ungrouped]
 
 
 _STUDY_ATTACHMENTS_NOTE = (
@@ -436,22 +469,15 @@ class ClaudeAgentSession(AbstractAgentSession):
         plugins, plugin_prefixes = self._build_plugins(profile)
         hooks = self._build_hooks()
 
-        # External MCP servers, plugins and the CLI-registered Chrome server are
-        # allowed by prefix in can_use_tool — SDK wildcard patterns don't work.
-        external_mcp_prefixes = [f"mcp__{name}__" for name in _external_server_names(mcp_servers)]
-        chrome_prefixes = ["mcp__claude-in-chrome__"] if chrome_enabled else []
         can_use_tool_fn = self._build_can_use_tool(
-            allowed_tools, plugin_prefixes + external_mcp_prefixes + chrome_prefixes
+            allowed_tools, plugin_prefixes + _prefix_allowed_tools(mcp_servers, chrome_enabled)
         )
 
         # Provider-divergent SDK options (permission_mode, thinking,
         # setting_sources, env, stderr) come from the profile — the Ollama
         # rationale (thinking disabled, no `user` settings) is documented in
         # profiles.resolve_profile and locked in project-plan.md Decisions.
-        if profile.local:
-            logger.info(f"{profile.name} mode: using lightweight SDK options for model {self.model}")
-            # redact_env: a Tiiny env carries the API key.
-            logger.info(f"{profile.name} env: {redact_env(self.local_env)}")
+        self._log_local_profile(profile)
 
         options_kwargs = dict(
             cwd=self.worktree_path,
@@ -474,15 +500,9 @@ class ClaudeAgentSession(AbstractAgentSession):
             verbatim_prompts=True,
             **profile_options_kwargs(profile),
         )
-        if profile.allow_chrome_extra_args:
-            # `--chrome` registers the Claude-in-Chrome MCP server and its
-            # browser tools. Enabled per-task via the item's use_chrome flag.
-            options_kwargs["extra_args"] = {"chrome": None} if chrome_enabled else {}
+        _add_chrome_flag(options_kwargs, profile, chrome_enabled)
         options = ClaudeAgentOptions(**options_kwargs)
-
-        if resume_session_id:
-            options.resume = resume_session_id
-            options.continue_conversation = True
+        _apply_resume(options, resume_session_id)
 
         self.client = ClaudeSDKClient(options=options)
         await self.client.connect()
@@ -496,16 +516,24 @@ class ClaudeAgentSession(AbstractAgentSession):
         await self._check_mcp_status()
 
         self._task = asyncio.create_task(self._receive_loop())
-
-        # Copy attachments into worktree and reference in prompt
-        if attachments:
-            attachment_prompt = build_attachment_prompt(self._stage_attachments(attachments))
-            if attachment_prompt:
-                prompt += "\n\n" + attachment_prompt
-
-        await self.client.query(prompt)
+        await self.client.query(self._prompt_with_attachments(prompt, attachments))
 
     # -- start() building blocks ---------------------------------------------
+
+    def _log_local_profile(self, profile) -> None:
+        """Log the lightweight-options notice and (redacted) env for a local profile."""
+        if not profile.local:
+            return
+        logger.info(f"{profile.name} mode: using lightweight SDK options for model {self.model}")
+        # redact_env: a Tiiny env carries the API key.
+        logger.info(f"{profile.name} env: {redact_env(self.local_env)}")
+
+    def _prompt_with_attachments(self, prompt: str, attachments: list[dict] | None) -> str:
+        """Copy attachments into the worktree and reference them after the prompt."""
+        if not attachments:
+            return prompt
+        attachment_prompt = build_attachment_prompt(self._stage_attachments(attachments))
+        return prompt + "\n\n" + attachment_prompt if attachment_prompt else prompt
 
     def _build_mcp_servers(self, profile) -> dict:
         """The board tools this session's callbacks enable, plus profile-gated extras."""
@@ -944,29 +972,32 @@ class ClaudeAgentSession(AbstractAgentSession):
             return
         try:
             status = await self.client.get_mcp_status()
-            servers = status.get("mcpServers", [])
-            for server in servers:
-                name = server.get("name", "unknown")
-                state = server.get("status", "unknown")
-                if state in ("failed", "disconnected", "needs-auth"):
-                    error_msg = server.get("error", "")
-                    msg = f"MCP server '{name}' {state}"
-                    if error_msg:
-                        msg += f": {error_msg}"
-                    logger.warning(msg)
-                    if self.on_message:
-                        await self.on_message(f"[warning] {msg}")
-                    try:
-                        from ..web.routes import add_notification
-                        add_notification("error", msg, source=f"mcp:{name}")
-                    except Exception:
-                        pass
-                elif state == "connected":
-                    tools = server.get("tools", [])
-                    tool_names = [t.get("name", "") for t in tools]
-                    logger.info(f"MCP server '{name}' connected with {len(tools)} tools: {tool_names}")
+            for server in status.get("mcpServers", []):
+                await self._report_mcp_server(server)
         except Exception as e:
             logger.warning(f"Failed to check MCP status: {e}")
+
+    async def _report_mcp_server(self, server: dict) -> None:
+        """Warn (log, work log, notification) about a broken MCP server; log a connected one."""
+        name = server.get("name", "unknown")
+        state = server.get("status", "unknown")
+        if state == "connected":
+            tools = server.get("tools", [])
+            tool_names = [t.get("name", "") for t in tools]
+            logger.info(f"MCP server '{name}' connected with {len(tools)} tools: {tool_names}")
+            return
+        if state not in ("failed", "disconnected", "needs-auth"):
+            return
+        error_msg = server.get("error", "")
+        msg = f"MCP server '{name}' {state}" + (f": {error_msg}" if error_msg else "")
+        logger.warning(msg)
+        if self.on_message:
+            await self.on_message(f"[warning] {msg}")
+        try:
+            from ..web.routes import add_notification
+            add_notification("error", msg, source=f"mcp:{name}")
+        except Exception:
+            pass
 
     def _capture_subprocess_pid(self) -> None:
         """Capture the PID of the underlying claude subprocess for reliable cleanup.
@@ -1026,12 +1057,7 @@ class ClaudeAgentSession(AbstractAgentSession):
         # before cancelling the receive loop task.
         # This ensures the subprocess is killed even if task cancellation
         # interferes with cleanup in the finally block.
-        if self.client:
-            try:
-                await self.client.disconnect()
-            except Exception:
-                pass
-            self.client = None
+        await self._disconnect_quietly()
 
         # Fallback: force-kill by PID if the SDK's disconnect chain
         # failed to terminate the subprocess (e.g., query.close() errored
@@ -1039,12 +1065,27 @@ class ClaudeAgentSession(AbstractAgentSession):
         self._force_kill_subprocess()
 
         # Then cancel the receive loop task
-        if self._task and not self._task.done():
-            self._task.cancel()
-            try:
-                await self._task
-            except (asyncio.CancelledError, Exception):
-                pass
+        await self._stop_receive_loop()
+
+    async def _disconnect_quietly(self) -> None:
+        """Disconnect and drop the SDK client (if any), ignoring disconnect errors."""
+        if not self.client:
+            return
+        try:
+            await self.client.disconnect()
+        except Exception:
+            pass
+        self.client = None
+
+    async def _stop_receive_loop(self) -> None:
+        """Cancel the receive-loop task (if still running) and wait for it to end."""
+        if not self._task or self._task.done():
+            return
+        self._task.cancel()
+        try:
+            await self._task
+        except (asyncio.CancelledError, Exception):
+            pass
 
     async def disconnect(self) -> None:
         """Clean disconnect."""

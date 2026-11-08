@@ -177,7 +177,16 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     16 cases (clean, custom message, worktree leftovers, conflict, restore from another branch, missing /
     empty base, no / vanished worktree, dirty base, merge timeout, HEAD lookup failing, unexpected error)
     identical in result and repo state afterwards.
-  - **Scores** (2026-11-08, after 10h): headline 9.10, src 9.58, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+    10i `agent/session.py` 8.05 → 9.03 — `start` → `_prefix_allowed_tools`, `_log_local_profile`,
+    `_add_chrome_flag`, `_apply_resume`, `_prompt_with_attachments` (`ClaudeAgentOptions` still built
+    in `start`, per the Decision); `_check_mcp_status` → `_report_mcp_server`; `cancel` →
+    `_disconnect_quietly` / `_stop_receive_loop`; `_result_block_text`, `_annotation_group_lines` /
+    `_plain_attachment_lines`. `__init__` keeps its 35 parameters. Harness: 10,000 fuzzed
+    `_server_result_text` / `build_attachment_prompt` calls; `start` with recording
+    `ClaudeAgentOptions` / SDK client over 256 scenarios × 2 models (options kwargs, `can_use_tool`
+    asked about 9 tool names, resume, query prompt, logs, notifications) plus a 12-case cancel matrix
+    — all identical.
+  - **Scores** (2026-11-08, after 10i): headline 9.11, src 9.63, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
