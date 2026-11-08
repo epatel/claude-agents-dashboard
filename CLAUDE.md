@@ -35,3 +35,5 @@ Project skills live in `.claude/skills/` (committed): `review-agentic-setup` and
 - Before committing, run `aihealth delta` and fix new or worsened smells it reports
   in code you touched (exit code 1 = health degraded).
 - `aihealth scan .` gives an overview of the codebase.
+- A full `./run-tests.sh` (no test path) also fails if the score drops below the floors in
+  `HEALTH_FLOORS` (project 9.5, `src/` 9.6); `AIHEALTH_GATE=0` skips that check.

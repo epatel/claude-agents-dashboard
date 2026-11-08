@@ -187,6 +187,11 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 ./run-tests.sh -k "test_cancel"
 ```
 
+A full run (no test path given) ends with a code-health gate: after the tests pass it runs
+`aihealth scan --fail-under` against the floors in `HEALTH_FLOORS` in `run-tests.sh`
+(project 9.5, `src/` 9.6) and exits 1 if a score is below its floor. Set `AIHEALTH_GATE=0` to
+skip it; it is skipped automatically when `aihealth` is not installed.
+
 ### Using pytest directly
 ```bash
 # All tests (no coverage — pytest.ini sets no --cov; use ./run-coverage.sh for that)

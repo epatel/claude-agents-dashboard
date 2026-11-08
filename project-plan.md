@@ -48,7 +48,7 @@ behavior change** — every step keeps the full test suite green and `aihealth d
   Anthropic endpoint as the shared lean *local* profile of the Claude runtime (Ollama profile
   generalized); migration 033, Settings ▸ Tiiny tab, `/api/tiiny/{models,test}`, key from env/Keychain;
   1434 tests; live-verified in the dashboard on a real device (2026-11-06)
-- [ ] M12 — Code-health pass driven by `aihealth` (status: in progress). One commit per step;
+- [x] M12 — Code-health pass driven by `aihealth` (done 2026-11-08: 7.14 → 9.77 project; held by the `run-tests.sh` gate). One commit per step;
   details of each done step are in its commit message (`git log --grep 'M12 step'`).
   - [x] 0 — Baseline 2026-11-07: 7.14 project (`.aihealth/health.db`, self-ignored), 1434 tests.
   - [x] 1 — `WorkflowService` session-launch dedup (`_launch_session` + helpers). Visible change:
@@ -61,7 +61,11 @@ behavior change** — every step keeps the full test suite green and `aihealth d
   - [x] 5 — small `src/` dedups (git operations, routes, DB reads, `main()`, file routes, skills).
   - [x] 6 — test dedup via `tests/unit/workflow_fixtures.py` (plain module, NOT a conftest — generic
     fixture names would leak) and `parametrize`; 1441 tests.
-  - [ ] 7 — Optional: `.aihealth.toml` + `aihealth scan --fail-under` gate (the Swift wrapper moved to step 12).
+  - [x] 7 — Code-health gate in `run-tests.sh`: after a green **full** run (no test path), `aihealth
+    scan --fail-under` against `HEALTH_FLOORS` (project 9.5, `src/` 9.6 — a little under M12's 9.77 /
+    9.72 so aihealth rule tweaks don't trip it); exit 1 below a floor. Skipped for narrowed runs, with
+    `AIHEALTH_GATE=0`, or without `aihealth`; a failing pytest still exits with pytest's code first.
+    No CI exists, so this is the gate. Raise the floors as scores improve.
   - [ ] 8 — Frontend JS (`src/static/js/`). **Risk:** no JS unit tests; the 7 Node E2E tests spawn
     paid agents (confirm first). Each file was verified with an old-vs-new browser harness on a
     scratch target (dashboard on :8017; harness scripts/baselines in that origin's localStorage,
@@ -355,7 +359,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-08): steps 0–6, 8a–8r (JS 9.99), 9 (E2E tests 10.00), 10a–10k (Python `src/` 9.72) 11 (Python tests 9.89) and 12 (macOS wrapper 9.88) done; only 7 (optional gate) remains.** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 complete (2026-11-08): steps 0–6, 8a–8r (JS 9.99), 9 (E2E tests 10.00), 10a–10k (Python `src/` 9.72) 11 (Python tests 9.89), 12 (macOS wrapper 9.88) and 7 (`run-tests.sh` health gate) done — every M12 step is complete.** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above

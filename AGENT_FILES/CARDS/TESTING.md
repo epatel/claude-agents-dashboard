@@ -12,7 +12,9 @@
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
 ```
 
-The script creates a venv if needed, installs **both** `requirements.txt` (runtime) and `requirements-test.txt` (pytest, pytest-asyncio, pytest-cov, httpx), then runs `pytest`. Running the dashboard via `run.sh` installs only the runtime file, so test deps stay out of an app-only venv — a new test dependency goes in `requirements-test.txt`. Tests use `pytest-asyncio` in auto mode. With no path argument the script runs the whole `tests/` tree; any path (or `path::node` id) runs only what you name. Database has 32 migrations (001–032).
+The script creates a venv if needed, installs **both** `requirements.txt` (runtime) and `requirements-test.txt` (pytest, pytest-asyncio, pytest-cov, httpx), then runs `pytest`. Running the dashboard via `run.sh` installs only the runtime file, so test deps stay out of an app-only venv — a new test dependency goes in `requirements-test.txt`. Tests use `pytest-asyncio` in auto mode. With no path argument the script runs the whole `tests/` tree; any path (or `path::node` id) runs only what you name. Database has 33 migrations (001–033).
+
+A full run ends with a **code-health gate**: once pytest passes, `aihealth scan --fail-under` checks the floors in `HEALTH_FLOORS` (project 9.5, `src/` 9.6) and the script exits 1 below a floor. Narrowed runs skip it, as does `AIHEALTH_GATE=0` or a machine without `aihealth`. There is no CI, so this is the only automatic check that the M12 scores hold — raise the floors when scores rise.
 
 ## Test Structure
 
