@@ -7,22 +7,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Ensure full user PATH is available (macOS GUI apps inherit a minimal PATH).
 # Previous approach of sourcing .zshrc from bash fails because zsh config
 # files use zsh-specific syntax. Instead, spawn the user's actual login shell
-# to extract the fully-resolved PATH.
-if [ -z "${__PATH_INITIALIZED:-}" ]; then
-    export __PATH_INITIALIZED=1
-    USER_SHELL="${SHELL:-/bin/bash}"
-    SHELL_PATH=$("$USER_SHELL" -l -c 'echo $PATH' 2>/dev/null || echo "")
-    if [ -n "$SHELL_PATH" ]; then
-        export PATH="$SHELL_PATH"
-    else
-        # Fallback: add common tool directories if login shell extraction failed
-        for dir in /opt/homebrew/bin /opt/homebrew/sbin /usr/local/bin; do
-            if [ -d "$dir" ] && [[ ":$PATH:" != *":$dir:"* ]]; then
-                export PATH="$dir:$PATH"
-            fi
-        done
+# to extract the fully-resolved PATH. Runs once per process tree.
+init_user_path() {
+    if [ -n "${__PATH_INITIALIZED:-}" ]; then
+        return 0
     fi
-fi
+    export __PATH_INITIALIZED=1
+    local shell_path dir
+    shell_path=$("${SHELL:-/bin/bash}" -l -c 'echo $PATH' 2>/dev/null || echo "")
+    if [ -n "$shell_path" ]; then
+        export PATH="$shell_path"
+        return 0
+    fi
+    # Fallback: add common tool directories if login shell extraction failed
+    for dir in /opt/homebrew/bin /opt/homebrew/sbin /usr/local/bin; do
+        if [ -d "$dir" ] && [[ ":$PATH:" != *":$dir:"* ]]; then
+            export PATH="$dir:$PATH"
+        fi
+    done
+}
+init_user_path
 
 # Parse arguments: first positional arg is target project, rest are forwarded.
 # The loop is flag-aware: options that take a separate value (--host, --port) consume
@@ -73,31 +77,44 @@ if ! git -C "$TARGET_PROJECT" rev-parse --git-dir > /dev/null 2>&1; then
     fi
 fi
 
-# Check if the dashboard repo has upstream commits to pull
+# Fetch the dashboard repo's upstream (silently) and set BEHIND to the number of
+# commits it lacks. BEHIND stays unset when this is not a git checkout, the fetch
+# fails, there is no upstream, or HEAD is already at the upstream commit.
+fetch_dashboard_behind() {
+    unset BEHIND
+    git -C "$SCRIPT_DIR" rev-parse --git-dir > /dev/null 2>&1 || return 0
+    git -C "$SCRIPT_DIR" fetch --quiet 2>/dev/null || return 0
+    local local_head remote
+    local_head=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null)
+    remote=$(git -C "$SCRIPT_DIR" rev-parse '@{u}' 2>/dev/null || echo "")
+    if [ -z "$remote" ] || [ "$local_head" = "$remote" ]; then
+        return 0
+    fi
+    BEHIND=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..'@{u}' 2>/dev/null || echo "0")
+}
+
+# Ask whether to pull the dashboard repo's upstream commits, if there are any.
+offer_dashboard_update() {
+    local answer
+    fetch_dashboard_behind
+    if [ -z "${BEHIND+set}" ] || ! [ "$BEHIND" -gt 0 ]; then
+        return 0
+    fi
+    echo "Dashboard repo has $BEHIND commit(s) available to pull."
+    read -rp "Pull latest updates? [Y/n] " answer
+    answer="${answer:-Y}"
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+        echo "Pulling updates..."
+        git -C "$SCRIPT_DIR" pull --quiet
+        echo "Updated successfully."
+    else
+        echo "Skipping update."
+    fi
+}
+
 # When AGENTS_DASHBOARD_AUTO_UPDATE=1 (set by the macOS app), skip the interactive prompt
 if [ "${AGENTS_DASHBOARD_AUTO_UPDATE:-0}" != "1" ]; then
-    if git -C "$SCRIPT_DIR" rev-parse --git-dir > /dev/null 2>&1; then
-        # Fetch latest from remote (silently)
-        if git -C "$SCRIPT_DIR" fetch --quiet 2>/dev/null; then
-            LOCAL=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null)
-            REMOTE=$(git -C "$SCRIPT_DIR" rev-parse '@{u}' 2>/dev/null || echo "")
-            if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
-                BEHIND=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..'@{u}' 2>/dev/null || echo "0")
-                if [ "$BEHIND" -gt 0 ]; then
-                    echo "Dashboard repo has $BEHIND commit(s) available to pull."
-                    read -rp "Pull latest updates? [Y/n] " answer
-                    answer="${answer:-Y}"
-                    if [[ "$answer" =~ ^[Yy]$ ]]; then
-                        echo "Pulling updates..."
-                        git -C "$SCRIPT_DIR" pull --quiet
-                        echo "Updated successfully."
-                    else
-                        echo "Skipping update."
-                    fi
-                fi
-            fi
-        fi
-    fi
+    offer_dashboard_update
 fi
 
 # Python venv bootstrap (needs Python >= 3.12; see scripts/python-env.sh)
