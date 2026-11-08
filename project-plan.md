@@ -87,10 +87,11 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     harness 41/41), 8m `board.js` again (epic panel → `_epicCardHtml` / `_wireEpicPanel`,
     `_groupByEpic`, `_matchesEpicFilter`, `_groupedColumns`, `_startUnlessBlocked`,
     `_insertReviewingBadge`; board harness re-baselined from HEAD — it is date-relative — then
-    27/27 identical, plus 21 side-by-side steps for the epic panel / badge / start / loadAndRender).
-    Lowest JS files now (2026-11-08): `annotation-canvas.js` 8.43, `clarification-dialog.js`
-    8.84; all others ≥ 9.26. `.aihealth.toml` excludes the local untracked `run` script.
-  - **Scores** (2026-11-08, after 8m): headline 8.66, JS 9.76. aihealth started scanning JS
+    27/27 identical, plus 21 side-by-side steps for the epic panel / badge / start / loadAndRender),
+    8n `annotation-canvas.js` (`saveAnnotation` → `_annotationLayers` list shared by the new-item
+    and upload paths; Node replay of 648 cases identical; live save on an empty and a pasted canvas).
+    Lowest JS file now (2026-11-08): `clarification-dialog.js` 8.84; all others ≥ 9.26. `.aihealth.toml` excludes the local untracked `run` script.
+  - **Scores** (2026-11-08, after 8n): headline 8.66, JS 9.78. aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
