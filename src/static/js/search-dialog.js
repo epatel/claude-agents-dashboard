@@ -115,42 +115,45 @@ const SearchDialog = {
             return;
         }
 
-        // Search items locally
+        // Search items locally, then render item results immediately
+        const items = this._matchingItems(query);
+        this._renderResults(items, query, []);
+
+        // If worklog search enabled, debounce the API call
+        if (includeWorklog && query.length >= 2) {
+            clearTimeout(this._searchTimer);
+            this._searchTimer = setTimeout(() => this._searchWorklog(query, items), 200);
+        }
+    },
+
+    /** Items in enabled columns whose title or description contains ``query``, in board order. */
+    _matchingItems(query) {
         const items = Object.values(Board.items).filter(item => {
             if (!this._enabledColumns.has(item.column_name)) return false;
             const title = (item.title || '').toLowerCase();
             const desc = (item.description || '').toLowerCase();
             return title.includes(query) || desc.includes(query);
         });
-
-        const colOrder = ['todo', 'doing', 'questions', 'review', 'done', 'archive'];
-        items.sort((a, b) => {
-            const ca = colOrder.indexOf(a.column_name);
-            const cb = colOrder.indexOf(b.column_name);
+        return items.sort((a, b) => {
+            const ca = this._columns.indexOf(a.column_name);
+            const cb = this._columns.indexOf(b.column_name);
             if (ca !== cb) return ca - cb;
             return (a.position || 0) - (b.position || 0);
         });
+    },
 
-        // Render item results immediately
-        this._renderResults(items, query, []);
-
-        // If worklog search enabled, debounce the API call
-        if (includeWorklog && query.length >= 2) {
-            clearTimeout(this._searchTimer);
-            this._searchTimer = setTimeout(async () => {
-                try {
-                    const worklogResults = await Api.searchWorklog(query);
-                    // Filter worklog results by enabled columns and exclude items already shown
-                    const itemIds = new Set(items.map(i => i.id));
-                    const filtered = worklogResults.filter(r =>
-                        this._enabledColumns.has(r.column_name) && !itemIds.has(r.item_id)
-                    );
-                    // Re-render with worklog results
-                    this._renderResults(items, query, filtered);
-                } catch (err) {
-                    console.error('Worklog search failed:', err);
-                }
-            }, 200);
+    async _searchWorklog(query, items) {
+        try {
+            const worklogResults = await Api.searchWorklog(query);
+            // Filter worklog results by enabled columns and exclude items already shown
+            const itemIds = new Set(items.map(i => i.id));
+            const filtered = worklogResults.filter(r =>
+                this._enabledColumns.has(r.column_name) && !itemIds.has(r.item_id)
+            );
+            // Re-render with worklog results
+            this._renderResults(items, query, filtered);
+        } catch (err) {
+            console.error('Worklog search failed:', err);
         }
     },
 
@@ -159,61 +162,52 @@ const SearchDialog = {
         results.innerHTML = '';
 
         const totalCount = items.length + worklogMatches.length;
-
         if (totalCount === 0) {
             results.innerHTML = '<div class="search-empty">No matching items</div>';
             return;
         }
-
-        const countEl = document.createElement('div');
-        countEl.className = 'search-count';
-        countEl.textContent = `${totalCount} result${totalCount !== 1 ? 's' : ''}`;
-        results.appendChild(countEl);
+        results.appendChild(this._textDiv('search-count', `${totalCount} result${totalCount !== 1 ? 's' : ''}`));
 
         // Item matches
-        for (const item of items) {
-            const colLabel = this._columnLabels[item.column_name] || item.column_name;
-            const titleHtml = this._highlight(item.title || '', query);
-            const descSnippet = this._getSnippet(item.description || '', query);
+        for (const item of items) results.appendChild(this._itemRow(item, query));
 
-            const row = document.createElement('div');
-            row.className = 'search-result-item';
-            row.onclick = () => { this.close(); Dialogs.showDetail(item.id); };
-            row.innerHTML = `
+        // Worklog matches (items found only via work log)
+        if (worklogMatches.length === 0) return;
+        results.appendChild(this._textDiv('search-divider', 'Work log matches'));
+        for (const match of worklogMatches) results.appendChild(this._worklogRow(match, query));
+    },
+
+    _itemRow(item, query) {
+        return this._resultRow(item.id, item.column_name,
+            this._highlight(item.title || '', query), this._getSnippet(item.description || '', query));
+    },
+
+    _worklogRow(match, query) {
+        return this._resultRow(match.item_id, match.column_name,
+            this._escapeHtml(match.title || ''), this._getSnippet(match.content || '', query));
+    },
+
+    _textDiv(className, text) {
+        const el = document.createElement('div');
+        el.className = className;
+        el.textContent = text;
+        return el;
+    },
+
+    /** One result row; clicking it closes the search and opens the item. */
+    _resultRow(itemId, column, titleHtml, snippetHtml) {
+        const colLabel = this._columnLabels[column] || column;
+        const row = document.createElement('div');
+        row.className = 'search-result-item';
+        row.onclick = () => { this.close(); Dialogs.showDetail(itemId); };
+        row.innerHTML = `
                 <div class="search-result-main">
                     <div class="search-result-title">${titleHtml}</div>
-                    ${descSnippet ? `<div class="search-result-desc">${descSnippet}</div>` : ''}
+                    ${snippetHtml ? `<div class="search-result-desc">${snippetHtml}</div>` : ''}
                 </div>
                 <span class="search-result-column">${colLabel}</span>
             `;
-            results.appendChild(row);
-        }
-
-        // Worklog matches (items found only via work log)
-        if (worklogMatches.length > 0) {
-            const divider = document.createElement('div');
-            divider.className = 'search-divider';
-            divider.textContent = 'Work log matches';
-            results.appendChild(divider);
-
-            for (const match of worklogMatches) {
-                const colLabel = this._columnLabels[match.column_name] || match.column_name;
-                const titleHtml = this._escapeHtml(match.title || '');
-                const snippet = this._getSnippet(match.content || '', query);
-
-                const row = document.createElement('div');
-                row.className = 'search-result-item';
-                row.onclick = () => { this.close(); Dialogs.showDetail(match.item_id); };
-                row.innerHTML = `
-                    <div class="search-result-main">
-                        <div class="search-result-title">${titleHtml}</div>
-                        ${snippet ? `<div class="search-result-desc">${snippet}</div>` : ''}
-                    </div>
-                    <span class="search-result-column">${colLabel}</span>
-                `;
-                results.appendChild(row);
-            }
-        }
+        return row;
     },
 
     _highlight(text, query) {

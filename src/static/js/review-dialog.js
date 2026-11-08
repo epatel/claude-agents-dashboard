@@ -25,28 +25,8 @@ const ReviewFileBrowser = {
         this._activeTab = -1;
         this._expandedDirs = new Set();
         this._treeData = null;
-        this._changedFiles = {};
         this._diffText = diffData?.diff || '';
-
-        // Index changed files
-        if (diffData?.files) {
-            for (const f of diffData.files) {
-                this._changedFiles[f.path] = {
-                    status: f.status,
-                    status_label: f.status_label || f.status,
-                };
-            }
-        }
-
-        // Parse diff into per-file chunks
-        if (this._diffText) {
-            const parsed = DiffViewer.parseDiff(this._diffText);
-            for (const pf of parsed) {
-                if (this._changedFiles[pf.path]) {
-                    this._changedFiles[pf.path].diff_lines = pf.lines;
-                }
-            }
-        }
+        this._changedFiles = this._indexChangedFiles(diffData?.files || [], this._diffText);
 
         // Wire up filter
         const filterInput = document.getElementById('rfb-filter');
@@ -62,6 +42,20 @@ const ReviewFileBrowser = {
         this._renderTabs();
         this._renderContent();
         this._renderBreadcrumb();
+    },
+
+    /** ``{ path: { status, status_label, diff_lines } }`` for the changed files, with their diff chunks. */
+    _indexChangedFiles(files, diffText) {
+        const changed = {};
+        for (const f of files) {
+            changed[f.path] = { status: f.status, status_label: f.status_label || f.status };
+        }
+        // Parse diff into per-file chunks
+        const parsed = diffText ? DiffViewer.parseDiff(diffText) : [];
+        for (const pf of parsed) {
+            if (changed[pf.path]) changed[pf.path].diff_lines = pf.lines;
+        }
+        return changed;
     },
 
     async _loadTree(path) {
@@ -104,19 +98,23 @@ const ReviewFileBrowser = {
 
     _autoExpandChanged() {
         // Collect parent dirs of all changed files and expand them
-        const dirsToExpand = new Set();
+        const dirsToExpand = this._changedFileDirs();
+        if (dirsToExpand.size === 0) return;
+        for (const d of dirsToExpand) this._expandedDirs.add(d);
+        // Re-render tree with expansions
+        const treeEl = document.getElementById('rfb-tree');
+        if (this._treeData) this._renderTreeNodes(treeEl, this._treeData, 0);
+    },
+
+    _changedFileDirs() {
+        const dirs = new Set();
         for (const filePath of Object.keys(this._changedFiles)) {
             const parts = filePath.split('/');
             for (let i = 1; i < parts.length; i++) {
-                dirsToExpand.add(parts.slice(0, i).join('/'));
+                dirs.add(parts.slice(0, i).join('/'));
             }
         }
-        if (dirsToExpand.size > 0) {
-            for (const d of dirsToExpand) this._expandedDirs.add(d);
-            // Re-render tree with expansions
-            const treeEl = document.getElementById('rfb-tree');
-            if (this._treeData) this._renderTreeNodes(treeEl, this._treeData, 0);
-        }
+        return dirs;
     },
 
     async _openFile(path, name) {
@@ -130,16 +128,13 @@ const ReviewFileBrowser = {
 
         // For deleted files, show placeholder with diff
         if (change && change.status === 'D') {
-            const tab = {
+            this._pushTab({
                 path, name,
                 status: 'D',
                 content: null,
                 diff_lines: change.diff_lines || [],
                 language: null, binary: false, hidden: false,
-            };
-            if (this._openTabs.length >= this._maxTabs) this._closeTab(0);
-            this._openTabs.push(tab);
-            this._switchTab(this._openTabs.length - 1);
+            });
             return;
         }
 
@@ -149,25 +144,33 @@ const ReviewFileBrowser = {
 
         try {
             const data = await Api.request('GET', `/api/items/${this._itemId}/worktree/content?path=${encodeURIComponent(path)}`);
-            const tab = {
-                path, name: name,
-                status: change ? change.status : null,
-                content: data.content,
-                diff_lines: change?.diff_lines || null,
-                language: data.language,
-                binary: data.binary,
-                mimeType: data.mime_type || null,
-                hidden: data.hidden || false,
-                truncated: data.truncated || false,
-                size: data.size,
-                lines: data.lines,
-            };
-            if (this._openTabs.length >= this._maxTabs) this._closeTab(0);
-            this._openTabs.push(tab);
-            this._switchTab(this._openTabs.length - 1);
+            this._pushTab(this._contentTab(path, name, change, data));
         } catch {
             contentEl.innerHTML = '<div style="padding:20px;color:var(--danger);">Failed to load file</div>';
         }
+    },
+
+    _contentTab(path, name, change, data) {
+        return {
+            path, name: name,
+            status: change ? change.status : null,
+            content: data.content,
+            diff_lines: change?.diff_lines || null,
+            language: data.language,
+            binary: data.binary,
+            mimeType: data.mime_type || null,
+            hidden: data.hidden || false,
+            truncated: data.truncated || false,
+            size: data.size,
+            lines: data.lines,
+        };
+    },
+
+    /** Open ``tab`` as the active tab, closing the oldest when at the limit. */
+    _pushTab(tab) {
+        if (this._openTabs.length >= this._maxTabs) this._closeTab(0);
+        this._openTabs.push(tab);
+        this._switchTab(this._openTabs.length - 1);
     },
 
     _renderContent() {
@@ -183,47 +186,51 @@ const ReviewFileBrowser = {
         }
 
         const tab = this._openTabs[this._activeTab];
+        const placeholder = this._placeholderHtml(tab);
+        if (placeholder !== null) {
+            contentEl.innerHTML = placeholder;
+        } else if (tab.status === 'D' || this._hasDiff(tab)) {
+            // Deleted file: its diff. Changed file: diff by default, with toggle to see full file.
+            if (tab.status === 'D') this._renderDiff(contentEl, tab.diff_lines);
+            else this._renderChangedFile(contentEl, tab);
+        } else {
+            // Normal code/text
+            this._renderCode(contentEl, tab);
+        }
+    },
 
-        // Deleted file
+    /** Fixed HTML for tabs with nothing to render (deleted without diff, hidden, image, binary), else null. */
+    _placeholderHtml(tab) {
         if (tab.status === 'D') {
-            if (tab.diff_lines && tab.diff_lines.length > 0) {
-                this._renderDiff(contentEl, tab.diff_lines);
-            } else {
-                contentEl.innerHTML = `
+            return this._hasLines(tab.diff_lines) ? null : `
                     <div class="rfb-deleted-placeholder">
                         <div class="rfb-deleted-icon">🗑️</div>
                         <p>This file was deleted</p>
                     </div>`;
-            }
-            return;
         }
-
-        // Hidden
         if (tab.hidden) {
-            contentEl.innerHTML = `<div class="file-empty-state"><div class="file-empty-icon">🔒</div><p>Hidden for security</p></div>`;
-            return;
+            return `<div class="file-empty-state"><div class="file-empty-icon">🔒</div><p>Hidden for security</p></div>`;
         }
-
-        // Image
-        if (tab.binary && tab.mimeType?.startsWith('image/') && tab.content) {
-            contentEl.innerHTML = `<div style="padding:20px;text-align:center;"><img src="${tab.content}" alt="${this._escapeHtml(tab.name)}" style="max-width:100%;max-height:50vh;"></div>`;
-            return;
+        if (this._isImage(tab)) {
+            return `<div style="padding:20px;text-align:center;"><img src="${tab.content}" alt="${this._escapeHtml(tab.name)}" style="max-width:100%;max-height:50vh;"></div>`;
         }
-
-        // Binary
         if (tab.binary) {
-            contentEl.innerHTML = `<div class="file-empty-state"><div class="file-empty-icon">📦</div><p>Binary file</p></div>`;
-            return;
+            return `<div class="file-empty-state"><div class="file-empty-icon">📦</div><p>Binary file</p></div>`;
         }
+        return null;
+    },
 
-        // Changed file — show diff by default, with toggle to see full file
-        if (tab.status && tab.diff_lines && tab.diff_lines.length > 0) {
-            this._renderChangedFile(contentEl, tab);
-            return;
-        }
+    _hasLines(lines) {
+        return !!lines && lines.length > 0;
+    },
 
-        // Normal code/text
-        this._renderCode(contentEl, tab);
+    _hasDiff(tab) {
+        return !!tab.status && this._hasLines(tab.diff_lines);
+    },
+
+    _isImage(tab) {
+        if (!tab.binary || !tab.content) return false;
+        return !!tab.mimeType?.startsWith('image/');
     },
 
     _renderChangedFile(container, tab) {
@@ -299,45 +306,54 @@ const ReviewFileBrowser = {
     _parseDiffHunks(diffLines) {
         const hunks = [];
         let currentHunk = null;
-        let oldLine = 0;
-        let newLine = 0;
+        const pos = { oldLine: 0, newLine: 0 };
 
         for (const line of diffLines) {
-            const hunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
-            if (hunkMatch) {
-                currentHunk = {
-                    oldStart: parseInt(hunkMatch[1], 10),
-                    oldCount: hunkMatch[2] !== undefined ? parseInt(hunkMatch[2], 10) : 1,
-                    newStart: parseInt(hunkMatch[3], 10),
-                    newCount: hunkMatch[4] !== undefined ? parseInt(hunkMatch[4], 10) : 1,
-                    header: line,
-                    lines: [],
-                };
-                oldLine = currentHunk.oldStart;
-                newLine = currentHunk.newStart;
-                hunks.push(currentHunk);
+            const header = this._parseHunkHeader(line);
+            if (header) {
+                currentHunk = header;
+                pos.oldLine = header.oldStart;
+                pos.newLine = header.newStart;
+                hunks.push(header);
                 continue;
             }
-
-            if (!currentHunk) continue;
-            // Skip diff meta lines
-            if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('\\')) continue;
-
-            if (line.startsWith('+')) {
-                currentHunk.lines.push({ type: 'add', oldLine: null, newLine: newLine, text: line.slice(1) });
-                newLine++;
-            } else if (line.startsWith('-')) {
-                currentHunk.lines.push({ type: 'del', oldLine: oldLine, newLine: null, text: line.slice(1) });
-                oldLine++;
-            } else {
-                // Context line (starts with space or is empty)
-                const text = line.length > 0 ? line.slice(1) : '';
-                currentHunk.lines.push({ type: 'context', oldLine: oldLine, newLine: newLine, text });
-                oldLine++;
-                newLine++;
-            }
+            // Skip lines before the first hunk and diff meta lines
+            if (!currentHunk || this._isDiffMeta(line)) continue;
+            currentHunk.lines.push(this._hunkLine(line, pos));
         }
         return hunks;
+    },
+
+    /** A new hunk for an ``@@ -a,b +c,d @@`` header line, else null (counts default to 1). */
+    _parseHunkHeader(line) {
+        const m = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+        if (!m) return null;
+        const count = (s) => s !== undefined ? parseInt(s, 10) : 1;
+        return {
+            oldStart: parseInt(m[1], 10),
+            oldCount: count(m[2]),
+            newStart: parseInt(m[3], 10),
+            newCount: count(m[4]),
+            header: line,
+            lines: [],
+        };
+    },
+
+    _isDiffMeta(line) {
+        return ['---', '+++', '\\'].some(prefix => line.startsWith(prefix));
+    },
+
+    /** One hunk line, numbered from ``pos`` (advanced past it). */
+    _hunkLine(line, pos) {
+        if (line.startsWith('+')) {
+            return { type: 'add', oldLine: null, newLine: pos.newLine++, text: line.slice(1) };
+        }
+        if (line.startsWith('-')) {
+            return { type: 'del', oldLine: pos.oldLine++, newLine: null, text: line.slice(1) };
+        }
+        // Context line (starts with space or is empty)
+        const text = line.length > 0 ? line.slice(1) : '';
+        return { type: 'context', oldLine: pos.oldLine++, newLine: pos.newLine++, text };
     },
 
     /**
@@ -521,16 +537,9 @@ const ReviewFileBrowser = {
         let hunkIdx = 0;
 
         while (newLine <= totalNewLines) {
-            if (hunkIdx < hunks.length && newLine === hunks[hunkIdx].newStart) {
-                const hunk = hunks[hunkIdx];
-                for (const hl of hunk.lines) {
-                    if (hl.type === 'context') {
-                        map.set(hl.newLine, hl.oldLine);
-                    } else if (hl.type === 'add') {
-                        // Added lines have no old line number
-                    }
-                    // del lines don't have new line numbers
-                }
+            const hunk = hunks[hunkIdx];
+            if (hunk && newLine === hunk.newStart) {
+                this._mapHunkContext(map, hunk);
                 // Advance past the hunk
                 oldLine = hunk.oldStart + hunk.oldCount;
                 newLine = hunk.newStart + hunk.newCount;
@@ -542,6 +551,13 @@ const ReviewFileBrowser = {
             }
         }
         return map;
+    },
+
+    /** Context lines keep their numbers; added / deleted lines have no pair. */
+    _mapHunkContext(map, hunk) {
+        for (const hl of hunk.lines) {
+            if (hl.type === 'context') map.set(hl.newLine, hl.oldLine);
+        }
     },
 
     _createDiffRow(oldNum, newNum, type, text) {

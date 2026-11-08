@@ -87,36 +87,14 @@ const Flame = {
             messages: usage.total_messages || 0,
             tools: usage.tool_calls || 0,
         };
-
-        if (this._prevStats) {
-            const dt = (now - this._prevStats.ts) / 60000; // minutes
-            if (dt > 0) {
-                const tokPerMin = (current.tokens - this._prevStats.tokens) / dt;
-                const msgPerMin = (current.messages - this._prevStats.messages) / dt;
-                const toolsPerMin = (current.tools - this._prevStats.tools) / dt;
-
-                this._activityLog.push({ ts: now, tokPerMin, msgPerMin, toolsPerMin });
-            }
-        }
+        this._recordRates(now, current);
         this._prevStats = current;
 
         // Trim activity log to last 120 seconds
         const cutoff = now - 120000;
         this._activityLog = this._activityLog.filter(e => e.ts > cutoff);
 
-        // Compute rolling averages
-        let avgTok = 0, avgMsg = 0, avgTools = 0;
-        if (this._activityLog.length > 0) {
-            for (const e of this._activityLog) {
-                avgTok += e.tokPerMin;
-                avgMsg += e.msgPerMin;
-                avgTools += e.toolsPerMin;
-            }
-            avgTok /= this._activityLog.length;
-            avgMsg /= this._activityLog.length;
-            avgTools /= this._activityLog.length;
-        }
-
+        const { avgTok, avgMsg, avgTools } = this._averageRates();
         const activeAgents = activity.active_agents || 0;
 
         // Intensity formula:
@@ -131,6 +109,30 @@ const Flame = {
             + Math.min(avgTools / 10, 1) * 0.2;
 
         this._targetIntensity = Math.min(raw * this.intensityMultiplier, 1);
+    },
+
+    /** Per-minute rates since the previous stats refresh, added to the activity log. */
+    _recordRates(now, current) {
+        if (!this._prevStats) return;
+        const dt = (now - this._prevStats.ts) / 60000; // minutes
+        if (!(dt > 0)) return;
+        const tokPerMin = (current.tokens - this._prevStats.tokens) / dt;
+        const msgPerMin = (current.messages - this._prevStats.messages) / dt;
+        const toolsPerMin = (current.tools - this._prevStats.tools) / dt;
+        this._activityLog.push({ ts: now, tokPerMin, msgPerMin, toolsPerMin });
+    },
+
+    /** Rolling averages over the activity log (zeros when empty). */
+    _averageRates() {
+        let avgTok = 0, avgMsg = 0, avgTools = 0;
+        const n = this._activityLog.length;
+        if (n === 0) return { avgTok, avgMsg, avgTools };
+        for (const e of this._activityLog) {
+            avgTok += e.tokPerMin;
+            avgMsg += e.msgPerMin;
+            avgTools += e.toolsPerMin;
+        }
+        return { avgTok: avgTok / n, avgMsg: avgMsg / n, avgTools: avgTools / n };
     },
 
     /** Call when config is loaded/updated */
@@ -187,18 +189,19 @@ const Flame = {
     },
 
     _loop(time) {
-        if (!this.canvas || !this.enabled) {
-            this._raf = requestAnimationFrame((t) => this._loop(t));
-            return;
-        }
+        if (this._shouldDraw(time)) this._drawFrame(time);
+        this._raf = requestAnimationFrame((t) => this._loop(t));
+    },
 
+    /** Skip frames while disabled, and the first frame after a long gap (> 100 ms). */
+    _shouldDraw(time) {
+        if (!this.canvas || !this.enabled) return false;
         const dt = time - this._lastTime;
         this._lastTime = time;
-        if (dt > 100) {
-            this._raf = requestAnimationFrame((t) => this._loop(t));
-            return;
-        }
+        return !(dt > 100);
+    },
 
+    _drawFrame(time) {
         // Smooth intensity transition
         const smoothing = 0.02;
         this._currentIntensity += (this._targetIntensity - this._currentIntensity) * smoothing;
@@ -210,12 +213,20 @@ const Flame = {
         ctx.clearRect(0, 0, w, h);
 
         const intensity = this._currentIntensity;
-        if (intensity < 0.001) {
-            this._raf = requestAnimationFrame((t) => this._loop(t));
-            return;
-        }
+        if (intensity < 0.001) return;
 
-        // Draw warm ambient glow at the bottom
+        this._drawAmbientGlow(ctx, w, h, intensity);
+        this._drawSourceGlows(ctx, h, intensity);
+
+        // Additive blending for natural fire glow
+        ctx.globalCompositeOperation = 'lighter';
+        this._drawParticles(ctx, time, intensity);
+        // Reset composite operation
+        ctx.globalCompositeOperation = 'source-over';
+    },
+
+    // Warm ambient glow at the bottom
+    _drawAmbientGlow(ctx, w, h, intensity) {
         const glowGrad = ctx.createLinearGradient(0, h, 0, h * 0.4);
         glowGrad.addColorStop(0, `hsla(20, 100%, 50%, ${intensity * 0.12})`);
         glowGrad.addColorStop(0.3, `hsla(30, 100%, 45%, ${intensity * 0.06})`);
@@ -223,8 +234,10 @@ const Flame = {
         glowGrad.addColorStop(1, `hsla(10, 100%, 30%, 0)`);
         ctx.fillStyle = glowGrad;
         ctx.fillRect(0, 0, w, h);
+    },
 
-        // Draw localized glow under each flame source
+    // Localized glow under each flame source
+    _drawSourceGlows(ctx, h, intensity) {
         for (const src of this._flameSources) {
             const glowRadius = (40 + src.spread) * (0.5 + intensity * 0.5);
             const srcGlow = ctx.createRadialGradient(src.x, h, 0, src.x, h, glowRadius);
@@ -234,82 +247,80 @@ const Flame = {
             ctx.fillStyle = srcGlow;
             ctx.fillRect(src.x - glowRadius, h - glowRadius, glowRadius * 2, glowRadius);
         }
+    },
 
-        // Update and draw flame particles
+    /** Move every particle; replace dead ones, draw the visible ones. */
+    _drawParticles(ctx, time, intensity) {
         const speed = 0.4 + intensity * 0.6;
         const particleAlpha = intensity * 0.8;
-
-        // Additive blending for natural fire glow
-        ctx.globalCompositeOperation = 'lighter';
-
         for (let i = this._particles.length - 1; i >= 0; i--) {
             const p = this._particles[i];
-            p.life++;
-            p.x += p.vx * speed;
-            p.y += p.vy * speed;
-
-            // Gentle flame flicker — subtle side-to-side, not erratic
-            const flicker = Math.sin(time * 0.004 + p.phase) * 0.3
-                          + Math.sin(time * 0.009 + p.phase * 1.7) * 0.15;
-            p.x += flicker;
-
-            // Slight upward acceleration (heat rises faster)
-            p.vy -= 0.003;
-
-            if (p.life > p.maxLife || p.y < -p.size) {
+            if (!this._stepParticle(p, time, speed)) {
                 this._particles[i] = this._newParticle(false);
                 continue;
             }
-
             const lifeRatio = p.life / p.maxLife;
             // Flickering alpha — natural fire shimmer
             const shimmer = 0.8 + 0.2 * Math.sin(time * 0.006 * p.flickerRate + p.phase);
             const alpha = particleAlpha * Math.sin(lifeRatio * Math.PI) * 0.5 * shimmer * p.sourceStrength;
             if (alpha < 0.005) continue;
-
             const radius = p.size * (0.3 + intensity * 0.7) * (1 - lifeRatio * 0.3);
-
-            // Natural fire color lifecycle:
-            //   young (lifeRatio ~0): bright white/yellow core
-            //   mid (lifeRatio ~0.4): orange
-            //   old (lifeRatio ~0.8+): deep red, fading
-            let hue, sat, lightness;
-            if (lifeRatio < 0.25) {
-                // White-yellow core (young flame)
-                hue = 45 + lifeRatio * 40;       // 45 → 55
-                sat = 60 + lifeRatio * 140;       // 60% → 95%
-                lightness = 85 - lifeRatio * 80;  // 85% → 65%
-            } else if (lifeRatio < 0.6) {
-                // Orange body
-                const t = (lifeRatio - 0.25) / 0.35;
-                hue = 55 - t * 30;               // 55 → 25
-                sat = 95 + t * 5;                 // 95% → 100%
-                lightness = 65 - t * 15;          // 65% → 50%
-            } else {
-                // Red tips (dying flame)
-                const t = (lifeRatio - 0.6) / 0.4;
-                hue = 25 - t * 20;               // 25 → 5
-                sat = 100;
-                lightness = 50 - t * 15;          // 50% → 35%
-            }
-
-            // Radial gradient: bright center fading to edge
-            const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
-            grad.addColorStop(0, `hsla(${hue + 10}, ${sat - 10}%, ${Math.min(lightness + 15, 95)}%, ${alpha})`);
-            grad.addColorStop(0.3, `hsla(${hue}, ${sat}%, ${lightness}%, ${alpha * 0.65})`);
-            grad.addColorStop(0.7, `hsla(${hue - 8}, ${sat}%, ${lightness - 10}%, ${alpha * 0.2})`);
-            grad.addColorStop(1, `hsla(${hue - 15}, ${sat}%, ${lightness - 20}%, 0)`);
-
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-            ctx.fill();
+            this._drawParticle(ctx, p, { radius, alpha, ...this._flameColor(lifeRatio) });
         }
+    },
 
-        // Reset composite operation
-        ctx.globalCompositeOperation = 'source-over';
+    /** Advance one particle; false once it has burnt out or left the top. */
+    _stepParticle(p, time, speed) {
+        p.life++;
+        p.x += p.vx * speed;
+        p.y += p.vy * speed;
 
-        this._raf = requestAnimationFrame((t) => this._loop(t));
+        // Gentle flame flicker — subtle side-to-side, not erratic
+        const flicker = Math.sin(time * 0.004 + p.phase) * 0.3
+                      + Math.sin(time * 0.009 + p.phase * 1.7) * 0.15;
+        p.x += flicker;
+
+        // Slight upward acceleration (heat rises faster)
+        p.vy -= 0.003;
+
+        return !(p.life > p.maxLife || p.y < -p.size);
+    },
+
+    // Natural fire color lifecycle:
+    //   young (lifeRatio ~0): bright white/yellow core
+    //   mid (lifeRatio ~0.4): orange
+    //   old (lifeRatio ~0.8+): deep red, fading
+    _flameColor(lifeRatio) {
+        if (lifeRatio < 0.25) {
+            // White-yellow core (young flame)
+            return {
+                hue: 45 + lifeRatio * 40,         // 45 → 55
+                sat: 60 + lifeRatio * 140,        // 60% → 95%
+                lightness: 85 - lifeRatio * 80,   // 85% → 65%
+            };
+        }
+        if (lifeRatio < 0.6) {
+            // Orange body
+            const t = (lifeRatio - 0.25) / 0.35;
+            return { hue: 55 - t * 30, sat: 95 + t * 5, lightness: 65 - t * 15 };   // 55 → 25, 95% → 100%, 65% → 50%
+        }
+        // Red tips (dying flame)
+        const t = (lifeRatio - 0.6) / 0.4;
+        return { hue: 25 - t * 20, sat: 100, lightness: 50 - t * 15 };   // 25 → 5, 50% → 35%
+    },
+
+    // Radial gradient: bright center fading to edge
+    _drawParticle(ctx, p, { radius, alpha, hue, sat, lightness }) {
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        grad.addColorStop(0, `hsla(${hue + 10}, ${sat - 10}%, ${Math.min(lightness + 15, 95)}%, ${alpha})`);
+        grad.addColorStop(0.3, `hsla(${hue}, ${sat}%, ${lightness}%, ${alpha * 0.65})`);
+        grad.addColorStop(0.7, `hsla(${hue - 8}, ${sat}%, ${lightness - 10}%, ${alpha * 0.2})`);
+        grad.addColorStop(1, `hsla(${hue - 15}, ${sat}%, ${lightness - 20}%, 0)`);
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.fill();
     },
 };
 

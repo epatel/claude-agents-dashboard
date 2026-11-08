@@ -79,10 +79,15 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     steps identical incl. captured listeners and every WS event type; live WS round trip), 8k
     `item-dialog.js` (`submitItem` / `submitItemAndStart` share `_readItemForm` / `_saveItem` /
     `_saveDepsAndAttachments`, keeping their differences; open paths share `_resetFormState`;
-    harness: 24 steps identical; live create + edit through the dialog). Worst JS files left
-    (2026-11-08): `flame.js` 7.51, `search-dialog.js` 7.92, `review-dialog.js` 8.06.
-    `.aihealth.toml` excludes the local untracked `run` script.
-  - **Scores** (2026-11-08, after 8k): headline 8.55, JS 9.29. aihealth started scanning JS
+    harness: 24 steps identical; live create + edit through the dialog), 8l `flame.js` (draw
+    loop → `_drawFrame` + per-layer helpers; Node replay of 179k recorded 2D-context calls
+    identical), `search-dialog.js` (shared `_resultRow`; 26 harness steps identical apart from
+    whitespace inside the flex work-log rows), `review-dialog.js` (`ReviewFileBrowser` hunk
+    parsing / tab opening / placeholders split; 20k random diffs identical in Node, file-browser
+    harness 41/41). Lowest JS files now (2026-11-08): `board.js` 8.39, `annotation-canvas.js`
+    8.43, `clarification-dialog.js` 8.84; all others ≥ 9.26. `.aihealth.toml` excludes the
+    local untracked `run` script.
+  - **Scores** (2026-11-08, after 8l): headline 8.61, JS 9.57. aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
