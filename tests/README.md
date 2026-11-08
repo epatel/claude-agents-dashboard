@@ -89,17 +89,17 @@ tests/
 - **ItemRepository** (25 tests) — Read APIs, `transition()`, `update_fields()`, `move_to_column()`, column whitelist enforcement
 - **EpicRepository** (9 tests) — CRUD facade and column whitelist enforcement
 
-### 2. Service Layer (302 tests)
+### 2. Service Layer (305 tests)
 - **WorkflowService** (115 tests, incl. 15 in `test_auto_approve.py`) — State transitions (driven through `ItemState` FSM), agent lifecycle, merge conflict resolution, dependency auto-start, WIP-limit queueing, pause/resume, callback factories, clarification context plumbing, post-merge graph refresh
 - **approve_item merge pipeline** (7 tests) — each exit path: blocked, clean merge, rebase-then-merge, restart with previous diff, retry cap, no-diff conflict
 - **DatabaseService** (62 tests) — CRUD operations, item dependencies, clarification context column (column whitelisting moved to the repositories)
 - **SessionService** (54 tests) — Session lifecycle, commit messages, plugin parsing (incl. enabled-skill plugins), SDK wrapper
 - **NotificationService** (41 tests) — WebSocket broadcasting, tool formatting, event types
 - **GraphService** (12 tests) — graphify build/refresh/query/status, version detection, cost tracking
-- **SkillsService** (11 tests) — library install/list/remove, browse Anthropic source, multi-skill repo discovery, spec parsing, gitignore management
+- **SkillsService** (14 tests) — library install/list/remove, browse Anthropic source, multi-skill repo discovery, spec parsing, gitignore management
 
-### 3. Web Layer (253 tests)
-- **Routes** (116 tests) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, graphify endpoints, skills library endpoints
+### 3. Web Layer (262 tests)
+- **Routes** (125 tests: `test_routes.py` plus one `test_*_routes.py` per route module, sharing `route_fixtures.py`) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, graphify endpoints, skills library endpoints
 - **File Routes** (66 tests) — File browser path validation, secret detection, .browserhidden, language mapping, directory scanning
 - **WebSocket** (45 tests) — Connection management, rate limiting, dead-connection cleanup
 - **App** (26 tests) — FastAPI factory, middleware, CORS, security headers, lifespan
@@ -116,11 +116,12 @@ tests/
 - **Kimi board-tools MCP proxy** (12 tests) — stdio subprocess against a stub dashboard API
 - **graph_query tool** (10 tests) — Read-only knowledge-graph MCP tool server
 
-### 5b. Session (216 tests)
+### 5b. Session (250 tests)
 - **ClaudeAgentSession** (98 tests, incl. 31 in `test_session_start.py`) — SDK wrapper, token extraction, event handling, Ollama provider env configuration, `verbatim_prompts`
 - **Auto-review session** (3 tests) — `run_auto_review` options on the Claude and Ollama branches, prompt passed through unmodified
 - **KimiAgentSession** (88 tests) — ACP transport, text protocols, permissions, worktree path boundary (AUDIT #15), resume (experimental)
 - **Provider profiles** (23 tests) — Kimi/Ollama routing predicates, env builder, profile gate matrix
+- **Tiiny provider** (34 tests) — `tiiny/*` routing, API key from env / Keychain, env and profile, migration 033
 - **AbstractAgentSession** (4 tests) — contract conformance
 
 ### 5c. Config & Catalog (20 tests)
@@ -136,11 +137,13 @@ tests/
 - **Annotation Prompt** (5 tests) — Prompt formatting for agents
 - **Annotation Summary** (2 tests) — Summary text generation
 
-### 7. Infrastructure (155 tests)
+### 7. Infrastructure (179 tests)
 - **Migrations** (63 tests) — Runner, up/down, discovery, edge cases; per-migration data tests for 024 (default-model bump), 025 (use_chrome), 026 (api_error_status), 027 (remove +advisor), 028 (graphify config), 029 (enabled_skills), 030 (ollama_load_claude_md), 031 (default-model bump to Opus 5), 032 (strip redundant `[1m]`)
 - **Main** (34 tests) — Server startup, port discovery, git validation
 - **Manage** (24 tests) — Migration CLI commands
 - **Path Validation** (14 tests) — Traversal prevention, null bytes, symlinks
+- **Python env bootstrap** (13 tests) — `scripts/python-env.sh` venv creation and the Python ≥ 3.12 check
+- **run.sh arguments** (11 tests) — flag-aware target / option parsing
 - **Smoke — Basic** (12 tests) — Imports, DB basics, config validation
 - **Smoke — Multi-repo** (8 tests) — Sibling repo detection, repo path resolution, workspace mode wiring
 
