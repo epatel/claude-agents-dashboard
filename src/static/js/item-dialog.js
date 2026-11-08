@@ -10,56 +10,32 @@ const ItemDialog = {
     _selectedDeps: [],
 
     async openNewItem() {
-        document.getElementById('item-dialog-title').textContent = 'New Item';
-        document.getElementById('item-form-id').value = '';
-        document.getElementById('item-form-title').value = '';
-        document.getElementById('item-form-desc').value = '';
-        document.getElementById('item-form-model').value = '';
-        document.getElementById('item-form-epic').value = '';
+        this._fillFormFields('New Item', { id: '', title: '', desc: '', model: '', epic: '' });
         const repoSelect = document.getElementById('item-form-repo');
         if (repoSelect) repoSelect.value = '';
-        this.hideInlineEpicCreate();
-        await this._populateEpicDropdown(null);
-        this._pendingAttachments = [];
-        this._existingAttachmentsHtml = '';
-        this._renderFormAttachments();
-        this._selectedDeps = [];
-        this._renderDepChips();
-        this._initDepPicker(null);
+        await this._resetFormState(null, null);
         this._setAutoStart(false);
         this._setStartCopy(false);
         this._setAutoApprove(false);
         this._setUseChrome(false);
         await this._updateDefaultModelDisplay();
         // Show play button for new items
-        const playBtn = document.getElementById('item-play-btn');
-        if (playBtn) playBtn.style.display = '';
+        this._showPlayButton(true);
         DialogCore.open('item-dialog');
         document.getElementById('item-form-title').focus();
     },
 
     async openEditItem(item) {
-        document.getElementById('item-dialog-title').textContent = 'Edit Item';
-        document.getElementById('item-form-id').value = item.id;
-        document.getElementById('item-form-title').value = item.title;
-        document.getElementById('item-form-desc').value = item.description;
-        document.getElementById('item-form-model').value = item.model || '';
-        document.getElementById('item-form-epic').value = item.epic_id || '';
+        this._fillFormFields('Edit Item', {
+            id: item.id, title: item.title, desc: item.description, model: item.model || '', epic: item.epic_id || '',
+        });
         const repoSelect = document.getElementById('item-form-repo');
         if (repoSelect) {
             repoSelect.value = item.repo || '';
             // Repo is immutable after creation — the worktree is already bound to it.
             repoSelect.disabled = !!item.id;
         }
-        this.hideInlineEpicCreate();
-        await this._populateEpicDropdown(item.epic_id);
-        this._pendingAttachments = [];
-        this._existingAttachmentsHtml = '';
-        this._renderFormAttachments();
-        // Load existing dependencies for edit
-        this._selectedDeps = [];
-        this._renderDepChips();
-        this._initDepPicker(item.id);
+        await this._resetFormState(item.epic_id, item.id);
         this._setAutoStart(!!item.auto_start);
         this._setStartCopy(!!item.start_copy);
         // Pass the raw value (int 0/1/2 or legacy bool) so the setter can
@@ -68,27 +44,53 @@ const ItemDialog = {
         this._setAutoApprove(item.auto_approve);
         this._setUseChrome(!!item.use_chrome);
         if (item.id) {
+            // Load existing dependencies and attachments for edit
             await this._loadDependencies(item.id);
-        }
-        // Load existing attachments for edit
-        if (item.id) {
             this._loadFormAttachments(item.id);
         }
         await this._updateDefaultModelDisplay();
-        // Re-apply model value after Ollama options were rebuilt
-        // Fall back to Default ("") if the saved model no longer exists in the dropdown
-        const modelSelect = document.getElementById('item-form-model');
-        modelSelect.value = item.model || '';
-        if (modelSelect.value !== (item.model || '')) {
-            modelSelect.value = '';
-        }
+        this._restoreModel(item.model || '');
         // Hide play button for existing items
-        const playBtn = document.getElementById('item-play-btn');
-        if (playBtn) playBtn.style.display = 'none';
+        this._showPlayButton(false);
         // Disable "Save & Start" if item is blocked by dependencies
         this._updateSaveStartButton(item.id);
         DialogCore.open('item-dialog');
         document.getElementById('item-form-title').focus();
+    },
+
+    /** Dialog heading plus the ``item-form-<field>`` input values. */
+    _fillFormFields(heading, values) {
+        document.getElementById('item-dialog-title').textContent = heading;
+        for (const [field, value] of Object.entries(values)) {
+            document.getElementById(`item-form-${field}`).value = value;
+        }
+    },
+
+    /** Epic list, attachments and dependencies back to their initial state. */
+    async _resetFormState(epicId, itemId) {
+        this.hideInlineEpicCreate();
+        await this._populateEpicDropdown(epicId);
+        this._pendingAttachments = [];
+        this._existingAttachmentsHtml = '';
+        this._renderFormAttachments();
+        this._selectedDeps = [];
+        this._renderDepChips();
+        this._initDepPicker(itemId);
+    },
+
+    // Re-apply model value after Ollama options were rebuilt.
+    // Fall back to Default ("") if the saved model no longer exists in the dropdown.
+    _restoreModel(model) {
+        const modelSelect = document.getElementById('item-form-model');
+        modelSelect.value = model;
+        if (modelSelect.value !== model) {
+            modelSelect.value = '';
+        }
+    },
+
+    _showPlayButton(show) {
+        const playBtn = document.getElementById('item-play-btn');
+        if (playBtn) playBtn.style.display = show ? '' : 'none';
     },
 
     _updateSaveStartButton(itemId) {
@@ -171,52 +173,16 @@ const ItemDialog = {
 
     async submitItem(event) {
         event.preventDefault();
-        const id = document.getElementById('item-form-id').value;
-        const title = document.getElementById('item-form-title').value.trim();
-        const description = document.getElementById('item-form-desc').value;
-        const model = document.getElementById('item-form-model').value || null;
-        const epic_id = document.getElementById('item-form-epic').value || null;
-
-        if (!title) return;
-
-        const auto_start = this._getAutoStart();
-        const start_copy = this._getStartCopy();
-        const auto_approve = this._getAutoApprove();
-        const use_chrome = this._getUseChrome();
-
+        const form = this._readItemForm();
+        if (!form.title) return;
+        const opts = this._readItemOptions();
+        const { title, description, epic_id, model } = form;
         try {
-            let itemId = id;
-            if (id) {
-                const updateData = { title, description, epic_id, auto_start, start_copy, auto_approve, use_chrome };
-                updateData.model = model;  // null clears to default
-                await Api.updateItem(id, updateData);
-            } else {
-                const repoEl = document.getElementById('item-form-repo');
-                const repo = repoEl ? (repoEl.value || null) : null;
-                if (repoEl && !repo) {
-                    alert('Please pick a repo for this item.');
-                    return;
-                }
-                const item = await Api.createItem(title, description, model, epic_id, auto_start, start_copy, repo, auto_approve, use_chrome);
-                itemId = item.id;
-            }
-
-            // Save dependencies
-            await Api.request('PUT', `/api/items/${itemId}/dependencies`, {
-                required_item_ids: this._selectedDeps,
-            });
-
-            // Upload pending attachments
-            for (const a of this._pendingAttachments) {
-                await Api.request('POST', `/api/items/${itemId}/attachments`, {
-                    item_id: itemId,
-                    filename: a.filename,
-                    data: a.dataUrl,
-                    annotation_summary: a.annotation_summary || null,
-                });
-            }
-            this._pendingAttachments = [];
-
+            // model: null clears to default
+            const itemId = await this._saveItem(form, opts.auto_start, opts,
+                { title, description, epic_id, ...opts, model });
+            if (!itemId) return;
+            await this._saveDepsAndAttachments(itemId);
             DialogCore.close('item-dialog');
         } catch (err) {
             console.error('Failed to save item:', err);
@@ -225,58 +191,20 @@ const ItemDialog = {
 
     async submitItemAndStart(event) {
         event.preventDefault();
-        const id = document.getElementById('item-form-id').value;
-        const title = document.getElementById('item-form-title').value.trim();
-        const description = document.getElementById('item-form-desc').value;
-        const model = document.getElementById('item-form-model').value || null;
-        const epic_id = document.getElementById('item-form-epic').value || null;
-        const start_copy = this._getStartCopy();
-        const auto_approve = this._getAutoApprove();
-        const use_chrome = this._getUseChrome();
+        const form = this._readItemForm();
+        const opts = this._readItemOptions();
+        if (!form.title) return;
+        if (this._warnIfBlocked(form.id)) return;
 
-        if (!title) return;
-
-        // Block starting if item has unresolved dependencies
-        if (id && Board.isItemBlocked(id)) {
-            const blockers = Board.getBlockingItems(id).map(b => b.title).join(', ');
-            console.warn(`Cannot start blocked item ${id}. Blocked by: ${blockers}`);
-            return;
-        }
-
+        const { title, description, epic_id, model } = form;
+        const { start_copy, auto_approve, use_chrome } = opts;
         try {
-            let itemId = id;
-            if (id) {
-                // For existing items, just update
-                const updateData = { title, description, epic_id, start_copy, auto_approve, use_chrome };
-                if (model !== null) updateData.model = model;
-                await Api.updateItem(id, updateData);
-            } else {
-                const repoEl = document.getElementById('item-form-repo');
-                const repo = repoEl ? (repoEl.value || null) : null;
-                if (repoEl && !repo) {
-                    alert('Please pick a repo for this item.');
-                    return;
-                }
-                // For new items, create first
-                const item = await Api.createItem(title, description, model, epic_id, false, start_copy, repo, auto_approve, use_chrome);
-                itemId = item.id;
-            }
-
-            // Save dependencies
-            await Api.request('PUT', `/api/items/${itemId}/dependencies`, {
-                required_item_ids: this._selectedDeps,
-            });
-
-            // Upload pending attachments
-            for (const a of this._pendingAttachments) {
-                await Api.request('POST', `/api/items/${itemId}/attachments`, {
-                    item_id: itemId,
-                    filename: a.filename,
-                    data: a.dataUrl,
-                    annotation_summary: a.annotation_summary || null,
-                });
-            }
-            this._pendingAttachments = [];
+            // Existing items are just updated (model only when one is picked); new ones are created first
+            const updateData = { title, description, epic_id, start_copy, auto_approve, use_chrome };
+            if (model !== null) updateData.model = model;
+            const itemId = await this._saveItem(form, false, opts, updateData);
+            if (!itemId) return;
+            await this._saveDepsAndAttachments(itemId);
 
             // Move to doing column and start agent (this works for both new and existing items)
             await Api.moveItem(itemId, 'doing', 0);
@@ -288,6 +216,71 @@ const ItemDialog = {
         }
     },
 
+    _readItemForm() {
+        return {
+            id: document.getElementById('item-form-id').value,
+            title: document.getElementById('item-form-title').value.trim(),
+            description: document.getElementById('item-form-desc').value,
+            model: document.getElementById('item-form-model').value || null,
+            epic_id: document.getElementById('item-form-epic').value || null,
+        };
+    },
+
+    _readItemOptions() {
+        return {
+            auto_start: this._getAutoStart(),
+            start_copy: this._getStartCopy(),
+            auto_approve: this._getAutoApprove(),
+            use_chrome: this._getUseChrome(),
+        };
+    },
+
+    /** Block starting if the item has unresolved dependencies. */
+    _warnIfBlocked(id) {
+        if (!id || !Board.isItemBlocked(id)) return false;
+        const blockers = Board.getBlockingItems(id).map(b => b.title).join(', ');
+        console.warn(`Cannot start blocked item ${id}. Blocked by: ${blockers}`);
+        return true;
+    },
+
+    /**
+     * Update an existing item with ``updateData``, or create a new one. Returns
+     * the item id, or null when a multi-repo workspace has no repo picked.
+     */
+    async _saveItem(form, autoStart, opts, updateData) {
+        if (form.id) {
+            await Api.updateItem(form.id, updateData);
+            return form.id;
+        }
+        const repoEl = document.getElementById('item-form-repo');
+        const repo = repoEl ? (repoEl.value || null) : null;
+        if (repoEl && !repo) {
+            alert('Please pick a repo for this item.');
+            return null;
+        }
+        const item = await Api.createItem(form.title, form.description, form.model, form.epic_id,
+            autoStart, opts.start_copy, repo, opts.auto_approve, opts.use_chrome);
+        return item.id;
+    },
+
+    async _saveDepsAndAttachments(itemId) {
+        // Save dependencies
+        await Api.request('PUT', `/api/items/${itemId}/dependencies`, {
+            required_item_ids: this._selectedDeps,
+        });
+
+        // Upload pending attachments
+        for (const a of this._pendingAttachments) {
+            await Api.request('POST', `/api/items/${itemId}/attachments`, {
+                item_id: itemId,
+                filename: a.filename,
+                data: a.dataUrl,
+                annotation_summary: a.annotation_summary || null,
+            });
+        }
+        this._pendingAttachments = [];
+    },
+
     async _populateEpicDropdown(selectedEpicId) {
         const select = document.getElementById('item-form-epic');
         if (!select) return;
@@ -296,11 +289,7 @@ const ItemDialog = {
             const epics = await Api.request('GET', '/api/epics');
             select.innerHTML = '<option value="">No Epic</option>';
             for (const epic of epics) {
-                // Hide fully-archived epics (unless this item is assigned to it)
-                const p = epic.progress || {};
-                const archived = (p.archive || 0);
-                if (archived > 0 && (p.total || 0) === 0 && epic.id !== selectedEpicId) continue;
-
+                if (this._isHiddenEpic(epic, selectedEpicId)) continue;
                 const opt = document.createElement('option');
                 opt.value = epic.id;
                 opt.textContent = epic.title;
@@ -310,6 +299,13 @@ const ItemDialog = {
         } catch (e) {
             console.error('Failed to load epics:', e);
         }
+    },
+
+    /** Fully-archived epics are hidden, unless this item is assigned to it. */
+    _isHiddenEpic(epic, selectedEpicId) {
+        if (epic.id === selectedEpicId) return false;
+        const p = epic.progress || {};
+        return (p.archive || 0) > 0 && (p.total || 0) === 0;
     },
 
     showInlineEpicCreate() {
