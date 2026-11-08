@@ -169,7 +169,15 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     plugins are still parsed before the Kimi/Claude branch (it logs). Harness: fake session classes
     record their kwargs — 55 cases (6 configs × 9 calls + cleanup errors) identical in kwargs, plugin /
     caffeinate logs, default `on_message`, cleanup and errors.
-  - **Scores** (2026-11-08, after 10g): headline 9.09, src 9.57, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+    10h `git/operations.py` 7.90 → 9.32 — `merge_branch` → `_current_branch_or_none`,
+    `_commit_worktree_leftovers`, `_merge_into_base`, `_abort_merge`, `_checkout_quietly`,
+    `_merge_failure_message` (timeout / git error both abort; anything else propagates; the original
+    branch is restored in `finally`). The 5-parameter public git API (`merge_branch`, `get_diff`,
+    `get_changed_files`) stays. Harness: real temp repos with fixed commit dates (reproducible SHAs) —
+    16 cases (clean, custom message, worktree leftovers, conflict, restore from another branch, missing /
+    empty base, no / vanished worktree, dirty base, merge timeout, HEAD lookup failing, unexpected error)
+    identical in result and repo state afterwards.
+  - **Scores** (2026-11-08, after 10h): headline 9.10, src 9.58, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser

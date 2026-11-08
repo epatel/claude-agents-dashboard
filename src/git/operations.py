@@ -338,41 +338,14 @@ async def merge_branch(repo: Path, branch: str, base: str | None = None,
     # Snapshot the repo's currently checked-out branch so we can restore it
     # after the merge. Only restore if it's different from `base`, otherwise
     # the post-merge state is already correct.
+    original_head = await _current_branch_or_none(repo)
     try:
-        original_head = await get_current_branch(repo)
-    except Exception:
-        original_head = None
-
-    try:
-        # Commit uncommitted changes in the worktree first
-        if worktree_path and worktree_path.exists():
-            msg = commit_message or f"Agent work on {branch}"
-            committed = await commit_worktree_changes(worktree_path, msg)
-
-        # Checkout base in the main repo
-        await run_git(repo, "checkout", base)
-
-        # Perform the merge with explicit timeout
-        merge_msg = commit_message or f"Merge {branch} into {base}"
-        await run_git(repo, "merge", branch, "--no-ff",
-                      "-m", merge_msg, timeout=GIT_MERGE_TIMEOUT)
-        # Get the merge commit SHA
-        sha = (await run_git(repo, "rev-parse", "HEAD")).strip()
-        return True, sha
-    except asyncio.TimeoutError as e:
-        # Timeout during merge operation
-        try:
-            await run_git(repo, "merge", "--abort")
-        except (subprocess.CalledProcessError, asyncio.TimeoutError):
-            pass
-        return False, f"Merge operation timed out: {str(e)}"
-    except subprocess.CalledProcessError as e:
-        # Conflict or other git error — abort the merge
-        try:
-            await run_git(repo, "merge", "--abort")
-        except (subprocess.CalledProcessError, asyncio.TimeoutError):
-            pass
-        return False, e.stderr.decode() if e.stderr else str(e)
+        await _commit_worktree_leftovers(worktree_path, branch, commit_message)
+        return True, await _merge_into_base(repo, branch, base, commit_message)
+    except (asyncio.TimeoutError, subprocess.CalledProcessError) as e:
+        # Timeout, conflict or other git error — abort the merge
+        await _abort_merge(repo)
+        return False, _merge_failure_message(e)
     finally:
         # Best-effort restore of the user's previously checked-out branch.
         # Without this, every merge would leave the shared target repo sitting
@@ -380,7 +353,54 @@ async def merge_branch(repo: Path, branch: str, base: str | None = None,
         # created here would record `base_branch = main` because
         # create_worktree snapshots HEAD at creation time.
         if original_head and original_head != base:
-            try:
-                await run_git(repo, "checkout", original_head)
-            except (subprocess.CalledProcessError, asyncio.TimeoutError):
-                pass
+            await _checkout_quietly(repo, original_head)
+
+
+async def _current_branch_or_none(repo: Path) -> str | None:
+    try:
+        return await get_current_branch(repo)
+    except Exception:
+        return None
+
+
+async def _commit_worktree_leftovers(worktree_path: Path | None, branch: str,
+                                     commit_message: str | None) -> None:
+    """Commit any uncommitted changes in the agent's worktree (if it still exists)."""
+    if worktree_path and worktree_path.exists():
+        await commit_worktree_changes(worktree_path, commit_message or f"Agent work on {branch}")
+
+
+async def _merge_into_base(repo: Path, branch: str, base: str, commit_message: str | None) -> str:
+    """Check out ``base`` and merge ``branch`` into it (--no-ff). Returns the merge
+    commit SHA; git errors and timeouts propagate."""
+    # Checkout base in the main repo
+    await run_git(repo, "checkout", base)
+    # Perform the merge with explicit timeout
+    merge_msg = commit_message or f"Merge {branch} into {base}"
+    await run_git(repo, "merge", branch, "--no-ff", "-m", merge_msg, timeout=GIT_MERGE_TIMEOUT)
+    # Get the merge commit SHA
+    return (await run_git(repo, "rev-parse", "HEAD")).strip()
+
+
+async def _abort_merge(repo: Path) -> None:
+    """Best-effort `git merge --abort`."""
+    try:
+        await run_git(repo, "merge", "--abort")
+    except (subprocess.CalledProcessError, asyncio.TimeoutError):
+        pass
+
+
+async def _checkout_quietly(repo: Path, branch: str) -> None:
+    """Best-effort `git checkout <branch>`."""
+    try:
+        await run_git(repo, "checkout", branch)
+    except (subprocess.CalledProcessError, asyncio.TimeoutError):
+        pass
+
+
+def _merge_failure_message(e: Exception) -> str:
+    """The (success=False) message for a merge that timed out or failed in git."""
+    if isinstance(e, asyncio.TimeoutError):
+        return f"Merge operation timed out: {str(e)}"
+    return e.stderr.decode() if e.stderr else str(e)
+
