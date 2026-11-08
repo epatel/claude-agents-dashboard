@@ -15,20 +15,25 @@ const DialogUtils = {
      */
     _isOllamaModel(modelId) {
         if (!modelId) return false;
-        // Check cache first
-        if (this._ollamaCache.fetched && this._ollamaCache.models.some(m => m.name === modelId)) {
-            return true;
-        }
-        // Anthropic models always start with "claude-"; Kimi models ("kimi-*")
-        // run on the Kimi Agent SDK runtime, and Tiiny models ("tiiny/*") on
-        // the Tiiny device — none of them are Ollama.
-        if (modelId.startsWith('claude-') || this._isKimiModel(modelId) || this._isTiinyModel(modelId)) return false;
-        // If it's in the server-rendered list, it's Anthropic
-        const serverModels = window.__MODEL_NAMES__ || {};
-        // Models that were in the initial server render are Anthropic
-        if (window.__ANTHROPIC_MODEL_IDS__ && window.__ANTHROPIC_MODEL_IDS__.has(modelId)) return false;
-        // Fallback: if not a known Anthropic model and contains / or : it's likely Ollama
-        return !modelId.startsWith('claude-');
+        if (this._isCachedOllamaModel(modelId)) return true;
+        if (this._isNonOllamaFamily(modelId)) return false;
+        // Models that were in the initial server render are Anthropic; anything
+        // else is taken to be Ollama.
+        const anthropicIds = window.__ANTHROPIC_MODEL_IDS__;
+        return !(anthropicIds && anthropicIds.has(modelId));
+    },
+
+    _isCachedOllamaModel(modelId) {
+        return this._ollamaCache.fetched && this._ollamaCache.models.some(m => m.name === modelId);
+    },
+
+    /**
+     * Anthropic models always start with "claude-"; Kimi models ("kimi-*") run on
+     * the Kimi Agent SDK runtime, and Tiiny models ("tiiny/*") on the Tiiny
+     * device — none of them are Ollama.
+     */
+    _isNonOllamaFamily(modelId) {
+        return ['claude-', 'kimi-', 'tiiny/'].some(prefix => modelId.startsWith(prefix));
     },
 
     /**
@@ -77,96 +82,87 @@ const DialogUtils = {
 
     _ollamaCache: { models: [], enabled: false, fetched: false },
 
-    async fetchOllamaModels() {
-        try {
-            const result = await Api.request('GET', '/api/ollama/models');
-            this._ollamaCache = {
-                models: result.models || [],
-                enabled: result.enabled !== false,
-                fetched: true,
-            };
-            // Update global model names map
-            for (const m of this._ollamaCache.models) {
-                window.__MODEL_NAMES__[m.name] = m.display_name;
-            }
-            return this._ollamaCache;
-        } catch {
-            return this._ollamaCache;
-        }
+    fetchOllamaModels() {
+        return this._fetchModels('/api/ollama/models', '_ollamaCache');
     },
 
     /**
      * Append Ollama models as an optgroup to a <select> element.
      * Removes any existing Ollama optgroup first.
      */
-    async populateOllamaOptions(selectEl) {
-        if (!selectEl) return;
-        // Ollama is experimental — skip if not enabled
-        if (!window.__EXPERIMENTAL__) return;
-
-        // Fetch if not yet cached
-        if (!this._ollamaCache.fetched) {
-            await this.fetchOllamaModels();
-        }
-
-        // Remove existing Ollama optgroup
-        const existing = selectEl.querySelector('optgroup[label="Ollama Models"]');
-        if (existing) existing.remove();
-
-        if (this._ollamaCache.enabled && this._ollamaCache.models.length > 0) {
-            const optgroup = document.createElement('optgroup');
-            optgroup.label = 'Ollama Models';
-            for (const m of this._ollamaCache.models) {
-                const opt = document.createElement('option');
-                opt.value = m.name;
+    populateOllamaOptions(selectEl) {
+        return this._populateModelOptions(selectEl, {
+            label: 'Ollama Models', cacheKey: '_ollamaCache', fetch: 'fetchOllamaModels',
+            optionText: (m) => {
                 const sizeStr = m.size ? ` (${(m.size / 1e9).toFixed(1)}GB)` : '';
                 const paramStr = m.parameter_size ? `:${m.parameter_size}` : '';
-                opt.textContent = `${m.display_name}${paramStr}${sizeStr}`;
-                optgroup.appendChild(opt);
-            }
-            selectEl.appendChild(optgroup);
-        }
+                return `${m.display_name}${paramStr}${sizeStr}`;
+            },
+        });
     },
 
     // --- Tiiny model discovery ---
 
     _tiinyCache: { models: [], enabled: false, fetched: false },
 
-    async fetchTiinyModels() {
-        try {
-            const result = await Api.request('GET', '/api/tiiny/models');
-            this._tiinyCache = {
-                models: result.models || [],
-                enabled: result.enabled !== false,
-                fetched: true,
-            };
-            for (const m of this._tiinyCache.models) {
-                window.__MODEL_NAMES__[m.name] = m.display_name;
-            }
-        } catch {
-            // keep the previous cache
-        }
-        return this._tiinyCache;
+    fetchTiinyModels() {
+        return this._fetchModels('/api/tiiny/models', '_tiinyCache');
     },
 
     /**
      * Append Tiiny models as an optgroup to a <select> element.
      * Removes any existing Tiiny optgroup first.
      */
-    async populateTiinyOptions(selectEl) {
-        if (!selectEl || !window.__EXPERIMENTAL__) return;
-        if (!this._tiinyCache.fetched) {
-            await this.fetchTiinyModels();
+    populateTiinyOptions(selectEl) {
+        return this._populateModelOptions(selectEl, {
+            label: 'Tiiny Models', cacheKey: '_tiinyCache', fetch: 'fetchTiinyModels',
+            optionText: (m) => m.display_name,
+        });
+    },
+
+    // --- Shared local-provider model discovery (Ollama, Tiiny) ---
+
+    /**
+     * Load a provider's model list into `this[cacheKey]` and the global model-name
+     * map. On failure the previous cache stays. Returns the cache.
+     */
+    async _fetchModels(url, cacheKey) {
+        try {
+            const result = await Api.request('GET', url);
+            this[cacheKey] = {
+                models: result.models || [],
+                enabled: result.enabled !== false,
+                fetched: true,
+            };
+            for (const m of this[cacheKey].models) {
+                window.__MODEL_NAMES__[m.name] = m.display_name;
+            }
+        } catch {
+            // keep the previous cache
         }
-        const existing = selectEl.querySelector('optgroup[label="Tiiny Models"]');
+        return this[cacheKey];
+    },
+
+    /**
+     * Replace the `label` optgroup of `selectEl` with the cached models (fetched on
+     * first use through `this[fetch]()`). Local providers are experimental, so
+     * nothing happens unless the experimental flag is on.
+     */
+    async _populateModelOptions(selectEl, { label, cacheKey, fetch, optionText }) {
+        if (!selectEl || !window.__EXPERIMENTAL__) return;
+        if (!this[cacheKey].fetched) {
+            await this[fetch]();
+        }
+        const existing = selectEl.querySelector(`optgroup[label="${label}"]`);
         if (existing) existing.remove();
-        if (this._tiinyCache.enabled && this._tiinyCache.models.length > 0) {
+        const cache = this[cacheKey];
+        if (cache.enabled && cache.models.length > 0) {
             const optgroup = document.createElement('optgroup');
-            optgroup.label = 'Tiiny Models';
-            for (const m of this._tiinyCache.models) {
+            optgroup.label = label;
+            for (const m of cache.models) {
                 const opt = document.createElement('option');
                 opt.value = m.name;
-                opt.textContent = m.display_name;
+                opt.textContent = optionText(m);
                 optgroup.appendChild(opt);
             }
             selectEl.appendChild(optgroup);
