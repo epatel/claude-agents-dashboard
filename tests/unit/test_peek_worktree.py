@@ -238,7 +238,7 @@ class TestPeekWorktreeRendering:
         assert "+added line" in text
 
     async def test_path_peek_truncates_long_diffs(self, workflow, db_service):
-        from src.services.workflow_service import _PEEK_MAX_DIFF_LINES
+        from src.services.workflow_peek import _PEEK_MAX_DIFF_LINES
         me = await _agent_item(workflow, db_service, "Mine", ["src/a.py"])
         other = await _agent_item(workflow, db_service, "Theirs", ["src/b.py"])
         workflow.git.worktree_path_diff = AsyncMock(

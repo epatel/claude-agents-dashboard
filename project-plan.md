@@ -125,10 +125,16 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     `_coerce_auto_approve` / `_effective_requires` / `_announce_new_todo` / `_schedule_autostart`;
     `on_view_board`, `peek_worktree`, `_item_session_kwargs`, `find_stale_worktrees` and
     `_run_auto_review` split into helpers (`run_auto_review` is still called from this module — a
-    test patches it there); 52 harness cases identical, 1441 tests. Left: file size (next: move
-    cohesive groups — session callbacks, peek, auto-review, stale worktrees — out of the file) and
-    parameter counts that are public / tool contracts.
-  - **Scores** (2026-11-08, after 10a): headline 8.86, src 9.14, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+    test patches it there); 52 harness cases identical, 1441 tests.
+    10b `workflow_service.py` 7.87 → 9.08 (1881 → 1181 lines) by moving cohesive groups into mixins
+    that `WorkflowService` inherits: `workflow_callbacks.py` (session-event callbacks),
+    `workflow_board_tools.py` (board-tool callbacks), `workflow_peek.py` (peek + `_PEEK_*` caps),
+    `workflow_worktrees.py` (stale worktrees); `_worktree_of` → `workflow_helpers.py`. Auto-review
+    stays (the `run_auto_review` patch target). Moved code logs as `src.services.workflow_service`, as
+    before. No name defined twice across the MRO; 52 harness cases identical vs 10a; 1441 tests.
+    `aihealth delta` says DEGRADED only because findings that moved count as new in new files
+    (tool-contract parameter counts, primitive-heavy signatures); `src/` rose 9.14 → 9.24.
+  - **Scores** (2026-11-08, after 10b): headline 8.92, src 9.24, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser

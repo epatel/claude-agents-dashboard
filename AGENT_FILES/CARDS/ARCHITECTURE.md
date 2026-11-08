@@ -9,7 +9,7 @@ Tour of the major subsystems. For named flows with line-numbered entry points se
 
 FastAPI + aiosqlite. `AgentOrchestrator` (`src/agent/orchestrator.py`) is a thin facade delegating to 7 services in `src/services/`:
 
-- `WorkflowService` (~2000 LOC) — agent lifecycle, state transitions (driven by `ItemState` FSM in `src/domain/item_state.py`), merge conflict auto-resolution, dependency auto-start, WIP limit queueing, single/multi-repo session kwargs (`_item_session_kwargs`), pause/resume with session capture, post-merge graph refresh
+- `WorkflowService` (`workflow_service.py`, ~1200 lines; session callbacks, board-tool callbacks, the worktree peek and stale-worktree cleanup are mixins in `workflow_callbacks.py` / `workflow_board_tools.py` / `workflow_peek.py` / `workflow_worktrees.py`) — agent lifecycle, state transitions (driven by `ItemState` FSM in `src/domain/item_state.py`), merge conflict auto-resolution, dependency auto-start, WIP limit queueing, single/multi-repo session kwargs (`_item_session_kwargs`), pause/resume with session capture, post-merge graph refresh
 - `DatabaseService` (~590 LOC) — all DB operations (parameterized; column whitelists live in the repositories)
 - `NotificationService` — WebSocket broadcasting + tool formatting; the single fan-out point on every state change (incl. graphify `graph_build_progress` / `graph_ready` events)
 - `GitService` — worktree management, merge operations, repo path resolution
