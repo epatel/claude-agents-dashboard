@@ -186,7 +186,9 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     `ClaudeAgentOptions` / SDK client over 256 scenarios × 2 models (options kwargs, `can_use_tool`
     asked about 9 tool names, resume, query prompt, logs, notifications) plus a 12-case cancel matrix
     — all identical.
-  - **Scores** (2026-11-08, after 10i): headline 9.11, src 9.63, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+    10j `services/notification_service.py` 8.20 → 9.31 — `format_tool_use` → `_TOOL_FORMATTERS` table
+    + `_truncated`; 50,000 fuzzed (tool name, input) pairs identical in result or exception.
+  - **Scores** (2026-11-08, after 10j): headline 9.13, src 9.63, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser

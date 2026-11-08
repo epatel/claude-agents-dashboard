@@ -9,6 +9,26 @@ from ..web.websocket import ConnectionManager
 logger = logging.getLogger(__name__)
 
 
+def _truncated(text: str, limit: int) -> str:
+    """`text` cut to `limit` characters plus "..." when longer."""
+    return text[:limit] + "..." if len(text) > limit else text
+
+
+# Work-log line for each known tool, from its input.
+_TOOL_FORMATTERS = {
+    "Write": lambda inp: f"**Write** `{inp.get('file_path', '')}`",
+    "Edit": lambda inp: f"**Edit** `{inp.get('file_path', '')}`",
+    "Read": lambda inp: f"**Read** `{inp.get('file_path', '')}`",
+    "Bash": lambda inp: f"**Bash** `{_truncated(inp.get('command', ''), 120)}`",
+    "Glob": lambda inp: f"**Glob** `{inp.get('pattern', '')}`",
+    "Grep": lambda inp: f"**Grep** `{inp.get('pattern', '')}` in `{inp.get('path', '.')}`",
+    "create_todo": lambda inp: f"**Create Todo** {inp.get('title', '')}",
+    "set_commit_message": lambda inp: f"**Commit Message** {inp.get('message', '')}",
+    "create_shortcut": lambda inp: f"**Create Shortcut** {inp.get('name', '')} → `{inp.get('command', '')}`",
+    "ask_user": lambda inp: f"**Ask User** {_truncated(inp.get('question', ''), 100)}",
+}
+
+
 class NotificationService:
     """Handles WebSocket notifications and event broadcasting."""
 
@@ -75,44 +95,10 @@ class NotificationService:
 
     def format_tool_use(self, name: str, inp: Dict[str, Any]) -> str:
         """Format tool use for readable work log display."""
-        if name == "Write":
-            path = inp.get("file_path", "")
-            return f"**Write** `{path}`"
-        elif name == "Edit":
-            path = inp.get("file_path", "")
-            return f"**Edit** `{path}`"
-        elif name == "Read":
-            path = inp.get("file_path", "")
-            return f"**Read** `{path}`"
-        elif name == "Bash":
-            cmd = inp.get("command", "")
-            if len(cmd) > 120:
-                cmd = cmd[:120] + "..."
-            return f"**Bash** `{cmd}`"
-        elif name == "Glob":
-            return f"**Glob** `{inp.get('pattern', '')}`"
-        elif name == "Grep":
-            return f"**Grep** `{inp.get('pattern', '')}` in `{inp.get('path', '.')}`"
-        elif name == "create_todo":
-            title = inp.get("title", "")
-            return f"**Create Todo** {title}"
-        elif name == "set_commit_message":
-            msg = inp.get("message", "")
-            return f"**Commit Message** {msg}"
-        elif name == "create_shortcut":
-            sc_name = inp.get("name", "")
-            sc_cmd = inp.get("command", "")
-            return f"**Create Shortcut** {sc_name} → `{sc_cmd}`"
-        elif name == "ask_user":
-            question = inp.get("question", "")
-            if len(question) > 100:
-                question = question[:100] + "..."
-            return f"**Ask User** {question}"
-        else:
-            summary = str(inp)
-            if len(summary) > 100:
-                summary = summary[:100] + "..."
-            return f"**{name}** {summary}"
+        formatter = _TOOL_FORMATTERS.get(name)
+        if formatter:
+            return formatter(inp)
+        return f"**{name}** {_truncated(str(inp), 100)}"
 
     def format_completion_log(self, cost_usd: Optional[float] = None,
                              total_tokens: Optional[int] = None,
