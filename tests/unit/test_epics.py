@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 
 from src.database import Database
+from src.services.database_service import DatabaseService
 
 
 @pytest_asyncio.fixture
@@ -16,6 +17,34 @@ async def db():
         database = Database(db_path)
         await database.initialize()
         yield database
+
+
+INSERT_ITEM = "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)"
+
+
+async def insert_epic_and_item(conn):
+    """Insert epic-001 ("Auth Rewrite") and item-001 ("Fix login", in todo) assigned to it."""
+    await conn.execute(
+        "INSERT INTO epics (id, title, color, position) VALUES (?, ?, ?, ?)",
+        ("epic-001", "Auth Rewrite", "blue", 0),
+    )
+    await conn.execute(INSERT_ITEM, ("item-001", "Fix login", "todo", 0, "epic-001"))
+    await conn.commit()
+
+
+async def epic_id_of(conn, item_id):
+    """The epic_id column of one item."""
+    cursor = await conn.execute("SELECT epic_id FROM items WHERE id = ?", (item_id,))
+    row = await cursor.fetchone()
+    return row[0]
+
+
+async def insert_items(db, epic_id, items):
+    """Insert (id, title, column) items into ``epic_id`` at position 0."""
+    async with db.connect() as conn:
+        for item_id, title, column in items:
+            await conn.execute(INSERT_ITEM, (item_id, title, column, 0, epic_id))
+        await conn.commit()
 
 
 @pytest.mark.asyncio
@@ -58,45 +87,23 @@ async def test_create_epic(db):
 async def test_assign_item_to_epic(db):
     """Test assigning an item to an epic."""
     async with db.connect() as conn:
-        await conn.execute(
-            "INSERT INTO epics (id, title, color, position) VALUES (?, ?, ?, ?)",
-            ("epic-001", "Auth Rewrite", "blue", 0),
-        )
-        await conn.execute(
-            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
-            ("item-001", "Fix login", "todo", 0, "epic-001"),
-        )
-        await conn.commit()
-        cursor = await conn.execute("SELECT epic_id FROM items WHERE id = ?", ("item-001",))
-        row = await cursor.fetchone()
-    assert row[0] == "epic-001"
+        await insert_epic_and_item(conn)
+        assert await epic_id_of(conn, "item-001") == "epic-001"
 
 
 @pytest.mark.asyncio
 async def test_delete_epic_nullifies_items(db):
     """Test that deleting an epic nullifies epic_id on related items."""
     async with db.connect() as conn:
-        await conn.execute(
-            "INSERT INTO epics (id, title, color, position) VALUES (?, ?, ?, ?)",
-            ("epic-001", "Auth Rewrite", "blue", 0),
-        )
-        await conn.execute(
-            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
-            ("item-001", "Fix login", "todo", 0, "epic-001"),
-        )
-        await conn.commit()
+        await insert_epic_and_item(conn)
 
         # Delete the epic and nullify references
         await conn.execute("UPDATE items SET epic_id = NULL WHERE epic_id = ?", ("epic-001",))
         await conn.execute("DELETE FROM epics WHERE id = ?", ("epic-001",))
         await conn.commit()
 
-        cursor = await conn.execute("SELECT epic_id FROM items WHERE id = ?", ("item-001",))
-        row = await cursor.fetchone()
-    assert row[0] is None
+        assert await epic_id_of(conn, "item-001") is None
 
-
-from src.services.database_service import DatabaseService
 
 
 @pytest_asyncio.fixture
@@ -134,35 +141,22 @@ async def test_db_service_update_epic(db_service):
 @pytest.mark.asyncio
 async def test_db_service_delete_epic(db_service):
     epic = await db_service.create_epic("Temp Epic", "blue")
-    async with db_service.db.connect() as conn:
-        await conn.execute(
-            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
-            ("item-del-1", "Test Item", "todo", 0, epic["id"]),
-        )
-        await conn.commit()
+    await insert_items(db_service.db, epic["id"], [("item-del-1", "Test Item", "todo")])
 
     deleted = await db_service.delete_epic(epic["id"])
     assert deleted["id"] == epic["id"]
 
     async with db_service.db.connect() as conn:
-        cursor = await conn.execute("SELECT epic_id FROM items WHERE id = ?", ("item-del-1",))
-        row = await cursor.fetchone()
-    assert row[0] is None
+        assert await epic_id_of(conn, "item-del-1") is None
 
 
 @pytest.mark.asyncio
 async def test_db_service_get_epic_progress(db_service):
     epic = await db_service.create_epic("Progress Epic", "blue")
-    async with db_service.db.connect() as conn:
-        await conn.execute(
-            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
-            ("item-p1", "Todo Item", "todo", 0, epic["id"]),
-        )
-        await conn.execute(
-            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
-            ("item-p2", "Done Item", "done", 0, epic["id"]),
-        )
-        await conn.commit()
+    await insert_items(db_service.db, epic["id"], [
+        ("item-p1", "Todo Item", "todo"),
+        ("item-p2", "Done Item", "done"),
+    ])
 
     progress = await db_service.get_epic_progress()
     assert epic["id"] in progress
@@ -208,16 +202,10 @@ async def test_db_service_create_todo_item_without_epic(db_service):
 async def test_db_service_epic_progress_excludes_archive_from_total(db_service):
     """Archived items count under 'archive' but not in 'total'."""
     epic = await db_service.create_epic("Archive Test", "red")
-    async with db_service.db.connect() as conn:
-        await conn.execute(
-            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
-            ("item-a1", "Active", "doing", 0, epic["id"]),
-        )
-        await conn.execute(
-            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
-            ("item-a2", "Archived", "archive", 0, epic["id"]),
-        )
-        await conn.commit()
+    await insert_items(db_service.db, epic["id"], [
+        ("item-a1", "Active", "doing"),
+        ("item-a2", "Archived", "archive"),
+    ])
 
     progress = await db_service.get_epic_progress()
     p = progress[epic["id"]]
@@ -231,13 +219,9 @@ async def test_db_service_epic_progress_all_columns(db_service):
     """Progress tracks items across all six columns."""
     epic = await db_service.create_epic("Full Coverage", "purple")
     columns = ["todo", "doing", "questions", "review", "done", "archive"]
-    async with db_service.db.connect() as conn:
-        for i, col in enumerate(columns):
-            await conn.execute(
-                "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
-                (f"item-fc-{i}", f"Item {col}", col, 0, epic["id"]),
-            )
-        await conn.commit()
+    await insert_items(db_service.db, epic["id"], [
+        (f"item-fc-{i}", f"Item {col}", col) for i, col in enumerate(columns)
+    ])
 
     progress = await db_service.get_epic_progress()
     p = progress[epic["id"]]
@@ -259,20 +243,11 @@ async def test_db_service_epic_progress_empty_epic(db_service):
 async def test_db_service_delete_epic_with_items_in_multiple_columns(db_service):
     """Deleting an epic nullifies epic_id on items in all columns."""
     epic = await db_service.create_epic("Multi-Col Epic", "orange")
-    async with db_service.db.connect() as conn:
-        await conn.execute(
-            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
-            ("item-mc1", "Todo", "todo", 0, epic["id"]),
-        )
-        await conn.execute(
-            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
-            ("item-mc2", "Doing", "doing", 0, epic["id"]),
-        )
-        await conn.execute(
-            "INSERT INTO items (id, title, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?)",
-            ("item-mc3", "Done", "done", 0, epic["id"]),
-        )
-        await conn.commit()
+    await insert_items(db_service.db, epic["id"], [
+        ("item-mc1", "Todo", "todo"),
+        ("item-mc2", "Doing", "doing"),
+        ("item-mc3", "Done", "done"),
+    ])
 
     await db_service.delete_epic(epic["id"])
 

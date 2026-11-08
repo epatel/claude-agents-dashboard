@@ -160,52 +160,49 @@ class TestTransitionFieldValidation:
             await repo.transition(item["id"], Event.START, not_a_real_column="bad")
 
 
+async def _create_and_move(repo, db_service, column, position, **fields):
+    """Create a todo item, set ``fields`` on it (if any), then move it to ``column`` at ``position``."""
+    item = await db_service.create_todo_item("X", "")
+    if fields:
+        await db_service.update_item(item["id"], **fields)
+    return await repo.move_to_column(item["id"], column, position)
+
+
 class TestMoveToColumn:
     async def test_cross_column_move_clears_status(self, repo, db_service):
         # Item starts CANCELLED; user drags it to "doing" column.
         # Before the fix, this would have produced ("doing", "cancelled") —
         # an off-canon encoding. The repo must clear status to land at
         # ("doing", None), the SM-fallback for BACKLOG.
-        item = await db_service.create_todo_item("X", "")
-        await db_service.update_item(item["id"], column_name="todo", status="cancelled")
-        moved = await repo.move_to_column(item["id"], "doing", 0)
+        moved = await _create_and_move(repo, db_service, "doing", 0, column_name="todo", status="cancelled")
         assert moved["column_name"] == "doing"
         assert moved["status"] is None
 
     async def test_within_column_move_preserves_status(self, repo, db_service):
         # Reordering within a column shouldn't touch status — the agent
         # might be RUNNING, the user is just rearranging cards.
-        item = await db_service.create_todo_item("X", "")
-        await db_service.update_item(item["id"], column_name="doing", status="running")
-        moved = await repo.move_to_column(item["id"], "doing", 5)
+        moved = await _create_and_move(repo, db_service, "doing", 5, column_name="doing", status="running")
         assert moved["column_name"] == "doing"
         assert moved["status"] == "running"
         assert moved["position"] == 5
 
     async def test_move_to_done_clears_worktree(self, repo, db_service):
-        item = await db_service.create_todo_item("X", "")
-        await db_service.update_item(
-            item["id"], column_name="review", status=None,
-            worktree_path="/tmp/wt", branch_name="agent/x",
+        moved = await _create_and_move(
+            repo, db_service, "done", 0, column_name="review", status=None, worktree_path="/tmp/wt", branch_name="agent/x",
         )
-        moved = await repo.move_to_column(item["id"], "done", 0)
         assert moved["worktree_path"] is None
 
     async def test_move_to_archive_preserves_done_at(self, repo, db_service):
-        item = await db_service.create_todo_item("X", "")
-        await db_service.update_item(
-            item["id"], column_name="done", status=None,
-            done_at="2025-01-15T10:00:00",
+        moved = await _create_and_move(
+            repo, db_service, "archive", 0, column_name="done", status=None, done_at="2025-01-15T10:00:00",
         )
-        moved = await repo.move_to_column(item["id"], "archive", 0)
         # The archive carry-forward preserves the existing done_at.
         assert moved["done_at"] == "2025-01-15T10:00:00"
 
     async def test_move_to_archive_sets_done_at_when_missing(self, repo, db_service):
         # Edge case: dragging an item with no done_at directly to archive —
         # the move acts as a "completion" event for timestamp purposes.
-        item = await db_service.create_todo_item("X", "")
-        moved = await repo.move_to_column(item["id"], "archive", 0)
+        moved = await _create_and_move(repo, db_service, "archive", 0)
         assert moved["done_at"] is not None
 
     async def test_resulting_encoding_is_readable_by_sm(self, repo, db_service):

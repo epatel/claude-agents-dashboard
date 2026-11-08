@@ -1,46 +1,24 @@
 """Tests for migration 026 — adds api_error_status to token_usage."""
 
-import importlib.util
-import tempfile
-from pathlib import Path
-
-import aiosqlite
 import pytest
 import pytest_asyncio
+
+from tests.unit.migrations.migration_helpers import load_migration, scratch_db, columns_of
 
 
 def _load_migration_026():
     """Import the real migration 026 module by file path and return its instance."""
-    versions = Path(__file__).resolve().parents[3] / "src" / "migrations" / "versions"
-    path = versions / "026_add_api_error_status_to_token_usage.py"
-    spec = importlib.util.spec_from_file_location("migration_026", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.AddApiErrorStatusToTokenUsageMigration()
+    return load_migration("026_add_api_error_status_to_token_usage.py", "AddApiErrorStatusToTokenUsageMigration")
 
 
 @pytest_asyncio.fixture
 async def token_usage_db():
     """A db with a minimal token_usage table (no api_error_status column yet)."""
-    with tempfile.TemporaryDirectory() as tmp:
-        conn = await aiosqlite.connect(str(Path(tmp) / "test.db"))
-        conn.row_factory = aiosqlite.Row
-        await conn.execute(
-            "CREATE TABLE token_usage ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT, session_id TEXT, "
-            "input_tokens INTEGER, output_tokens INTEGER, total_tokens INTEGER, cost_usd REAL)"
-        )
-        await conn.execute(
-            "INSERT INTO token_usage (item_id, total_tokens) VALUES ('i1', 100)"
-        )
-        await conn.commit()
+    async with scratch_db(
+        "CREATE TABLE token_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT, session_id TEXT, input_tokens INTEGER, output_tokens INTEGER, total_tokens INTEGER, cost_usd REAL)",
+        "INSERT INTO token_usage (item_id, total_tokens) VALUES ('i1', 100)",
+    ) as conn:
         yield conn
-        await conn.close()
-
-
-async def _columns(db):
-    cur = await db.execute("PRAGMA table_info(token_usage)")
-    return {row["name"] for row in await cur.fetchall()}
 
 
 @pytest.mark.unit
@@ -48,9 +26,9 @@ class TestMigration026:
     """Migration 026 adds a nullable api_error_status column."""
 
     async def test_up_adds_column(self, token_usage_db):
-        assert "api_error_status" not in await _columns(token_usage_db)
+        assert "api_error_status" not in await columns_of(token_usage_db, "token_usage")
         await _load_migration_026().up(token_usage_db)
-        assert "api_error_status" in await _columns(token_usage_db)
+        assert "api_error_status" in await columns_of(token_usage_db, "token_usage")
 
     async def test_existing_rows_default_null(self, token_usage_db):
         await _load_migration_026().up(token_usage_db)
@@ -75,4 +53,4 @@ class TestMigration026:
         await migration.up(token_usage_db)
         # down() leaves the column in place (matches other column-add migrations).
         await migration.down(token_usage_db)
-        assert "api_error_status" in await _columns(token_usage_db)
+        assert "api_error_status" in await columns_of(token_usage_db, "token_usage")

@@ -168,6 +168,20 @@ async def start_and_wait(session, prompt="do the task", **start_kwargs):
     await session._task
 
 
+async def run_session(events=None, **session_kwargs):
+    """Run a session built from ``session_kwargs`` to completion over a fake ACP module.
+
+    ``events(acp)`` returns the updates the agent streams. Returns the fake acp module.
+    """
+    modules, acp, items = make_acp_module()
+    if events:
+        items.extend(events(acp))
+    session = make_session(**session_kwargs)
+    with patch.dict(sys.modules, modules):
+        await start_and_wait(session)
+    return acp
+
+
 class TestContract:
     def test_implements_abstract_session(self):
         assert issubclass(KimiAgentSession, AbstractAgentSession)
@@ -333,17 +347,11 @@ class TestCommitMessageFlow:
     async def test_commit_line_routed_to_callback_and_stripped_from_log(self):
         on_message = AsyncMock()
         on_set_commit_message = AsyncMock()
-        modules, acp, items = make_acp_module()
-        T = acp.TextContent
-        items.extend([
-            acp.AgentMessageChunk(T("Added the function.\n")),
-            acp.AgentMessageChunk(T("COMMIT_MESSAGE: Add farewell function")),
+        await run_session(lambda acp: [
+            acp.AgentMessageChunk(acp.TextContent("Added the function.\n")),
+            acp.AgentMessageChunk(acp.TextContent("COMMIT_MESSAGE: Add farewell function")),
             acp.TurnEnded("end_turn"),
-        ])
-        session = make_session(on_message=on_message,
-                               on_set_commit_message=on_set_commit_message)
-        with patch.dict(sys.modules, modules):
-            await start_and_wait(session)
+        ], on_message=on_message, on_set_commit_message=on_set_commit_message)
         on_set_commit_message.assert_awaited_once_with("Add farewell function")
         on_message.assert_awaited_once_with("Added the function.")
 
@@ -351,30 +359,19 @@ class TestCommitMessageFlow:
     async def test_commit_only_message_skips_empty_on_message(self):
         on_message = AsyncMock()
         on_set_commit_message = AsyncMock()
-        modules, acp, items = make_acp_module()
-        items.extend([
+        await run_session(lambda acp: [
             acp.AgentMessageChunk(acp.TextContent("COMMIT_MESSAGE: Tiny fix")),
             acp.TurnEnded("end_turn"),
-        ])
-        session = make_session(on_message=on_message,
-                               on_set_commit_message=on_set_commit_message)
-        with patch.dict(sys.modules, modules):
-            await start_and_wait(session)
+        ], on_message=on_message, on_set_commit_message=on_set_commit_message)
         on_set_commit_message.assert_awaited_once_with("Tiny fix")
         on_message.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_prompt_carries_instruction_only_with_callback(self):
-        modules, acp, items = make_acp_module()
-        session = make_session(on_set_commit_message=AsyncMock())
-        with patch.dict(sys.modules, modules):
-            await start_and_wait(session)
+        acp = await run_session(on_set_commit_message=AsyncMock())
         assert "COMMIT_MESSAGE:" in acp.AcpClient.last.session.prompts[0]
 
-        modules2, acp2, _ = make_acp_module()
-        session2 = make_session()
-        with patch.dict(sys.modules, modules2):
-            await start_and_wait(session2)
+        acp2 = await run_session()
         assert "COMMIT_MESSAGE:" not in acp2.AcpClient.last.session.prompts[0]
 
     @pytest.mark.asyncio
@@ -450,16 +447,10 @@ class TestAskUserFlow:
 
     @pytest.mark.asyncio
     async def test_prompt_carries_instruction_only_with_callback(self):
-        modules, acp, _ = make_acp_module()
-        session = make_session(on_clarify=AsyncMock(return_value="x"))
-        with patch.dict(sys.modules, modules):
-            await start_and_wait(session)
+        acp = await run_session(on_clarify=AsyncMock(return_value="x"))
         assert "ASK_USER:" in acp.AcpClient.last.session.prompts[0]
 
-        modules2, acp2, _ = make_acp_module()
-        session2 = make_session()
-        with patch.dict(sys.modules, modules2):
-            await start_and_wait(session2)
+        acp2 = await run_session()
         assert "ASK_USER:" not in acp2.AcpClient.last.session.prompts[0]
 
     @pytest.mark.asyncio
@@ -482,43 +473,31 @@ class TestDeferredToolInput:
     @pytest.mark.asyncio
     async def test_input_from_later_progress_update(self):
         on_tool_use = AsyncMock()
-        modules, acp, items = make_acp_module()
-        items.extend([
+        await run_session(lambda acp: [
             acp.ToolCallStart("Edit", kind="edit"),  # kimi-code: no rawInput here
             acp.ToolCallProgress(raw={"rawInput": {"path": "app.py"}}),
             acp.TurnEnded("end_turn"),
-        ])
-        session = make_session(on_tool_use=on_tool_use)
-        with patch.dict(sys.modules, modules):
-            await start_and_wait(session)
+        ], on_tool_use=on_tool_use)
         on_tool_use.assert_awaited_once_with("Edit", {"path": "app.py", "kind": "edit"})
 
     @pytest.mark.asyncio
     async def test_completed_status_emits_even_without_input(self):
         on_tool_use = AsyncMock()
-        modules, acp, items = make_acp_module()
-        items.extend([
+        await run_session(lambda acp: [
             acp.ToolCallStart("Bash", kind="execute"),
             acp.ToolCallProgress(status="completed"),
             acp.TurnEnded("end_turn"),
-        ])
-        session = make_session(on_tool_use=on_tool_use)
-        with patch.dict(sys.modules, modules):
-            await start_and_wait(session)
+        ], on_tool_use=on_tool_use)
         on_tool_use.assert_awaited_once_with("Bash", {"kind": "execute"})
 
     @pytest.mark.asyncio
     async def test_pending_flushed_by_next_tool_and_turn_end(self):
         on_tool_use = AsyncMock()
-        modules, acp, items = make_acp_module()
-        items.extend([
+        await run_session(lambda acp: [
             acp.ToolCallStart("Read", kind="read", tool_call_id="tc-1"),
             acp.ToolCallStart("Grep", kind="search", tool_call_id="tc-2"),
             acp.TurnEnded("end_turn"),
-        ])
-        session = make_session(on_tool_use=on_tool_use)
-        with patch.dict(sys.modules, modules):
-            await start_and_wait(session)
+        ], on_tool_use=on_tool_use)
         assert [c.args for c in on_tool_use.call_args_list] == [
             ("Read", {"kind": "read"}),
             ("Grep", {"kind": "search"}),
@@ -527,15 +506,11 @@ class TestDeferredToolInput:
     @pytest.mark.asyncio
     async def test_no_duplicate_emission_when_start_has_input(self):
         on_tool_use = AsyncMock()
-        modules, acp, items = make_acp_module()
-        items.extend([
+        await run_session(lambda acp: [
             acp.ToolCallStart("Read", kind="read", raw={"rawInput": {"path": "a.py"}}),
             acp.ToolCallProgress(status="completed", raw={"rawInput": {"path": "a.py"}}),
             acp.TurnEnded("end_turn"),
-        ])
-        session = make_session(on_tool_use=on_tool_use)
-        with patch.dict(sys.modules, modules):
-            await start_and_wait(session)
+        ], on_tool_use=on_tool_use)
         on_tool_use.assert_awaited_once_with("Read", {"path": "a.py", "kind": "read"})
 
 
@@ -732,6 +707,19 @@ class TestPathBoundary:
         assert "boundary violation" in caplog.text and "/etc/hosts" in caplog.text
 
 
+async def edit_permission_outcome(tool_call, **session_kwargs):
+    """Run a session, then ask its ACP permission handler about ``tool_call``: (outcome, acp)."""
+    acp = await run_session(**session_kwargs)
+    handler = acp.AcpClient.last.connect_kwargs["permission_handler"]
+    request = types.SimpleNamespace(
+        session_id="s",
+        options=(types.SimpleNamespace(option_id="a1", name="Allow", kind="allow_once"),
+                 types.SimpleNamespace(option_id="r1", name="Reject", kind="reject_once")),
+        tool_call=tool_call,
+    )
+    return await handler(request), acp
+
+
 class TestSessionPathScope:
     def test_session_builds_a_strict_write_scope(self, tmp_path):
         worktree = make_worktree(tmp_path)
@@ -758,39 +746,20 @@ class TestSessionPathScope:
     async def test_handler_rejects_out_of_worktree_edit_without_asking(self, tmp_path):
         """End to end through the ACP permission handler."""
         on_request_command = AsyncMock(return_value="approved")
-        modules, acp, _ = make_acp_module()
-        session = make_session(worktree_path=make_worktree(tmp_path),
-                               on_request_command=on_request_command)
-        with patch.dict(sys.modules, modules):
-            await start_and_wait(session)
-        handler = acp.AcpClient.last.connect_kwargs["permission_handler"]
-        request = types.SimpleNamespace(
-            session_id="s",
-            options=(types.SimpleNamespace(option_id="a1", name="Allow", kind="allow_once"),
-                     types.SimpleNamespace(option_id="r1", name="Reject", kind="reject_once")),
-            tool_call={"kind": "edit", "title": "Edit /etc/hosts",
-                       "rawInput": {"path": "/etc/hosts"}},
+        outcome, acp = await edit_permission_outcome(
+            {"kind": "edit", "title": "Edit /etc/hosts", "rawInput": {"path": "/etc/hosts"}},
+            worktree_path=make_worktree(tmp_path), on_request_command=on_request_command,
         )
-        outcome = await handler(request)
         assert isinstance(outcome, acp.PermissionSelected) and outcome.option_id == "r1"
         on_request_command.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_handler_allows_in_worktree_edit(self, tmp_path):
         worktree = make_worktree(tmp_path)
-        modules, acp, _ = make_acp_module()
-        session = make_session(worktree_path=worktree)
-        with patch.dict(sys.modules, modules):
-            await start_and_wait(session)
-        handler = acp.AcpClient.last.connect_kwargs["permission_handler"]
-        request = types.SimpleNamespace(
-            session_id="s",
-            options=(types.SimpleNamespace(option_id="a1", name="Allow", kind="allow_once"),
-                     types.SimpleNamespace(option_id="r1", name="Reject", kind="reject_once")),
-            tool_call={"kind": "edit", "title": "Edit app.py",
-                       "rawInput": {"path": str(worktree / "app.py")}},
+        outcome, acp = await edit_permission_outcome(
+            {"kind": "edit", "title": "Edit app.py", "rawInput": {"path": str(worktree / "app.py")}},
+            worktree_path=worktree,
         )
-        outcome = await handler(request)
         assert isinstance(outcome, acp.PermissionSelected) and outcome.option_id == "a1"
 
 

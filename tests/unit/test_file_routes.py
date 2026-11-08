@@ -169,28 +169,26 @@ class TestScanDirectory:
         if dir_indices and file_indices:
             assert max(dir_indices) < min(file_indices)
 
-    def test_depth_limits_children(self, tmp_path):
+    def _src_node(self, tmp_path, depth):
+        """The "src" node of the sample tree scanned to ``depth``."""
         from src.web.file_routes import scan_directory
         root = self._make_tree(tmp_path)
-        tree = scan_directory(root, root, depth=1)
-        src = next(n for n in tree if n["name"] == "src")
+        tree = scan_directory(root, root, depth=depth)
+        return next(n for n in tree if n["name"] == "src")
+
+    def test_depth_limits_children(self, tmp_path):
+        src = self._src_node(tmp_path, depth=1)
         assert src["children"] is None
 
     def test_depth_2_includes_children(self, tmp_path):
-        from src.web.file_routes import scan_directory
-        root = self._make_tree(tmp_path)
-        tree = scan_directory(root, root, depth=2)
-        src = next(n for n in tree if n["name"] == "src")
+        src = self._src_node(tmp_path, depth=2)
         assert src["children"] is not None
         child_names = [c["name"] for c in src["children"]]
         assert "main.py" in child_names
         assert "utils" in child_names
 
     def test_relative_paths_in_output(self, tmp_path):
-        from src.web.file_routes import scan_directory
-        root = self._make_tree(tmp_path)
-        tree = scan_directory(root, root, depth=2)
-        src = next(n for n in tree if n["name"] == "src")
+        src = self._src_node(tmp_path, depth=2)
         assert src["path"] == "src"
         main = next(c for c in src["children"] if c["name"] == "main.py")
         assert main["path"] == "src/main.py"
@@ -390,12 +388,18 @@ class TestIsSecretFileWithBrowsehidden:
 class TestScanDirectoryWithBrowsehidden:
     """Tests for scan_directory filtering with .browserhidden patterns."""
 
-    def test_hides_matching_files(self, tmp_path):
+    @staticmethod
+    def _top_level_names(tmp_path, files, patterns):
+        """Write ``files`` ({name: text}) into tmp_path; the top-level names a depth-1 scan shows."""
         from src.web.file_routes import scan_directory
-        (tmp_path / "main.py").write_text("print('hi')")
-        (tmp_path / "credentials.yaml").write_text("secret: true")
-        tree = scan_directory(tmp_path, tmp_path, depth=1, browserhidden_patterns=["credentials.yaml"])
-        names = [n["name"] for n in tree]
+        for name, text in files.items():
+            (tmp_path / name).write_text(text)
+        tree = scan_directory(tmp_path, tmp_path, depth=1, browserhidden_patterns=patterns)
+        return [n["name"] for n in tree]
+
+    def test_hides_matching_files(self, tmp_path):
+        names = self._top_level_names(
+            tmp_path, {"main.py": "print('hi')", "credentials.yaml": "secret: true"}, ["credentials.yaml"])
         assert "main.py" in names
         assert "credentials.yaml" not in names
 
@@ -411,12 +415,8 @@ class TestScanDirectoryWithBrowsehidden:
         assert "secret-config" not in names
 
     def test_hides_glob_matching_files(self, tmp_path):
-        from src.web.file_routes import scan_directory
-        (tmp_path / "app.py").write_text("")
-        (tmp_path / "passwords.txt").write_text("hunter2")
-        (tmp_path / "notes.txt").write_text("ok")
-        tree = scan_directory(tmp_path, tmp_path, depth=1, browserhidden_patterns=["passwords.*"])
-        names = [n["name"] for n in tree]
+        names = self._top_level_names(
+            tmp_path, {"app.py": "", "passwords.txt": "hunter2", "notes.txt": "ok"}, ["passwords.*"])
         assert "app.py" in names
         assert "notes.txt" in names
         assert "passwords.txt" not in names

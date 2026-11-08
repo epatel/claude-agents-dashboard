@@ -12,7 +12,7 @@ Does NOT duplicate tests already in:
 import asyncio
 import subprocess
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -523,6 +523,18 @@ class TestGetFileContent:
 # rebase_branch
 # ---------------------------------------------------------------------------
 
+async def _rebase_with(side_effect):
+    """rebase_branch(REPO, "main") with run_git faked by ``side_effect``: (success, msg, run_git mock)."""
+    with patch("src.git.operations.run_git", side_effect=side_effect) as mock_rg:
+        success, msg = await rebase_branch(REPO, "main")
+    return success, msg, mock_rg
+
+
+def _abort_calls(mock_rg):
+    """The run_git calls that passed --abort."""
+    return [c for c in mock_rg.call_args_list if "--abort" in c[0]]
+
+
 class TestRebaseBranch:
     @pytest.mark.asyncio
     async def test_success_returns_true(self):
@@ -540,13 +552,11 @@ class TestRebaseBranch:
                 raise err
             return ""  # abort call succeeds
 
-        with patch("src.git.operations.run_git", side_effect=_side_effect) as mock_rg:
-            success, msg = await rebase_branch(REPO, "main")
+        success, msg, mock_rg = await _rebase_with(_side_effect)
 
         assert success is False
         assert "conflict" in msg.lower()
-        abort_calls = [c for c in mock_rg.call_args_list if "--abort" in c[0]]
-        assert len(abort_calls) == 1
+        assert len(_abort_calls(mock_rg)) == 1
 
     @pytest.mark.asyncio
     async def test_timeout_returns_false_and_aborts(self):
@@ -555,13 +565,11 @@ class TestRebaseBranch:
                 raise asyncio.TimeoutError()
             return ""
 
-        with patch("src.git.operations.run_git", side_effect=_side_effect) as mock_rg:
-            success, msg = await rebase_branch(REPO, "main")
+        success, msg, mock_rg = await _rebase_with(_side_effect)
 
         assert success is False
         assert "timed out" in msg.lower()
-        abort_calls = [c for c in mock_rg.call_args_list if "--abort" in c[0]]
-        assert len(abort_calls) == 1
+        assert len(_abort_calls(mock_rg)) == 1
 
     @pytest.mark.asyncio
     async def test_abort_failure_during_conflict_is_swallowed(self):
@@ -591,75 +599,53 @@ class TestRebaseBranch:
 # commit_worktree_changes
 # ---------------------------------------------------------------------------
 
+def _commit_git(*, staged, add_fails=False, commit_fails=False):
+    """A run_git fake for commit_worktree_changes: ``git diff --cached --quiet`` fails
+    (= something is staged) when ``staged``; add / commit fail when asked; all else returns ""."""
+    async def _side_effect(cwd, *args, **kwargs):
+        if args == ("add", "-A") and add_fails:
+            raise subprocess.CalledProcessError(1, "git")
+        if args == ("diff", "--cached", "--quiet") and staged:
+            raise subprocess.CalledProcessError(1, "git")  # has changes
+        if args[0] == "commit" and commit_fails:
+            raise subprocess.CalledProcessError(1, "git")
+        return ""
+    return _side_effect
+
+
+async def _commit_with(side_effect, message="msg"):
+    """commit_worktree_changes(REPO, message) with run_git faked: (result, run_git mock)."""
+    with patch("src.git.operations.run_git", side_effect=side_effect) as mock_rg:
+        result = await commit_worktree_changes(REPO, message)
+    return result, mock_rg
+
+
 class TestCommitWorktreeChanges:
     @pytest.mark.asyncio
     async def test_returns_true_when_changes_committed(self):
         """add succeeds, diff --cached raises (has staged changes), commit succeeds."""
-        async def _side_effect(cwd, *args, **kwargs):
-            if args == ("add", "-A"):
-                return ""
-            if args == ("diff", "--cached", "--quiet"):
-                raise subprocess.CalledProcessError(1, "git")  # has changes
-            if args[0] == "commit":
-                return ""
-            return ""
-
-        with patch("src.git.operations.run_git", side_effect=_side_effect):
-            result = await commit_worktree_changes(REPO, "my message")
-
+        result, _ = await _commit_with(_commit_git(staged=True), "my message")
         assert result is True
 
     @pytest.mark.asyncio
     async def test_returns_false_when_nothing_staged(self):
         """diff --cached --quiet returns 0 → nothing to commit."""
-        async def _side_effect(cwd, *args, **kwargs):
-            return ""  # all commands succeed (including diff --cached --quiet)
-
-        with patch("src.git.operations.run_git", side_effect=_side_effect):
-            result = await commit_worktree_changes(REPO, "msg")
-
+        result, _ = await _commit_with(_commit_git(staged=False))
         assert result is False
 
     @pytest.mark.asyncio
     async def test_returns_false_when_add_fails(self):
-        async def _side_effect(cwd, *args, **kwargs):
-            if args == ("add", "-A"):
-                raise subprocess.CalledProcessError(1, "git")
-            return ""
-
-        with patch("src.git.operations.run_git", side_effect=_side_effect):
-            result = await commit_worktree_changes(REPO, "msg")
-
+        result, _ = await _commit_with(_commit_git(staged=False, add_fails=True))
         assert result is False
 
     @pytest.mark.asyncio
     async def test_returns_false_when_commit_fails(self):
-        async def _side_effect(cwd, *args, **kwargs):
-            if args == ("add", "-A"):
-                return ""
-            if args == ("diff", "--cached", "--quiet"):
-                raise subprocess.CalledProcessError(1, "git")
-            if args[0] == "commit":
-                raise subprocess.CalledProcessError(1, "git")
-            return ""
-
-        with patch("src.git.operations.run_git", side_effect=_side_effect):
-            result = await commit_worktree_changes(REPO, "msg")
-
+        result, _ = await _commit_with(_commit_git(staged=True, commit_fails=True))
         assert result is False
 
     @pytest.mark.asyncio
     async def test_commit_message_passed(self):
-        async def _side_effect(cwd, *args, **kwargs):
-            if args == ("add", "-A"):
-                return ""
-            if args == ("diff", "--cached", "--quiet"):
-                raise subprocess.CalledProcessError(1, "git")
-            return ""
-
-        with patch("src.git.operations.run_git", side_effect=_side_effect) as mock_rg:
-            await commit_worktree_changes(REPO, "custom commit message")
-
+        _, mock_rg = await _commit_with(_commit_git(staged=True), "custom commit message")
         commit_calls = [c for c in mock_rg.call_args_list if c[0][1] == "commit"]
         assert any("custom commit message" in str(c) for c in commit_calls)
 
@@ -667,6 +653,36 @@ class TestCommitWorktreeChanges:
 # ---------------------------------------------------------------------------
 # merge_branch
 # ---------------------------------------------------------------------------
+
+def _recording_git(calls, sha="sha", merge_error=None):
+    """A run_git fake that records each call's args in ``calls``, returns ``sha`` for
+    ``rev-parse HEAD`` and "" otherwise, and raises ``merge_error`` (if any) on the merge."""
+    async def _run_git_side(cwd, *args, **kwargs):
+        calls.append(args)
+        is_merge = args[0] == "merge" and "--abort" not in args
+        if is_merge and merge_error is not None:
+            raise merge_error
+        if args == ("rev-parse", "HEAD"):
+            return sha
+        return ""
+    return _run_git_side
+
+
+async def _merge_from(current_branch, calls, **git_kwargs):
+    """merge_branch(REPO, "agent/x", base="main") while HEAD is ``current_branch``; its success."""
+    with patch("src.git.operations.get_current_branch", return_value=current_branch):
+        with patch("src.git.operations.run_git", side_effect=_recording_git(calls, **git_kwargs)):
+            success, _ = await merge_branch(REPO, "agent/x", base="main")
+    return success
+
+
+async def _merge_with_worktree(worktree, commit_mock):
+    """merge_branch with ``worktree_path=worktree`` and commit_worktree_changes patched by ``commit_mock``."""
+    with patch("src.git.operations.commit_worktree_changes", commit_mock):
+        with patch("src.git.operations.run_git", side_effect=_recording_git([])):
+            success, _ = await merge_branch(REPO, "feature", base="main", worktree_path=worktree)
+    return success
+
 
 class TestMergeBranch:
     @pytest.mark.asyncio
@@ -705,16 +721,7 @@ class TestMergeBranch:
         restore whichever branch the user had checked out before — otherwise
         every merge silently leaves the shared target repo on `base`."""
         calls: list[tuple] = []
-
-        async def _run_git_side(cwd, *args, **kwargs):
-            calls.append(args)
-            if args == ("rev-parse", "HEAD"):
-                return "sha"
-            return ""
-
-        with patch("src.git.operations.get_current_branch", return_value="feature/work"):
-            with patch("src.git.operations.run_git", side_effect=_run_git_side):
-                success, _ = await merge_branch(REPO, "agent/x", base="main")
+        success = await _merge_from("feature/work", calls)
 
         assert success is True
         # The final checkout must restore feature/work.
@@ -727,16 +734,7 @@ class TestMergeBranch:
         """HEAD restoration must happen even when the merge fails."""
         merge_err = subprocess.CalledProcessError(1, "git", stderr=b"merge conflict")
         calls: list[tuple] = []
-
-        async def _run_git_side(cwd, *args, **kwargs):
-            calls.append(args)
-            if args[0] == "merge" and "--abort" not in args:
-                raise merge_err
-            return ""
-
-        with patch("src.git.operations.get_current_branch", return_value="feature/work"):
-            with patch("src.git.operations.run_git", side_effect=_run_git_side):
-                success, _ = await merge_branch(REPO, "agent/x", base="main")
+        success = await _merge_from("feature/work", calls, sha="", merge_error=merge_err)
 
         assert success is False
         # Even on failure, HEAD should be restored.
@@ -748,16 +746,7 @@ class TestMergeBranch:
     async def test_skips_restore_when_already_on_base(self):
         """If the user was already on `base`, don't issue a redundant checkout."""
         calls: list[tuple] = []
-
-        async def _run_git_side(cwd, *args, **kwargs):
-            calls.append(args)
-            if args == ("rev-parse", "HEAD"):
-                return "sha"
-            return ""
-
-        with patch("src.git.operations.get_current_branch", return_value="main"):
-            with patch("src.git.operations.run_git", side_effect=_run_git_side):
-                success, _ = await merge_branch(REPO, "agent/x", base="main")
+        success = await _merge_from("main", calls)
 
         assert success is True
         # Exactly one checkout — the pre-merge one. No restore needed.
@@ -804,18 +793,9 @@ class TestMergeBranch:
     async def test_with_worktree_commits_first(self, tmp_path):
         worktree = tmp_path / "wt"
         worktree.mkdir()
+        mock_cwc = AsyncMock(return_value=True)
 
-        with patch("src.git.operations.commit_worktree_changes", return_value=True) as mock_cwc:
-            async def _run_git_side(cwd, *args, **kwargs):
-                if args[0] in ("checkout", "merge"):
-                    return ""
-                if args == ("rev-parse", "HEAD"):
-                    return "sha"
-                return ""
-
-            with patch("src.git.operations.run_git", side_effect=_run_git_side):
-                success, _ = await merge_branch(REPO, "feature", base="main",
-                                                worktree_path=worktree)
+        success = await _merge_with_worktree(worktree, mock_cwc)
 
         mock_cwc.assert_called_once()
         assert success is True
@@ -823,17 +803,9 @@ class TestMergeBranch:
     @pytest.mark.asyncio
     async def test_worktree_not_exists_skips_commit(self, tmp_path):
         nonexistent = tmp_path / "no_wt"
+        mock_cwc = AsyncMock()
 
-        with patch("src.git.operations.commit_worktree_changes") as mock_cwc:
-            async def _run_git_side(cwd, *args, **kwargs):
-                if args[0] in ("checkout", "merge"):
-                    return ""
-                if args == ("rev-parse", "HEAD"):
-                    return "sha"
-                return ""
-
-            with patch("src.git.operations.run_git", side_effect=_run_git_side):
-                await merge_branch(REPO, "feature", base="main", worktree_path=nonexistent)
+        await _merge_with_worktree(nonexistent, mock_cwc)
 
         mock_cwc.assert_not_called()
 

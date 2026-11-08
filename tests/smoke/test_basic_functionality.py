@@ -13,6 +13,15 @@ from src.migrations.runner import MigrationRunner
 from src.agent.orchestrator import AgentOrchestrator
 
 
+async def _insert_item(conn, data):
+    """Insert the ``test_item_data``-shaped item ``data`` (not committed)."""
+    await conn.execute(
+        """INSERT INTO items (id, title, description, column_name, position)
+           VALUES (?, ?, ?, ?, ?)""",
+        (data["id"], data["title"], data["description"], data["column_name"], data["position"]),
+    )
+
+
 @pytest.mark.smoke
 class TestBasicFunctionality:
     """Basic smoke tests for core components."""
@@ -59,13 +68,7 @@ class TestBasicFunctionality:
         """Test basic database item operations."""
         async with test_db.connect() as conn:
             # Insert test item
-            await conn.execute(
-                """INSERT INTO items (id, title, description, column_name, position)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (test_item_data["id"], test_item_data["title"],
-                 test_item_data["description"], test_item_data["column_name"],
-                 test_item_data["position"])
-            )
+            await _insert_item(conn, test_item_data)
             await conn.commit()
 
             # Retrieve and verify
@@ -92,13 +95,7 @@ class TestBasicFunctionality:
         """Test basic work log functionality."""
         # First create an item
         async with test_db.connect() as conn:
-            await conn.execute(
-                """INSERT INTO items (id, title, description, column_name, position)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (test_item_data["id"], test_item_data["title"],
-                 test_item_data["description"], test_item_data["column_name"],
-                 test_item_data["position"])
-            )
+            await _insert_item(conn, test_item_data)
 
             # Add work log entry
             await conn.execute(

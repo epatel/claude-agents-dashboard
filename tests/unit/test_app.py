@@ -1,9 +1,7 @@
 """Unit tests for src/web/app.py — factory, middleware, and stale worktree check."""
 
-import asyncio
 import pytest
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.web.app import (
     _audit_item_state_encodings,
@@ -51,57 +49,37 @@ class TestBuildCorsOrigins:
 # ---------------------------------------------------------------------------
 
 class TestSecurityHeadersMiddleware:
-    @pytest.mark.asyncio
-    async def test_adds_x_content_type_options(self):
-        app = MagicMock()
-        middleware = SecurityHeadersMiddleware(app)
-
+    @staticmethod
+    def _middleware():
+        """(middleware, call_next returning a response with empty headers, request)."""
+        middleware = SecurityHeadersMiddleware(MagicMock())
         mock_response = MagicMock()
         mock_response.headers = {}
-        call_next = AsyncMock(return_value=mock_response)
-        request = MagicMock()
+        return middleware, AsyncMock(return_value=mock_response), MagicMock()
 
+    @pytest.mark.asyncio
+    async def test_adds_x_content_type_options(self):
+        middleware, call_next, request = self._middleware()
         response = await middleware.dispatch(request, call_next)
         assert response.headers["X-Content-Type-Options"] == "nosniff"
 
     @pytest.mark.asyncio
     async def test_adds_x_frame_options(self):
-        app = MagicMock()
-        middleware = SecurityHeadersMiddleware(app)
-
-        mock_response = MagicMock()
-        mock_response.headers = {}
-        call_next = AsyncMock(return_value=mock_response)
-        request = MagicMock()
-
+        middleware, call_next, request = self._middleware()
         response = await middleware.dispatch(request, call_next)
         assert response.headers["X-Frame-Options"] == "DENY"
 
     @pytest.mark.asyncio
     async def test_calls_call_next(self):
-        app = MagicMock()
-        middleware = SecurityHeadersMiddleware(app)
-
-        mock_response = MagicMock()
-        mock_response.headers = {}
-        call_next = AsyncMock(return_value=mock_response)
-        request = MagicMock()
-
+        middleware, call_next, request = self._middleware()
         await middleware.dispatch(request, call_next)
         call_next.assert_awaited_once_with(request)
 
     @pytest.mark.asyncio
     async def test_returns_response(self):
-        app = MagicMock()
-        middleware = SecurityHeadersMiddleware(app)
-
-        mock_response = MagicMock()
-        mock_response.headers = {}
-        call_next = AsyncMock(return_value=mock_response)
-        request = MagicMock()
-
+        middleware, call_next, request = self._middleware()
         response = await middleware.dispatch(request, call_next)
-        assert response is mock_response
+        assert response is call_next.return_value
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +87,13 @@ class TestSecurityHeadersMiddleware:
 # ---------------------------------------------------------------------------
 
 class TestCheckStaleWorktrees:
+    async def _notification_call(self, stale_entries):
+        """Run _check_stale_worktrees on ``stale_entries``; the last add_notification call."""
+        orchestrator = self._make_orchestrator(stale_entries)
+        with patch("src.web.routes.add_notification") as mock_add:
+            await _check_stale_worktrees(orchestrator)
+        return mock_add.call_args
+
     def _make_orchestrator(self, stale_entries):
         orchestrator = MagicMock()
         orchestrator.workflow_service.find_stale_worktrees = AsyncMock(
@@ -153,27 +138,17 @@ class TestCheckStaleWorktrees:
     @pytest.mark.asyncio
     async def test_stale_entry_action_contains_item_id(self):
         item_id = "abc123def456"
-        stale = [{"item_id": item_id, "title": "T", "reason": "orphaned"}]
-        orchestrator = self._make_orchestrator(stale)
-
-        with patch("src.web.routes.add_notification") as mock_add:
-            await _check_stale_worktrees(orchestrator)
-            call_args = mock_add.call_args
-            action = call_args[1]["action"]
-            assert item_id in action["url"]
-            assert action["method"] == "POST"
-            assert action["label"] == "Clean up"
+        call_args = await self._notification_call([{"item_id": item_id, "title": "T", "reason": "orphaned"}])
+        action = call_args[1]["action"]
+        assert item_id in action["url"]
+        assert action["method"] == "POST"
+        assert action["label"] == "Clean up"
 
     @pytest.mark.asyncio
     async def test_stale_entry_source_contains_item_id(self):
         item_id = "abc123def456"
-        stale = [{"item_id": item_id, "title": "T", "reason": "orphaned"}]
-        orchestrator = self._make_orchestrator(stale)
-
-        with patch("src.web.routes.add_notification") as mock_add:
-            await _check_stale_worktrees(orchestrator)
-            call_args = mock_add.call_args
-            assert item_id in call_args[1]["source"]
+        call_args = await self._notification_call([{"item_id": item_id, "title": "T", "reason": "orphaned"}])
+        assert item_id in call_args[1]["source"]
 
     @pytest.mark.asyncio
     async def test_multiple_stale_entries_emit_multiple_notifications(self):

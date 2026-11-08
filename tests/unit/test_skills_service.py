@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -70,21 +69,22 @@ class TestInstalledLibrary:
         assert (await svc.remove("../evil"))["ok"] is False
 
 
+def _fake_github_json(repo, branch, blob_paths):
+    """A fake SkillsService._get_json for ``repo`` (owner/name): its default branch is
+    ``branch`` and that branch's tree holds ``blob_paths``; any other URL fails the test."""
+    def fake_get_json(url):
+        if url.endswith(f"/repos/{repo}"):
+            return {"default_branch": branch}
+        if f"git/trees/{branch}" in url:
+            return {"tree": [{"type": "blob", "path": path} for path in blob_paths]}
+        raise AssertionError(f"unexpected json url {url}")
+    return fake_get_json
+
+
 class TestInstall:
     @pytest.mark.asyncio
     async def test_install_mirrors_folder_and_wraps_plugin(self, tmp_path):
         svc = SkillsService(library_dir=tmp_path / "lib")
-
-        def fake_get_json(url):
-            if url.endswith("/repos/anthropics/skills"):
-                return {"default_branch": "main"}
-            if "git/trees/main" in url:
-                return {"tree": [
-                    {"type": "blob", "path": "skills/docx/SKILL.md"},
-                    {"type": "blob", "path": "skills/docx/reference/extra.md"},
-                    {"type": "blob", "path": "skills/other/SKILL.md"},  # different skill, excluded
-                ]}
-            raise AssertionError(f"unexpected json url {url}")
 
         def fake_get(url):
             if url.endswith("skills/docx/SKILL.md"):
@@ -93,7 +93,11 @@ class TestInstall:
                 return b"extra"
             raise AssertionError(f"unexpected raw url {url}")
 
-        svc._get_json = fake_get_json
+        svc._get_json = _fake_github_json("anthropics/skills", "main", [
+            "skills/docx/SKILL.md",
+            "skills/docx/reference/extra.md",
+            "skills/other/SKILL.md",  # different skill, excluded
+        ])
         svc._get = fake_get
 
         res = await svc.install("anthropics/skills/skills/docx")
@@ -210,18 +214,7 @@ class TestDiscover:
     async def test_finds_all_skills_in_repo(self, tmp_path):
         svc = SkillsService(library_dir=tmp_path / "lib")
 
-        def fake_get_json(url):
-            if url.endswith("/repos/o/r"):
-                return {"default_branch": "trunk"}
-            if "git/trees/trunk" in url:
-                return {"tree": [
-                    {"type": "blob", "path": "a/SKILL.md"},
-                    {"type": "blob", "path": "nested/b/SKILL.md"},
-                    {"type": "blob", "path": "README.md"},
-                ]}
-            raise AssertionError(url)
-
-        svc._get_json = fake_get_json
+        svc._get_json = _fake_github_json("o/r", "trunk", ["a/SKILL.md", "nested/b/SKILL.md", "README.md"])
         svc._get_text = lambda url: "---\ndescription: D\n---\n"
 
         found = await svc.discover("o/r")

@@ -1,8 +1,6 @@
 """Unit tests for src/manage.py CLI."""
 
 import sys
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -34,6 +32,19 @@ def _make_mock_db(tmp_path, exists=True):
     return db
 
 
+async def _run_manage(cli_args, command_fn):
+    """Run manage.main() with ``cli_args``, ``src.manage.<command_fn>`` and Database mocked.
+
+    Returns (the command function mock, the Database class mock).
+    """
+    with patch.object(sys, "argv", ["manage.py", *cli_args]):
+        with patch(f"src.manage.{command_fn}", new_callable=AsyncMock) as mock_fn:
+            with patch("src.manage.Database") as MockDB:
+                MockDB.return_value = MagicMock()
+                await main()
+    return mock_fn, MockDB
+
+
 # ---------------------------------------------------------------------------
 # main() — no subcommand → prints help, returns (no sys.exit)
 # ---------------------------------------------------------------------------
@@ -58,21 +69,13 @@ class TestMainNoCommand:
 
 class TestMainStatus:
     async def test_status_calls_show_migration_status(self, tmp_path):
-        with patch.object(sys, "argv", ["manage.py", "--db-path", str(tmp_path / "db.db"), "status"]):
-            with patch("src.manage.show_migration_status", new_callable=AsyncMock) as mock_status:
-                with patch("src.manage.Database") as MockDB:
-                    MockDB.return_value = MagicMock()
-                    await main()
-                    mock_status.assert_awaited_once()
+        mock_status, _ = await _run_manage(["--db-path", str(tmp_path / "db.db"), "status"], "show_migration_status")
+        mock_status.assert_awaited_once()
 
     async def test_status_uses_custom_db_path(self, tmp_path):
         db_path = tmp_path / "custom.db"
-        with patch.object(sys, "argv", ["manage.py", "--db-path", str(db_path), "status"]):
-            with patch("src.manage.show_migration_status", new_callable=AsyncMock):
-                with patch("src.manage.Database") as MockDB:
-                    MockDB.return_value = MagicMock()
-                    await main()
-                    MockDB.assert_called_once_with(db_path)
+        _, MockDB = await _run_manage(["--db-path", str(db_path), "status"], "show_migration_status")
+        MockDB.assert_called_once_with(db_path)
 
 
 # ---------------------------------------------------------------------------
@@ -81,25 +84,17 @@ class TestMainStatus:
 
 class TestMainMigrate:
     async def test_migrate_calls_run_migrations_no_target(self, tmp_path):
-        with patch.object(sys, "argv", ["manage.py", "--db-path", str(tmp_path / "db.db"), "migrate"]):
-            with patch("src.manage.run_migrations", new_callable=AsyncMock) as mock_run:
-                with patch("src.manage.Database") as MockDB:
-                    MockDB.return_value = MagicMock()
-                    await main()
-                    mock_run.assert_awaited_once()
-                    _, call_args, _ = mock_run.mock_calls[0]
-                    # target_version should be None
-                    assert call_args[1] is None
+        mock_run, _ = await _run_manage(["--db-path", str(tmp_path / "db.db"), "migrate"], "run_migrations")
+        mock_run.assert_awaited_once()
+        _, call_args, _ = mock_run.mock_calls[0]
+        # target_version should be None
+        assert call_args[1] is None
 
     async def test_migrate_with_target_version(self, tmp_path):
-        with patch.object(sys, "argv", ["manage.py", "--db-path", str(tmp_path / "db.db"), "migrate", "--to", "005"]):
-            with patch("src.manage.run_migrations", new_callable=AsyncMock) as mock_run:
-                with patch("src.manage.Database") as MockDB:
-                    MockDB.return_value = MagicMock()
-                    await main()
-                    mock_run.assert_awaited_once()
-                    args = mock_run.call_args
-                    assert args[0][1] == "005"
+        mock_run, _ = await _run_manage(["--db-path", str(tmp_path / "db.db"), "migrate", "--to", "005"], "run_migrations")
+        mock_run.assert_awaited_once()
+        args = mock_run.call_args
+        assert args[0][1] == "005"
 
 
 # ---------------------------------------------------------------------------
@@ -108,14 +103,10 @@ class TestMainMigrate:
 
 class TestMainRollback:
     async def test_rollback_calls_rollback_migrations(self, tmp_path):
-        with patch.object(sys, "argv", ["manage.py", "--db-path", str(tmp_path / "db.db"), "rollback", "003"]):
-            with patch("src.manage.rollback_migrations", new_callable=AsyncMock) as mock_rb:
-                with patch("src.manage.Database") as MockDB:
-                    MockDB.return_value = MagicMock()
-                    await main()
-                    mock_rb.assert_awaited_once()
-                    args = mock_rb.call_args
-                    assert args[0][1] == "003"
+        mock_rb, _ = await _run_manage(["--db-path", str(tmp_path / "db.db"), "rollback", "003"], "rollback_migrations")
+        mock_rb.assert_awaited_once()
+        args = mock_rb.call_args
+        assert args[0][1] == "003"
 
 
 # ---------------------------------------------------------------------------
@@ -124,14 +115,10 @@ class TestMainRollback:
 
 class TestMainInit:
     async def test_init_calls_run_migrations_with_none(self, tmp_path):
-        with patch.object(sys, "argv", ["manage.py", "--db-path", str(tmp_path / "db.db"), "init"]):
-            with patch("src.manage.run_migrations", new_callable=AsyncMock) as mock_run:
-                with patch("src.manage.Database") as MockDB:
-                    MockDB.return_value = MagicMock()
-                    await main()
-                    mock_run.assert_awaited_once()
-                    args = mock_run.call_args
-                    assert args[0][1] is None
+        mock_run, _ = await _run_manage(["--db-path", str(tmp_path / "db.db"), "init"], "run_migrations")
+        mock_run.assert_awaited_once()
+        args = mock_run.call_args
+        assert args[0][1] is None
 
 
 # ---------------------------------------------------------------------------

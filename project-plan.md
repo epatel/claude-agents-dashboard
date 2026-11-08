@@ -117,7 +117,7 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     `runAgentTask`'s loop → `waitForAgentCompletion` (start elapsed, shared by the clarification
     test); DnD cases and config steps → one function each. 46 fake-API scenarios over all 7 tests
     identical; DnD + config also run for real, old and new, identical and passing.
-  - [ ] 10 — Python in `src/` (9.0 at start; worst: `workflow_service.py` 5.71, `skills_service.py`,
+  - [x] 10 — Python in `src/` (9.0 at start; worst: `workflow_service.py` 5.71, `skills_service.py`,
     `routes.py`, `kimi_session.py`). Verify with the test suite plus an old-vs-new harness that loads
     the saved old module as `src.services._wf_old` (relative imports still resolve) and drives both
     against the same recording fakes. Done: 10a `workflow_service.py` 5.71 → 7.87 — `on_complete`
@@ -205,7 +205,20 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     `test_mcp_tool_servers` pins that) and `orchestrator.py` 8.51 (the app facade: 5-parameter
     constructor, and legacy `_update_item` / `_log` helpers that integration tests use, which is what
     "low cohesion" counts).
-  - **Scores** (2026-11-08, after 10k): headline 9.16, src 9.72, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+  - [x] 11 — Python tests in `tests/` (8.76 → 9.89; every file ≥ 9.0). No test logic changed:
+    verify each file by running the HEAD version (a detached worktree of HEAD) and the new version
+    with `--cov=src --cov-branch` and comparing — same pass count, the same `class::name` test ids,
+    and identical executed lines + branches over all of `src/` (copy untracked files the code scans,
+    e.g. `plugins/.DS_Store`, into the worktree first, or plugin discovery takes another branch).
+    Shared helpers are plain modules imported explicitly, never conftests: `route_fixtures.py`
+    (fixtures `app_and_db` / `client` / `client_with_item` — a test module importing `client` must
+    also import `app_and_db` — plus `seed` / `item_row` / `log_row` / `request` / `get_json`) and
+    `migrations/migration_helpers.py` (`load_migration`, `scratch_db`, `columns_of`, `model_of`, ...).
+    `test_routes.py` (1169 lines) split by route module into `test_routes.py` + six
+    `test_*_routes.py` (125 tests, ids unchanged); the rest got per-file helpers (DB fetch / count,
+    fake socket, `_run_manage`, `run_session` for the Kimi ACP fake, recording git fakes, ...).
+    Left: `make_acp_module.AcpClient`'s low cohesion (a fake), small 6–7-line cross-file overlaps.
+  - **Scores** (2026-11-08, after 11): headline 9.60, src 9.72, tests 9.89, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
@@ -324,7 +337,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-08): steps 0–6, 8a–8r (JS 9.99) and 9 (E2E tests 10.00) done; step 10 (Python `src/`) in progress; 7 is optional.** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 in flight (2026-11-08): steps 0–6, 8a–8r (JS 9.99), 9 (E2E tests 10.00), 10a–10k (Python `src/` 9.72) and 11 (Python tests 9.89) done; 7 (optional) and the Swift wrapper remain.** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above

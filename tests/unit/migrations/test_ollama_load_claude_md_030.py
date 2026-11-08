@@ -1,46 +1,30 @@
 """Tests for migration 030 — adds agent_config.ollama_load_claude_md."""
 
-import importlib.util
-import tempfile
-from pathlib import Path
-
-import aiosqlite
 import pytest
 import pytest_asyncio
 
+from tests.unit.migrations.migration_helpers import load_migration, scratch_db, columns_of
+
 
 def _load_migration_030():
-    versions = Path(__file__).resolve().parents[3] / "src" / "migrations" / "versions"
-    path = versions / "030_add_ollama_load_claude_md.py"
-    spec = importlib.util.spec_from_file_location("migration_030", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.AddOllamaLoadClaudeMdMigration()
+    return load_migration("030_add_ollama_load_claude_md.py", "AddOllamaLoadClaudeMdMigration")
 
 
 @pytest_asyncio.fixture
 async def config_db():
-    with tempfile.TemporaryDirectory() as tmp:
-        conn = await aiosqlite.connect(str(Path(tmp) / "test.db"))
-        conn.row_factory = aiosqlite.Row
-        await conn.execute("CREATE TABLE agent_config (id INTEGER PRIMARY KEY, model TEXT)")
-        await conn.execute("INSERT INTO agent_config (id, model) VALUES (1, 'x')")
-        await conn.commit()
+    async with scratch_db(
+        "CREATE TABLE agent_config (id INTEGER PRIMARY KEY, model TEXT)",
+        "INSERT INTO agent_config (id, model) VALUES (1, 'x')",
+    ) as conn:
         yield conn
-        await conn.close()
-
-
-async def _columns(db):
-    cur = await db.execute("PRAGMA table_info(agent_config)")
-    return {row["name"] for row in await cur.fetchall()}
 
 
 @pytest.mark.unit
 class TestMigration030:
     async def test_up_adds_column(self, config_db):
-        assert "ollama_load_claude_md" not in await _columns(config_db)
+        assert "ollama_load_claude_md" not in await columns_of(config_db, "agent_config")
         await _load_migration_030().up(config_db)
-        assert "ollama_load_claude_md" in await _columns(config_db)
+        assert "ollama_load_claude_md" in await columns_of(config_db, "agent_config")
 
     async def test_default_is_off(self, config_db):
         await _load_migration_030().up(config_db)
@@ -53,4 +37,4 @@ class TestMigration030:
         m = _load_migration_030()
         await m.up(config_db)
         await m.down(config_db)
-        assert "ollama_load_claude_md" in await _columns(config_db)
+        assert "ollama_load_claude_md" in await columns_of(config_db, "agent_config")

@@ -12,6 +12,26 @@ from src.services.database_service import DatabaseService
 from src.agent.session import AgentResult
 
 
+async def fetch_one(db, sql, params=()):
+    """First row of a query against ``db``."""
+    async with db.connect() as conn:
+        cursor = await conn.execute(sql, params)
+        return await cursor.fetchone()
+
+
+async def fetch_all(db, sql, params=()):
+    """All rows of a query against ``db``."""
+    async with db.connect() as conn:
+        cursor = await conn.execute(sql, params)
+        return await cursor.fetchall()
+
+
+async def count_rows(db, table, item_id):
+    """How many rows of ``table`` belong to ``item_id``."""
+    row = await fetch_one(db, f"SELECT COUNT(*) FROM {table} WHERE item_id = ?", (item_id,))
+    return row[0]
+
+
 @pytest_asyncio.fixture
 async def db():
     with tempfile.TemporaryDirectory() as tmp:
@@ -89,22 +109,18 @@ class TestCopyItem:
 class TestClarification:
     async def test_store_clarification_with_choices(self, db_service, item):
         await db_service.store_clarification(item["id"], "Which approach?", ["A", "B"])
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT prompt, choices FROM clarifications WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
+        row = await fetch_one(
+            db_service.db, "SELECT prompt, choices FROM clarifications WHERE item_id = ?", (item["id"],),
+        )
         assert row is not None
         assert row[0] == "Which approach?"
         assert json.loads(row[1]) == ["A", "B"]
 
     async def test_store_clarification_without_choices(self, db_service, item):
         await db_service.store_clarification(item["id"], "What do you mean?", None)
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT choices FROM clarifications WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
+        row = await fetch_one(
+            db_service.db, "SELECT choices FROM clarifications WHERE item_id = ?", (item["id"],),
+        )
         assert row[0] is None
 
     async def test_store_clarification_with_context(self, db_service, item):
@@ -114,12 +130,9 @@ class TestClarification:
             ["A", "B"],
             "Considered options A and B; need user input.",
         )
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT prompt, choices, context FROM clarifications WHERE item_id = ?",
-                (item["id"],),
-            )
-            row = await cursor.fetchone()
+        row = await fetch_one(
+            db_service.db, "SELECT prompt, choices, context FROM clarifications WHERE item_id = ?", (item["id"],),
+        )
         assert row is not None
         assert row[0] == "Which approach?"
         assert json.loads(row[1]) == ["A", "B"]
@@ -128,31 +141,25 @@ class TestClarification:
     async def test_store_clarification_without_context_defaults_to_null(self, db_service, item):
         # Omitting the context kwarg should leave the column NULL.
         await db_service.store_clarification(item["id"], "What now?", None)
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT context FROM clarifications WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
+        row = await fetch_one(
+            db_service.db, "SELECT context FROM clarifications WHERE item_id = ?", (item["id"],),
+        )
         assert row[0] is None
 
     async def test_store_clarification_explicit_none_context(self, db_service, item):
         # Passing context=None explicitly should also store NULL.
         await db_service.store_clarification(item["id"], "Q?", ["yes", "no"], None)
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT context FROM clarifications WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
+        row = await fetch_one(
+            db_service.db, "SELECT context FROM clarifications WHERE item_id = ?", (item["id"],),
+        )
         assert row[0] is None
 
     async def test_update_clarification_response(self, db_service, item):
         await db_service.store_clarification(item["id"], "Q?", None)
         await db_service.update_clarification_response(item["id"], "User answer")
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT response, answered_at FROM clarifications WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
+        row = await fetch_one(
+            db_service.db, "SELECT response, answered_at FROM clarifications WHERE item_id = ?", (item["id"],),
+        )
         assert row[0] == "User answer"
         assert row[1] is not None
 
@@ -161,11 +168,9 @@ class TestClarification:
         await db_service.update_clarification_response(item["id"], "First answer")
         # Calling again should not overwrite (WHERE response IS NULL guard)
         await db_service.update_clarification_response(item["id"], "Second answer")
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT response FROM clarifications WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
+        row = await fetch_one(
+            db_service.db, "SELECT response FROM clarifications WHERE item_id = ?", (item["id"],),
+        )
         assert row[0] == "First answer"
 
 
@@ -176,23 +181,16 @@ class TestClarification:
 class TestStoreReviewComments:
     async def test_stores_multiple_comments(self, db_service, item):
         await db_service.store_review_comments(item["id"], ["Comment 1", "Comment 2", "Comment 3"])
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT content FROM review_comments WHERE item_id = ? ORDER BY created_at", (item["id"],)
-            )
-            rows = await cursor.fetchall()
+        rows = await fetch_all(
+            db_service.db, "SELECT content FROM review_comments WHERE item_id = ? ORDER BY created_at", (item["id"],),
+        )
         assert len(rows) == 3
         assert rows[0][0] == "Comment 1"
         assert rows[2][0] == "Comment 3"
 
     async def test_stores_empty_list(self, db_service, item):
         await db_service.store_review_comments(item["id"], [])
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM review_comments WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
-        assert row[0] == 0
+        assert await count_rows(db_service.db, "review_comments", item["id"]) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -210,13 +208,9 @@ class TestSaveTokenUsage:
             cost_usd=0.005,
         )
         await db_service.save_token_usage(item["id"], result)
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT session_id, input_tokens, output_tokens, total_tokens, cost_usd"
-                " FROM token_usage WHERE item_id = ?",
-                (item["id"],),
-            )
-            row = await cursor.fetchone()
+        row = await fetch_one(
+            db_service.db, "SELECT session_id, input_tokens, output_tokens, total_tokens, cost_usd FROM token_usage WHERE item_id = ?", (item["id"],),
+        )
         assert row is not None
         assert row[0] == "sess-abc"
         assert row[1] == 100
@@ -234,23 +228,13 @@ class TestSaveTokenUsage:
             cost_usd=None,
         )
         await db_service.save_token_usage(item["id"], result)
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM token_usage WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
-        assert row[0] == 0
+        assert await count_rows(db_service.db, "token_usage", item["id"]) == 0
 
     async def test_saves_partial_token_usage(self, db_service, item):
         """Even a single non-None/non-zero value should trigger a save."""
         result = AgentResult(success=True, input_tokens=10)
         await db_service.save_token_usage(item["id"], result)
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM token_usage WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
-        assert row[0] == 1
+        assert await count_rows(db_service.db, "token_usage", item["id"]) == 1
 
     async def test_saves_api_error_status(self, db_service, item):
         result = AgentResult(
@@ -258,12 +242,9 @@ class TestSaveTokenUsage:
             total_tokens=5, api_error_status=529,
         )
         await db_service.save_token_usage(item["id"], result)
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT api_error_status FROM token_usage WHERE item_id = ?",
-                (item["id"],),
-            )
-            row = await cursor.fetchone()
+        row = await fetch_one(
+            db_service.db, "SELECT api_error_status FROM token_usage WHERE item_id = ?", (item["id"],),
+        )
         assert row is not None
         assert row[0] == 529
 
@@ -272,12 +253,9 @@ class TestSaveTokenUsage:
         is worth recording — a row must still be written."""
         result = AgentResult(success=False, api_error_status=429)
         await db_service.save_token_usage(item["id"], result)
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT api_error_status FROM token_usage WHERE item_id = ?",
-                (item["id"],),
-            )
-            row = await cursor.fetchone()
+        row = await fetch_one(
+            db_service.db, "SELECT api_error_status FROM token_usage WHERE item_id = ?", (item["id"],),
+        )
         assert row is not None
         assert row[0] == 429
 
@@ -395,44 +373,26 @@ class TestDeleteItemAndRelated:
     async def test_deletes_work_log_entries(self, db_service, item):
         await db_service.log_entry(item["id"], "info", "Some log line")
         await db_service.delete_item_and_related(item["id"])
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM work_log WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
-        assert row[0] == 0
+        assert await count_rows(db_service.db, "work_log", item["id"]) == 0
 
     async def test_deletes_clarifications(self, db_service, item):
         await db_service.store_clarification(item["id"], "Q?", None)
         await db_service.delete_item_and_related(item["id"])
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM clarifications WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
-        assert row[0] == 0
+        assert await count_rows(db_service.db, "clarifications", item["id"]) == 0
 
     async def test_deletes_review_comments(self, db_service, item):
         await db_service.store_review_comments(item["id"], ["comment"])
         await db_service.delete_item_and_related(item["id"])
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM review_comments WHERE item_id = ?", (item["id"],)
-            )
-            row = await cursor.fetchone()
-        assert row[0] == 0
+        assert await count_rows(db_service.db, "review_comments", item["id"]) == 0
 
     async def test_deletes_dependencies(self, db_service):
         item_a = await db_service.create_todo_item("A", "")
         item_b = await db_service.create_todo_item("B", "")
         await db_service.set_item_dependencies(item_b["id"], [item_a["id"]])
         await db_service.delete_item_and_related(item_a["id"])
-        async with db_service.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM item_dependencies WHERE item_id = ? OR requires_item_id = ?",
-                (item_a["id"], item_a["id"]),
-            )
-            row = await cursor.fetchone()
+        row = await fetch_one(
+            db_service.db, "SELECT COUNT(*) FROM item_dependencies WHERE item_id = ? OR requires_item_id = ?", (item_a["id"], item_a["id"]),
+        )
         assert row[0] == 0
 
     async def test_returns_none_for_nonexistent_item(self, db_service):

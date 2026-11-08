@@ -9,25 +9,16 @@ Covers:
   is a no-op.
 """
 
-import importlib.util
-import tempfile
-from pathlib import Path
-
-import aiosqlite
 import pytest
 import pytest_asyncio
 
 from src.constants import AVAILABLE_MODELS
+from tests.unit.migrations.migration_helpers import load_migration, scratch_db, model_of
 
 
 def _load_migration_032():
     """Import the real migration 032 module by file path and return its instance."""
-    versions = Path(__file__).resolve().parents[3] / "src" / "migrations" / "versions"
-    path = versions / "032_strip_redundant_1m_suffix.py"
-    spec = importlib.util.spec_from_file_location("migration_032", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.StripRedundant1MSuffixMigration()
+    return load_migration("032_strip_redundant_1m_suffix.py", "StripRedundant1MSuffixMigration")
 
 
 @pytest.mark.unit
@@ -49,29 +40,21 @@ class TestNative1MConstants:
 @pytest_asyncio.fixture
 async def seeded_db():
     """A db with items / agent_config seeded with [1m] and plain models."""
-    with tempfile.TemporaryDirectory() as tmp:
-        conn = await aiosqlite.connect(str(Path(tmp) / "test.db"))
-        conn.row_factory = aiosqlite.Row
-        await conn.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, model TEXT)")
-        await conn.execute("CREATE TABLE agent_config (id INTEGER PRIMARY KEY, model TEXT)")
-        rows = [
-            (1, "claude-opus-5[1m]"),
-            (2, "claude-opus-4-8[1m]"),
-            (3, "claude-opus-4-7[1m]"),
-            (4, "claude-opus-4-6[1m]"),
-            (5, "claude-sonnet-4-6[1m]"),
-            (6, "claude-opus-5"),
-        ]
-        await conn.executemany("INSERT INTO items (id, model) VALUES (?, ?)", rows)
-        await conn.execute("INSERT INTO agent_config (id, model) VALUES (1, 'claude-opus-5[1m]')")
-        await conn.commit()
+    rows = [
+        (1, "claude-opus-5[1m]"),
+        (2, "claude-opus-4-8[1m]"),
+        (3, "claude-opus-4-7[1m]"),
+        (4, "claude-opus-4-6[1m]"),
+        (5, "claude-sonnet-4-6[1m]"),
+        (6, "claude-opus-5"),
+    ]
+    async with scratch_db(
+        "CREATE TABLE items (id INTEGER PRIMARY KEY, model TEXT)",
+        "CREATE TABLE agent_config (id INTEGER PRIMARY KEY, model TEXT)",
+        ("INSERT INTO items (id, model) VALUES (?, ?)", rows),
+        "INSERT INTO agent_config (id, model) VALUES (1, 'claude-opus-5[1m]')",
+    ) as conn:
         yield conn
-        await conn.close()
-
-
-async def _model(db, table, row_id):
-    cur = await db.execute(f"SELECT model FROM {table} WHERE id = ?", (row_id,))
-    return (await cur.fetchone())["model"]
 
 
 @pytest.mark.unit
@@ -80,20 +63,20 @@ class TestMigration032:
 
     async def test_up_strips_native_1m_models(self, seeded_db):
         await _load_migration_032().up(seeded_db)
-        assert await _model(seeded_db, "items", 1) == "claude-opus-5"
-        assert await _model(seeded_db, "items", 2) == "claude-opus-4-8"
-        assert await _model(seeded_db, "items", 3) == "claude-opus-4-7"
-        assert await _model(seeded_db, "agent_config", 1) == "claude-opus-5"
+        assert await model_of(seeded_db, "items", 1) == "claude-opus-5"
+        assert await model_of(seeded_db, "items", 2) == "claude-opus-4-8"
+        assert await model_of(seeded_db, "items", 3) == "claude-opus-4-7"
+        assert await model_of(seeded_db, "agent_config", 1) == "claude-opus-5"
 
     async def test_up_keeps_opt_in_models(self, seeded_db):
         await _load_migration_032().up(seeded_db)
-        assert await _model(seeded_db, "items", 4) == "claude-opus-4-6[1m]"
-        assert await _model(seeded_db, "items", 5) == "claude-sonnet-4-6[1m]"
-        assert await _model(seeded_db, "items", 6) == "claude-opus-5"
+        assert await model_of(seeded_db, "items", 4) == "claude-opus-4-6[1m]"
+        assert await model_of(seeded_db, "items", 5) == "claude-sonnet-4-6[1m]"
+        assert await model_of(seeded_db, "items", 6) == "claude-opus-5"
 
     async def test_down_is_noop(self, seeded_db):
         migration = _load_migration_032()
         await migration.up(seeded_db)
         await migration.down(seeded_db)
-        assert await _model(seeded_db, "items", 1) == "claude-opus-5"
-        assert await _model(seeded_db, "items", 4) == "claude-opus-4-6[1m]"
+        assert await model_of(seeded_db, "items", 1) == "claude-opus-5"
+        assert await model_of(seeded_db, "items", 4) == "claude-opus-4-6[1m]"

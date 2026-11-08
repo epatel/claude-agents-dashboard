@@ -30,9 +30,8 @@ async def test_run_git_timeout():
         mock_proc.terminate.assert_called_once()
 
 
-@pytest.mark.asyncio
-async def test_run_git_uses_merge_timeout_for_merge():
-    """Test that merge operations get longer timeout by default."""
+async def _timeout_used_for(*git_args):
+    """The timeout run_git passes to asyncio.wait_for for ``git_args`` (asserting a single call)."""
     with patch('asyncio.create_subprocess_exec') as mock_create:
         with patch('asyncio.wait_for') as mock_wait_for:
             mock_proc = MagicMock()
@@ -41,64 +40,55 @@ async def test_run_git_uses_merge_timeout_for_merge():
             mock_create.return_value = mock_proc
             mock_wait_for.return_value = (b"success", b"")
 
-            await run_git(Path("/fake/repo"), "merge", "feature-branch")
+            await run_git(Path("/fake/repo"), *git_args)
 
-            # Verify wait_for was called with merge timeout
             mock_wait_for.assert_called_once()
-            timeout_arg = mock_wait_for.call_args[1]['timeout']
-            assert timeout_arg == GIT_MERGE_TIMEOUT
+            return mock_wait_for.call_args[1]['timeout']
 
 
-@pytest.mark.asyncio
-async def test_run_git_uses_default_timeout_for_other_operations():
-    """Test that non-merge operations get standard timeout."""
-    with patch('asyncio.create_subprocess_exec') as mock_create:
-        with patch('asyncio.wait_for') as mock_wait_for:
-            mock_proc = MagicMock()
-            mock_proc.returncode = 0
-            mock_proc.communicate = AsyncMock(return_value=(b"success", b""))
-            mock_create.return_value = mock_proc
-            mock_wait_for.return_value = (b"success", b"")
+async def _merge_that_times_out():
+    """merge_branch where checkout succeeds, the merge times out and the abort succeeds.
 
-            await run_git(Path("/fake/repo"), "status")
-
-            # Verify wait_for was called with default timeout
-            mock_wait_for.assert_called_once()
-            timeout_arg = mock_wait_for.call_args[1]['timeout']
-            assert timeout_arg == GIT_OPERATION_TIMEOUT
-
-
-@pytest.mark.asyncio
-async def test_merge_branch_handles_timeout():
-    """Test that merge_branch propagates timeout errors."""
-    # base is required now — pass "main" explicitly. get_current_branch is
-    # still called once to snapshot HEAD for restore.
+    base is required now — pass "main" explicitly. get_current_branch is
+    still called once to snapshot HEAD for restore. Returns (success, message,
+    the patched run_git).
+    """
     with patch('src.git.operations.get_current_branch', return_value="main"):
         with patch('src.git.operations.run_git') as mock_run_git:
-            # checkout succeeds, merge times out, abort succeeds
-            mock_run_git.side_effect = [None, asyncio.TimeoutError("Merge timed out"), None]
-
-            success, message = await merge_branch(Path("/fake/repo"), "feature-branch", base="main")
-
-            assert success is False
-            assert "timed out" in message.lower()
-
-
-@pytest.mark.asyncio
-async def test_merge_branch_aborts_on_timeout():
-    """Test that merge_branch calls merge --abort when timeout occurs."""
-    with patch('src.git.operations.get_current_branch', return_value="main"):
-        with patch('src.git.operations.run_git') as mock_run_git:
-            # checkout succeeds, merge times out, abort succeeds
             mock_run_git.side_effect = [
                 None,  # checkout
                 asyncio.TimeoutError("Merge timed out"),  # merge
                 None   # abort
             ]
-
             success, message = await merge_branch(Path("/fake/repo"), "feature-branch", base="main")
+    return success, message, mock_run_git
 
-            assert success is False
-            # Verify abort was called
-            abort_call = [call for call in mock_run_git.call_args_list if 'abort' in str(call)]
-            assert len(abort_call) == 1
+
+@pytest.mark.asyncio
+async def test_run_git_uses_merge_timeout_for_merge():
+    """Test that merge operations get longer timeout by default."""
+    assert await _timeout_used_for("merge", "feature-branch") == GIT_MERGE_TIMEOUT
+
+
+@pytest.mark.asyncio
+async def test_run_git_uses_default_timeout_for_other_operations():
+    """Test that non-merge operations get standard timeout."""
+    assert await _timeout_used_for("status") == GIT_OPERATION_TIMEOUT
+
+
+@pytest.mark.asyncio
+async def test_merge_branch_handles_timeout():
+    """Test that merge_branch propagates timeout errors."""
+    success, message, _ = await _merge_that_times_out()
+    assert success is False
+    assert "timed out" in message.lower()
+
+
+@pytest.mark.asyncio
+async def test_merge_branch_aborts_on_timeout():
+    """Test that merge_branch calls merge --abort when timeout occurs."""
+    success, _, mock_run_git = await _merge_that_times_out()
+    assert success is False
+    # Verify abort was called
+    abort_call = [call for call in mock_run_git.call_args_list if 'abort' in str(call)]
+    assert len(abort_call) == 1

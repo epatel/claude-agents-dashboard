@@ -34,7 +34,8 @@ tests/
 │   │   ├── test_enabled_skills_029.py  # Migration 029 enabled_skills column (3 tests)
 │   │   ├── test_ollama_load_claude_md_030.py # Migration 030 ollama_load_claude_md column (3 tests)
 │   │   ├── test_default_model_031.py   # Migration 031 default-model bump to Opus 5 (5 tests)
-│   │   └── test_strip_1m_suffix_032.py # Migration 032 strip redundant [1m] suffix (5 tests)
+│   │   ├── test_strip_1m_suffix_032.py # Migration 032 strip redundant [1m] suffix (5 tests)
+│   │   └── migration_helpers.py        # load_migration / scratch_db / columns_of / model_of (plain module, imported explicitly)
 │   ├── test_allowed_commands.py       # Command filter + access MCP (26 tests)
 │   ├── test_annotation_prompt.py      # Annotation prompt formatting (5 tests)
 │   ├── test_annotation_summary.py     # Annotation summary generation (2 tests)
@@ -63,7 +64,14 @@ tests/
 │   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
 │   ├── test_peek_worktree.py        # peek_worktree tool, git reads, rendering (23 tests)
-│   ├── test_routes.py               # HTTP endpoint tests (125 tests)
+│   ├── test_routes.py               # HTTP endpoint tests for routes.py: items, bulk, move, log, search, detail (58 tests)
+│   ├── test_agent_routes.py         # Agent actions, peek, start-copy, retry-merge, diff routes (19 tests)
+│   ├── test_settings_routes.py      # Config, graphify and skills routes (20 tests)
+│   ├── test_provider_routes.py      # Ollama / Tiiny provider routes (9 tests)
+│   ├── test_epic_routes.py          # Epic routes (7 tests)
+│   ├── test_shortcut_routes.py      # Shortcut routes (9 tests)
+│   ├── test_attachment_routes.py    # Attachment routes (3 tests)
+│   ├── route_fixtures.py            # Shared route-test fixtures + seed/request helpers (plain module, imported explicitly — not a conftest)
 │   ├── test_run_sh_args.py          # run.sh target/flag argument parsing (11 tests)
 │   ├── test_python_env.py           # scripts/python-env.sh venv bootstrap (13 tests)
 │   ├── test_base.py                 # AbstractAgentSession contract (4 tests)
@@ -115,7 +123,7 @@ Quick checks that core components work:
 - **SkillsService** (14 tests): library install/list/remove, browse Anthropic source, multi-skill repo discovery, spec parsing, gitignore management, remote-tree path validation (traversal + absolute entries skipped) and the HTTP response size cap
 
 ### Unit Tests — Web Layer (262 tests)
-- **Routes** (125 tests): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, `/api/graphify/*`, `/api/skills/*`, `/api/tiiny/*`
+- **Routes** (125 tests in `test_routes.py` + the six `test_*_routes.py` files, one per route module; shared fixtures in `route_fixtures.py`): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, `/api/graphify/*`, `/api/skills/*`, `/api/tiiny/*`
 - **File Routes** (66 tests): Path validation, secret detection, .browserhidden, language mapping, directory scanning, file content
 - **WebSocket** (45 tests): Connection management, rate limiting, dead-connection cleanup
 - **App** (26 tests): FastAPI factory, middleware, CORS, security headers, lifespan
@@ -224,7 +232,7 @@ with patch.object(orchestrator.git_service, 'merge_agent_work',
 
 ### Migration Tests
 
-`raw_db` (an empty DB with only the `schema_migrations` table) and `runner` avoid conflicts with the app migrations — but they are **module-local** fixtures, defined in both `test_migration_edge_cases.py` and `test_migration_runner.py`. There is no `tests/unit/migrations/conftest.py`, so a new file must copy them (or promote them to a shared conftest):
+`raw_db` (an empty DB with only the `schema_migrations` table) and `runner` avoid conflicts with the app migrations — but they are **module-local** fixtures, defined in both `test_migration_edge_cases.py` and `test_migration_runner.py` (each a two-liner over `scratch_db(SCHEMA_MIGRATIONS_TABLE)`). There is no `tests/unit/migrations/conftest.py`; shared pieces live in the plain module `migration_helpers.py` — `load_migration(filename, class_name)` imports a real migration by path, `scratch_db(*statements)` gives a seeded temp connection, plus `columns_of` / `model_of` / `applied_count` / `table_exists`. A runner test uses the fixtures like this:
 
 ```python
 async def test_apply_migration(self, raw_db, runner):

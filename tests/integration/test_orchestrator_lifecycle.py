@@ -6,10 +6,8 @@ Tests the complete agent workflow through the refactored service architecture.
 
 import pytest
 import asyncio
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from src.agent.orchestrator import AgentOrchestrator
 from src.agent.session import AgentResult
 
 
@@ -25,6 +23,25 @@ async def _simulate_completion(session, result):
     """Helper: trigger the on_complete callback stored on the session."""
     if session and session.on_complete:
         await session.on_complete(result)
+
+
+async def _start_and_complete(orchestrator, item_id, mock_git_operations, result):
+    """Helper: start the agent, then complete its session with ``result``; returns the started item."""
+    item, session = await _start_and_get_session(orchestrator, item_id, mock_git_operations)
+    await _simulate_completion(session, result)
+    return item
+
+
+async def _fetch_row(orchestrator, sql, item_id):
+    """Helper: the first row of ``sql`` (one ``?`` for the item id) as a dict."""
+    async with orchestrator.db.connect() as conn:
+        cursor = await conn.execute(sql, (item_id,))
+        return dict(await cursor.fetchone())
+
+
+async def _db_item(orchestrator, item_id):
+    """Helper: the item's current DB row as a dict."""
+    return await _fetch_row(orchestrator, "SELECT * FROM items WHERE id = ?", item_id)
 
 
 @pytest.mark.integration
@@ -45,13 +62,11 @@ class TestOrchestratorLifecycle:
         assert item_id in test_orchestrator.sessions
 
         # Simulate agent completion
-        result = AgentResult(success=True, session_id="test-session-123",
-                             input_tokens=150, output_tokens=300, total_tokens=450, cost_usd=0.0123)
-        await _simulate_completion(session, result)
+        await _simulate_completion(session, AgentResult(
+            success=True, session_id="test-session-123",
+            input_tokens=150, output_tokens=300, total_tokens=450, cost_usd=0.0123))
 
-        async with test_orchestrator.db.connect() as conn:
-            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-            item = dict(await cursor.fetchone())
+        item = await _db_item(test_orchestrator, item_id)
 
         assert item["column_name"] == "review"
         assert item["session_id"] == "test-session-123"
@@ -63,9 +78,7 @@ class TestOrchestratorLifecycle:
                           new_callable=AsyncMock):
             await test_orchestrator.approve_item(item_id)
 
-            async with test_orchestrator.db.connect() as conn:
-                cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-                final_item = dict(await cursor.fetchone())
+            final_item = await _db_item(test_orchestrator, item_id)
 
             assert final_item["column_name"] == "done"
 
@@ -75,14 +88,10 @@ class TestOrchestratorLifecycle:
         """Test lifecycle when agent fails."""
         item_id = test_item["id"]
 
-        item, session = await _start_and_get_session(test_orchestrator, item_id, mock_git_operations)
+        await _start_and_complete(test_orchestrator, item_id, mock_git_operations, AgentResult(
+            success=False, session_id="test-session-456", error="Agent execution failed"))
 
-        result = AgentResult(success=False, session_id="test-session-456", error="Agent execution failed")
-        await _simulate_completion(session, result)
-
-        async with test_orchestrator.db.connect() as conn:
-            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-            item = dict(await cursor.fetchone())
+        item = await _db_item(test_orchestrator, item_id)
 
         assert item["status"] == "failed"
 
@@ -107,14 +116,10 @@ class TestOrchestratorLifecycle:
         """Test review feedback and agent restart."""
         item_id = test_item["id"]
 
-        item, session = await _start_and_get_session(test_orchestrator, item_id, mock_git_operations)
+        await _start_and_complete(test_orchestrator, item_id, mock_git_operations,
+                                  AgentResult(success=True, session_id="test-session-123"))
 
-        result = AgentResult(success=True, session_id="test-session-123")
-        await _simulate_completion(session, result)
-
-        async with test_orchestrator.db.connect() as conn:
-            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-            item = dict(await cursor.fetchone())
+        item = await _db_item(test_orchestrator, item_id)
         assert item["column_name"] == "review"
 
         # Request changes
@@ -226,9 +231,7 @@ class TestOrchestratorLifecycle:
         clarification_task = asyncio.create_task(callback(prompt, choices))
         await asyncio.sleep(0.01)
 
-        async with test_orchestrator.db.connect() as conn:
-            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-            item = dict(await cursor.fetchone())
+        item = await _db_item(test_orchestrator, item_id)
         assert item["column_name"] == "questions"
 
         await test_orchestrator.submit_clarification(item_id, "blue")
@@ -261,17 +264,11 @@ class TestOrchestratorLifecycle:
         """Test that token usage is properly tracked and stored."""
         item_id = test_item["id"]
 
-        item, session = await _start_and_get_session(test_orchestrator, item_id, mock_git_operations)
+        await _start_and_complete(test_orchestrator, item_id, mock_git_operations, AgentResult(
+            success=True, session_id="test-session-789",
+            input_tokens=250, output_tokens=150, total_tokens=400, cost_usd=0.0456))
 
-        result = AgentResult(success=True, session_id="test-session-789",
-                             input_tokens=250, output_tokens=150, total_tokens=400, cost_usd=0.0456)
-        await _simulate_completion(session, result)
-
-        async with test_orchestrator.db.connect() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM token_usage WHERE item_id = ?", (item_id,)
-            )
-            usage = dict(await cursor.fetchone())
+        usage = await _fetch_row(test_orchestrator, "SELECT * FROM token_usage WHERE item_id = ?", item_id)
 
         assert usage["input_tokens"] == 250
         assert usage["output_tokens"] == 150
@@ -343,9 +340,7 @@ class TestOrchestratorConcurrency:
             await test_orchestrator.cancel_agent(item_id)
             await test_orchestrator.start_agent(item_id)
 
-        async with test_orchestrator.db.connect() as conn:
-            cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-            item = dict(await cursor.fetchone())
+        item = await _db_item(test_orchestrator, item_id)
 
         assert item["column_name"] == "doing"
         assert item["status"] == "running"

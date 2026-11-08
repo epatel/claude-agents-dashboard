@@ -1,195 +1,10 @@
 """HTTP endpoint tests for src/web/routes.py."""
 
 import pytest
-import pytest_asyncio
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from httpx import AsyncClient, ASGITransport
-
-from src.web.app import create_app
-from src.web.websocket import ConnectionManager
-from src.database import Database
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-def _make_mock_orchestrator():
-    mock_orch = MagicMock()
-    mock_orch.sessions = {}
-
-    # workflow_service
-    mock_orch.workflow_service = MagicMock()
-    mock_orch.workflow_service.find_stale_worktrees = AsyncMock(return_value=[])
-    mock_orch.workflow_service._yolo_items = set()
-    mock_orch.workflow_service._auto_reviewing = set()
-    mock_orch.workflow_service.cleanup_stale_worktree = AsyncMock(return_value={"ok": True})
-    mock_orch.workflow_service.notify_and_auto_start_dependents = AsyncMock()
-
-    # db_service
-    mock_orch.db_service = MagicMock()
-    mock_orch.db_service.get_all_blocked_status = AsyncMock(return_value={})
-    mock_orch.db_service.get_item_dependencies = AsyncMock(return_value=[])
-    mock_orch.db_service.set_item_dependencies = AsyncMock(return_value=[])
-    mock_orch.db_service.get_item = AsyncMock(return_value=None)
-    mock_orch.db_service.is_item_blocked = AsyncMock(return_value=False)
-    mock_orch.db_service.get_blocking_items = AsyncMock(return_value=[])
-    mock_orch.db_service.get_dependent_items = AsyncMock(return_value=[])
-    mock_orch.db_service.get_epics = AsyncMock(return_value=[])
-    mock_orch.db_service.get_epic_progress = AsyncMock(return_value={})
-    mock_orch.db_service.create_epic = AsyncMock(return_value={"id": "epic1", "title": "My Epic", "color": "blue"})
-    mock_orch.db_service.update_epic = AsyncMock(return_value={"id": "epic1", "title": "Updated", "color": "blue"})
-    mock_orch.db_service.delete_epic = AsyncMock(return_value={"id": "epic1"})
-    mock_orch.db_service.update_item = AsyncMock(return_value={"id": "item1", "column_name": "review", "status": None})
-
-    # item_repository (Phase 2.1+ — read/write facade over db_service)
-    mock_orch.item_repository = MagicMock()
-    mock_orch.item_repository.transition = AsyncMock(
-        return_value={"id": "item1", "column_name": "review", "status": None}
-    )
-    mock_orch.item_repository.get = AsyncMock(
-        return_value={
-            "id": "item1", "column_name": "todo", "status": None,
-            "worktree_path": "/some/path", "branch_name": "feature",
-        }
-    )
-
-    # move_to_column needs to reflect inputs so route tests can assert
-    # against realistic response shapes (column_name == requested,
-    # worktree cleared on done/archive, etc.).
-    async def _mock_move_to_column(item_id, target_column, position):
-        return {
-            "id": item_id,
-            "column_name": target_column,
-            "status": None,
-            "position": position,
-            "worktree_path": None if target_column in ("done", "archive") else "/some/path",
-            "branch_name": None if target_column in ("done", "archive") else "feature",
-        }
-    mock_orch.item_repository.move_to_column = AsyncMock(side_effect=_mock_move_to_column)
-    mock_orch.item_repository.shift_positions = AsyncMock()
-
-    # epic_repository (Phase 2.6 — CRUD facade over db_service)
-    mock_orch.epic_repository = MagicMock()
-    mock_orch.epic_repository.list_all = AsyncMock(return_value=[])
-    mock_orch.epic_repository.create = AsyncMock(
-        return_value={"id": "epic1", "title": "My Epic", "color": "blue"}
-    )
-    mock_orch.epic_repository.update = AsyncMock(
-        return_value={"id": "epic1", "title": "Updated", "color": "blue"}
-    )
-    mock_orch.epic_repository.delete = AsyncMock(
-        return_value={"id": "epic1", "title": "Deleted", "color": "blue"}
-    )
-
-    # notification_service
-    mock_orch.notification_service = MagicMock()
-    mock_orch.notification_service.broadcast_epic_created = AsyncMock()
-    mock_orch.notification_service.broadcast_epic_updated = AsyncMock()
-    mock_orch.notification_service.broadcast_epic_deleted = AsyncMock()
-
-    # git_service
-    mock_orch.git_service = MagicMock()
-    mock_orch.git_service.cleanup_worktree_and_branch = AsyncMock()
-
-    # session_service
-    mock_orch.session_service = MagicMock()
-    mock_orch.session_service.cleanup_session = AsyncMock()
-
-    # ws_manager on orchestrator itself
-    mock_orch.ws_manager = MagicMock()
-    mock_orch.ws_manager.broadcast = AsyncMock()
-
-    # agent actions
-    mock_orch.start_agent = AsyncMock(return_value={"status": "started"})
-    mock_orch.start_copy_agent = AsyncMock(return_value={"status": "started"})
-    mock_orch.cancel_agent = AsyncMock(return_value={"status": "cancelled"})
-    mock_orch.pause_agent = AsyncMock(return_value={"status": "paused"})
-    mock_orch.resume_agent = AsyncMock(return_value={"status": "running"})
-    mock_orch.retry_agent = AsyncMock(return_value={"status": "running"})
-    mock_orch.approve_item = AsyncMock(return_value={"status": "done"})
-    mock_orch.request_changes = AsyncMock(return_value={"status": "todo"})
-    mock_orch.cancel_review = AsyncMock(return_value={"status": "todo"})
-    mock_orch.submit_clarification = AsyncMock(return_value={"status": "ok"})
-    mock_orch.delete_item = AsyncMock(return_value={"ok": True})
-    mock_orch.shutdown = AsyncMock()
-
-    # graph_service (graphify)
-    mock_orch.graph_service = MagicMock()
-    mock_orch.graph_service._lock = MagicMock()
-    mock_orch.graph_service._lock.locked.return_value = False
-    mock_orch.graph_service.status = AsyncMock(return_value={
-        "installed_version": "0.8.33", "latest_version": "0.8.33",
-        "building": False, "graph": {"exists": False}, "graph_dir": "/x/graphify-out",
-    })
-    mock_orch.graph_service.build = AsyncMock(return_value={"ok": True, "graph": {}})
-    mock_orch.graph_service.install = AsyncMock(return_value={"ok": True, "version": "0.8.33"})
-    mock_orch.graph_service.query = AsyncMock(return_value={"ok": True, "answer": "ans"})
-
-    # skills_service
-    mock_orch.skills_service = MagicMock()
-    mock_orch.skills_service.list_installed = MagicMock(
-        return_value=[{"name": "docx", "description": "Make docx", "enabled": False}]
-    )
-    mock_orch.skills_service.browse = AsyncMock(
-        return_value=[{"name": "docx", "description": "Make docx", "spec": "anthropics/skills/skills/docx"}]
-    )
-    mock_orch.skills_service.install = AsyncMock(return_value={"ok": True, "name": "docx"})
-    mock_orch.skills_service.remove = AsyncMock(return_value={"ok": True, "name": "docx"})
-    mock_orch.skills_service.discover = AsyncMock(return_value=[
-        {"name": "docx", "path": "skills/docx", "description": "d", "spec": "anthropics/skills/skills/docx@main"},
-        {"name": "pdf", "path": "skills/pdf", "description": "p", "spec": "anthropics/skills/skills/pdf@main"},
-    ])
-
-    return mock_orch
-
-
-@pytest_asyncio.fixture
-async def app_and_db(tmp_path):
-    """Create app with real DB but mocked orchestrator, bypassing lifespan."""
-    target = tmp_path / "target"
-    target.mkdir()
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-
-    # Create and initialize real DB
-    db = Database(data_dir / "dashboard.db")
-    await db.initialize()
-
-    app = create_app(target_project=target, data_dir=data_dir)
-
-    # Override state to skip lifespan
-    app.state.db = db
-    ws_manager = ConnectionManager()
-    app.state.ws_manager = ws_manager
-    mock_orch = _make_mock_orchestrator()
-    mock_orch.ws_manager = ws_manager
-    app.state.orchestrator = mock_orch
-
-    return app, db
-
-
-@pytest_asyncio.fixture
-async def client(app_and_db):
-    app, db = app_and_db
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        yield c
-
-
-@pytest_asyncio.fixture
-async def client_with_item(app_and_db):
-    """Client with a pre-created item in the DB."""
-    app, db = app_and_db
-    async with db.connect() as conn:
-        await conn.execute(
-            "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, ?, ?)",
-            ("item001", "Test Item", "A test", "todo", 0),
-        )
-        await conn.commit()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        yield c, app
+from tests.unit.route_fixtures import app_and_db, client, client_with_item  # noqa: F401  (pytest fixtures)
+from tests.unit.route_fixtures import get_json, item_row, request, seed, seed_logged_item
 
 
 # ---------------------------------------------------------------------------
@@ -229,30 +44,6 @@ class TestCreateAgentTodo:
         assert kwargs["requires"] == []
         assert kwargs["autostart"] is False
         assert kwargs["auto_approve"] == 0
-
-
-class TestPeekWorktrees:
-    @pytest.mark.asyncio
-    async def test_delegates_to_orchestrator(self, client_with_item):
-        client, app = client_with_item
-        app.state.orchestrator.peek_worktree = AsyncMock(return_value="peek text")
-        resp = await client.get(
-            "/api/items/item001/peek",
-            params={"target_item_id": "other1", "path": "src/a.py"},
-        )
-        assert resp.status_code == 200
-        assert resp.json() == {"text": "peek text"}
-        app.state.orchestrator.peek_worktree.assert_awaited_once_with(
-            "item001", "other1", "src/a.py"
-        )
-
-    @pytest.mark.asyncio
-    async def test_params_default_to_none(self, client_with_item):
-        client, app = client_with_item
-        app.state.orchestrator.peek_worktree = AsyncMock(return_value="summary")
-        resp = await client.get("/api/items/item001/peek")
-        assert resp.status_code == 200
-        app.state.orchestrator.peek_worktree.assert_awaited_once_with("item001", None, None)
 
 
 class TestListItems:
@@ -331,6 +122,7 @@ class TestDeleteItem:
 # Bulk operations
 # ---------------------------------------------------------------------------
 
+
 class TestArchiveByDate:
     @pytest.mark.asyncio
     async def test_archive_by_date_no_items(self, client):
@@ -341,14 +133,8 @@ class TestArchiveByDate:
     @pytest.mark.asyncio
     async def test_archive_by_date_archives_done_items(self, app_and_db):
         app, db = app_and_db
-        async with db.connect() as conn:
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position, done_at) VALUES (?, ?, ?, ?, ?, ?)",
-                ("done1", "Done Item", "", "done", 0, "2024-06-15T10:00:00"),
-            )
-            await conn.commit()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.post("/api/items/archive-by-date", json={"date": "2024-06-15"})
+        await seed(db, item_row("done1", "Done Item", "done", done_at="2024-06-15T10:00:00"))
+        resp = await request(app, "POST", "/api/items/archive-by-date", json={"date": "2024-06-15"})
         assert resp.status_code == 200
         assert resp.json()["archived"] == 1
 
@@ -363,26 +149,13 @@ class TestArchiveByEpic:
     @pytest.mark.asyncio
     async def test_archive_by_epic_archives_only_done(self, app_and_db):
         app, db = app_and_db
-        async with db.connect() as conn:
-            await conn.execute(
-                "INSERT INTO epics (id, title, color, position) VALUES (?, ?, ?, ?)",
-                ("epicA", "Epic A", "blue", 0),
-            )
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?, ?)",
-                ("d1", "Done 1", "", "done", 0, "epicA"),
-            )
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?, ?)",
-                ("d2", "Done 2", "", "done", 1, "epicA"),
-            )
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position, epic_id) VALUES (?, ?, ?, ?, ?, ?)",
-                ("t1", "Todo", "", "todo", 0, "epicA"),
-            )
-            await conn.commit()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.post("/api/items/archive-by-epic", json={"epic_id": "epicA"})
+        await seed(db,
+            ("epics", {"id": "epicA", "title": "Epic A", "color": "blue", "position": 0}),
+            item_row("d1", "Done 1", "done", epic_id="epicA"),
+            item_row("d2", "Done 2", "done", position=1, epic_id="epicA"),
+            item_row("t1", "Todo", epic_id="epicA"),
+        )
+        resp = await request(app, "POST", "/api/items/archive-by-epic", json={"epic_id": "epicA"})
         assert resp.status_code == 200
         assert resp.json()["archived"] == 2
         async with db.connect() as conn:
@@ -413,6 +186,7 @@ class TestDeleteByEpic:
 # Item move
 # ---------------------------------------------------------------------------
 
+
 class TestMoveItem:
     @pytest.mark.asyncio
     async def test_move_item_to_done(self, client_with_item):
@@ -432,14 +206,10 @@ class TestMoveItem:
     @pytest.mark.asyncio
     async def test_move_item_to_archive_clears_metadata(self, app_and_db):
         app, db = app_and_db
-        async with db.connect() as conn:
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position, worktree_path, branch_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                ("wt1", "WT Item", "", "review", 0, "/some/path", "feature-branch"),
-            )
-            await conn.commit()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.post("/api/items/wt1/move", json={"column_name": "archive", "position": 0})
+        await seed(db,
+            item_row("wt1", "WT Item", "review", worktree_path="/some/path", branch_name="feature-branch"),
+        )
+        resp = await request(app, "POST", "/api/items/wt1/move", json={"column_name": "archive", "position": 0})
         assert resp.status_code == 200
         data = resp.json()
         assert data["worktree_path"] is None
@@ -484,119 +254,6 @@ class TestMoveItem:
 # Agent actions
 # ---------------------------------------------------------------------------
 
-class TestAgentActions:
-    @pytest.mark.asyncio
-    async def test_start_agent(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/start")
-        assert resp.status_code == 200
-        app.state.orchestrator.start_agent.assert_awaited_once_with("item001")
-
-    @pytest.mark.asyncio
-    async def test_cancel_agent(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/cancel")
-        assert resp.status_code == 200
-        app.state.orchestrator.cancel_agent.assert_awaited_once_with("item001")
-
-    @pytest.mark.asyncio
-    async def test_pause_agent(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/pause")
-        assert resp.status_code == 200
-        # Pause now accepts an optional message — when no body is sent, the
-        # route still forwards None so the orchestrator can keep a single
-        # signature for both flows.
-        app.state.orchestrator.pause_agent.assert_awaited_once_with("item001", None)
-
-    @pytest.mark.asyncio
-    async def test_pause_agent_with_message(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post(
-            "/api/items/item001/pause",
-            json={"message": "investigate a simpler approach"},
-        )
-        assert resp.status_code == 200
-        app.state.orchestrator.pause_agent.assert_awaited_once_with(
-            "item001", "investigate a simpler approach"
-        )
-
-    @pytest.mark.asyncio
-    async def test_resume_agent(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/resume")
-        assert resp.status_code == 200
-        # Resume now accepts an optional message — when no body is sent, the
-        # route forwards None so the orchestrator can keep a single signature
-        # for both flows (matches the pause endpoint).
-        app.state.orchestrator.resume_agent.assert_awaited_once_with("item001", None)
-
-    @pytest.mark.asyncio
-    async def test_resume_agent_with_message(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post(
-            "/api/items/item001/resume",
-            json={"message": "try a different approach"},
-        )
-        assert resp.status_code == 200
-        app.state.orchestrator.resume_agent.assert_awaited_once_with(
-            "item001", "try a different approach"
-        )
-
-    @pytest.mark.asyncio
-    async def test_retry_agent(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/retry")
-        assert resp.status_code == 200
-        app.state.orchestrator.retry_agent.assert_awaited_once_with("item001")
-
-    @pytest.mark.asyncio
-    async def test_approve_item(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/approve")
-        assert resp.status_code == 200
-        app.state.orchestrator.approve_item.assert_awaited_once_with("item001")
-
-    @pytest.mark.asyncio
-    async def test_request_changes(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/request-changes", json={"comments": ["Fix the bug"]})
-        assert resp.status_code == 200
-        app.state.orchestrator.request_changes.assert_awaited_once_with("item001", ["Fix the bug"])
-
-    @pytest.mark.asyncio
-    async def test_cancel_review(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/cancel-review")
-        assert resp.status_code == 200
-        app.state.orchestrator.cancel_review.assert_awaited_once_with("item001")
-
-    @pytest.mark.asyncio
-    async def test_submit_clarification(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/clarify", json={"response": "Yes, do it"})
-        assert resp.status_code == 200
-        app.state.orchestrator.submit_clarification.assert_awaited_once_with("item001", "Yes, do it")
-
-    @pytest.mark.asyncio
-    async def test_approve_command_approved(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/approve-command", json={"approved": True})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["decision"] == "approved"
-
-    @pytest.mark.asyncio
-    async def test_approve_command_denied(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/approve-command", json={"approved": False})
-        assert resp.status_code == 200
-        assert resp.json()["decision"] == "denied"
-
-
-# ---------------------------------------------------------------------------
-# Work log
-# ---------------------------------------------------------------------------
 
 class TestWorkLog:
     @pytest.mark.asyncio
@@ -609,20 +266,8 @@ class TestWorkLog:
     @pytest.mark.asyncio
     async def test_get_work_log_returns_entries(self, app_and_db):
         app, db = app_and_db
-        async with db.connect() as conn:
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, ?, ?)",
-                ("item002", "Item 2", "", "todo", 0),
-            )
-            await conn.execute(
-                "INSERT INTO work_log (item_id, entry_type, content) VALUES (?, ?, ?)",
-                ("item002", "system", "Agent started"),
-            )
-            await conn.commit()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.get("/api/items/item002/log")
-        assert resp.status_code == 200
-        data = resp.json()
+        await seed_logged_item(db, item_row("item002", "Item 2"), "system", "Agent started")
+        data = await get_json(app, "/api/items/item002/log")
         assert len(data) == 1
         assert data[0]["content"] == "Agent started"
 
@@ -630,6 +275,7 @@ class TestWorkLog:
 # ---------------------------------------------------------------------------
 # Clarification
 # ---------------------------------------------------------------------------
+
 
 class TestClarification:
     @pytest.mark.asyncio
@@ -642,18 +288,11 @@ class TestClarification:
     @pytest.mark.asyncio
     async def test_get_pending_clarification_with_prompt(self, app_and_db):
         app, db = app_and_db
-        async with db.connect() as conn:
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, ?, ?)",
-                ("item003", "Item 3", "", "questions", 0),
-            )
-            await conn.execute(
-                "INSERT INTO clarifications (item_id, prompt) VALUES (?, ?)",
-                ("item003", "What should I do?"),
-            )
-            await conn.commit()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.get("/api/items/item003/clarification")
+        await seed(db,
+            item_row("item003", "Item 3", "questions"),
+            ("clarifications", {"item_id": "item003", "prompt": "What should I do?"}),
+        )
+        resp = await request(app, "GET", "/api/items/item003/clarification")
         assert resp.status_code == 200
         body = resp.json()
         assert body["prompt"] == "What should I do?"
@@ -665,18 +304,11 @@ class TestClarification:
     @pytest.mark.asyncio
     async def test_get_pending_clarification_returns_context(self, app_and_db):
         app, db = app_and_db
-        async with db.connect() as conn:
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, ?, ?)",
-                ("item004", "Item 4", "", "questions", 0),
-            )
-            await conn.execute(
-                "INSERT INTO clarifications (item_id, prompt, context) VALUES (?, ?, ?)",
-                ("item004", "Approve plan?", "Considered options A and B; chose A."),
-            )
-            await conn.commit()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.get("/api/items/item004/clarification")
+        await seed(db,
+            item_row("item004", "Item 4", "questions"),
+            ("clarifications", {"item_id": "item004", "prompt": "Approve plan?", "context": "Considered options A and B; chose A."}),
+        )
+        resp = await request(app, "GET", "/api/items/item004/clarification")
         assert resp.status_code == 200
         body = resp.json()
         assert body["prompt"] == "Approve plan?"
@@ -686,6 +318,7 @@ class TestClarification:
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
+
 
 class TestDependencies:
     @pytest.mark.asyncio
@@ -713,78 +346,6 @@ class TestDependencies:
 # Config
 # ---------------------------------------------------------------------------
 
-class TestConfig:
-    @pytest.mark.asyncio
-    async def test_get_config_returns_dict(self, client):
-        resp = await client.get("/api/config")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert isinstance(data, dict)
-
-    @pytest.mark.asyncio
-    async def test_get_available_tools(self, client):
-        resp = await client.get("/api/config/available-tools")
-        assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
-
-    @pytest.mark.asyncio
-    async def test_update_config(self, client):
-        payload = {
-            "system_prompt": "You are helpful.",
-            "tools": "",
-            "model": "claude-opus-4-5",
-            "project_context": "",
-            "mcp_servers": "",
-            "mcp_enabled": False,
-            "plugins": "",
-            "allowed_commands": "",
-            "bash_yolo": False,
-            "allowed_builtin_tools": "",
-            "flame_enabled": False,
-            "flame_intensity_multiplier": 1.0,
-        }
-        resp = await client.put("/api/config", json=payload)
-        assert resp.status_code == 200
-        assert resp.json()["system_prompt"] == "You are helpful."
-
-    @pytest.mark.asyncio
-    async def test_graphify_fields_round_trip(self, client):
-        # Defaults from migration 028
-        data = (await client.get("/api/config")).json()
-        assert data["graphify_enabled"] in (0, False)
-        assert data["graphify_auto_refresh"] in (1, True)
-        assert data["graphify_backend"] == "ast"
-        # Persist new values
-        payload = {
-            "system_prompt": "", "model": "claude-opus-4-8",
-            "graphify_enabled": True, "graphify_auto_refresh": False,
-            "graphify_backend": "gemini",
-        }
-        resp = await client.put("/api/config", json=payload)
-        assert resp.status_code == 200
-        out = resp.json()
-        assert out["graphify_enabled"] in (1, True)
-        assert out["graphify_auto_refresh"] in (0, False)
-        assert out["graphify_backend"] == "gemini"
-
-    @pytest.mark.asyncio
-    async def test_ollama_load_claude_md_round_trip(self, client):
-        # Default from migration 030: off
-        data = (await client.get("/api/config")).json()
-        assert data["ollama_load_claude_md"] in (0, False)
-        # Persist new value
-        payload = {
-            "system_prompt": "", "model": "claude-opus-4-8",
-            "ollama_load_claude_md": True,
-        }
-        resp = await client.put("/api/config", json=payload)
-        assert resp.status_code == 200
-        assert resp.json()["ollama_load_claude_md"] in (1, True)
-
-
-# ---------------------------------------------------------------------------
-# Notifications
-# ---------------------------------------------------------------------------
 
 class TestNotifications:
     @pytest.mark.asyncio
@@ -813,6 +374,7 @@ class TestNotifications:
 # Stats
 # ---------------------------------------------------------------------------
 
+
 class TestStats:
     @pytest.mark.asyncio
     async def test_get_stats_returns_structure(self, client):
@@ -833,131 +395,6 @@ class TestStats:
 # Epics
 # ---------------------------------------------------------------------------
 
-class TestEpics:
-    @pytest.mark.asyncio
-    async def test_get_epics_empty(self, client):
-        resp = await client.get("/api/epics")
-        assert resp.status_code == 200
-        assert resp.json() == []
-
-    @pytest.mark.asyncio
-    async def test_get_epic_colors(self, client):
-        resp = await client.get("/api/epics/colors")
-        assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
-
-    @pytest.mark.asyncio
-    async def test_create_epic(self, client):
-        resp = await client.post("/api/epics", json={"title": "Sprint 1", "color": "blue"})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["title"] == "My Epic"  # from mock
-
-    @pytest.mark.asyncio
-    async def test_update_epic(self, client):
-        resp = await client.put("/api/epics/epic1", json={"title": "Updated"})
-        assert resp.status_code == 200
-
-    @pytest.mark.asyncio
-    async def test_update_epic_not_found(self, client_with_item):
-        from src.repositories.epic_repository import EpicNotFound
-        client, app = client_with_item
-        app.state.orchestrator.epic_repository.update = AsyncMock(
-            side_effect=EpicNotFound("missing")
-        )
-        resp = await client.put("/api/epics/missing", json={"title": "X"})
-        assert resp.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_delete_epic(self, client):
-        resp = await client.delete("/api/epics/epic1")
-        assert resp.status_code == 200
-        assert resp.json()["success"] is True
-
-    @pytest.mark.asyncio
-    async def test_delete_epic_not_found(self, client_with_item):
-        from src.repositories.epic_repository import EpicNotFound
-        client, app = client_with_item
-        app.state.orchestrator.epic_repository.delete = AsyncMock(
-            side_effect=EpicNotFound("missing")
-        )
-        resp = await client.delete("/api/epics/missing")
-        assert resp.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# Shortcuts
-# ---------------------------------------------------------------------------
-
-class TestShortcuts:
-    @pytest.mark.asyncio
-    async def test_list_shortcuts_empty(self, client):
-        resp = await client.get("/api/shortcuts")
-        assert resp.status_code == 200
-        assert resp.json() == []
-
-    @pytest.mark.asyncio
-    async def test_create_shortcut(self, client):
-        resp = await client.post("/api/shortcuts", json={"name": "Run tests", "command": "pytest"})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["name"] == "Run tests"
-        assert data["command"] == "pytest"
-        assert "id" in data
-
-    @pytest.mark.asyncio
-    async def test_list_shortcuts_after_create(self, client):
-        await client.post("/api/shortcuts", json={"name": "Build", "command": "make build"})
-        resp = await client.get("/api/shortcuts")
-        assert resp.status_code == 200
-        shortcuts = resp.json()
-        assert any(s["name"] == "Build" for s in shortcuts)
-
-    @pytest.mark.asyncio
-    async def test_update_shortcut(self, client):
-        create_resp = await client.post("/api/shortcuts", json={"name": "Old Name", "command": "echo hi"})
-        sc_id = create_resp.json()["id"]
-        resp = await client.put(f"/api/shortcuts/{sc_id}", json={"name": "New Name"})
-        assert resp.status_code == 200
-        assert resp.json()["name"] == "New Name"
-
-    @pytest.mark.asyncio
-    async def test_update_shortcut_not_found(self, client):
-        resp = await client.put("/api/shortcuts/nonexistent", json={"name": "X"})
-        assert resp.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_delete_shortcut(self, client):
-        create_resp = await client.post("/api/shortcuts", json={"name": "Temp", "command": "ls"})
-        sc_id = create_resp.json()["id"]
-        resp = await client.delete(f"/api/shortcuts/{sc_id}")
-        assert resp.status_code == 200
-        assert resp.json() == {"ok": True}
-
-    @pytest.mark.asyncio
-    async def test_get_shortcut_output_idle(self, client):
-        resp = await client.get("/api/shortcuts/nonexistent/output")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "idle"
-        assert data["output"] == ""
-
-    @pytest.mark.asyncio
-    async def test_stop_shortcut_not_found(self, client):
-        resp = await client.post("/api/shortcuts/nonexistent/stop")
-        assert resp.status_code == 200
-        assert resp.json()["ok"] is False
-
-    @pytest.mark.asyncio
-    async def test_reset_shortcut(self, client):
-        resp = await client.post("/api/shortcuts/nonexistent/reset")
-        assert resp.status_code == 200
-        assert resp.json() == {"ok": True}
-
-
-# ---------------------------------------------------------------------------
-# Search
-# ---------------------------------------------------------------------------
 
 class TestSearch:
     @pytest.mark.asyncio
@@ -975,20 +412,9 @@ class TestSearch:
     @pytest.mark.asyncio
     async def test_search_worklog_with_results(self, app_and_db):
         app, db = app_and_db
-        async with db.connect() as conn:
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, ?, ?)",
-                ("item010", "Search Item", "", "todo", 0),
-            )
-            await conn.execute(
-                "INSERT INTO work_log (item_id, entry_type, content) VALUES (?, ?, ?)",
-                ("item010", "agent_message", "Agent performed a database migration"),
-            )
-            await conn.commit()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.get("/api/search/worklog?q=database")
-        assert resp.status_code == 200
-        data = resp.json()
+        await seed_logged_item(db, item_row("item010", "Search Item"), "agent_message",
+                               "Agent performed a database migration")
+        data = await get_json(app, "/api/search/worklog?q=database")
         assert len(data) == 1
         assert data[0]["item_id"] == "item010"
 
@@ -996,6 +422,7 @@ class TestSearch:
 # ---------------------------------------------------------------------------
 # Stale worktree cleanup
 # ---------------------------------------------------------------------------
+
 
 class TestCleanupWorktree:
     @pytest.mark.asyncio
@@ -1021,6 +448,7 @@ class TestCleanupWorktree:
 # Yolo items
 # ---------------------------------------------------------------------------
 
+
 class TestYoloItems:
     @pytest.mark.asyncio
     async def test_get_yolo_items_empty(self, client):
@@ -1041,6 +469,7 @@ class TestYoloItems:
 # ---------------------------------------------------------------------------
 # Auto-reviewing items
 # ---------------------------------------------------------------------------
+
 
 class TestAutoReviewingItems:
     @pytest.mark.asyncio
@@ -1063,54 +492,6 @@ class TestAutoReviewingItems:
 # Attachments
 # ---------------------------------------------------------------------------
 
-class TestAttachments:
-    @pytest.mark.asyncio
-    async def test_list_attachments_empty(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.get("/api/items/item001/attachments")
-        assert resp.status_code == 200
-        assert resp.json() == []
-
-    @pytest.mark.asyncio
-    async def test_upload_attachment(self, client_with_item):
-        import base64
-        client, app = client_with_item
-        # minimal 1x1 png
-        png_bytes = (
-            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
-            b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00"
-            b"\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00"
-            b"\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
-        )
-        b64 = "data:image/png;base64," + base64.b64encode(png_bytes).decode()
-        resp = await client.post(
-            "/api/items/item001/attachments",
-            json={"item_id": "item001", "filename": "test.png", "data": b64},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["item_id"] == "item001"
-        assert data["filename"] == "test.png"
-
-    @pytest.mark.asyncio
-    async def test_delete_attachment(self, client_with_item):
-        import base64
-        client, app = client_with_item
-        png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
-        b64 = base64.b64encode(png_bytes).decode()
-        upload_resp = await client.post(
-            "/api/items/item001/attachments",
-            json={"item_id": "item001", "filename": "del.png", "data": b64},
-        )
-        att_id = upload_resp.json()["id"]
-        resp = await client.delete(f"/api/attachments/{att_id}")
-        assert resp.status_code == 200
-        assert resp.json() == {"ok": True}
-
-
-# ---------------------------------------------------------------------------
-# Item detail (standalone page)
-# ---------------------------------------------------------------------------
 
 class TestItemDetail:
     @pytest.mark.asyncio
@@ -1129,18 +510,9 @@ class TestItemDetail:
     @pytest.mark.asyncio
     async def test_get_item_detail_includes_work_log(self, app_and_db):
         app, db = app_and_db
-        async with db.connect() as conn:
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, ?, ?)",
-                ("item-log", "Logged Item", "desc", "done", 0),
-            )
-            await conn.execute(
-                "INSERT INTO work_log (item_id, entry_type, content) VALUES (?, ?, ?)",
-                ("item-log", "agent_message", "Completed the migration"),
-            )
-            await conn.commit()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.get("/api/items/item-log")
+        await seed_logged_item(db, item_row("item-log", "Logged Item", "done", description="desc"),
+                               "agent_message", "Completed the migration")
+        resp = await request(app, "GET", "/api/items/item-log")
         assert resp.status_code == 200
         assert "Completed the migration" in resp.text
 
@@ -1153,14 +525,8 @@ class TestItemDetail:
     @pytest.mark.asyncio
     async def test_get_item_detail_escapes_html(self, app_and_db):
         app, db = app_and_db
-        async with db.connect() as conn:
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position) VALUES (?, ?, ?, ?, ?)",
-                ("item-xss", "<script>alert(1)</script>", "desc", "todo", 0),
-            )
-            await conn.commit()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.get("/api/items/item-xss")
+        await seed(db, item_row("item-xss", "<script>alert(1)</script>", description="desc"))
+        resp = await request(app, "GET", "/api/items/item-xss")
         assert resp.status_code == 200
         assert "<script>" not in resp.text
         assert "&lt;script&gt;" in resp.text
@@ -1168,15 +534,10 @@ class TestItemDetail:
     @pytest.mark.asyncio
     async def test_get_item_detail_includes_commit_message(self, app_and_db):
         app, db = app_and_db
-        async with db.connect() as conn:
-            await conn.execute(
-                "INSERT INTO items (id, title, description, column_name, position, commit_message) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                ("item-cm", "With Commit", "desc", "done", 0, "Fix the bug"),
-            )
-            await conn.commit()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.get("/api/items/item-cm")
+        await seed(db,
+            item_row("item-cm", "With Commit", "done", description="desc", commit_message="Fix the bug"),
+        )
+        resp = await request(app, "GET", "/api/items/item-cm")
         assert "Fix the bug" in resp.text
 
 
@@ -1184,25 +545,6 @@ class TestItemDetail:
 # Start copy agent
 # ---------------------------------------------------------------------------
 
-class TestStartCopyAgent:
-    @pytest.mark.asyncio
-    async def test_start_copy_agent(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/start-copy")
-        assert resp.status_code == 200
-        app.state.orchestrator.start_copy_agent.assert_awaited_once_with("item001")
-
-    @pytest.mark.asyncio
-    async def test_start_copy_agent_returns_result(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.post("/api/items/item001/start-copy")
-        data = resp.json()
-        assert data["status"] == "started"
-
-
-# ---------------------------------------------------------------------------
-# Create item with start_copy flag
-# ---------------------------------------------------------------------------
 
 class TestCreateItemStartCopy:
     @pytest.mark.asyncio
@@ -1230,6 +572,7 @@ class TestCreateItemStartCopy:
 # ---------------------------------------------------------------------------
 # Default values for new projects / items
 # ---------------------------------------------------------------------------
+
 
 class TestDefaultValues:
     """Verify that new items and fresh configs use the constants from constants.py."""
@@ -1278,241 +621,3 @@ class TestDefaultValues:
 # ---------------------------------------------------------------------------
 # Retry merge
 # ---------------------------------------------------------------------------
-
-class TestRetryMerge:
-    @pytest.mark.asyncio
-    async def test_retry_merge(self, client_with_item):
-        client, app = client_with_item
-        from src.domain.item_state import Event
-        resp = await client.post("/api/items/item001/retry-merge")
-        assert resp.status_code == 200
-        # The route delegates the state transition to the repo; the repo
-        # owns the from_columns / to_columns / write trio internally.
-        app.state.orchestrator.item_repository.transition.assert_awaited_once_with(
-            "item001", Event.RETRY_MERGE
-        )
-        app.state.orchestrator.approve_item.assert_awaited_once_with("item001")
-
-
-# ---------------------------------------------------------------------------
-# Diff / file content
-# ---------------------------------------------------------------------------
-
-class TestDiff:
-    @pytest.mark.asyncio
-    async def test_get_diff_no_branch(self, client_with_item):
-        client, app = client_with_item
-        resp = await client.get("/api/items/item001/diff")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["diff"] == ""
-        assert data["files"] == []
-
-
-# ---------------------------------------------------------------------------
-# Graphify endpoints
-# ---------------------------------------------------------------------------
-
-class TestGraphify:
-    @pytest.mark.asyncio
-    async def test_status(self, client):
-        resp = await client.get("/api/graphify/status")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["installed_version"] == "0.8.33"
-        assert data["graph"] == {"exists": False}
-
-    @pytest.mark.asyncio
-    async def test_build_starts(self, app_and_db):
-        app, db = app_and_db
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.post("/api/graphify/build", json={"semantic": False})
-        assert resp.status_code == 200
-        assert resp.json() == {"started": True, "semantic": False}
-
-    @pytest.mark.asyncio
-    async def test_build_rejected_when_already_building(self, app_and_db):
-        app, db = app_and_db
-        app.state.orchestrator.graph_service._lock.locked.return_value = True
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.post("/api/graphify/build", json={"semantic": True})
-        assert resp.status_code == 200
-        assert resp.json() == {"started": False, "status": "already_building"}
-
-    @pytest.mark.asyncio
-    async def test_install(self, client):
-        resp = await client.post("/api/graphify/install")
-        assert resp.status_code == 200
-        assert resp.json()["ok"] is True
-
-    @pytest.mark.asyncio
-    async def test_query(self, app_and_db):
-        app, db = app_and_db
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.get("/api/graphify/query", params={"q": "how does X work"})
-        assert resp.status_code == 200
-        assert resp.json() == {"ok": True, "answer": "ans"}
-        app.state.orchestrator.graph_service.query.assert_awaited_once_with("how does X work")
-
-    @pytest.mark.asyncio
-    async def test_query_blank_is_400(self, client):
-        resp = await client.get("/api/graphify/query", params={"q": "   "})
-        assert resp.status_code == 400
-
-    @pytest.mark.asyncio
-    async def test_query_missing_param_is_422(self, client):
-        resp = await client.get("/api/graphify/query")
-        assert resp.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# Skills library endpoints
-# ---------------------------------------------------------------------------
-
-class TestSkills:
-    @pytest.mark.asyncio
-    async def test_list(self, client):
-        resp = await client.get("/api/skills")
-        assert resp.status_code == 200
-        assert resp.json()["installed"][0]["name"] == "docx"
-
-    @pytest.mark.asyncio
-    async def test_browse(self, client):
-        resp = await client.get("/api/skills/browse?source=anthropic")
-        assert resp.status_code == 200
-        assert resp.json()["skills"][0]["spec"].startswith("anthropics/skills/")
-
-    @pytest.mark.asyncio
-    async def test_install_auto_enables(self, app_and_db):
-        app, db = app_and_db
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.post("/api/skills/install", json={"spec": "anthropics/skills/skills/docx"})
-            assert resp.status_code == 200 and resp.json()["ok"] is True
-            assert resp.json()["enabled"] is True
-            app.state.orchestrator.skills_service.install.assert_awaited_once_with("anthropics/skills/skills/docx")
-            # the freshly installed skill is enabled for this project
-            cfg = (await c.get("/api/config")).json()
-        assert "docx" in (cfg.get("enabled_skills") or [])
-
-    @pytest.mark.asyncio
-    async def test_install_requires_spec(self, client):
-        resp = await client.post("/api/skills/install", json={"spec": "  "})
-        assert resp.status_code == 400
-
-    @pytest.mark.asyncio
-    async def test_discover_lists_repo_skills(self, app_and_db):
-        app, db = app_and_db
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.post("/api/skills/discover", json={"spec": "anthropics/skills"})
-        assert resp.status_code == 200
-        names = [s["name"] for s in resp.json()["skills"]]
-        assert names == ["docx", "pdf"]
-        app.state.orchestrator.skills_service.discover.assert_awaited_once_with("anthropics/skills")
-
-    @pytest.mark.asyncio
-    async def test_discover_requires_spec(self, client):
-        resp = await client.post("/api/skills/discover", json={"spec": ""})
-        assert resp.status_code == 400
-
-    @pytest.mark.asyncio
-    async def test_enable_toggles_persist(self, client):
-        # enable docx, then confirm it shows in the config + can be disabled
-        r1 = await client.post("/api/skills/docx/enabled", json={"enabled": True})
-        assert r1.status_code == 200 and "docx" in r1.json()["enabled"]
-        cfg = (await client.get("/api/config")).json()
-        assert "docx" in (cfg.get("enabled_skills") or [])
-        r2 = await client.post("/api/skills/docx/enabled", json={"enabled": False})
-        assert "docx" not in r2.json()["enabled"]
-
-    @pytest.mark.asyncio
-    async def test_remove_drops_from_enabled(self, client):
-        await client.post("/api/skills/docx/enabled", json={"enabled": True})
-        resp = await client.delete("/api/skills/docx")
-        assert resp.status_code == 200 and resp.json()["ok"] is True
-        cfg = (await client.get("/api/config")).json()
-        assert "docx" not in (cfg.get("enabled_skills") or [])
-
-
-# ---------------------------------------------------------------------------
-# Tiiny (experimental local provider)
-# ---------------------------------------------------------------------------
-
-class TestTiinyRoutes:
-    @pytest.mark.asyncio
-    async def test_config_round_trip(self, client):
-        data = (await client.get("/api/config")).json()
-        assert data["tiiny_enabled"] in (0, False)
-        assert data["tiiny_base_url"] == "http://anthropic.api.tiiny"
-        payload = {"system_prompt": "", "model": "claude-opus-4-8",
-                   "tiiny_enabled": True, "tiiny_base_url": "http://box.api.tiiny",
-                   "tiiny_load_claude_md": True}
-        out = (await client.put("/api/config", json=payload)).json()
-        assert out["tiiny_enabled"] in (1, True)
-        assert out["tiiny_base_url"] == "http://box.api.tiiny"
-        assert out["tiiny_load_claude_md"] in (1, True)
-
-    @pytest.mark.asyncio
-    async def test_models_disabled(self, client):
-        resp = await client.get("/api/tiiny/models")
-        assert resp.json() == {"models": [], "error": None, "enabled": False, "key_present": False}
-
-    @pytest.mark.asyncio
-    async def test_models_without_key_still_offer_default(self, client):
-        with patch("src.agent.profiles.get_tiiny_api_key", return_value=""):
-            data = (await client.get("/api/tiiny/models?force=true")).json()
-        assert [m["name"] for m in data["models"]] == ["tiiny/default"]
-        assert data["key_present"] is False
-        assert "TIINY_API_KEY" in data["error"]
-
-    @pytest.mark.asyncio
-    async def test_models_lists_device_models(self, client):
-        listing = {"data": [{"id": "default"}, {"id": "Qwen3-30B", "display_name": "Qwen3 30B"}]}
-        with patch("src.agent.profiles.get_tiiny_api_key", return_value="sk-x"), \
-             patch("src.web.provider_routes._tiiny_request", return_value=(200, listing)) as req:
-            data = (await client.get("/api/tiiny/models?force=true")).json()
-        assert [m["name"] for m in data["models"]] == ["tiiny/default", "tiiny/Qwen3-30B"]
-        assert data["error"] is None
-        method, url, key = req.call_args.args[:3]
-        assert (method, url, key) == ("GET", "http://anthropic.api.tiiny/v1/models", "sk-x")
-
-    @pytest.mark.asyncio
-    async def test_models_404_listing_is_not_an_error(self, client):
-        with patch("src.agent.profiles.get_tiiny_api_key", return_value="sk-x"), \
-             patch("src.web.provider_routes._tiiny_request", return_value=(404, "not found")):
-            data = (await client.get("/api/tiiny/models?force=true")).json()
-        assert [m["name"] for m in data["models"]] == ["tiiny/default"]
-        assert data["error"] is None
-
-    @pytest.mark.asyncio
-    async def test_models_bad_key_reports_401(self, client):
-        with patch("src.agent.profiles.get_tiiny_api_key", return_value="sk-bad"), \
-             patch("src.web.provider_routes._tiiny_request", return_value=(401, {"type": "error"})):
-            data = (await client.get("/api/tiiny/models?force=true")).json()
-        assert "API key" in data["error"]
-
-    @pytest.mark.asyncio
-    async def test_connection_test_ok(self, client):
-        reply = {"model": "Qwen3-30B", "content": [{"type": "text", "text": "OK"}]}
-        with patch("src.agent.profiles.get_tiiny_api_key", return_value="sk-x"), \
-             patch("src.web.provider_routes._tiiny_request", return_value=(200, reply)) as req:
-            data = (await client.post("/api/tiiny/test", json={})).json()
-        assert data["ok"] is True and data["reply"] == "OK"
-        method, url, _key, body = req.call_args.args[:4]
-        assert (method, url) == ("POST", "http://anthropic.api.tiiny/v1/messages")
-        assert body["model"] == "default"
-
-    @pytest.mark.asyncio
-    async def test_connection_test_unreachable(self, client):
-        with patch("src.agent.profiles.get_tiiny_api_key", return_value="sk-x"), \
-             patch("src.web.provider_routes._tiiny_request", return_value=(0, "Connection refused")):
-            data = (await client.post("/api/tiiny/test", json={})).json()
-        assert data["ok"] is False
-        assert "not reachable" in data["message"]
-
-    @pytest.mark.asyncio
-    async def test_connection_test_without_key(self, client):
-        with patch("src.agent.profiles.get_tiiny_api_key", return_value=""), \
-             patch("src.web.provider_routes._tiiny_request") as req:
-            data = (await client.post("/api/tiiny/test", json={})).json()
-        assert data["ok"] is False
-        req.assert_not_called()

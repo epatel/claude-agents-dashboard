@@ -12,11 +12,13 @@ import pytest
 import pytest_asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock
 import aiosqlite
 
 from src.migrations.migration import Migration
 from src.migrations.runner import MigrationRunner
+from tests.unit.migrations.migration_helpers import (
+    SCHEMA_MIGRATIONS_TABLE, applied_count, scratch_db, table_exists,
+)
 
 
 class SampleMigration001(Migration):
@@ -65,19 +67,8 @@ class SampleMigrationFailure(Migration):
 @pytest_asyncio.fixture
 async def raw_db():
     """Create a raw database connection with schema_migrations table."""
-    with tempfile.TemporaryDirectory() as tmp:
-        db_path = Path(tmp) / "test.db"
-        conn = await aiosqlite.connect(str(db_path))
-        conn.row_factory = aiosqlite.Row
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                version TEXT PRIMARY KEY,
-                description TEXT,
-                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+    async with scratch_db(SCHEMA_MIGRATIONS_TABLE) as conn:
         yield conn
-        await conn.close()
 
 
 @pytest_asyncio.fixture
@@ -124,17 +115,8 @@ class TestMigrationRunner:
         migration = SampleMigration001()
         await runner.apply_migration(raw_db, migration)
 
-        cursor = await raw_db.execute(
-            "SELECT COUNT(*) FROM schema_migrations WHERE version = ?", ("001",)
-        )
-        count = (await cursor.fetchone())[0]
-        assert count == 1
-
-        cursor = await raw_db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='test_table'"
-        )
-        result = await cursor.fetchone()
-        assert result is not None
+        assert await applied_count(raw_db, "001") == 1
+        assert await table_exists(raw_db, "test_table")
 
     async def test_rollback_single_migration(self, raw_db, runner):
         """Test rolling back a single migration."""
@@ -142,17 +124,8 @@ class TestMigrationRunner:
         await runner.apply_migration(raw_db, migration)
         await runner.rollback_migration(raw_db, migration)
 
-        cursor = await raw_db.execute(
-            "SELECT COUNT(*) FROM schema_migrations WHERE version = ?", ("001",)
-        )
-        count = (await cursor.fetchone())[0]
-        assert count == 0
-
-        cursor = await raw_db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='test_table'"
-        )
-        result = await cursor.fetchone()
-        assert result is None
+        assert await applied_count(raw_db, "001") == 0
+        assert not await table_exists(raw_db, "test_table")
 
     async def test_apply_multiple_migrations_up(self, raw_db, runner):
         """Test applying multiple migrations in sequence."""

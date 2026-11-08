@@ -2,7 +2,7 @@
 
 import subprocess
 import sys
-from pathlib import Path
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,62 +35,51 @@ def _run_main(tmp_path, extra_args=None, project_name="test-proj", port=8000):
                             return mock_uvicorn_run, fake_app, mock_create_app, mock_subprocess
 
 
+@contextmanager
+def _fake_socket(bind_side_effect=None):
+    """Patch src.main's socket.socket; yields the socket whose bind() the code calls."""
+    with patch("src.main.socket.socket") as mock_socket_cls:
+        mock_sock = MagicMock()
+        mock_socket_cls.return_value.__enter__ = MagicMock(return_value=mock_sock)
+        mock_socket_cls.return_value.__exit__ = MagicMock(return_value=False)
+        if bind_side_effect is None:
+            mock_sock.bind.return_value = None
+        else:
+            mock_sock.bind.side_effect = bind_side_effect
+        yield mock_sock
+
+
 # ---------------------------------------------------------------------------
 # find_available_port
 # ---------------------------------------------------------------------------
 
 class TestFindAvailablePort:
     def test_returns_start_port_when_free(self):
-        with patch("src.main.socket.socket") as mock_socket_cls:
-            mock_sock = MagicMock()
-            mock_socket_cls.return_value.__enter__ = MagicMock(return_value=mock_sock)
-            mock_socket_cls.return_value.__exit__ = MagicMock(return_value=False)
-            mock_sock.bind.return_value = None
-
+        with _fake_socket():
             port = find_available_port(DEFAULT_HOST, DEFAULT_PORT)
 
         assert port == DEFAULT_PORT
 
     def test_skips_busy_port_returns_next(self):
-        with patch("src.main.socket.socket") as mock_socket_cls:
-            mock_sock = MagicMock()
-            mock_socket_cls.return_value.__enter__ = MagicMock(return_value=mock_sock)
-            mock_socket_cls.return_value.__exit__ = MagicMock(return_value=False)
-            mock_sock.bind.side_effect = [OSError("in use"), None]
-
+        with _fake_socket([OSError("in use"), None]):
             port = find_available_port(DEFAULT_HOST, DEFAULT_PORT)
 
         assert port == DEFAULT_PORT + 1
 
     def test_skips_multiple_busy_ports(self):
         n = 5
-        with patch("src.main.socket.socket") as mock_socket_cls:
-            mock_sock = MagicMock()
-            mock_socket_cls.return_value.__enter__ = MagicMock(return_value=mock_sock)
-            mock_socket_cls.return_value.__exit__ = MagicMock(return_value=False)
-            mock_sock.bind.side_effect = [OSError()] * (n - 1) + [None]
-
+        with _fake_socket([OSError()] * (n - 1) + [None]):
             port = find_available_port(DEFAULT_HOST, DEFAULT_PORT)
 
         assert port == DEFAULT_PORT + n - 1
 
     def test_raises_when_all_ports_busy(self):
-        with patch("src.main.socket.socket") as mock_socket_cls:
-            mock_sock = MagicMock()
-            mock_socket_cls.return_value.__enter__ = MagicMock(return_value=mock_sock)
-            mock_socket_cls.return_value.__exit__ = MagicMock(return_value=False)
-            mock_sock.bind.side_effect = OSError("busy")
-
+        with _fake_socket(OSError("busy")):
             with pytest.raises(RuntimeError, match="No available port"):
                 find_available_port(DEFAULT_HOST, DEFAULT_PORT)
 
     def test_raises_message_includes_port_range(self):
-        with patch("src.main.socket.socket") as mock_socket_cls:
-            mock_sock = MagicMock()
-            mock_socket_cls.return_value.__enter__ = MagicMock(return_value=mock_sock)
-            mock_socket_cls.return_value.__exit__ = MagicMock(return_value=False)
-            mock_sock.bind.side_effect = OSError("busy")
-
+        with _fake_socket(OSError("busy")):
             with pytest.raises(RuntimeError) as exc_info:
                 find_available_port(DEFAULT_HOST, DEFAULT_PORT)
 
@@ -99,24 +88,14 @@ class TestFindAvailablePort:
         assert str(DEFAULT_PORT + MAX_PORT_TRIES) in msg
 
     def test_uses_custom_host_and_start_port(self):
-        with patch("src.main.socket.socket") as mock_socket_cls:
-            mock_sock = MagicMock()
-            mock_socket_cls.return_value.__enter__ = MagicMock(return_value=mock_sock)
-            mock_socket_cls.return_value.__exit__ = MagicMock(return_value=False)
-            mock_sock.bind.return_value = None
-
+        with _fake_socket() as mock_sock:
             port = find_available_port("0.0.0.0", 9000)
 
         assert port == 9000
         mock_sock.bind.assert_called_once_with(("0.0.0.0", 9000))
 
     def test_tries_exactly_max_port_tries_times(self):
-        with patch("src.main.socket.socket") as mock_socket_cls:
-            mock_sock = MagicMock()
-            mock_socket_cls.return_value.__enter__ = MagicMock(return_value=mock_sock)
-            mock_socket_cls.return_value.__exit__ = MagicMock(return_value=False)
-            mock_sock.bind.side_effect = OSError("busy")
-
+        with _fake_socket(OSError("busy")) as mock_sock:
             with pytest.raises(RuntimeError):
                 find_available_port(DEFAULT_HOST, DEFAULT_PORT)
 

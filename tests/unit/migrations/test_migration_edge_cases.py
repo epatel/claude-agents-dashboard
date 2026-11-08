@@ -14,11 +14,12 @@ import pytest_asyncio
 import tempfile
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock
 import aiosqlite
 
 from src.migrations.migration import Migration
 from src.migrations.runner import MigrationRunner
+from tests.unit.migrations.migration_helpers import SCHEMA_MIGRATIONS_TABLE, scratch_db
 
 
 class ConcurrentSafeMigration(Migration):
@@ -39,19 +40,8 @@ class ConcurrentSafeMigration(Migration):
 @pytest_asyncio.fixture
 async def raw_db():
     """Create a raw database connection with schema_migrations table."""
-    with tempfile.TemporaryDirectory() as tmp:
-        db_path = Path(tmp) / "test.db"
-        conn = await aiosqlite.connect(str(db_path))
-        conn.row_factory = aiosqlite.Row
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                version TEXT PRIMARY KEY,
-                description TEXT,
-                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+    async with scratch_db(SCHEMA_MIGRATIONS_TABLE) as conn:
         yield conn
-        await conn.close()
 
 
 @pytest_asyncio.fixture
