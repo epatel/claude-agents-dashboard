@@ -232,7 +232,7 @@ graph TB
     end
 
     subgraph Backend["Backend (Python 3.12+ / FastAPI)"]
-        Routes["routes.py — HTTP + WS endpoints"]
+        Routes["routes.py + agent / settings / provider /<br/>attachment / epic / shortcut routes — HTTP + WS endpoints"]
         FileRoutes["file_routes.py — File browser API"]
         WSMgr["ConnectionManager — WebSocket + Rate Limiting"]
         Orch["AgentOrchestrator — facade"]

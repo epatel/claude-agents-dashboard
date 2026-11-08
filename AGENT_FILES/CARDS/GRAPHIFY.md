@@ -57,7 +57,7 @@ Everything above is the CLI workflow you drive by hand. The dashboard also owns 
 - **`GraphService`** (`src/services/graph_service.py`) — build / refresh / query / status, version detection and cost tracking; shells out via `python -m graphify` and owns `graphify-out/`.
 - **Config** — the `graphify_enabled`, `graphify_auto_refresh` and `graphify_backend` columns on `agent_config` (migration `028`), surfaced as **Settings ▸ Graphify**. Off by default.
 - **Agent access** — the read-only `graph_query` MCP tool (`src/agent/graph_query.py`), wired into a session only when `graphify_enabled` **and** the provider profile allows it.
-- **Routes** — `GET`/`POST` under `/api/graphify/*` in `src/web/routes.py`; progress reaches the UI as the `graph_build_progress` / `graph_ready` WebSocket events from `NotificationService`.
+- **Routes** — `GET`/`POST` under `/api/graphify/*` in `src/web/settings_routes.py`; progress reaches the UI as the `graph_build_progress` / `graph_ready` WebSocket events from `NotificationService`.
 - **Auto-refresh** — `WorkflowService._maybe_refresh_graph_after_merge` re-runs an incremental update after a successful merge when `graphify_auto_refresh` is on.
 
 AST builds/refreshes are free; semantic (LLM) builds cost tokens — see the rebuild notes above.

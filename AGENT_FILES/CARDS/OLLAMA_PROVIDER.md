@@ -128,7 +128,7 @@ every interpretation.
 - `agent/profiles.py` — single source of truth for provider routing (`is_ollama_model`: any model not starting with `claude-` or `kimi-`), the env builder (`resolve_ollama_env`), and the per-provider `AgentProfile` (SDK options + feature gates: graphify/external MCP/plugins/chrome disabled for Ollama)
 - `session.py` — `ClaudeAgentSession` consumes the profile; Ollama env passthrough via subprocess environment override
 - `session_service.py` — Reads Ollama config from agent_config, resolves the env via `profiles.resolve_ollama_env`, and passes it to session creation
-- `routes.py` — `/api/ollama/models` endpoint for dynamic model discovery (with optional `?force=true` to bust the cache); connection-status checks are derived from this endpoint succeeding/failing
+- `provider_routes.py` — `/api/ollama/models` endpoint for dynamic model discovery (with optional `?force=true` to bust the cache); connection-status checks are derived from this endpoint succeeding/failing
 
 ## Test Script
 

@@ -146,17 +146,25 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     shortcuts → `_find_shortcut` / `_kill_shortcut_process` / `_read_shortcut_output`.
     `_tiiny_request` keeps its 5 positional parameters (tests patch it and read `call_args`).
     Harness: handlers of both modules called directly with the same fake request / DB /
-    orchestrator, `urlopen` patched, real shortcut subprocesses — 42 cases identical. Left: file size
-    (next: split into routers; keep each group's route order — FastAPI matches in registration
-    order, e.g. `/api/items/blocked-status` before `/api/items/{item_id}`).
-  - **Scores** (2026-11-08, after 10d): headline 8.99, src 9.41, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+    orchestrator, `urlopen` patched, real shortcut subprocesses — 42 cases identical.
+    10e `web/routes.py` 8.78 → 10.00 (1897 → 750 lines): route groups moved to `agent_routes.py`,
+    `settings_routes.py`, `provider_routes.py`, `attachment_routes.py`, `epic_routes.py`,
+    `shortcut_routes.py` (each its own `APIRouter`, included into `routes.router` at the end of
+    `routes.py`, so `app.py` is unchanged); stats cache → `stats_cache.py`, `_item_rows` →
+    `route_helpers.py`. FastAPI 0.141 nests included routers (`_IncludedRouter`) instead of copying
+    routes; verified with `_match` resolution of 44,442 (method, path) pairs in old vs new apps (every
+    path parameter filled with every static segment): 0 differ. Handler harness 42/42 vs 10d; tests
+    patch `_tiiny_request` in `src.web.provider_routes` now; 1441 tests; live smoke on :8017.
+  - **Scores** (2026-11-08, after 10e): headline 9.04, src 9.50, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
     auto-expands folders holding changed files without loading their children, so deeper changed
     files stay hidden until the folder is toggled twice; (3) `test_mini_mcp.mjs` still treats
     `config.mcp_servers` as a JSON string (`JSON.parse` on what is now an object throws, is caught,
-    and the existing servers are dropped from the PUT).
+    and the existing servers are dropped from the PUT); (4) `GET /api/items/{id}/diff` for an unknown
+    item returns HTTP 500, and `GET /api/assets/{name}` for a missing file returns 200 with
+    `{"error": "not found"}`.
 
 ## Decisions
 

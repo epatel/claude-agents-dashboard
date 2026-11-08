@@ -1468,7 +1468,7 @@ class TestTiinyRoutes:
     async def test_models_lists_device_models(self, client):
         listing = {"data": [{"id": "default"}, {"id": "Qwen3-30B", "display_name": "Qwen3 30B"}]}
         with patch("src.agent.profiles.get_tiiny_api_key", return_value="sk-x"), \
-             patch("src.web.routes._tiiny_request", return_value=(200, listing)) as req:
+             patch("src.web.provider_routes._tiiny_request", return_value=(200, listing)) as req:
             data = (await client.get("/api/tiiny/models?force=true")).json()
         assert [m["name"] for m in data["models"]] == ["tiiny/default", "tiiny/Qwen3-30B"]
         assert data["error"] is None
@@ -1478,7 +1478,7 @@ class TestTiinyRoutes:
     @pytest.mark.asyncio
     async def test_models_404_listing_is_not_an_error(self, client):
         with patch("src.agent.profiles.get_tiiny_api_key", return_value="sk-x"), \
-             patch("src.web.routes._tiiny_request", return_value=(404, "not found")):
+             patch("src.web.provider_routes._tiiny_request", return_value=(404, "not found")):
             data = (await client.get("/api/tiiny/models?force=true")).json()
         assert [m["name"] for m in data["models"]] == ["tiiny/default"]
         assert data["error"] is None
@@ -1486,7 +1486,7 @@ class TestTiinyRoutes:
     @pytest.mark.asyncio
     async def test_models_bad_key_reports_401(self, client):
         with patch("src.agent.profiles.get_tiiny_api_key", return_value="sk-bad"), \
-             patch("src.web.routes._tiiny_request", return_value=(401, {"type": "error"})):
+             patch("src.web.provider_routes._tiiny_request", return_value=(401, {"type": "error"})):
             data = (await client.get("/api/tiiny/models?force=true")).json()
         assert "API key" in data["error"]
 
@@ -1494,7 +1494,7 @@ class TestTiinyRoutes:
     async def test_connection_test_ok(self, client):
         reply = {"model": "Qwen3-30B", "content": [{"type": "text", "text": "OK"}]}
         with patch("src.agent.profiles.get_tiiny_api_key", return_value="sk-x"), \
-             patch("src.web.routes._tiiny_request", return_value=(200, reply)) as req:
+             patch("src.web.provider_routes._tiiny_request", return_value=(200, reply)) as req:
             data = (await client.post("/api/tiiny/test", json={})).json()
         assert data["ok"] is True and data["reply"] == "OK"
         method, url, _key, body = req.call_args.args[:4]
@@ -1504,7 +1504,7 @@ class TestTiinyRoutes:
     @pytest.mark.asyncio
     async def test_connection_test_unreachable(self, client):
         with patch("src.agent.profiles.get_tiiny_api_key", return_value="sk-x"), \
-             patch("src.web.routes._tiiny_request", return_value=(0, "Connection refused")):
+             patch("src.web.provider_routes._tiiny_request", return_value=(0, "Connection refused")):
             data = (await client.post("/api/tiiny/test", json={})).json()
         assert data["ok"] is False
         assert "not reachable" in data["message"]
@@ -1512,7 +1512,7 @@ class TestTiinyRoutes:
     @pytest.mark.asyncio
     async def test_connection_test_without_key(self, client):
         with patch("src.agent.profiles.get_tiiny_api_key", return_value=""), \
-             patch("src.web.routes._tiiny_request") as req:
+             patch("src.web.provider_routes._tiiny_request") as req:
             data = (await client.post("/api/tiiny/test", json={})).json()
         assert data["ok"] is False
         req.assert_not_called()
