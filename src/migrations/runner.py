@@ -13,6 +13,26 @@ from .migration import Migration
 logger = logging.getLogger(__name__)
 
 
+def _is_migration_subclass(attr) -> bool:
+    """Whether `attr` is a class deriving from a class named Migration (but not Migration itself)."""
+    if not isinstance(attr, type) or attr.__name__ == 'Migration':
+        return False
+    return any(base.__name__ == 'Migration' for base in attr.__mro__)
+
+
+def _migration_class(module):
+    """The first Migration subclass in `module`, or None.
+
+    Checks by class name to handle different import paths
+    (e.g., "from migration import Migration" vs "from src.migrations.migration import Migration").
+    """
+    for attr_name in dir(module):
+        attr = getattr(module, attr_name)
+        if _is_migration_subclass(attr):
+            return attr
+    return None
+
+
 class MigrationRunner:
     """Manages and runs database migrations."""
 
@@ -42,43 +62,34 @@ class MigrationRunner:
             return
 
         for file_path in sorted(self.migrations_dir.glob("*.py")):
-            if file_path.name.startswith("__"):
-                continue
-
-            try:
-                # Extract version from filename (e.g., "001_initial_schema.py" -> "001")
-                version = file_path.stem.split("_")[0]
-
-                # Load module dynamically
-                spec = importlib.util.spec_from_file_location(
-                    f"migration_{version}", file_path
-                )
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-
-                # Find Migration class in module
-                # Check by class name to handle different import paths
-                # (e.g., "from migration import Migration" vs "from src.migrations.migration import Migration")
-                migration_class = None
-                for attr_name in dir(module):
-                    attr = getattr(module, attr_name)
-                    if (isinstance(attr, type) and
-                        attr.__name__ != 'Migration' and
-                        any(base.__name__ == 'Migration' for base in attr.__mro__)):
-                        migration_class = attr
-                        break
-
-                if migration_class:
-                    migration = migration_class()
-                    self._migrations[version] = migration
-                    logger.debug(f"Loaded migration: {migration}")
-                else:
-                    logger.warning(f"No Migration class found in {file_path}. Available classes: {[name for name in dir(module) if not name.startswith('_')]}")
-
-            except Exception as e:
-                logger.error(f"Failed to load migration {file_path}: {e}")
+            if not file_path.name.startswith("__"):
+                self._load_migration(file_path)
 
         self._discovered = True
+
+    def _load_migration(self, file_path: Path) -> None:
+        """Load one migration file and register its Migration class (errors are logged)."""
+        try:
+            # Extract version from filename (e.g., "001_initial_schema.py" -> "001")
+            version = file_path.stem.split("_")[0]
+
+            # Load module dynamically
+            spec = importlib.util.spec_from_file_location(
+                f"migration_{version}", file_path
+            )
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+            migration_class = _migration_class(module)
+            if migration_class:
+                migration = migration_class()
+                self._migrations[version] = migration
+                logger.debug(f"Loaded migration: {migration}")
+            else:
+                logger.warning(f"No Migration class found in {file_path}. Available classes: {[name for name in dir(module) if not name.startswith('_')]}")
+
+        except Exception as e:
+            logger.error(f"Failed to load migration {file_path}: {e}")
 
     async def get_applied_migrations(self, db: aiosqlite.Connection) -> List[str]:
         """Get list of applied migration versions."""

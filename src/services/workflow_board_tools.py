@@ -19,25 +19,41 @@ from ..constants import AUTO_APPROVE_MODES, AUTO_APPROVE_OFF
 logger = logging.getLogger(__name__.rsplit(".", 1)[0] + ".workflow_service")
 
 
+# create_todo options beyond title / description, with their defaults.
+TODO_OPTION_DEFAULTS: Dict[str, Any] = {
+    "epic_id": None,
+    "requires": None,
+    "autostart": False,
+    "auto_approve": 0,
+    "use_chrome": False,
+}
+
+
+def _todo_options(options: Dict[str, Any]) -> Dict[str, Any]:
+    """``options`` over ``TODO_OPTION_DEFAULTS``; an unknown name is a TypeError."""
+    unknown = [name for name in options if name not in TODO_OPTION_DEFAULTS]
+    if unknown:
+        raise TypeError(
+            f"BoardToolCallbacksMixin.create_agent_todo() got an unexpected keyword argument '{unknown[0]}'"
+        )
+    return {**TODO_OPTION_DEFAULTS, **options}
+
+
 class BoardToolCallbacksMixin:
     """Board-tool callback factories and their helpers (see module docstring)."""
 
     async def create_agent_todo(self, creator_item_id: str, title: str, description: str = "",
-                                epic_id: str = None, requires: list[str] = None,
-                                autostart: bool = False, auto_approve: int = 0,
-                                use_chrome: bool = False) -> Dict[str, Any]:
+                                **options) -> Dict[str, Any]:
         """Create a todo on behalf of an agent, with full callback semantics.
 
         Same code path as the Claude agents' create_todo MCP tool (dependency
         wiring, autostart with the unmerged-creator auto-anchor, broadcasts).
         Used by out-of-process tool proxies (e.g. the Kimi board MCP server)
-        via POST /api/items/{item_id}/agent-todos.
+        via POST /api/items/{item_id}/agent-todos. ``options`` are the keyword
+        options in ``TODO_OPTION_DEFAULTS``; any other keyword is a TypeError.
         """
         callback = self._create_on_create_todo_callback(creator_item_id)
-        return await callback(
-            title, description, epic_id=epic_id, requires=requires,
-            autostart=autostart, auto_approve=auto_approve, use_chrome=use_chrome,
-        )
+        return await callback(title, description, **_todo_options(options))
 
     def _create_on_create_todo_callback(self, item_id: str):
         async def on_create_todo(title: str, description: str, epic_id: str = None, requires: list[str] = None, autostart: bool = False, auto_approve: int = 0, use_chrome: bool = False) -> Dict[str, Any]:

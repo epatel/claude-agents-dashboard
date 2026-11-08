@@ -8,6 +8,22 @@ from migration import Migration
 import aiosqlite
 
 
+# (old, new) model ids this migration moves rows between.
+_RENAMES = (
+    ("claude-opus-4-6", "claude-opus-4-7"),
+    ("claude-sonnet-4-20250514", "claude-sonnet-4-6"),
+    ("claude-sonnet-4-20250514+advisor", "claude-sonnet-4-6+advisor"),
+)
+
+
+async def _rename_models(db: aiosqlite.Connection, table: str, renames) -> None:
+    """Set ``model`` to ``new`` on every ``table`` row whose model is ``old``, per (old, new)."""
+    for old, new in renames:
+        await db.execute(
+            f"UPDATE {table} SET model = '{new}' WHERE model = '{old}'"
+        )
+
+
 class UpgradeSelectableModelsMigration(Migration):
     """Shift existing rows from Opus 4.6 → 4.7 and Sonnet 4 (dated) → Sonnet 4.6."""
 
@@ -18,44 +34,14 @@ class UpgradeSelectableModelsMigration(Migration):
         )
 
     async def up(self, db: aiosqlite.Connection) -> None:
-        await db.execute(
-            "UPDATE items SET model = 'claude-opus-4-7' WHERE model = 'claude-opus-4-6'"
-        )
+        await _rename_models(db, "items", _RENAMES[:1])
         await db.execute(
             "UPDATE items SET model = 'claude-opus-4-7' WHERE model IS NULL"
         )
-        await db.execute(
-            "UPDATE items SET model = 'claude-sonnet-4-6' WHERE model = 'claude-sonnet-4-20250514'"
-        )
-        await db.execute(
-            "UPDATE items SET model = 'claude-sonnet-4-6+advisor' WHERE model = 'claude-sonnet-4-20250514+advisor'"
-        )
-        await db.execute(
-            "UPDATE agent_config SET model = 'claude-opus-4-7' WHERE model = 'claude-opus-4-6'"
-        )
-        await db.execute(
-            "UPDATE agent_config SET model = 'claude-sonnet-4-6' WHERE model = 'claude-sonnet-4-20250514'"
-        )
-        await db.execute(
-            "UPDATE agent_config SET model = 'claude-sonnet-4-6+advisor' WHERE model = 'claude-sonnet-4-20250514+advisor'"
-        )
+        await _rename_models(db, "items", _RENAMES[1:])
+        await _rename_models(db, "agent_config", _RENAMES)
 
     async def down(self, db: aiosqlite.Connection) -> None:
-        await db.execute(
-            "UPDATE items SET model = 'claude-opus-4-6' WHERE model = 'claude-opus-4-7'"
-        )
-        await db.execute(
-            "UPDATE items SET model = 'claude-sonnet-4-20250514' WHERE model = 'claude-sonnet-4-6'"
-        )
-        await db.execute(
-            "UPDATE items SET model = 'claude-sonnet-4-20250514+advisor' WHERE model = 'claude-sonnet-4-6+advisor'"
-        )
-        await db.execute(
-            "UPDATE agent_config SET model = 'claude-opus-4-6' WHERE model = 'claude-opus-4-7'"
-        )
-        await db.execute(
-            "UPDATE agent_config SET model = 'claude-sonnet-4-20250514' WHERE model = 'claude-sonnet-4-6'"
-        )
-        await db.execute(
-            "UPDATE agent_config SET model = 'claude-sonnet-4-20250514+advisor' WHERE model = 'claude-sonnet-4-6+advisor'"
-        )
+        reverted = [(new, old) for old, new in _RENAMES]
+        await _rename_models(db, "items", reverted)
+        await _rename_models(db, "agent_config", reverted)

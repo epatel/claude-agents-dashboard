@@ -20,7 +20,7 @@ A dashboard-managed library of [Agent Skills](https://docs.claude.com/en/docs/cl
   - `list_installed(enabled)` / `installed_names()` — enumerate the library with per-project enabled flags + description + source.
   - `plugin_path(name)` / `remove(name)`.
   - `_parse_spec` accepts `owner/repo[/path][@ref]` or a `https://github.com/...` tree/blob URL.
-- **Library layout** (gitignored — `SkillsService._ensure_gitignore` appends `skill-library/` to the dashboard's `.gitignore`):
+- **Library layout** (gitignored — `SkillsService._ensure_gitignore` appends `skill-library/` to the dashboard's `.gitignore` via `append_gitignore_entry` in `src/git/operations.py`, shared with `GraphService`):
   ```
   skill-library/<name>/
       .claude-plugin/plugin.json     # {name, version, description, source}

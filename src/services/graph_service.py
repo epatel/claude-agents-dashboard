@@ -22,6 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..git.operations import append_gitignore_entry
+
 logger = logging.getLogger(__name__)
 
 GRAPH_OUT_DIRNAME = "graphify-out"
@@ -188,14 +190,8 @@ class GraphService:
         gitignore = self.target_project / ".gitignore"
         entry = GRAPH_OUT_DIRNAME + "/"
         try:
-            content = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
-            if entry in content.splitlines():
-                return
-            with gitignore.open("a", encoding="utf-8") as f:
-                if content and not content.endswith("\n"):
-                    f.write("\n")
-                f.write(entry + "\n")
-            logger.info("graphify: added %s to %s", entry, gitignore)
+            if append_gitignore_entry(gitignore, entry):
+                logger.info("graphify: added %s to %s", entry, gitignore)
         except Exception as exc:
             logger.warning("graphify: could not update .gitignore: %s", exc)
 

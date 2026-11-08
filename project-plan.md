@@ -188,7 +188,24 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     — all identical.
     10j `services/notification_service.py` 8.20 → 9.31 — `format_tool_use` → `_TOOL_FORMATTERS` table
     + `_truncated`; 50,000 fuzzed (tool name, input) pairs identical in result or exception.
-  - **Scores** (2026-11-08, after 10j): headline 9.13, src 9.63, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+    10k the rest of `src/` below 9.0: `agent/path_guard.py` 8.28 → 10.00 (hook → `_tool_path` / `_deny`
+    + `path_denial` / `bash_denial` closures; 12,000 fuzzed hook calls on real dirs and symlinks,
+    single- and multi-repo, identical incl. denials, errors and warnings); `migrations/runner.py`
+    8.60 → 10.00 (`_load_migration`, `_migration_class`; discovery over the real versions dir and 13
+    edge-case files identical); `web/file_routes.py` 8.86 → 9.54 (`read_file_content` →
+    `_read_3d_model` / `_read_archive` / `_read_image` / `_read_text`; 271 files × limits × hidden
+    patterns identical incl. key order, 30,000 `is_secret_file` calls); `_ensure_gitignore` of graph +
+    skills → `append_gitignore_entry` in `git/operations.py` (11 file states × both services
+    identical); migrations 001 / 019 7.1 / 7.0 → 10.00 as statement tables (same SQL in the same order;
+    a fresh DB through all 33 migrations ends with an identical schema and rows); `model_catalog.py`
+    8.96 → 10.00 (`_usable_model_id`, `_display_name`; 20,000 fuzzed feeds identical);
+    `workflow_board_tools.py` 8.68 → 8.97 (`create_agent_todo` options → `TODO_OPTION_DEFAULTS`, same
+    TypeError texts; 1732 call shapes identical). Left on purpose: `on_create_todo`'s 7 positional
+    parameters (the create_todo tool contract: `todo.py` calls it positionally and
+    `test_mcp_tool_servers` pins that) and `orchestrator.py` 8.51 (the app facade: 5-parameter
+    constructor, and legacy `_update_item` / `_log` helpers that integration tests use, which is what
+    "low cohesion" counts).
+  - **Scores** (2026-11-08, after 10k): headline 9.16, src 9.72, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser

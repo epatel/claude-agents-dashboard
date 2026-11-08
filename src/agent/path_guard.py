@@ -122,6 +122,26 @@ class PathScope:
         )
 
 
+def _tool_path(tool_name, tool_input):
+    """The path a file tool acts on, picked by tool shape ("" for other tools)."""
+    if tool_name in FILE_PATH_TOOLS:
+        return tool_input.get("file_path", "")
+    if tool_name in PATH_TOOLS:
+        return tool_input.get("path", "")
+    return ""
+
+
+def _deny(reason):
+    """PreToolUse hook output that denies the tool call with `reason`."""
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }
+
+
 def make_path_guard_hook(worktree_path: Path, workspace_root: Optional[Path] = None):
     """Create a PreToolUse hook that enforces the worktree boundary.
 
@@ -140,64 +160,55 @@ def make_path_guard_hook(worktree_path: Path, workspace_root: Optional[Path] = N
     project_root_str = scope.project_root
     workspace_root_str = scope.workspace_root
 
+    def path_denial(tool_name, path_str):
+        """Deny response when the tool's path is outside its allowed scope, else None."""
+        resolved = scope.resolve(path_str)
+        if resolved is None:
+            return None
+        is_read = tool_name in READ_ONLY_TOOLS
+        denied = (
+            scope.read_denied(resolved) if is_read
+            else scope.write_denied(resolved)
+        )
+        if not denied:
+            return None
+        logger.warning(
+            f"Path guard blocked {tool_name} on {path_str} "
+            f"(worktree {worktree_str}, workspace {workspace_root_str})"
+        )
+        return _deny(scope.read_deny_reason if is_read else scope.write_deny_reason)
+
+    def bash_denial(tool_input):
+        """Deny response when a Bash command names the main project root but not the worktree.
+
+        Best-effort single-repo heuristic: in multi-repo mode the parent-root check
+        would produce false positives on every sibling-repo read, so it is skipped.
+        """
+        if workspace_root_str:
+            return None
+        command = tool_input.get("command", "")
+        if project_root_str not in command or worktree_str in command:
+            return None
+        logger.warning(
+            f"Path guard blocked Bash command referencing main repo: {command[:100]}"
+        )
+        return _deny(
+            f"This command references the main project directory ({project_root_str}) "
+            f"instead of your worktree ({worktree_str}). "
+            "Use relative paths or paths within your worktree."
+        )
+
     async def hook(hook_input, tool_use_id, context):
         tool_name = hook_input.get("tool_name", "")
         tool_input = hook_input.get("tool_input", {})
 
-        # Pick the path field depending on tool shape
-        path_str = ""
-        if tool_name in FILE_PATH_TOOLS:
-            path_str = tool_input.get("file_path", "")
-        elif tool_name in PATH_TOOLS:
-            path_str = tool_input.get("path", "")
-
-        if path_str:
-            resolved = scope.resolve(path_str)
-            if resolved is not None:
-                is_read = tool_name in READ_ONLY_TOOLS
-                denied = (
-                    scope.read_denied(resolved) if is_read
-                    else scope.write_denied(resolved)
-                )
-                if denied:
-                    logger.warning(
-                        f"Path guard blocked {tool_name} on {path_str} "
-                        f"(worktree {worktree_str}, workspace {workspace_root_str})"
-                    )
-                    return {
-                        "hookSpecificOutput": {
-                            "hookEventName": "PreToolUse",
-                            "permissionDecision": "deny",
-                            "permissionDecisionReason": (
-                                scope.read_deny_reason if is_read
-                                else scope.write_deny_reason
-                            ),
-                        }
-                    }
+        path_str = _tool_path(tool_name, tool_input)
+        denial = path_denial(tool_name, path_str) if path_str else None
 
         # Check Bash commands for references to paths outside the allowed scope.
-        # This is best-effort — we only flag when the command clearly mentions
-        # the main project root without the worktree (single-repo heuristic).
-        # In multi-repo mode the parent-root heuristic would produce false
-        # positives on every sibling-repo read, so we skip it.
-        if tool_name == "Bash" and not workspace_root_str:
-            command = tool_input.get("command", "")
-            if project_root_str in command and worktree_str not in command:
-                logger.warning(
-                    f"Path guard blocked Bash command referencing main repo: {command[:100]}"
-                )
-                return {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PreToolUse",
-                        "permissionDecision": "deny",
-                        "permissionDecisionReason": (
-                            f"This command references the main project directory ({project_root_str}) "
-                            f"instead of your worktree ({worktree_str}). "
-                            "Use relative paths or paths within your worktree."
-                        ),
-                    }
-                }
+        if denial is None and tool_name == "Bash":
+            denial = bash_denial(tool_input)
 
-        return {}
+        return denial or {}
 
     return hook

@@ -53,26 +53,41 @@ def parse_model_list(data: dict) -> dict[str, list[tuple[str, str, bool]]]:
     by_provider: dict[str, list[tuple[str, str, bool]]] = {}
     seen: set[str] = set()
     for model in data.get("models", []):
-        if not isinstance(model, dict) or model.get("provider") not in FEED_PROVIDERS:
-            continue
-        if model.get("status") == "deprecated":
-            continue
-        prefix, experimental, _ = FEED_PROVIDERS[model["provider"]]
-        feed_id = model.get("id")
-        if not isinstance(feed_id, str) or not _MODEL_ID_RE.match(feed_id):
-            continue
-        model_id = prefix + feed_id
-        if model_id in seen:
+        model_id = _usable_model_id(model)
+        if model_id is None or model_id in seen:
             continue
         seen.add(model_id)
-        name = model.get("name")
-        if not isinstance(name, str) or not name.strip():
-            name = feed_id
+        _, experimental, _ = FEED_PROVIDERS[model["provider"]]
+        name = _display_name(model)
         entries = by_provider.setdefault(model["provider"], [])
         entries.append((model_id, name, experimental))
         if model_id in CLAUDE_1M_OPT_IN_MODELS:
             entries.append((f"{model_id}[1m]", f"{name} (1M)", experimental))
     return by_provider
+
+
+def _usable_model_id(model) -> str | None:
+    """The dashboard model id (provider prefix + feed id) for a usable feed entry, else None.
+
+    Usable: a dict from a known provider, not deprecated, with a well-formed id.
+    """
+    if not isinstance(model, dict) or model.get("provider") not in FEED_PROVIDERS:
+        return None
+    if model.get("status") == "deprecated":
+        return None
+    prefix, _, _ = FEED_PROVIDERS[model["provider"]]
+    feed_id = model.get("id")
+    if not isinstance(feed_id, str) or not _MODEL_ID_RE.match(feed_id):
+        return None
+    return prefix + feed_id
+
+
+def _display_name(model: dict) -> str:
+    """The entry's name, or its feed id when the name is missing or blank."""
+    name = model.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return model.get("id")
+    return name
 
 
 def _fetch_model_list() -> dict:

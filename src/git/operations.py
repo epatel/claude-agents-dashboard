@@ -404,3 +404,18 @@ def _merge_failure_message(e: Exception) -> str:
         return f"Merge operation timed out: {str(e)}"
     return e.stderr.decode() if e.stderr else str(e)
 
+
+def append_gitignore_entry(gitignore: Path, entry: str) -> bool:
+    """Append ``entry`` as a line of ``gitignore`` unless it already is one.
+
+    Creates the file if needed and starts a new line when the file does not end
+    with one. Returns True when the entry was appended. Errors propagate.
+    """
+    content = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+    if entry in content.splitlines():
+        return False
+    with gitignore.open("a", encoding="utf-8") as f:
+        if content and not content.endswith("\n"):
+            f.write("\n")
+        f.write(entry + "\n")
+    return True

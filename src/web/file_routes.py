@@ -130,12 +130,11 @@ def is_secret_file(filename: str, rel_path: str = "", extra_patterns: list[str] 
 
     Checks built-in patterns first, then any extra patterns from .browserhidden.
     """
-    for pattern in FILE_BROWSER_SECRET_PATTERNS:
-        if fnmatch.fnmatch(filename, pattern):
-            return True
-    if extra_patterns and matches_browserhidden(filename, rel_path or filename, extra_patterns):
+    if any(fnmatch.fnmatch(filename, pattern) for pattern in FILE_BROWSER_SECRET_PATTERNS):
         return True
-    return False
+    if not extra_patterns:
+        return False
+    return matches_browserhidden(filename, rel_path or filename, extra_patterns)
 
 
 def detect_language(filename: str) -> str | None:
@@ -238,46 +237,53 @@ def read_file_content(
         }
 
     ext = file_path.suffix.lower()
-
-    # 3D model files — return base64 data for client-side rendering
     if ext in FILE_BROWSER_3D_EXTENSIONS:
-        if size > FILE_BROWSER_MAX_3D_SIZE:
-            return {
-                "path": rel_path, "content": None, "size": size,
-                "language": None, "binary": True, "viewer": "3d",
-                "model_format": ext.lstrip("."),
-            }
-        raw = file_path.read_bytes()
-        b64 = base64.b64encode(raw).decode("ascii")
-        return {
-            "path": rel_path, "content": b64, "size": size,
-            "language": None, "binary": True, "viewer": "3d",
-            "model_format": ext.lstrip("."),
-        }
-
-    # Archive files — list contents
+        return _read_3d_model(file_path, rel_path, size, ext)
     if ext in FILE_BROWSER_ARCHIVE_EXTENSIONS:
-        entries = _read_zip_contents(file_path)
-        return {
-            "path": rel_path, "content": None, "size": size,
-            "language": None, "binary": True, "viewer": "archive",
-            "archive_entries": entries,
-        }
-
+        return _read_archive(file_path, rel_path, size)
     if ext in FILE_BROWSER_IMAGE_EXTENSIONS:
-        mime_type = FILE_BROWSER_IMAGE_MIME_TYPES.get(ext, "application/octet-stream")
-        if size > FILE_BROWSER_MAX_IMAGE_SIZE:
-            return {
-                "path": rel_path, "content": None, "size": size,
-                "language": None, "binary": True, "mime_type": mime_type,
-            }
-        raw = file_path.read_bytes()
-        b64 = base64.b64encode(raw).decode("ascii")
-        return {
-            "path": rel_path, "content": f"data:{mime_type};base64,{b64}",
-            "size": size, "language": None, "binary": True, "mime_type": mime_type,
-        }
+        return _read_image(file_path, rel_path, size, ext)
+    return _read_text(file_path, rel_path, size)
 
+
+def _read_3d_model(file_path: Path, rel_path: str, size: int, ext: str) -> dict:
+    """3D model file: base64 data for client-side rendering (none when too large)."""
+    content = None
+    if size <= FILE_BROWSER_MAX_3D_SIZE:
+        content = base64.b64encode(file_path.read_bytes()).decode("ascii")
+    return {
+        "path": rel_path, "content": content, "size": size,
+        "language": None, "binary": True, "viewer": "3d",
+        "model_format": ext.lstrip("."),
+    }
+
+
+def _read_archive(file_path: Path, rel_path: str, size: int) -> dict:
+    """Archive file: its listed contents."""
+    entries = _read_zip_contents(file_path)
+    return {
+        "path": rel_path, "content": None, "size": size,
+        "language": None, "binary": True, "viewer": "archive",
+        "archive_entries": entries,
+    }
+
+
+def _read_image(file_path: Path, rel_path: str, size: int, ext: str) -> dict:
+    """Image file: a data URL (none when too large)."""
+    mime_type = FILE_BROWSER_IMAGE_MIME_TYPES.get(ext, "application/octet-stream")
+    content = None
+    if size <= FILE_BROWSER_MAX_IMAGE_SIZE:
+        b64 = base64.b64encode(file_path.read_bytes()).decode("ascii")
+        content = f"data:{mime_type};base64,{b64}"
+    return {
+        "path": rel_path, "content": content, "size": size,
+        "language": None, "binary": True, "mime_type": mime_type,
+    }
+
+
+def _read_text(file_path: Path, rel_path: str, size: int) -> dict:
+    """Text file content (truncated when long), or binary metadata when not UTF-8."""
+    filename = file_path.name
     try:
         raw = file_path.read_bytes()
         text = raw.decode("utf-8")

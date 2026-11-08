@@ -18,20 +18,8 @@ from migration import Migration
 import aiosqlite
 
 
-class InitialSchemaMigration(Migration):
-    """Creates the complete database schema."""
-
-    def __init__(self):
-        super().__init__(
-            version="001",
-            description="Initial database schema"
-        )
-
-    async def up(self, db: aiosqlite.Connection) -> None:
-        """Create all tables."""
-
-        # Items table - main kanban board items
-        await db.execute("""
+# Items table - main kanban board items
+_ITEMS = """
             CREATE TABLE IF NOT EXISTS items (
                 id            TEXT PRIMARY KEY,
                 title         TEXT NOT NULL,
@@ -47,10 +35,10 @@ class InitialSchemaMigration(Migration):
                 created_at    TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
             )
-        """)
+        """
 
-        # Work log table - agent activity stream
-        await db.execute("""
+# Work log table - agent activity stream
+_WORK_LOG = """
             CREATE TABLE IF NOT EXISTS work_log (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 item_id    TEXT NOT NULL REFERENCES items(id),
@@ -59,10 +47,10 @@ class InitialSchemaMigration(Migration):
                 content    TEXT NOT NULL,
                 metadata   TEXT
             )
-        """)
+        """
 
-        # Review comments table - code review feedback
-        await db.execute("""
+# Review comments table - code review feedback
+_REVIEW_COMMENTS = """
             CREATE TABLE IF NOT EXISTS review_comments (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 item_id     TEXT NOT NULL REFERENCES items(id),
@@ -71,10 +59,10 @@ class InitialSchemaMigration(Migration):
                 content     TEXT NOT NULL,
                 created_at  TEXT NOT NULL DEFAULT (datetime('now'))
             )
-        """)
+        """
 
-        # Clarifications table - agent questions awaiting user response
-        await db.execute("""
+# Clarifications table - agent questions awaiting user response
+_CLARIFICATIONS = """
             CREATE TABLE IF NOT EXISTS clarifications (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 item_id     TEXT NOT NULL REFERENCES items(id),
@@ -85,10 +73,10 @@ class InitialSchemaMigration(Migration):
                 created_at  TEXT NOT NULL DEFAULT (datetime('now')),
                 answered_at TEXT
             )
-        """)
+        """
 
-        # Attachments table - uploaded files and images
-        await db.execute("""
+# Attachments table - uploaded files and images
+_ATTACHMENTS = """
             CREATE TABLE IF NOT EXISTS attachments (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 item_id     TEXT NOT NULL REFERENCES items(id),
@@ -96,10 +84,10 @@ class InitialSchemaMigration(Migration):
                 asset_path  TEXT NOT NULL,
                 created_at  TEXT NOT NULL DEFAULT (datetime('now'))
             )
-        """)
+        """
 
-        # Agent config table - system configuration (single row)
-        await db.execute("""
+# Agent config table - system configuration (single row)
+_AGENT_CONFIG = """
             CREATE TABLE IF NOT EXISTS agent_config (
                 id              INTEGER PRIMARY KEY CHECK (id = 1),
                 system_prompt   TEXT,
@@ -111,15 +99,13 @@ class InitialSchemaMigration(Migration):
                 plugins         TEXT DEFAULT '[]',
                 updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
             )
-        """)
+        """
 
-        # Create default agent config row
-        await db.execute(
-            "INSERT OR IGNORE INTO agent_config (id) VALUES (1)"
-        )
+# Create default agent config row
+_DEFAULT_AGENT_CONFIG_ROW = "INSERT OR IGNORE INTO agent_config (id) VALUES (1)"
 
-        # Token usage table - track token consumption per agent run
-        await db.execute("""
+# Token usage table - track token consumption per agent run
+_TOKEN_USAGE = """
             CREATE TABLE IF NOT EXISTS token_usage (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 item_id         TEXT NOT NULL REFERENCES items(id),
@@ -130,29 +116,61 @@ class InitialSchemaMigration(Migration):
                 cost_usd        REAL,
                 completed_at    TEXT NOT NULL DEFAULT (datetime('now'))
             )
-        """)
+        """
 
-        # Create indexes for efficient querying
-        await db.execute("""
+# Index for efficient querying by item
+_IDX_TOKEN_USAGE_ITEM_ID = """
             CREATE INDEX IF NOT EXISTS idx_token_usage_item_id ON token_usage(item_id)
-        """)
+        """
 
-        await db.execute("""
+# Index for efficient querying by completion time
+_IDX_TOKEN_USAGE_COMPLETED_AT = """
             CREATE INDEX IF NOT EXISTS idx_token_usage_completed_at ON token_usage(completed_at)
-        """)
+        """
+
+# Every CREATE / INSERT statement, in the order up() runs them.
+_UP_STATEMENTS = (
+    _ITEMS,
+    _WORK_LOG,
+    _REVIEW_COMMENTS,
+    _CLARIFICATIONS,
+    _ATTACHMENTS,
+    _AGENT_CONFIG,
+    _DEFAULT_AGENT_CONFIG_ROW,
+    _TOKEN_USAGE,
+    _IDX_TOKEN_USAGE_ITEM_ID,
+    _IDX_TOKEN_USAGE_COMPLETED_AT,
+)
+
+# What down() drops: indexes first, then tables in reverse dependency order.
+_DROPPED = (
+    ("INDEX", "idx_token_usage_completed_at"),
+    ("INDEX", "idx_token_usage_item_id"),
+    ("TABLE", "token_usage"),
+    ("TABLE", "attachments"),
+    ("TABLE", "clarifications"),
+    ("TABLE", "review_comments"),
+    ("TABLE", "work_log"),
+    ("TABLE", "agent_config"),
+    ("TABLE", "items"),
+)
+
+
+class InitialSchemaMigration(Migration):
+    """Creates the complete database schema."""
+
+    def __init__(self):
+        super().__init__(
+            version="001",
+            description="Initial database schema"
+        )
+
+    async def up(self, db: aiosqlite.Connection) -> None:
+        """Create all tables."""
+        for statement in _UP_STATEMENTS:
+            await db.execute(statement)
 
     async def down(self, db: aiosqlite.Connection) -> None:
         """Drop all tables (destructive - use with caution)."""
-
-        # Drop indexes
-        await db.execute("DROP INDEX IF EXISTS idx_token_usage_completed_at")
-        await db.execute("DROP INDEX IF EXISTS idx_token_usage_item_id")
-
-        # Drop tables in reverse dependency order
-        await db.execute("DROP TABLE IF EXISTS token_usage")
-        await db.execute("DROP TABLE IF EXISTS attachments")
-        await db.execute("DROP TABLE IF EXISTS clarifications")
-        await db.execute("DROP TABLE IF EXISTS review_comments")
-        await db.execute("DROP TABLE IF EXISTS work_log")
-        await db.execute("DROP TABLE IF EXISTS agent_config")
-        await db.execute("DROP TABLE IF EXISTS items")
+        for kind, name in _DROPPED:
+            await db.execute(f"DROP {kind} IF EXISTS {name}")
