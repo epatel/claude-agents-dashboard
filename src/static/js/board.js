@@ -103,22 +103,22 @@ const Board = {
         // Don't overlay the reviewing badge if the item already has a real
         // status (e.g. conflict, merge_blocked) — that takes precedence.
         const existingStatus = card.querySelector('.card-status');
-        if (active) {
-            if (existingStatus && !existingStatus.classList.contains('card-status-reviewing')) {
-                return;
-            }
-            if (!existingStatus) {
-                const badge = document.createElement('div');
-                badge.className = 'card-status card-status-reviewing';
-                badge.dataset.mapName = 'card.status';
-                badge.innerHTML = '<span class="spinner"></span> Reviewing';
-                const titleEl = card.querySelector('.card-title');
-                if (titleEl && titleEl.parentNode) {
-                    titleEl.parentNode.insertBefore(badge, titleEl.nextSibling);
-                }
-            }
-        } else if (existingStatus && existingStatus.classList.contains('card-status-reviewing')) {
-            existingStatus.remove();
+        const isReviewing = !!existingStatus && existingStatus.classList.contains('card-status-reviewing');
+        if (!active) {
+            if (isReviewing) existingStatus.remove();
+            return;
+        }
+        if (!existingStatus) this._insertReviewingBadge(card);
+    },
+
+    _insertReviewingBadge(card) {
+        const badge = document.createElement('div');
+        badge.className = 'card-status card-status-reviewing';
+        badge.dataset.mapName = 'card.status';
+        badge.innerHTML = '<span class="spinner"></span> Reviewing';
+        const titleEl = card.querySelector('.card-title');
+        if (titleEl && titleEl.parentNode) {
+            titleEl.parentNode.insertBefore(badge, titleEl.nextSibling);
         }
     },
 
@@ -316,28 +316,24 @@ const Board = {
     },
 
     async startAgent(itemId) {
-        if (this.isItemBlocked(itemId)) {
-            const blockers = this.getBlockingItems(itemId).map(b => b.title).join(', ');
-            console.warn(`Cannot start blocked item ${itemId}. Blocked by: ${blockers}`);
-            return;
-        }
-        try {
-            await Api.startAgent(itemId);
-        } catch (err) {
-            console.error('Failed to start agent:', err);
-        }
+        await this._startUnlessBlocked(itemId, () => Api.startAgent(itemId), 'Failed to start agent:');
     },
 
     async startCopyAgent(itemId) {
+        await this._startUnlessBlocked(itemId, () => Api.startCopyAgent(itemId), 'Failed to start copy of agent:');
+    },
+
+    /** Run ``start`` unless the item is blocked by unresolved dependencies. */
+    async _startUnlessBlocked(itemId, start, failureMessage) {
         if (this.isItemBlocked(itemId)) {
             const blockers = this.getBlockingItems(itemId).map(b => b.title).join(', ');
             console.warn(`Cannot start blocked item ${itemId}. Blocked by: ${blockers}`);
             return;
         }
         try {
-            await Api.startCopyAgent(itemId);
+            await start();
         } catch (err) {
-            console.error('Failed to start copy of agent:', err);
+            console.error(failureMessage, err);
         }
     },
 
@@ -503,7 +499,7 @@ const Board = {
         });
         for (const item of items) {
             this.items[item.id] = item;
-            if (item.column_name !== 'done' && item.column_name !== 'archive' && item.column_name !== 'todo') {
+            if (!this._groupedColumns.includes(item.column_name)) {
                 const targetCol = document.querySelector(`.column-cards[data-column="${item.column_name}"]`);
                 if (targetCol) {
                     targetCol.appendChild(this.renderCard(item));
@@ -751,28 +747,33 @@ const Board = {
         const panel = document.getElementById('epic-panel');
         if (!toggle || !panel) return;
 
-        if (this._epicPanelExpanded) {
-            toggle.classList.add('expanded');
-            panel.classList.add('visible');
-        } else {
-            toggle.classList.remove('expanded');
-            panel.classList.remove('visible');
-            return;
-        }
+        toggle.classList.toggle('expanded', this._epicPanelExpanded);
+        panel.classList.toggle('visible', this._epicPanelExpanded);
+        if (!this._epicPanelExpanded) return;
 
         let html = '';
         for (const epic of this._epics) {
-            if (this._isEpicFullyArchived(epic)) continue;
-            const p = this._computeEpicProgress(epic.id, epic.progress) || {};
-            const done = (p.done || 0);
-            const total = (p.total || 0);
-            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-            const isActive = this._epicFilter === epic.id;
-            const isComplete = total > 0 && done === total;
-            const archiveBtn = isComplete
-                ? `<button class="epic-archive-btn" title="Archive all items in this epic" data-epic-id="${epic.id}" data-epic-title="${Board.escapeHtml(epic.title)}">Archive</button>`
-                : '';
-            html += `
+            if (!this._isEpicFullyArchived(epic)) html += this._epicCardHtml(epic);
+        }
+        if (this._epicFilter) {
+            html += `<button class="epic-filter-clear" onclick="Board.clearEpicFilter()">Clear filter</button>`;
+        }
+        panel.innerHTML = html;
+        this._wireEpicPanel(panel);
+    },
+
+    /** One epic in the panel: progress bar, and an Archive button once every item is done. */
+    _epicCardHtml(epic) {
+        const p = this._computeEpicProgress(epic.id, epic.progress) || {};
+        const done = (p.done || 0);
+        const total = (p.total || 0);
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        const isActive = this._epicFilter === epic.id;
+        const isComplete = total > 0 && done === total;
+        const archiveBtn = isComplete
+            ? `<button class="epic-archive-btn" title="Archive all items in this epic" data-epic-id="${epic.id}" data-epic-title="${Board.escapeHtml(epic.title)}">Archive</button>`
+            : '';
+        return `
                 <div class="epic-card${isActive ? ' active' : ''}${isComplete ? ' complete' : ''}" data-epic-id="${epic.id}">
                     <span class="epic-dot" style="background: var(--epic-${epic.color})"></span>
                     <span class="epic-card-title">${Board.escapeHtml(epic.title)}</span>
@@ -783,16 +784,11 @@ const Board = {
                     ${archiveBtn}
                 </div>
             `;
-        }
+    },
 
-        if (this._epicFilter) {
-            html += `<button class="epic-filter-clear" onclick="Board.clearEpicFilter()">Clear filter</button>`;
-        }
-
-        panel.innerHTML = html;
-
-        // Wire up handlers — using delegation on the cards so the archive
-        // button can stop propagation and not trigger the filter-by-epic click.
+    // Wire up handlers — using delegation on the cards so the archive
+    // button can stop propagation and not trigger the filter-by-epic click.
+    _wireEpicPanel(panel) {
         panel.querySelectorAll('.epic-card').forEach(card => {
             const epicId = card.dataset.epicId;
             card.addEventListener('click', (e) => {
@@ -836,20 +832,15 @@ const Board = {
         this._applyEpicFilter();
     },
 
+    /** Columns rendered by their own grouping code (not as a flat card list). */
+    _groupedColumns: ['todo', 'done', 'archive'],
+
     _applyEpicFilter() {
         // Show/hide cards based on epic filter in non-grouped columns
         document.querySelectorAll('.column-cards').forEach(col => {
-            const colName = col.dataset.column;
-            // Skip columns that use custom rendering
-            if (colName === 'todo' || colName === 'done' || colName === 'archive') return;
+            if (this._groupedColumns.includes(col.dataset.column)) return;
             col.querySelectorAll('.card').forEach(card => {
-                const itemId = card.dataset.id;
-                const item = this.items[itemId];
-                if (!this._epicFilter || (item && item.epic_id === this._epicFilter)) {
-                    card.style.display = '';
-                } else {
-                    card.style.display = 'none';
-                }
+                card.style.display = this._matchesEpicFilter(this.items[card.dataset.id]) ? '' : 'none';
             });
         });
         // Re-render columns that use grouped rendering
@@ -859,16 +850,17 @@ const Board = {
         this.updateCounts();
     },
 
+    _matchesEpicFilter(item) {
+        if (!this._epicFilter) return true;
+        return !!item && item.epic_id === this._epicFilter;
+    },
+
     renderTodoColumn() {
         const col = document.querySelector('.column-cards[data-column="todo"]');
         if (!col) return;
 
         const todoItems = Object.values(this.items).filter(i => i.column_name === 'todo');
-
-        // Apply epic filter
-        const filtered = this._epicFilter
-            ? todoItems.filter(i => i.epic_id === this._epicFilter)
-            : todoItems;
+        const filtered = todoItems.filter(i => this._matchesEpicFilter(i));
 
         col.innerHTML = '';
         // If filtered to one epic or no epics exist, render flat
@@ -878,12 +870,7 @@ const Board = {
         }
 
         // Group by epic; epic groups in epic position order, "No Epic" at the bottom
-        const epicGroups = {};
-        const noEpic = [];
-        for (const item of filtered) {
-            if (item.epic_id) (epicGroups[item.epic_id] ||= []).push(item);
-            else noEpic.push(item);
-        }
+        const { epicGroups, noEpic } = this._groupByEpic(filtered);
         for (const epic of this._epics) {
             const items = epicGroups[epic.id];
             if (!items || items.length === 0) continue;
@@ -902,6 +889,16 @@ const Board = {
                 <span class="todo-epic-count" style="margin-left: auto">${noEpic.length}</span>
             `));
         }
+    },
+
+    _groupByEpic(items) {
+        const epicGroups = {};
+        const noEpic = [];
+        for (const item of items) {
+            if (item.epic_id) (epicGroups[item.epic_id] ||= []).push(item);
+            else noEpic.push(item);
+        }
+        return { epicGroups, noEpic };
     },
 
     /** A collapsible Todo group; ``onDelete`` wires the header's delete button (epics only). */
