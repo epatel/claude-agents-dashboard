@@ -103,21 +103,28 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     `config-dialog.js` replaces it; 720 side-by-side cases identical; live item dialog). Every JS
     file is now ≥ 9.56 in a **directory** scan (2026-11-08; the per-file scan misses cross-file
     duplication): lowest `stats.js` 9.56, `api.js` 9.57. `.aihealth.toml` excludes the local untracked `run` script.
-  - [ ] 9 — Node E2E tests (`tests/e2e/`, 7.41 at start). Never run them for real without asking (paid
-    agents); verify instead with old-vs-new runs against a fake dashboard API through `E2E_PORT`, with
-    the poll/wait constants patched identically in both copies so timeout paths finish fast.
-    Done: 9a `test_merge_conflict.mjs` 5.77 → 10.00 (`main` → phase functions; arrival-order
+  - [x] 9 — Node E2E tests (`tests/e2e/`, 7.41 → 10.00). Never run the agent-spawning ones for real
+    without asking (paid agents); verify instead with old-vs-new runs against a fake dashboard API
+    through `E2E_PORT`, with the poll/wait constants patched identically in both copies so timeout
+    paths finish fast. `test_state_machine_dnd.mjs` and `test_config_roundtrip.mjs` spawn no agent and
+    can run for free against `claude-agents-dashboard-e2e-test/`.
+    9a `test_merge_conflict.mjs` 5.77 → 10.00 (`main` → phase functions; arrival-order
     `waitForBothReview`). `helpers.mjs` gains `withBoard` (server + browser + teardown), `api*` calls
     (create / start / items / log / approve) and `pollEvery`; `runAgentTask` uses them. 14 fake-API
-    scenarios identical in output, exit code and request sequence (all merge-conflict paths, plus
-    `runAgentTask` via two other tests). The other tests still copy the server/browser skeleton and
-    the API calls — move them onto `withBoard` / `api*` next.
-  - **Scores** (2026-11-08, after 9a): headline 8.74, JS 9.99, E2E 8.37 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+    scenarios identical in output, exit code and request sequence.
+    9b the other six tests onto `withBoard` / `requireTargetRepo` / `api*` (+ `apiRequest` /
+    `jsonInit` / `apiGetDiff` / `apiClarify` / `apiGetClarification` / `printAddedLines`);
+    `runAgentTask`'s loop → `waitForAgentCompletion` (start elapsed, shared by the clarification
+    test); DnD cases and config steps → one function each. 46 fake-API scenarios over all 7 tests
+    identical; DnD + config also run for real, old and new, identical and passing.
+  - **Scores** (2026-11-08, after 9b): headline 8.77, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
     auto-expands folders holding changed files without loading their children, so deeper changed
-    files stay hidden until the folder is toggled twice.
+    files stay hidden until the folder is toggled twice; (3) `test_mini_mcp.mjs` still treats
+    `config.mcp_servers` as a JSON string (`JSON.parse` on what is now an object throws, is caught,
+    and the existing servers are dropped from the PUT).
 
 ## Decisions
 
@@ -227,7 +234,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-08): steps 0–6 and 8a–8r done (JS 9.99); step 9 (E2E tests) continues; 7 is optional.** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 in flight (2026-11-08): steps 0–6, 8a–8r (JS 9.99) and 9 (E2E tests 10.00) done; 7 is optional.** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above

@@ -102,13 +102,24 @@ export async function stopServer(port, proc) {
   console.log('Server stopped');
 }
 
+/** The target repo given as the first CLI argument; prints usage and exits when missing. */
+export function requireTargetRepo(script) {
+  const targetRepo = process.argv[2];
+  if (!targetRepo) {
+    console.error(`Usage: node tests/e2e/${script} <target-repo-path>`);
+    process.exit(1);
+  }
+  return targetRepo;
+}
+
 /**
  * Run `run(page, base)` against a dashboard for `targetRepo`: start the server
  * (or reuse $E2E_PORT), open the board in headless Chromium, and tear both down
- * afterwards. `cleanup(page, base)` runs first in teardown. A thrown error is
- * reported and exits with code 1 (without teardown, as the tests always did).
+ * afterwards. `loadWait` is how long to let the board settle after loading.
+ * `cleanup(page, base)` runs first in teardown. A thrown error is reported and
+ * exits with code 1 (without teardown, as the tests always did).
  */
-export async function withBoard(targetRepo, run, { cleanup } = {}) {
+export async function withBoard(targetRepo, run, { cleanup, loadWait = 1000 } = {}) {
   console.log(`Starting server with target: ${targetRepo}`);
   const { port, proc: serverProc } = await startServer(targetRepo);
   const base = `http://127.0.0.1:${port}`;
@@ -119,7 +130,7 @@ export async function withBoard(targetRepo, run, { cleanup } = {}) {
 
   try {
     await page.goto(base);
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(loadWait);
     console.log('Board loaded');
     await run(page, base);
   } catch (err) {
@@ -133,6 +144,30 @@ export async function withBoard(targetRepo, run, { cleanup } = {}) {
 }
 
 // --- Dashboard API calls, made from inside the page ---
+
+/**
+ * `fetch(base + path, init)` from the page (same origin as the server, so no CORS
+ * preflight surprises). Returns { status, body }, the body parsed as JSON when the
+ * response says it is JSON, else text.
+ */
+export function apiRequest(page, base, path, init = {}) {
+  return page.evaluate(async (args) => {
+    const [b, p, i] = args;
+    const r = await fetch(`${b}${p}`, i);
+    const ct = r.headers.get('content-type') || '';
+    const body = ct.includes('json') ? await r.json() : await r.text();
+    return { status: r.status, body };
+  }, [base, path, init]);
+}
+
+/** `fetch` init for sending `data` as JSON with `method`, for `apiRequest`. */
+export function jsonInit(method, data) {
+  return {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  };
+}
 
 /** Create an item (with $E2E_MODEL as its model when set); returns the created item. */
 export function apiCreateItem(page, base, title, description) {
@@ -183,6 +218,37 @@ export async function apiGetItemWithLog(page, base, itemId) {
   return { item, log };
 }
 
+/** An item's pending clarification (parsed JSON). */
+export function apiGetClarification(page, base, itemId) {
+  return page.evaluate(async (args) => {
+    const [b, id] = args;
+    const clarRes = await fetch(`${b}/api/items/${id}/clarification`);
+    return clarRes.json();
+  }, [base, itemId]);
+}
+
+/** Answer an item's clarification question. */
+export function apiClarify(page, base, itemId, response) {
+  return page.evaluate(async (args) => {
+    const [b, id, resp] = args;
+    await fetch(`${b}/api/items/${id}/clarify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ response: resp }),
+    });
+  }, [base, itemId, response]);
+}
+
+/** An item's diff text ('' when there is none). */
+export function apiGetDiff(page, base, itemId) {
+  return page.evaluate(async (args) => {
+    const [b, id] = args;
+    const r = await fetch(`${b}/api/items/${id}/diff`);
+    const data = await r.json();
+    return data.diff || '';
+  }, [base, itemId]);
+}
+
 /** Approve an item; returns { status, body } of the response. */
 export function apiApproveItem(page, base, itemId) {
   return page.evaluate(async (args) => {
@@ -194,10 +260,11 @@ export function apiApproveItem(page, base, itemId) {
 
 /**
  * Wait POLL_INTERVAL, then call `step(elapsed)`, until it returns a truthy value
- * or `maxWait` ms have passed. Returns { result, elapsed } (result null on timeout).
+ * or `maxWait` ms have passed, counting from `startElapsed`. Returns
+ * { result, elapsed } (result null on timeout).
  */
-export async function pollEvery(page, maxWait, step) {
-  let elapsed = 0;
+export async function pollEvery(page, maxWait, step, startElapsed = 0) {
+  let elapsed = startElapsed;
   while (elapsed < maxWait) {
     await page.waitForTimeout(POLL_INTERVAL);
     elapsed += POLL_INTERVAL;
@@ -219,6 +286,16 @@ export async function runAgentTask(page, base, { title, description }) {
   await apiStartItem(page, base, itemId);
   console.log('Agent started');
 
+  const { finished, finalStatus, workLog } = await waitForAgentCompletion(page, base, itemId);
+  return { finished, finalStatus, workLog, itemId };
+}
+
+/**
+ * Poll an item until its agent finishes (review / done, or "Agent completed" in the
+ * log) or stops (error / failed / todo with more than 3 log entries), within
+ * MAX_WAIT counted from `startElapsed`. Returns { finished, finalStatus, workLog }.
+ */
+export async function waitForAgentCompletion(page, base, itemId, startElapsed = 0) {
   let finalStatus = '';
   let workLog = [];
   const { result } = await pollEvery(page, MAX_WAIT, async (elapsed) => {
@@ -230,9 +307,8 @@ export async function runAgentTask(page, base, { title, description }) {
     if (['review', 'done'].includes(finalStatus) || completionInLog) return 'finished';
     if (['error', 'failed', 'todo'].includes(finalStatus) && workLog.length > 3) return 'stopped';
     return null;
-  });
-
-  return { finished: result === 'finished', finalStatus, workLog, itemId };
+  }, startElapsed);
+  return { finished: result === 'finished', finalStatus, workLog };
 }
 
 /** Delete a test item. */
@@ -242,6 +318,14 @@ export async function deleteItem(page, base, itemId) {
     await fetch(`${b}/api/items/${id}`, { method: 'DELETE' });
   }, [base, itemId]);
   console.log('Test item deleted');
+}
+
+/** Print the first 10 added (+) lines of a diff, if there is one. */
+export function printAddedLines(diffText) {
+  if (!diffText) return;
+  const addedLines = diffText.split('\n').filter(l => l.startsWith('+')).slice(0, 10);
+  console.log(`\n=== Diff (added lines) ===`);
+  for (const line of addedLines) console.log(`  ${line}`);
 }
 
 /** Print work log summary. */

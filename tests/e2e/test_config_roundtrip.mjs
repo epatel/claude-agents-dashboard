@@ -13,174 +13,131 @@
  *
  * Usage: node tests/e2e/test_config_roundtrip.mjs <target-repo-path>
  */
-import { chromium } from 'playwright';
-import { startServer, stopServer, pass, fail } from './helpers.mjs';
+import { withBoard, requireTargetRepo, apiRequest, jsonInit, pass, fail } from './helpers.mjs';
 
-const TARGET_REPO = process.argv[2];
-if (!TARGET_REPO) {
-  console.error('Usage: node tests/e2e/test_config_roundtrip.mjs <target-repo-path>');
-  process.exit(1);
+const TARGET_REPO = requireTargetRepo('test_config_roundtrip.mjs');
+
+const LIST_FIELDS = ['tools', 'plugins', 'allowed_commands', 'allowed_builtin_tools'];
+
+let page = null;
+let BASE = null;
+// Initial config, restored at the end.
+let savedConfig = null;
+
+const getConfig = () => apiRequest(page, BASE, '/api/config');
+const putConfig = (payload) => apiRequest(page, BASE, '/api/config', jsonInit('PUT', payload));
+
+const isPlainObject = (v) => typeof v === 'object' && !Array.isArray(v) && v !== null;
+const isEmptyArray = (v) => Array.isArray(v) && v.length === 0;
+const isEmptyObject = (v) => typeof v === 'object' && Object.keys(v).length === 0;
+
+// ---- Step 0: capture current config so we can restore it later ----
+async function step0() {
+  const res = await getConfig();
+  if (res.status !== 200) fail(`GET /api/config returned ${res.status}`);
+  savedConfig = res.body;
+  // Sanity: even on a fresh DB, the typed list/dict fields must arrive
+  // as JS arrays/objects, never strings.
+  for (const f of LIST_FIELDS) {
+    if (!Array.isArray(savedConfig[f])) {
+      fail(`fresh config: field "${f}" should be an array, got ${typeof savedConfig[f]}: ${JSON.stringify(savedConfig[f])}`);
+    }
+  }
+  if (!isPlainObject(savedConfig.mcp_servers)) {
+    fail(`fresh config: "mcp_servers" should be an object, got ${JSON.stringify(savedConfig.mcp_servers)}`);
+  }
+  console.log('  step 0 PASS — fresh config returns typed fields, not JSON strings');
 }
 
-async function main() {
-  console.log(`Starting server with target: ${TARGET_REPO}`);
-  const { port, proc: serverProc } = await startServer(TARGET_REPO);
-  const BASE = `http://127.0.0.1:${port}`;
-  console.log(`Server running on port ${port}`);
+// ---- Step 1: PUT real arrays/objects, GET back same shape ----
+async function step1() {
+  const putRes = await putConfig({
+    ...savedConfig,
+    allowed_commands: ['git', 'npm', 'make'],
+    allowed_builtin_tools: ['WebSearch'],
+    tools: [],
+    plugins: [],
+    mcp_servers: { example: { command: 'echo', args: ['hi'] } },
+  });
+  if (putRes.status !== 200) fail(`PUT /api/config returned ${putRes.status}: ${JSON.stringify(putRes.body)}`);
 
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  const getRes = await getConfig();
+  if (getRes.status !== 200) fail(`GET after PUT returned ${getRes.status}`);
+  const cfg = getRes.body;
 
-  async function api(path, init = {}) {
-    return await page.evaluate(async (args) => {
-      const [b, p, i] = args;
-      const r = await fetch(`${b}${p}`, i);
-      const ct = r.headers.get('content-type') || '';
-      const body = ct.includes('json') ? await r.json() : await r.text();
-      return { status: r.status, body };
-    }, [BASE, path, init]);
+  const expectArr = (field, expected) => {
+    if (!Array.isArray(cfg[field])) fail(`step 1: ${field} not an array, got ${typeof cfg[field]}`);
+    if (JSON.stringify(cfg[field]) !== JSON.stringify(expected)) {
+      fail(`step 1: ${field} round-trip mismatch — expected ${JSON.stringify(expected)}, got ${JSON.stringify(cfg[field])}`);
+    }
+  };
+  expectArr('allowed_commands', ['git', 'npm', 'make']);
+  expectArr('allowed_builtin_tools', ['WebSearch']);
+  if (cfg.mcp_servers?.example?.command !== 'echo') {
+    fail(`step 1: mcp_servers round-trip lost shape: ${JSON.stringify(cfg.mcp_servers)}`);
   }
+  console.log('  step 1 PASS — PUT lists/dicts, GET returns same shape');
+}
 
-  // Cache initial config so we can restore it at the end.
-  let savedConfig = null;
+// ---- Step 2: PUT empty values, GET empty defaults ----
+// Phase 3 validators turn missing/empty input into empty list/dict.
+async function step2() {
+  const putRes = await putConfig({
+    ...savedConfig,
+    allowed_commands: [],
+    allowed_builtin_tools: [],
+    plugins: [],
+    tools: [],
+    mcp_servers: {},
+  });
+  if (putRes.status !== 200) fail(`PUT empty returned ${putRes.status}: ${JSON.stringify(putRes.body)}`);
 
+  const cfg = (await getConfig()).body;
+  for (const f of ['allowed_commands', 'allowed_builtin_tools', 'plugins', 'tools']) {
+    if (!isEmptyArray(cfg[f])) fail(`step 2: ${f} should be empty array, got ${JSON.stringify(cfg[f])}`);
+  }
+  if (!isEmptyObject(cfg.mcp_servers)) {
+    fail(`step 2: mcp_servers should be empty object, got ${JSON.stringify(cfg.mcp_servers)}`);
+  }
+  console.log('  step 2 PASS — empty arrays/dict round-trip as empty');
+}
+
+// ---- Step 3: tolerate JSON-string input on PUT (legacy clients) ----
+// The Pydantic field_validator(mode="before") parses strings.
+// This protects callers that haven't migrated from the old
+// "everything is a JSON string" shape.
+async function step3() {
+  const putRes = await putConfig({
+    ...savedConfig,
+    allowed_commands: '["git"]',          // JSON string, not array
+    allowed_builtin_tools: '["WebFetch"]',
+    plugins: '[]',
+    tools: '[]',
+    mcp_servers: '{}',
+  });
+  if (putRes.status !== 200) {
+    fail(`step 3: legacy string input rejected with ${putRes.status}: ${JSON.stringify(putRes.body)}`);
+  }
+  const cfg = (await getConfig()).body;
+  if (!Array.isArray(cfg.allowed_commands) || cfg.allowed_commands[0] !== 'git') {
+    fail(`step 3: legacy-string allowed_commands didn't parse to array, got ${JSON.stringify(cfg.allowed_commands)}`);
+  }
+  console.log('  step 3 PASS — legacy JSON-string input is parsed by validators');
+}
+
+async function restoreConfig() {
+  if (!savedConfig) return;
   try {
-    await page.goto(BASE);
-    await page.waitForTimeout(500);
-    console.log('Board loaded');
-
-    // ---- Step 0: capture current config so we can restore it later ----
-    {
-      const res = await api('/api/config');
-      if (res.status !== 200) fail(`GET /api/config returned ${res.status}`);
-      savedConfig = res.body;
-      // Sanity: even on a fresh DB, the typed list/dict fields must arrive
-      // as JS arrays/objects, never strings.
-      const listFields = ['tools', 'plugins', 'allowed_commands', 'allowed_builtin_tools'];
-      for (const f of listFields) {
-        if (!Array.isArray(savedConfig[f])) {
-          fail(`fresh config: field "${f}" should be an array, got ${typeof savedConfig[f]}: ${JSON.stringify(savedConfig[f])}`);
-        }
-      }
-      if (typeof savedConfig.mcp_servers !== 'object' || Array.isArray(savedConfig.mcp_servers) || savedConfig.mcp_servers === null) {
-        fail(`fresh config: "mcp_servers" should be an object, got ${JSON.stringify(savedConfig.mcp_servers)}`);
-      }
-      console.log('  step 0 PASS — fresh config returns typed fields, not JSON strings');
-    }
-
-    // ---- Step 1: PUT real arrays/objects, GET back same shape ----
-    {
-      const payload = {
-        ...savedConfig,
-        allowed_commands: ['git', 'npm', 'make'],
-        allowed_builtin_tools: ['WebSearch'],
-        tools: [],
-        plugins: [],
-        mcp_servers: { example: { command: 'echo', args: ['hi'] } },
-      };
-      const putRes = await api('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (putRes.status !== 200) fail(`PUT /api/config returned ${putRes.status}: ${JSON.stringify(putRes.body)}`);
-
-      const getRes = await api('/api/config');
-      if (getRes.status !== 200) fail(`GET after PUT returned ${getRes.status}`);
-      const cfg = getRes.body;
-
-      const expectArr = (field, expected) => {
-        if (!Array.isArray(cfg[field])) fail(`step 1: ${field} not an array, got ${typeof cfg[field]}`);
-        if (JSON.stringify(cfg[field]) !== JSON.stringify(expected)) {
-          fail(`step 1: ${field} round-trip mismatch — expected ${JSON.stringify(expected)}, got ${JSON.stringify(cfg[field])}`);
-        }
-      };
-      expectArr('allowed_commands', ['git', 'npm', 'make']);
-      expectArr('allowed_builtin_tools', ['WebSearch']);
-      if (cfg.mcp_servers?.example?.command !== 'echo') {
-        fail(`step 1: mcp_servers round-trip lost shape: ${JSON.stringify(cfg.mcp_servers)}`);
-      }
-      console.log('  step 1 PASS — PUT lists/dicts, GET returns same shape');
-    }
-
-    // ---- Step 2: PUT empty values, GET empty defaults ----
-    // Phase 3 validators turn missing/empty input into empty list/dict.
-    {
-      const payload = {
-        ...savedConfig,
-        allowed_commands: [],
-        allowed_builtin_tools: [],
-        plugins: [],
-        tools: [],
-        mcp_servers: {},
-      };
-      const putRes = await api('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (putRes.status !== 200) fail(`PUT empty returned ${putRes.status}: ${JSON.stringify(putRes.body)}`);
-
-      const getRes = await api('/api/config');
-      const cfg = getRes.body;
-      for (const f of ['allowed_commands', 'allowed_builtin_tools', 'plugins', 'tools']) {
-        if (!Array.isArray(cfg[f]) || cfg[f].length !== 0) {
-          fail(`step 2: ${f} should be empty array, got ${JSON.stringify(cfg[f])}`);
-        }
-      }
-      if (typeof cfg.mcp_servers !== 'object' || Object.keys(cfg.mcp_servers).length !== 0) {
-        fail(`step 2: mcp_servers should be empty object, got ${JSON.stringify(cfg.mcp_servers)}`);
-      }
-      console.log('  step 2 PASS — empty arrays/dict round-trip as empty');
-    }
-
-    // ---- Step 3: tolerate JSON-string input on PUT (legacy clients) ----
-    // The Pydantic field_validator(mode="before") parses strings.
-    // This protects callers that haven't migrated from the old
-    // "everything is a JSON string" shape.
-    {
-      const payload = {
-        ...savedConfig,
-        allowed_commands: '["git"]',          // JSON string, not array
-        allowed_builtin_tools: '["WebFetch"]',
-        plugins: '[]',
-        tools: '[]',
-        mcp_servers: '{}',
-      };
-      const putRes = await api('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (putRes.status !== 200) {
-        fail(`step 3: legacy string input rejected with ${putRes.status}: ${JSON.stringify(putRes.body)}`);
-      }
-      const getRes = await api('/api/config');
-      const cfg = getRes.body;
-      if (!Array.isArray(cfg.allowed_commands) || cfg.allowed_commands[0] !== 'git') {
-        fail(`step 3: legacy-string allowed_commands didn't parse to array, got ${JSON.stringify(cfg.allowed_commands)}`);
-      }
-      console.log('  step 3 PASS — legacy JSON-string input is parsed by validators');
-    }
-
-    pass('AgentConfig list/dict fields round-trip as typed Python collections');
-  } catch (err) {
-    console.error('Test error:', err);
-    process.exit(1);
-  } finally {
-    // Restore original config
-    if (savedConfig) {
-      try {
-        await api('/api/config', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(savedConfig),
-        });
-      } catch { /* ignore */ }
-    }
-    await browser.close();
-    await stopServer(port, serverProc);
-  }
+    await putConfig(savedConfig);
+  } catch { /* ignore */ }
 }
 
-main();
+withBoard(TARGET_REPO, async (boardPage, base) => {
+  page = boardPage;
+  BASE = base;
+  for (const step of [step0, step1, step2, step3]) await step();
+  pass('AgentConfig list/dict fields round-trip as typed Python collections');
+}, {
+  loadWait: 500,
+  cleanup: restoreConfig,
+});

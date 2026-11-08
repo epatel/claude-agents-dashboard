@@ -6,194 +6,82 @@
  *
  * Usage: node tests/e2e/test_clarification.mjs <target-repo-path>
  */
-import { chromium } from 'playwright';
-import { startServer, stopServer, deleteItem, printWorkLog, pass, fail, E2E_MODEL } from './helpers.mjs';
+import {
+  withBoard, requireTargetRepo, apiCreateItem, apiStartItem, apiGetItems, apiGetLog, apiGetClarification,
+  apiClarify, apiGetDiff, pollEvery, waitForAgentCompletion, deleteItem, printWorkLog, printAddedLines,
+  pass, fail, E2E_MODEL,
+} from './helpers.mjs';
 
-const TARGET_REPO = process.argv[2];
-if (!TARGET_REPO) {
-  console.error('Usage: node tests/e2e/test_clarification.mjs <target-repo-path>');
-  process.exit(1);
-}
+const TARGET_REPO = requireTargetRepo('test_clarification.mjs');
 
 const MAX_WAIT = 120_000;
-const POLL_INTERVAL = 3000;
+const ANSWER = 'Hello from E2E test!';
 
-async function main() {
-  console.log(`Starting server with target: ${TARGET_REPO}`);
-  const { port, proc: serverProc } = await startServer(TARGET_REPO);
-  const BASE = `http://127.0.0.1:${port}`;
-  console.log(`Server running on port ${port}`);
+/**
+ * Poll until the item is in "questions" with a pending prompt. Returns
+ * { prompt, elapsed } (prompt '' on timeout) so the completion wait can go on
+ * from the same elapsed time.
+ */
+async function waitForQuestion(page, base, itemId) {
+  const { result, elapsed } = await pollEvery(page, MAX_WAIT, async (elapsedNow) => {
+    const [item] = await apiGetItems(page, base, [itemId]);
+    const clar = await apiGetClarification(page, base, itemId);
+    console.log(`  [${Math.round(elapsedNow/1000)}s] Column: ${item.column_name}, prompt: ${clar.prompt ? clar.prompt.substring(0, 60) + '...' : 'none'}`);
+    return item.column_name === 'questions' && clar.prompt ? clar.prompt : null;
+  });
+  return { prompt: result || '', elapsed };
+}
 
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+withBoard(TARGET_REPO, async (page, BASE) => {
+  // 1. Create an item that forces the agent to ask a question
+  const createRes = await apiCreateItem(page, BASE, 'E2E Test: Clarification flow', [
+    'You MUST use the ask_user tool (mcp__clarification__ask_user) to ask the user what greeting to write.',
+    'Ask them: "What greeting should I write to README.md?"',
+    'Wait for their response, then append their exact answer to README.md.',
+    'Then call set_commit_message with "test: clarification flow".',
+  ].join('\n'));
+  const itemId = createRes.id;
+  console.log(`Created item: ${itemId}${E2E_MODEL ? ` (model: ${E2E_MODEL})` : ''}`);
 
-  try {
-    await page.goto(BASE);
-    await page.waitForTimeout(1000);
-    console.log('Board loaded');
+  // 2. Start the agent
+  await apiStartItem(page, BASE, itemId);
+  console.log('Agent started');
 
-    // 1. Create an item that forces the agent to ask a question
-    const createRes = await page.evaluate(async (args) => {
-      const [b, model] = args;
-      const payload = {
-        title: 'E2E Test: Clarification flow',
-        description: [
-          'You MUST use the ask_user tool (mcp__clarification__ask_user) to ask the user what greeting to write.',
-          'Ask them: "What greeting should I write to README.md?"',
-          'Wait for their response, then append their exact answer to README.md.',
-          'Then call set_commit_message with "test: clarification flow".',
-        ].join('\n'),
-      };
-      if (model) payload.model = model;
-      const r = await fetch(`${b}/api/items`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      return r.json();
-    }, [BASE, E2E_MODEL]);
-
-    const itemId = createRes.id;
-    console.log(`Created item: ${itemId}${E2E_MODEL ? ` (model: ${E2E_MODEL})` : ''}`);
-
-    // 2. Start the agent
-    await page.evaluate(async (args) => {
-      const [b, id] = args;
-      await fetch(`${b}/api/items/${id}/start`, { method: 'POST' });
-    }, [BASE, itemId]);
-    console.log('Agent started');
-
-    // 3. Wait for the agent to ask a question (item moves to "questions")
-    let elapsed = 0;
-    let questionReceived = false;
-    let clarificationPrompt = '';
-
-    while (elapsed < MAX_WAIT) {
-      await page.waitForTimeout(POLL_INTERVAL);
-      elapsed += POLL_INTERVAL;
-
-      const status = await page.evaluate(async (args) => {
-        const [b, id] = args;
-        const listRes = await fetch(`${b}/api/items`);
-        const items = await listRes.json();
-        const item = items.find(i => i.id === id) || {};
-        const clarRes = await fetch(`${b}/api/items/${id}/clarification`);
-        const clar = await clarRes.json();
-        return { column: item.column_name, prompt: clar.prompt };
-      }, [BASE, itemId]);
-
-      console.log(`  [${Math.round(elapsed/1000)}s] Column: ${status.column}, prompt: ${status.prompt ? status.prompt.substring(0, 60) + '...' : 'none'}`);
-
-      if (status.column === 'questions' && status.prompt) {
-        questionReceived = true;
-        clarificationPrompt = status.prompt;
-        break;
-      }
-    }
-
-    if (!questionReceived) {
-      printWorkLog(await getWorkLog(page, BASE, itemId));
-      await deleteItem(page, BASE, itemId);
-      fail('Agent did not ask a clarification question');
-    }
-
-    console.log(`\nAgent asked: "${clarificationPrompt}"`);
-
-    // 4. Submit our answer
-    const answer = 'Hello from E2E test!';
-    console.log(`Responding with: "${answer}"`);
-
-    await page.evaluate(async (args) => {
-      const [b, id, resp] = args;
-      await fetch(`${b}/api/items/${id}/clarify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ response: resp }),
-      });
-    }, [BASE, itemId, answer]);
-
-    // 5. Wait for agent to complete
-    let finished = false;
-    let finalStatus = '';
-    let workLog = [];
-
-    while (elapsed < MAX_WAIT) {
-      await page.waitForTimeout(POLL_INTERVAL);
-      elapsed += POLL_INTERVAL;
-
-      const status = await page.evaluate(async (args) => {
-        const [b, id] = args;
-        const listRes = await fetch(`${b}/api/items`);
-        const items = await listRes.json();
-        const item = items.find(i => i.id === id) || {};
-        const logRes = await fetch(`${b}/api/items/${id}/log`);
-        const log = await logRes.json();
-        return { status: item.column_name, log };
-      }, [BASE, itemId]);
-
-      workLog = status.log || [];
-      finalStatus = status.status;
-      const completionInLog = workLog.some(e => (e.message || '').includes('Agent completed'));
-      console.log(`  [${Math.round(elapsed/1000)}s] Status: ${finalStatus}, log entries: ${workLog.length}${completionInLog ? ' [COMPLETED]' : ''}`);
-
-      if (['review', 'done'].includes(finalStatus) || completionInLog) {
-        finished = true;
-        break;
-      }
-      if (['error', 'failed', 'todo'].includes(finalStatus) && workLog.length > 3) {
-        break;
-      }
-    }
-
-    // 6. Check the diff for our answer
-    let diffText = '';
-    if (finished) {
-      diffText = await page.evaluate(async (args) => {
-        const [b, id] = args;
-        const r = await fetch(`${b}/api/items/${id}/diff`);
-        const data = await r.json();
-        return data.diff || '';
-      }, [BASE, itemId]);
-    }
-
-    console.log(`\n=== Results ===`);
-    console.log(`Question received: ${questionReceived}`);
-    console.log(`Question prompt: "${clarificationPrompt}"`);
-    console.log(`Agent finished: ${finished}`);
-    console.log(`Final status: ${finalStatus}`);
-
-    const diffHasAnswer = diffText.includes('Hello from E2E test');
-    console.log(`Diff contains our answer: ${diffHasAnswer}`);
-
-    printWorkLog(workLog);
-
-    if (diffText) {
-      const addedLines = diffText.split('\n').filter(l => l.startsWith('+')).slice(0, 10);
-      console.log(`\n=== Diff (added lines) ===`);
-      for (const line of addedLines) console.log(`  ${line}`);
-    }
-
+  // 3. Wait for the agent to ask a question (item moves to "questions")
+  const { prompt: clarificationPrompt, elapsed } = await waitForQuestion(page, BASE, itemId);
+  const questionReceived = !!clarificationPrompt;
+  if (!questionReceived) {
+    printWorkLog(await apiGetLog(page, BASE, itemId));
     await deleteItem(page, BASE, itemId);
-
-    if (!finished) fail('Agent did not complete after clarification');
-    if (!diffHasAnswer) fail('Diff does not contain our answer');
-    pass('Clarification flow works — agent asked, received answer, and used it');
-
-  } catch (err) {
-    console.error('Test error:', err);
-    process.exit(1);
-  } finally {
-    await browser.close();
-    await stopServer(port, serverProc);
+    fail('Agent did not ask a clarification question');
   }
-}
+  console.log(`\nAgent asked: "${clarificationPrompt}"`);
 
-async function getWorkLog(page, base, itemId) {
-  return page.evaluate(async (args) => {
-    const [b, id] = args;
-    const r = await fetch(`${b}/api/items/${id}/log`);
-    return r.json();
-  }, [base, itemId]);
-}
+  // 4. Submit our answer
+  console.log(`Responding with: "${ANSWER}"`);
+  await apiClarify(page, BASE, itemId, ANSWER);
 
-main();
+  // 5. Wait for agent to complete (same time budget as the question wait)
+  const { finished, finalStatus, workLog } = await waitForAgentCompletion(page, BASE, itemId, elapsed);
+
+  // 6. Check the diff for our answer
+  const diffText = finished ? await apiGetDiff(page, BASE, itemId) : '';
+
+  console.log(`\n=== Results ===`);
+  console.log(`Question received: ${questionReceived}`);
+  console.log(`Question prompt: "${clarificationPrompt}"`);
+  console.log(`Agent finished: ${finished}`);
+  console.log(`Final status: ${finalStatus}`);
+
+  const diffHasAnswer = diffText.includes('Hello from E2E test');
+  console.log(`Diff contains our answer: ${diffHasAnswer}`);
+
+  printWorkLog(workLog);
+  printAddedLines(diffText);
+
+  await deleteItem(page, BASE, itemId);
+
+  if (!finished) fail('Agent did not complete after clarification');
+  if (!diffHasAnswer) fail('Diff does not contain our answer');
+  pass('Clarification flow works — agent asked, received answer, and used it');
+});

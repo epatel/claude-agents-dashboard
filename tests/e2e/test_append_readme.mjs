@@ -5,81 +5,41 @@
  *
  * Usage: node tests/e2e/test_append_readme.mjs <target-repo-path>
  */
-import { chromium } from 'playwright';
-import { startServer, stopServer, runAgentTask, deleteItem, printWorkLog, pass, fail } from './helpers.mjs';
+import {
+  withBoard, requireTargetRepo, runAgentTask, apiGetDiff, deleteItem, printWorkLog, printAddedLines, pass, fail,
+} from './helpers.mjs';
 
-const TARGET_REPO = process.argv[2];
-if (!TARGET_REPO) {
-  console.error('Usage: node tests/e2e/test_append_readme.mjs <target-repo-path>');
-  process.exit(1);
-}
+const TARGET_REPO = requireTargetRepo('test_append_readme.mjs');
 
-async function main() {
-  console.log(`Starting server with target: ${TARGET_REPO}`);
-  const { port, proc: serverProc } = await startServer(TARGET_REPO);
-  const BASE = `http://127.0.0.1:${port}`;
-  console.log(`Server running on port ${port}`);
+withBoard(TARGET_REPO, async (page, BASE) => {
+  const { finished, finalStatus, workLog, itemId } = await runAgentTask(page, BASE, {
+    title: 'E2E Test: Append to README',
+    description: [
+      'Append a new line to the end of README.md with the current timestamp (ISO 8601) followed by "appended by e2e test".',
+      'Use the Edit tool or Write tool to make the change.',
+      'Then call set_commit_message with "test: append timestamp to README".',
+    ].join('\n'),
+  });
 
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  printWorkLog(workLog);
 
-  try {
-    await page.goto(BASE);
-    await page.waitForTimeout(1000);
-    console.log('Board loaded');
+  // Check the diff for the appended text
+  const diffText = finished ? await apiGetDiff(page, BASE, itemId) : '';
 
-    const { finished, finalStatus, workLog, itemId } = await runAgentTask(page, BASE, {
-      title: 'E2E Test: Append to README',
-      description: [
-        'Append a new line to the end of README.md with the current timestamp (ISO 8601) followed by "appended by e2e test".',
-        'Use the Edit tool or Write tool to make the change.',
-        'Then call set_commit_message with "test: append timestamp to README".',
-      ].join('\n'),
-    });
+  console.log(`\n=== Results ===`);
+  console.log(`Final status: ${finalStatus}`);
+  console.log(`Agent finished: ${finished}`);
 
-    printWorkLog(workLog);
+  const diffHasAppend = diffText.includes('appended by e2e test');
+  const diffHasTimestamp = /\d{4}-\d{2}-\d{2}/.test(diffText);
+  console.log(`Diff contains "appended by e2e test": ${diffHasAppend}`);
+  console.log(`Diff contains timestamp: ${diffHasTimestamp}`);
+  printAddedLines(diffText);
 
-    // Check the diff for the appended text
-    let diffText = '';
-    if (finished) {
-      diffText = await page.evaluate(async (args) => {
-        const [b, id] = args;
-        const r = await fetch(`${b}/api/items/${id}/diff`);
-        const data = await r.json();
-        return data.diff || '';
-      }, [BASE, itemId]);
-    }
+  await deleteItem(page, BASE, itemId);
 
-    console.log(`\n=== Results ===`);
-    console.log(`Final status: ${finalStatus}`);
-    console.log(`Agent finished: ${finished}`);
-
-    const diffHasAppend = diffText.includes('appended by e2e test');
-    const diffHasTimestamp = /\d{4}-\d{2}-\d{2}/.test(diffText);
-    console.log(`Diff contains "appended by e2e test": ${diffHasAppend}`);
-    console.log(`Diff contains timestamp: ${diffHasTimestamp}`);
-
-    if (diffText) {
-      // Show only the + lines from the diff
-      const addedLines = diffText.split('\n').filter(l => l.startsWith('+')).slice(0, 10);
-      console.log(`\n=== Diff (added lines) ===`);
-      for (const line of addedLines) console.log(`  ${line}`);
-    }
-
-    await deleteItem(page, BASE, itemId);
-
-    if (!finished) fail('Agent did not complete');
-    if (!diffHasAppend) fail('Diff does not contain "appended by e2e test"');
-    if (!diffHasTimestamp) fail('Diff does not contain a timestamp');
-    pass('Agent appended timestamp and text to README.md');
-
-  } catch (err) {
-    console.error('Test error:', err);
-    process.exit(1);
-  } finally {
-    await browser.close();
-    await stopServer(port, serverProc);
-  }
-}
-
-main();
+  if (!finished) fail('Agent did not complete');
+  if (!diffHasAppend) fail('Diff does not contain "appended by e2e test"');
+  if (!diffHasTimestamp) fail('Diff does not contain a timestamp');
+  pass('Agent appended timestamp and text to README.md');
+});

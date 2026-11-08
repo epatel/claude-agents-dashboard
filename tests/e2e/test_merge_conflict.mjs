@@ -8,15 +8,11 @@
  * Usage: node tests/e2e/test_merge_conflict.mjs <target-repo-path>
  */
 import {
-  withBoard, apiCreateItem, apiStartItem, apiGetItems, apiGetItemWithLog, apiApproveItem, pollEvery,
+  withBoard, requireTargetRepo, apiCreateItem, apiStartItem, apiGetItems, apiGetItemWithLog, apiApproveItem, pollEvery,
   deleteItem, printWorkLog, pass, fail, E2E_MODEL,
 } from './helpers.mjs';
 
-const TARGET_REPO = process.argv[2];
-if (!TARGET_REPO) {
-  console.error('Usage: node tests/e2e/test_merge_conflict.mjs <target-repo-path>');
-  process.exit(1);
-}
+const TARGET_REPO = requireTargetRepo('test_merge_conflict.mjs');
 
 const MAX_WAIT = 180_000;
 
