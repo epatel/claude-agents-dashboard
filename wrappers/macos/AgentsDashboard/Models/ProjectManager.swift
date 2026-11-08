@@ -425,7 +425,8 @@ class ProjectManager: ObservableObject {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
-    private func launchProcess(for instance: DashboardInstance) {
+    /// Internal (not private) so tests can launch a fake server through the real path.
+    func launchProcess(for instance: DashboardInstance) {
         let id = instance.id
         let process = makeServerProcess(for: instance.project)
         let outputPipe = Pipe()
@@ -530,11 +531,10 @@ class ProjectManager: ObservableObject {
     private func serverProcessExited(_ proc: Process, for id: UUID) {
         guard let index = dashboards.firstIndex(where: { $0.id == id }) else { return }
 
-        // If a new process has already been launched (dashboard restarted),
-        // don't let the old process's termination corrupt the new state.
-        if let currentProcess = dashboards[index].process, currentProcess !== proc {
-            return
-        }
+        // Only the tab's current process may change its state. A process that is no
+        // longer attached was either replaced (dashboard restarted) or already let go
+        // by the stop cleanup (a server that ignored SIGTERM and exited late).
+        guard dashboards[index].process === proc else { return }
 
         if dashboards[index].status != .stopping {
             dashboards[index].status = .error

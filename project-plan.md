@@ -237,9 +237,12 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     runs; 118 `ImageRenderer` PNGs of every sheet / tab / row state byte-identical (both copies with the
     InstallSheet `.task` removed and `ScrollView`s as stacks, else those parts render blank).
     Pre-existing, fixed: the Xcode project never listed `SidebarReorderPrototype.swift` (xcodebuild
-    failed); `release` added to `.PHONY`. Pre-existing, not fixed: stopping a server that ignores
-    SIGTERM ends as "error: Process exited with code 0" (the 5 s cleanup marks it stopped, then the exit
-    handler sees a non-stopping state).
+    failed); `release` added to `.PHONY`. Pre-existing, fixed after M12: stopping a server that
+    ignores SIGTERM ended as "error: Process exited with code 0" (the 5 s cleanup marked the tab stopped
+    and dropped its process, then the late exit handler took it for an unexpected exit); the exit
+    handler now acts only on the tab's current process. `Tests/StopDashboardTests.swift` stops real
+    fake-`run.sh` processes (exits on SIGTERM / ignores it and exits late on SIGINT / killed
+    unexpectedly); the late-exit case failed before the fix.
   - **Scores** (2026-11-08, after 12): headline 9.77, src 9.72, tests 9.89, wrapper 9.88, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
