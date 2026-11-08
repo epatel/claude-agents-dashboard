@@ -371,7 +371,7 @@ Previous change (2026-11-06, M11): Tiiny provider, live-verified on the user's d
 security audit (`AGENT_FILES/AUDIT.md`, rev 14) has no open actionable finding.
 
 Authoritative counts, re-verified by collection/grep — trust these over prose: **33 migrations
-(001–033)**; **1441 tests = 20 smoke + 1407 unit + 14 integration** (plus 7 Node E2E tests,
+(001–033)**; **1445 tests = 20 smoke + 1411 unit + 14 integration** (plus 7 Node E2E tests,
 counted separately); **7 services**; **10 MCP tool servers exposing 12 tools** (`todo.py`
 serves three); skills ship as plugins, not as an MCP tool.
 

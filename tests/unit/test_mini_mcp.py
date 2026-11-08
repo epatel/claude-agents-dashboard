@@ -122,9 +122,40 @@ class TestMiniMcpServer:
         assert "Unknown tool" in result["content"][0]["text"]
 
     def test_unknown_method(self, mcp_client):
+        """An unknown request method is a JSON-RPC error at the top level, not a result."""
         mcp_client._send("bogus/method", {})
         resp = mcp_client._recv()
-        assert resp["result"]["error"]["code"] == -32601
+        assert resp["id"] == 0
+        assert "result" not in resp
+        assert resp["error"]["code"] == -32601
+
+    def test_ping(self, mcp_client):
+        mcp_client._send("ping")
+        assert mcp_client._recv() == {"jsonrpc": "2.0", "id": 0, "result": {}}
+
+    def test_notifications_get_no_reply(self, mcp_client):
+        """Messages without an id never get a response — the next line answers the request."""
+        mcp_client._send("tools/list", {}, is_notification=True)
+        mcp_client._send("bogus/notification", is_notification=True)
+        resp = mcp_client.list_tools()
+        assert resp["id"] == 0
+        assert "tools" in resp["result"]
+
+    def test_null_params_do_not_crash(self, mcp_client):
+        """A null (or non-object) params is treated as empty instead of killing the server."""
+        mcp_client._send("tools/call", None)
+        mcp_client.proc.stdin.write(b'{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": null}\n')
+        mcp_client.proc.stdin.flush()
+        first, second = mcp_client._recv(), mcp_client._recv()
+        assert first["result"]["isError"] is True
+        assert second["result"]["serverInfo"]["name"] == "mini-mcp"
+
+    def test_non_object_lines_are_ignored(self, mcp_client):
+        mcp_client.proc.stdin.write(b'not json\n[1, 2]\n42\nnull\n')
+        mcp_client.proc.stdin.flush()
+        resp = mcp_client.call_tool("get_secret")
+        assert resp["id"] == 0
+        assert resp["result"]["content"][0]["text"] == EXPECTED_SECRET
 
     def test_full_handshake(self, mcp_client):
         """Full protocol flow: initialize → initialized → list → call."""

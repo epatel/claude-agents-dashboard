@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1441 tests
+./run-tests.sh              # Run all 1445 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -61,7 +61,7 @@ tests/
 │   ├── test_main.py                  # Server startup, port discovery (34 tests)
 │   ├── test_manage.py                # Migration CLI commands (24 tests)
 │   ├── test_mcp_tool_servers.py      # MCP tool server tests (67 tests)
-│   ├── test_mini_mcp.py             # Mini-MCP server protocol (11 tests)
+│   ├── test_mini_mcp.py             # Mini-MCP server protocol (15 tests)
 │   ├── test_model_catalog.py        # Model feed fetch, parsing, fallbacks (15 tests)
 │   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
@@ -100,7 +100,7 @@ tests/
 
 ## Test Categories
 
-**1441 total** = 20 smoke + 1407 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1407 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
+**1445 total** = 20 smoke + 1411 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1411 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
 
 ### Smoke Tests (20 tests)
 Quick checks that core components work:
@@ -169,11 +169,11 @@ Quick checks that core components work:
 - **Model catalog** (15 tests): feed fetch and parsing, per-provider filtering, `[1m]` synthesis, offline fallback to the bundled lists
 - **Epic plan path** (5 tests): epic-scoped shared-plan path resolution
 
-### Unit Tests — Features (83 tests)
+### Unit Tests — Features (87 tests)
 - **Epics** (19 tests): CRUD, progress stats, item assignment, filtering, dependencies
 - **Todo Auto-start** (23 tests): Todo creation with dependency-based auto-start
 - **use_chrome** (17 tests): Per-task Chrome browser integration
-- **Mini-MCP** (11 tests): Example MCP server protocol compliance
+- **Mini-MCP** (15 tests): Example MCP server protocol compliance
 - **Diff Mixing** (6 tests): Diff isolation between concurrent items, base commit pinning
 - **Annotation Prompt** (5 tests): Prompt formatting for agents
 - **Annotation Summary** (2 tests): Summary text generation
@@ -245,7 +245,7 @@ async def test_apply_migration(self, raw_db, runner):
 ### Adding New Tests
 
 1. Place in the appropriate directory (`unit/`, `integration/`, `smoke/`)
-2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1407. Select by path (`./run-tests.sh tests/unit/`), not by marker.
+2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1411. Select by path (`./run-tests.sh tests/unit/`), not by marker.
 3. Async tests work automatically (no `@pytest.mark.asyncio` needed)
 4. Run `./run-tests.sh` to verify all tests pass
 5. Put a new test file in one of the category buckets above and update that bucket's count and the totals here and in `tests/README.md` — the buckets partition the unit tests exactly, and unmaintained counts drift silently.

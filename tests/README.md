@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (1441 tests across 58 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (32 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1445 tests across 64 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (32 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -44,7 +44,7 @@ tests/
 │   ├── test_main.py                             # Server startup and port discovery (34 tests)
 │   ├── test_manage.py                           # Migration CLI commands (24 tests)
 │   ├── test_mcp_tool_servers.py                 # MCP tool server creation and invocation (67 tests)
-│   ├── test_mini_mcp.py                         # Mini-MCP server protocol tests (11 tests)
+│   ├── test_mini_mcp.py                         # Mini-MCP server protocol tests (15 tests)
 │   ├── test_model_catalog.py                    # Model feed fetch, parsing, fallbacks (15 tests)
 │   ├── test_notification_service.py             # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
@@ -127,11 +127,11 @@ tests/
 - **Model catalog** (15 tests) — Feed fetch and parsing, per-provider filtering, `[1m]` synthesis, offline fallback
 - **Epic plan path** (5 tests) — Epic-scoped shared-plan path resolution
 
-### 6. Features (83 tests)
+### 6. Features (87 tests)
 - **Epics** (19 tests) — CRUD, progress stats, item assignment, filtering, dependencies
 - **Todo Auto-start** (23 tests) — Todo creation with dependency-based auto-start
 - **use_chrome** (17 tests) — Per-task Chrome browser integration
-- **Mini-MCP** (11 tests) — Example MCP server protocol compliance
+- **Mini-MCP** (15 tests) — Example MCP server protocol compliance
 - **Diff Mixing** (6 tests) — Diff isolation between concurrent items
 - **Annotation Prompt** (5 tests) — Prompt formatting for agents
 - **Annotation Summary** (2 tests) — Summary text generation
@@ -175,7 +175,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 1441 tests
+# Run all 1445 tests
 ./run-tests.sh
 
 # Run specific test categories (any path narrows the run)
@@ -203,7 +203,7 @@ pytest tests/unit/migrations/
 
 # Select by path, not by marker. The unit/integration/smoke markers exist in
 # pytest.ini but are applied to only a minority of files — `pytest -m unit`
-# collects ~94 of 1407 unit tests and silently skips the rest.
+# collects ~94 of 1411 unit tests and silently skips the rest.
 pytest tests/unit/
 pytest tests/integration/
 pytest tests/smoke/
