@@ -130,14 +130,28 @@ ensure_venv "$VENV_DIR"
 cd "$SCRIPT_DIR"
 
 # Kill all child processes on exit to prevent orphaned Claude agent processes
-# when the macOS wrapper (or terminal) closes.
+# when the macOS wrapper (or terminal) closes. Only the rest of the process
+# group is killed — never this shell — so the script exits with the server's
+# own exit code, or 128+N when stopped by signal N.
 cleanup() {
-    # Send SIGTERM to the entire process group
-    kill -- -$$ 2>/dev/null || true
+    local status=$?
+    trap - EXIT
+    # The group-wide SIGTERM below also reaches this shell; ignore it here.
+    trap '' TERM INT HUP
+    kill -TERM -- -$$ 2>/dev/null || true
     sleep 0.5
-    # Force-kill any stragglers
-    kill -9 -- -$$ 2>/dev/null || true
+    # Force-kill any stragglers in the group, except this shell
+    local pid
+    for pid in $(pgrep -g "$$" 2>/dev/null); do
+        if [ "$pid" != "$$" ]; then
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    done
+    exit "$status"
 }
-trap cleanup EXIT TERM INT HUP
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 "$VENV_DIR/bin/python" -m src.main "$TARGET_PROJECT" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}

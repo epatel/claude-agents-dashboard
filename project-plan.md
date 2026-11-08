@@ -250,6 +250,14 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     and the existing servers are dropped from the PUT); (4) `GET /api/items/{id}/diff` for an unknown
     item returns HTTP 500, and `GET /api/assets/{name}` for a missing file returns 200 with
     `{"error": "not found"}`.
+  - Pre-existing bug fixed after M12: `run.sh`'s exit cleanup ended with `kill -9 -- -$$`, which
+    also killed `run.sh` itself, so as a process-group leader it always died by SIGKILL (exit
+    -9) instead of returning the server's exit code. It now ignores the group-wide SIGTERM it
+    sends, force-kills the other members of the group only, and exits with the server's code
+    (or 143 / 130 / 129 for TERM / INT / HUP). Old-vs-new harness: 16 cases (server exit 0 / 3,
+    orphaned and SIGTERM-ignoring children, TERM / INT / HUP / group INT; leader and non-leader):
+    children are killed exactly as before. Still true: when `run.sh` is not a group leader, the
+    group kill does nothing and orphaned children survive, as before.
 
 ## Decisions
 
