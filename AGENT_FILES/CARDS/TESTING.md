@@ -273,7 +273,7 @@ End-to-end tests live in `tests/e2e/` as `.mjs` files and run via `./run-e2e-tes
 
 The first five tests run real agent sessions against a temporary test project and consume Claude tokens. The last two are pure-HTTP regression coverage — they exercise the SM/DnD encoding and the config boundary without spawning an agent, so they're free to run.
 
-**Prerequisites and environment:** the runner needs Node.js and npm, and `npm install`s Playwright on demand. It creates and reuses a scratch project at `./claude-agents-dashboard-e2e-test` next to the current directory — it must never be pointed at this repo.
+**Prerequisites and environment:** the runner needs Node.js and npm, and `npm install`s Playwright on demand. It creates and reuses a scratch project at `claude-agents-dashboard-e2e-test/` inside the dashboard checkout (wherever the script is run from) — a separate git repo, never this one. A reset checks out `main`, removes every extra worktree (the dashboard puts them under `agents-lab/worktrees/`), discards changes and untracked files, and deletes `agents-lab/`.
 
 | Variable | Effect |
 |---|---|

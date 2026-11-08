@@ -163,7 +163,7 @@ Tests the complete agent workflow end-to-end:
 
 Run with: `./run-e2e-tests.sh` (`-v` / `--verbose` streams server and agent output; colour is always on).
 
-Prerequisites: **Node.js and npm** — the runner `npm install`s Playwright on demand. It creates and reuses a scratch project at `./claude-agents-dashboard-e2e-test` next to the current directory, never this repo. `E2E_RESET=yes|no|ask` controls whether that scratch project is reset between runs (it keeps it when stdin is not a TTY); `E2E_PORT` runs the tests against an already-running server; `E2E_MODEL` is what `--model` sets.
+Prerequisites: **Node.js and npm** — the runner `npm install`s Playwright on demand. It creates and reuses a scratch project at `claude-agents-dashboard-e2e-test/` inside the dashboard checkout (wherever the script is run from) — a separate git repo, never this one. `E2E_RESET=yes|no|ask` controls whether that scratch project is reset between runs (it keeps it when stdin is not a TTY); `E2E_PORT` runs the tests against an already-running server; `E2E_MODEL` is what `--model` sets.
 
 Use `--model` to override the Claude model used by all E2E agents (defaults to the server's configured model):
 ```bash

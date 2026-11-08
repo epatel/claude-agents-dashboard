@@ -2,7 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(pwd)/claude-agents-dashboard-e2e-test"
+# The disposable target repo the E2E tests run agents against. Anchored to the
+# dashboard checkout so the result doesn't depend on where the script is run from.
+REPO_DIR="$SCRIPT_DIR/claude-agents-dashboard-e2e-test"
 
 # Colors
 GREEN=$'\033[32m'
@@ -21,65 +23,116 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Ensure playwright is installed
-if ! node -e "require('playwright')" 2>/dev/null; then
-    echo "Installing playwright..."
-    npm install --prefix "$SCRIPT_DIR" --no-save playwright
-fi
-
-# Set up or reset the test repo. Honor $E2E_RESET (yes/no/ask) so the script
-# is usable in CI / `make` / piped contexts where there's no TTY for `read`.
-if [ -d "$REPO_DIR" ]; then
-    answer="${E2E_RESET:-ask}"
-    if [ "$answer" = "ask" ]; then
-        if [ -t 0 ]; then
-            read -p "Test repo $REPO_DIR already exists. Reset it? [y/N] " answer
-        else
-            echo "stdin is not a TTY — defaulting to KEEP. Set E2E_RESET=yes to force reset."
-            answer="no"
-        fi
+ensure_playwright() {
+    if ! node -e "require('playwright')" 2>/dev/null; then
+        echo "Installing playwright..."
+        npm install --prefix "$SCRIPT_DIR" --no-save playwright
     fi
-    case "$answer" in
-        [yY]|[yY][eE][sS]|yes)
-            echo "Resetting test repo..."
-            cd "$REPO_DIR"
-            git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
-            # Remove all worktrees other than the main one. The pipeline must
-            # not abort when grep finds no matches (common case: fresh repo);
-            # `|| true` swallows grep's exit-1 under `pipefail`.
-            (git worktree list --porcelain \
-                | grep "^worktree " \
-                | grep -v "$(pwd)" \
-                || true) \
-                | while read -r _ wt; do
-                    git worktree remove --force "$wt" 2>/dev/null || true
-                done
-            # Prune stale worktree references
-            git worktree prune
-            # Reset to initial commit with empty README
-            git reset --hard HEAD
-            git clean -fd
-            # Remove agents-lab data directory
-            rm -rf agents-lab
-            echo "Test repo reset"
-            cd "$SCRIPT_DIR"
-            ;;
-        *)
-            echo "Keeping existing repo"
-            ;;
-    esac
-else
+}
+
+create_test_repo() {
     echo "Creating test repo at $REPO_DIR..."
     mkdir -p "$REPO_DIR"
-    cd "$REPO_DIR"
-    git init
-    git checkout -b main
-    touch README.md
-    git add README.md
-    git commit -m "Initial commit with empty README"
-    cd "$SCRIPT_DIR"
+    (
+        cd "$REPO_DIR"
+        git init
+        git checkout -b main
+        touch README.md
+        git add README.md
+        git commit -m "Initial commit with empty README"
+    )
     echo "Test repo created"
-fi
+}
+
+# Set RESET_ANSWER: whether to reset the existing test repo, from $E2E_RESET
+# (yes/no/ask, default ask). "ask" prompts on a TTY and keeps the repo otherwise,
+# so the script is usable in CI / `make` / piped contexts with no TTY for `read`.
+ask_reset() {
+    RESET_ANSWER="${E2E_RESET:-ask}"
+    if [ "$RESET_ANSWER" != "ask" ]; then
+        return 0
+    fi
+    if [ -t 0 ]; then
+        read -p "Test repo $REPO_DIR already exists. Reset it? [y/N] " RESET_ANSWER
+    else
+        echo "stdin is not a TTY — defaulting to KEEP. Set E2E_RESET=yes to force reset."
+        RESET_ANSWER="no"
+    fi
+}
+
+# Remove every worktree except the main checkout (the dashboard creates them
+# under agents-lab/worktrees/, inside the repo).
+remove_extra_worktrees() {
+    local main wt
+    main="$(git rev-parse --show-toplevel)"
+    git worktree list --porcelain | sed -n 's/^worktree //p' | while read -r wt; do
+        if [ "$wt" != "$main" ]; then
+            git worktree remove --force "$wt" 2>/dev/null || true
+        fi
+    done
+}
+
+# Back to the initial commit: main checked out, no worktrees, no untracked files,
+# no agents-lab/ data directory.
+reset_test_repo() {
+    echo "Resetting test repo..."
+    (
+        cd "$REPO_DIR"
+        git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
+        remove_extra_worktrees
+        git reset --hard HEAD
+        git clean -fd
+        rm -rf agents-lab
+        # Drop references to worktrees whose directories are gone
+        git worktree prune
+    )
+    echo "Test repo reset"
+}
+
+prepare_test_repo() {
+    if [ ! -d "$REPO_DIR" ]; then
+        create_test_repo
+        return 0
+    fi
+    ask_reset
+    case "$RESET_ANSWER" in
+        [yY]|[yY][eE][sS]) reset_test_repo ;;
+        *) echo "Keeping existing repo" ;;
+    esac
+}
+
+# Run every tests/e2e/test_*.mjs against the test repo; print a summary and
+# return non-zero when any of them failed.
+run_tests() {
+    local tests=("$SCRIPT_DIR"/tests/e2e/test_*.mjs)
+    local total=${#tests[@]} passed=0 failed=0 failed_names=() test_file name
+
+    for test_file in "${tests[@]}"; do
+        name="$(basename "$test_file")"
+        echo "--- Running: $name ---"
+        if node "$test_file" "$REPO_DIR" $VERBOSE "${TEST_ARGS[@]+"${TEST_ARGS[@]}"}" 2>&1; then
+            passed=$((passed + 1))
+        else
+            failed=$((failed + 1))
+            failed_names+=("$name")
+        fi
+        echo ""
+    done
+
+    if [ "$failed" -eq 0 ]; then
+        echo "${GREEN}=== E2E Results: $passed/$total passed ===${RESET}"
+        return 0
+    fi
+    echo "${RED}=== E2E Results: $passed/$total passed, $failed failed ===${RESET}"
+    echo "${RED}Failed tests:${RESET}"
+    for name in "${failed_names[@]}"; do
+        echo "  ${RED}- $name${RESET}"
+    done
+    return 1
+}
+
+ensure_playwright
+prepare_test_repo
 
 echo ""
 echo "=== Running E2E tests ==="
@@ -87,32 +140,4 @@ echo "=== Running E2E tests ==="
 [ -n "${E2E_MODEL:-}" ] && echo "Model override: $E2E_MODEL"
 echo ""
 
-# Collect test files
-tests=("$SCRIPT_DIR"/tests/e2e/test_*.mjs)
-total=${#tests[@]}
-passed=0
-failed=0
-failed_names=()
-
-for test_file in "${tests[@]}"; do
-    name="$(basename "$test_file")"
-    echo "--- Running: $name ---"
-    if node "$test_file" "$REPO_DIR" $VERBOSE "${TEST_ARGS[@]+"${TEST_ARGS[@]}"}" 2>&1; then
-        ((passed++))
-    else
-        ((failed++))
-        failed_names+=("$name")
-    fi
-    echo ""
-done
-
-if [ $failed -gt 0 ]; then
-    echo "${RED}=== E2E Results: $passed/$total passed, $failed failed ===${RESET}"
-    echo "${RED}Failed tests:${RESET}"
-    for name in "${failed_names[@]}"; do
-        echo "  ${RED}- $name${RESET}"
-    done
-    exit 1
-else
-    echo "${GREEN}=== E2E Results: $passed/$total passed ===${RESET}"
-fi
+run_tests

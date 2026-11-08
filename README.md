@@ -81,7 +81,7 @@ E2E tests run separately and **spawn real agents, which costs tokens**:
 ./run-e2e-tests.sh --model <id>    # override the model under test
 ```
 
-They need **Node.js and npm** (the runner `npm install`s Playwright on demand) and operate on a scratch project, `./claude-agents-dashboard-e2e-test`, created next to the current directory. `E2E_RESET=yes|no|ask` controls whether that scratch project is reset between runs (it defaults to keeping it when stdin is not a TTY); `E2E_PORT` points the tests at an already-running server.
+They need **Node.js and npm** (the runner `npm install`s Playwright on demand) and operate on a scratch project, `claude-agents-dashboard-e2e-test/`, created inside the dashboard checkout. `E2E_RESET=yes|no|ask` controls whether that scratch project is reset between runs (it defaults to keeping it when stdin is not a TTY); `E2E_PORT` points the tests at an already-running server.
 
 Coverage has its own runners: `./run-coverage.sh` (unit/integration/smoke, writes `htmlcov/`) and `./run-e2e-coverage.sh` (combined coverage across an E2E run). A bare `pytest` collects no coverage — `pytest.ini` sets no `--cov` and enforces no threshold.
 
