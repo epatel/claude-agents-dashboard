@@ -6,7 +6,7 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ..agent.base import AbstractAgentSession
 from ..agent.kimi_session import KimiAgentSession
@@ -27,121 +27,37 @@ class SessionService:
         self._caffeinate_proc: Optional[subprocess.Popen] = None
 
     async def create_session(self, item_id: str, worktree_path: Path, config: Dict[str, Any],
-                           model: Optional[str] = None,
-                           on_message: Optional[Callable] = None,
-                           on_tool_use: Optional[Callable] = None,
-                           on_thinking: Optional[Callable] = None,
-                           on_complete: Optional[Callable] = None,
-                           on_error: Optional[Callable] = None,
-                           on_clarify: Optional[Callable] = None,
-                           on_create_todo: Optional[Callable] = None,
-                           on_set_commit_message: Optional[Callable] = None,
-                           on_request_command: Optional[Callable] = None,
-                           on_request_tool: Optional[Callable] = None,
-                           on_view_board: Optional[Callable] = None,
-                           on_who_am_i: Optional[Callable] = None,
-                           on_peek_worktree: Optional[Callable] = None,
-                           on_graph_query: Optional[Callable] = None,
-                           on_delete_todo: Optional[Callable] = None,
-                           on_create_epic: Optional[Callable] = None,
-                           on_create_shortcut: Optional[Callable] = None,
-                           workspace_root: Optional[Path] = None,
-                           sibling_repo_paths: Optional[List[Path]] = None,
-                           item_repo_name: Optional[str] = None,
-                           epic_plan_relpath: Optional[str] = None,
-                           use_chrome: bool = False) -> AbstractAgentSession:
-        """Create a new agent session with all callbacks."""
+                             model: Optional[str] = None, **options: Any) -> AbstractAgentSession:
+        """Create a new agent session with all callbacks.
+
+        ``options`` are the keyword options in ``SESSION_OPTION_DEFAULTS`` (the
+        session callbacks plus the read-scope / per-item settings); any other
+        keyword is a TypeError, as with an explicit signature.
+        """
+        opts = _session_options(options)
         # Use provided model or fall back to config model
         session_model = model or config.get("model")
-
-        # Build system prompt with project context
-        system_prompt = config.get("system_prompt", "") or ""
-        project_context = config.get("project_context", "") or ""
-        if project_context:
-            system_prompt = f"{system_prompt}\n\nProject context:\n{project_context}"
+        system_prompt = _system_prompt(config)
 
         # Create default message callback if none provided
-        if not on_message:
+        if not opts["on_message"]:
             async def default_on_message(text: str, iid: str = item_id):
                 self._last_agent_messages[iid] = text
 
-            on_message = default_on_message
+            opts["on_message"] = default_on_message
 
         # config has already been parsed by db.get_agent_config (Phase 3),
         # so list/dict fields arrive as real Python types.
         plugins = self._parse_plugins(config.get("plugins"), config.get("enabled_skills"))
-        allowed_commands = list(config.get("allowed_commands") or [])
-        allowed_builtin_tools = list(config.get("allowed_builtin_tools") or [])
+        spec = {**opts, "item_id": item_id, "worktree_path": worktree_path,
+                "model": session_model, "system_prompt": system_prompt, "plugins": plugins}
 
         # Kimi models run on a separate runtime (Kimi Agent SDK, experimental) —
         # a different session class, not a profile of the Claude runtime.
         if is_kimi_model(session_model):
-            session = KimiAgentSession(
-                worktree_path=worktree_path,
-                system_prompt=system_prompt,
-                model=session_model,
-                on_message=on_message,
-                on_tool_use=on_tool_use,
-                on_thinking=on_thinking,
-                on_complete=on_complete,
-                on_error=on_error,
-                on_set_commit_message=on_set_commit_message,
-                on_clarify=on_clarify,
-                on_request_command=on_request_command,
-                allowed_commands=allowed_commands,
-                bash_yolo=config.get("bash_yolo", False),
-                item_id=item_id,
-                # Worktree boundary for the ACP permission handler; in
-                # multi-repo mode the workspace root also unlocks reads.
-                workspace_root=workspace_root,
-            )
-            self.sessions[item_id] = session
-            self._update_caffeinate()
-            return session
-
-        # Local-provider env (Tiiny or Ollama) only if that provider is enabled
-        # AND the model belongs to it (Claude models must never be routed to a
-        # local provider) — see agent/profiles.py.
-        local_env = resolve_local_env(config, session_model)
-
-        session = ClaudeAgentSession(
-            worktree_path=worktree_path,
-            system_prompt=system_prompt,
-            model=session_model,
-            on_message=on_message,
-            on_tool_use=on_tool_use,
-            on_thinking=on_thinking,
-            on_complete=on_complete,
-            on_error=on_error,
-            on_clarify=on_clarify,
-            on_create_todo=on_create_todo,
-            on_set_commit_message=on_set_commit_message,
-            on_request_command=on_request_command,
-            on_request_tool=on_request_tool,
-            on_view_board=on_view_board,
-            on_who_am_i=on_who_am_i,
-            on_peek_worktree=on_peek_worktree,
-            on_graph_query=on_graph_query,
-            graphify_enabled=bool(config.get("graphify_enabled", False)),
-            on_delete_todo=on_delete_todo,
-            on_create_epic=on_create_epic,
-            on_create_shortcut=on_create_shortcut,
-            mcp_servers=config.get("mcp_servers"),
-            mcp_enabled=config.get("mcp_enabled", False),
-            plugins=plugins,
-            allowed_commands=allowed_commands,
-            bash_yolo=config.get("bash_yolo", False),
-            allowed_builtin_tools=allowed_builtin_tools,
-            local_env=local_env,
-            load_claude_md=load_claude_md_for(config, session_model),
-            workspace_root=workspace_root,
-            sibling_repo_paths=sibling_repo_paths,
-            item_repo_name=item_repo_name,
-            epic_plan_relpath=epic_plan_relpath,
-            use_chrome=use_chrome,
-            item_id=item_id,
-        )
-
+            session = _kimi_session(config, spec)
+        else:
+            session = _claude_session(config, spec)
         self.sessions[item_id] = session
         self._update_caffeinate()
         return session
@@ -180,19 +96,8 @@ class SessionService:
         self._last_agent_messages.pop(item_id, None)
         self._commit_messages.pop(item_id, None)
 
-        if session:
-            try:
-                await session.cancel()
-            except Exception:
-                pass
-
-        if agent_task and not agent_task.done():
-            agent_task.cancel()
-            try:
-                await agent_task
-            except (asyncio.CancelledError, Exception):
-                pass
-
+        await _cancel_quietly(session)
+        await _stop_task(agent_task)
         self._update_caffeinate()
 
     async def cleanup_all_sessions(self):
@@ -284,6 +189,145 @@ class SessionService:
         if result:
             logger.info(f"Loaded {len(result)} plugin(s): {', '.join(p['path'].rsplit('/', 1)[-1] for p in result)}")
         return result if result else None
+
+
+# Keyword options of SessionService.create_session, with their defaults: the
+# callbacks a session reports through, then the read-scope / per-item settings.
+SESSION_OPTION_DEFAULTS: Dict[str, Any] = {
+    "on_message": None,
+    "on_tool_use": None,
+    "on_thinking": None,
+    "on_complete": None,
+    "on_error": None,
+    "on_clarify": None,
+    "on_create_todo": None,
+    "on_set_commit_message": None,
+    "on_request_command": None,
+    "on_request_tool": None,
+    "on_view_board": None,
+    "on_who_am_i": None,
+    "on_peek_worktree": None,
+    "on_graph_query": None,
+    "on_delete_todo": None,
+    "on_create_epic": None,
+    "on_create_shortcut": None,
+    "workspace_root": None,        # Optional[Path] — multi-repo workspace root
+    "sibling_repo_paths": None,    # Optional[List[Path]] — readable sibling repos
+    "item_repo_name": None,        # Optional[str] — the item's repo (multi-repo)
+    "epic_plan_relpath": None,     # Optional[str] — the epic's shared plan file
+    "use_chrome": False,
+}
+
+
+def _session_options(options: Dict[str, Any]) -> Dict[str, Any]:
+    """``options`` over ``SESSION_OPTION_DEFAULTS``; an unknown name is a TypeError."""
+    unknown = [name for name in options if name not in SESSION_OPTION_DEFAULTS]
+    if unknown:
+        raise TypeError(f"SessionService.create_session() got an unexpected keyword argument '{unknown[0]}'")
+    return {**SESSION_OPTION_DEFAULTS, **options}
+
+
+def _system_prompt(config: Dict[str, Any]) -> str:
+    """The configured system prompt, with the project context appended when set."""
+    system_prompt = config.get("system_prompt", "") or ""
+    project_context = config.get("project_context", "") or ""
+    if project_context:
+        system_prompt = f"{system_prompt}\n\nProject context:\n{project_context}"
+    return system_prompt
+
+
+def _claude_session(config: Dict[str, Any], spec: Dict[str, Any]) -> ClaudeAgentSession:
+    """A Claude Agent SDK session (Claude models and the local Tiiny / Ollama profiles).
+
+    ``spec`` is create_session's options plus item_id / worktree_path / model /
+    system_prompt / plugins.
+    """
+    model = spec["model"]
+    # Local-provider env (Tiiny or Ollama) only if that provider is enabled
+    # AND the model belongs to it (Claude models must never be routed to a
+    # local provider) — see agent/profiles.py.
+    local_env = resolve_local_env(config, model)
+    return ClaudeAgentSession(
+        worktree_path=spec["worktree_path"],
+        system_prompt=spec["system_prompt"],
+        model=model,
+        on_message=spec["on_message"],
+        on_tool_use=spec["on_tool_use"],
+        on_thinking=spec["on_thinking"],
+        on_complete=spec["on_complete"],
+        on_error=spec["on_error"],
+        on_clarify=spec["on_clarify"],
+        on_create_todo=spec["on_create_todo"],
+        on_set_commit_message=spec["on_set_commit_message"],
+        on_request_command=spec["on_request_command"],
+        on_request_tool=spec["on_request_tool"],
+        on_view_board=spec["on_view_board"],
+        on_who_am_i=spec["on_who_am_i"],
+        on_peek_worktree=spec["on_peek_worktree"],
+        on_graph_query=spec["on_graph_query"],
+        graphify_enabled=bool(config.get("graphify_enabled", False)),
+        on_delete_todo=spec["on_delete_todo"],
+        on_create_epic=spec["on_create_epic"],
+        on_create_shortcut=spec["on_create_shortcut"],
+        mcp_servers=config.get("mcp_servers"),
+        mcp_enabled=config.get("mcp_enabled", False),
+        plugins=spec["plugins"],
+        allowed_commands=list(config.get("allowed_commands") or []),
+        bash_yolo=config.get("bash_yolo", False),
+        allowed_builtin_tools=list(config.get("allowed_builtin_tools") or []),
+        local_env=local_env,
+        load_claude_md=load_claude_md_for(config, model),
+        workspace_root=spec["workspace_root"],
+        sibling_repo_paths=spec["sibling_repo_paths"],
+        item_repo_name=spec["item_repo_name"],
+        epic_plan_relpath=spec["epic_plan_relpath"],
+        use_chrome=spec["use_chrome"],
+        item_id=spec["item_id"],
+    )
+
+
+def _kimi_session(config: Dict[str, Any], spec: Dict[str, Any]) -> KimiAgentSession:
+    """A Kimi Agent SDK session (separate runtime; it takes a subset of the callbacks)."""
+    return KimiAgentSession(
+        worktree_path=spec["worktree_path"],
+        system_prompt=spec["system_prompt"],
+        model=spec["model"],
+        on_message=spec["on_message"],
+        on_tool_use=spec["on_tool_use"],
+        on_thinking=spec["on_thinking"],
+        on_complete=spec["on_complete"],
+        on_error=spec["on_error"],
+        on_set_commit_message=spec["on_set_commit_message"],
+        on_clarify=spec["on_clarify"],
+        on_request_command=spec["on_request_command"],
+        allowed_commands=list(config.get("allowed_commands") or []),
+        bash_yolo=config.get("bash_yolo", False),
+        item_id=spec["item_id"],
+        # Worktree boundary for the ACP permission handler; in
+        # multi-repo mode the workspace root also unlocks reads.
+        workspace_root=spec["workspace_root"],
+    )
+
+
+async def _cancel_quietly(session: Optional[AbstractAgentSession]) -> None:
+    """Cancel a session, ignoring any error it raises while stopping."""
+    if not session:
+        return
+    try:
+        await session.cancel()
+    except Exception:
+        pass
+
+
+async def _stop_task(task: Optional[asyncio.Task]) -> None:
+    """Cancel a still-running task and wait for it to end."""
+    if not task or task.done():
+        return
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
 
 
 def _decode_json_list(value: Any) -> Any:

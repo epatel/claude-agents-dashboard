@@ -161,7 +161,15 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     `cancel` → `_cancel_acp_session` / `_stop_task`. `__init__` keeps the shared 15-parameter session
     contract. Fuzz: 119,098 random `_decide_permission` / `_tool_call_paths` calls (real `PathScope`,
     force-ask env, yolo, allowlists) identical incl. the boundary warning; 19 env / MCP / cancel cases.
-  - **Scores** (2026-11-08, after 10f): headline 9.07, src 9.55, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+    10g `services/session_service.py` 7.68 → 9.03 — `create_session(item_id, worktree_path, config,
+    model=None, **options)`: the 22 callback / scope options are listed with defaults in
+    `SESSION_OPTION_DEFAULTS`, and an unknown keyword raises the same TypeError text Python gave the
+    explicit signature (every caller passes them by keyword). Body → `_system_prompt`,
+    `_claude_session` / `_kimi_session` (taking a `spec` dict), `_cancel_quietly` / `_stop_task`;
+    plugins are still parsed before the Kimi/Claude branch (it logs). Harness: fake session classes
+    record their kwargs — 55 cases (6 configs × 9 calls + cleanup errors) identical in kwargs, plugin /
+    caffeinate logs, default `on_message`, cleanup and errors.
+  - **Scores** (2026-11-08, after 10g): headline 9.09, src 9.57, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
