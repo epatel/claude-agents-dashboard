@@ -275,29 +275,33 @@ async def search_worklog(request: Request, q: str = ""):
         return [dict(row) for row in rows]
 
 
+def _validated_repo(known_repos, repo: Optional[str]) -> Optional[str]:
+    """The item's repo, checked against the workspace's known repos.
+
+    In multi-repo mode a repo is required and must be known (HTTP 400
+    otherwise); a single-repo workspace silently drops any repo it is sent.
+    """
+    if not known_repos:
+        return None
+    repo = repo or None
+    if not repo:
+        raise HTTPException(
+            status_code=400,
+            detail="repo is required in multi-repo mode",
+        )
+    if repo not in known_repos:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown repo '{repo}'. Known: {sorted(known_repos)}",
+        )
+    return repo
+
+
 @router.post("/api/items")
 async def create_item(request: Request, body: ItemCreate):
     db = request.app.state.db
     item_id = new_id()
-
-    # Validate repo against the workspace's known repos. In multi-repo mode a
-    # repo is required; in single-repo mode it must be empty/None.
-    known_repos = request.app.state.repos
-    repo = body.repo or None
-    if known_repos:
-        if not repo:
-            raise HTTPException(
-                status_code=400,
-                detail="repo is required in multi-repo mode",
-            )
-        if repo not in known_repos:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown repo '{repo}'. Known: {sorted(known_repos)}",
-            )
-    else:
-        # Silently drop any repo field sent to a single-repo workspace.
-        repo = None
+    repo = _validated_repo(request.app.state.repos, body.repo)
 
     async with db.connect() as conn:
         # Get next position in todo
@@ -535,17 +539,13 @@ async def delete_items_by_epic(request: Request, body: DeleteByEpicRequest):
 @router.post("/api/items/{item_id}/move")
 async def move_item(request: Request, item_id: str, body: ItemMove):
     orchestrator = request.app.state.orchestrator
+    terminal = body.column_name in ("done", "archive")
 
     # Clean up agent resources when moving to done or archive (external state
     # — sessions and git worktrees — kept in the route since the repo only
     # owns the data row).
-    if body.column_name in ("done", "archive"):
-        old_item = await orchestrator.item_repository.get(item_id)
-        await orchestrator.session_service.cleanup_session(item_id)
-        if old_item and old_item.get("worktree_path") and old_item.get("branch_name"):
-            from pathlib import Path
-            await orchestrator.git_service.cleanup_worktree_and_branch(
-                Path(old_item["worktree_path"]), old_item["branch_name"])
+    if terminal:
+        await _release_agent_resources(orchestrator, item_id)
 
     # Make room in target column, then perform the move via the repo. The
     # repo normalizes status on cross-column moves, preserves it on
@@ -561,22 +561,38 @@ async def move_item(request: Request, item_id: str, body: ItemMove):
     await request.app.state.ws_manager.broadcast("item_moved", item)
     _invalidate_stats_cache()  # Item status change affects stats
 
-    # When an item moves to done/archive, its dependents may become unblocked.
-    # Refresh the UI's blocked-state badges *and* fire the auto-start hook so
-    # any dependent with auto_start=true actually launches — without this the
-    # auto-start chain only ran for items reaching done via the merge path,
-    # missing direct drag-to-done/archive moves.
-    if body.column_name in ("done", "archive"):
-        db_service = orchestrator.db_service
-        dependent_ids = await db_service.get_dependent_items(item_id)
-        if dependent_ids:
-            blocked_status = await db_service.get_all_blocked_status()
-            await request.app.state.ws_manager.broadcast("blocked_status_changed", {
-                "blocked": blocked_status,
-            })
-        await orchestrator.workflow_service.notify_and_auto_start_dependents(item_id)
-
+    if terminal:
+        await _unblock_dependents(request, orchestrator, item_id)
     return item
+
+
+async def _release_agent_resources(orchestrator, item_id: str) -> None:
+    """End the item's session and remove its worktree and branch, if any."""
+    old_item = await orchestrator.item_repository.get(item_id)
+    await orchestrator.session_service.cleanup_session(item_id)
+    if not old_item:
+        return
+    if old_item.get("worktree_path") and old_item.get("branch_name"):
+        await orchestrator.git_service.cleanup_worktree_and_branch(
+            Path(old_item["worktree_path"]), old_item["branch_name"])
+
+
+async def _unblock_dependents(request: Request, orchestrator, item_id: str) -> None:
+    """After a move to done/archive: refresh blocked badges and auto-start dependents.
+
+    The item's dependents may become unblocked. Refresh the UI's blocked-state
+    badges *and* fire the auto-start hook so any dependent with auto_start=true
+    actually launches — without this the auto-start chain only ran for items
+    reaching done via the merge path, missing direct drag-to-done/archive moves.
+    """
+    db_service = orchestrator.db_service
+    dependent_ids = await db_service.get_dependent_items(item_id)
+    if dependent_ids:
+        blocked_status = await db_service.get_all_blocked_status()
+        await request.app.state.ws_manager.broadcast("blocked_status_changed", {
+            "blocked": blocked_status,
+        })
+    await orchestrator.workflow_service.notify_and_auto_start_dependents(item_id)
 
 
 # --- Dependencies ---
@@ -691,16 +707,19 @@ pre {{ white-space: pre-wrap; word-break: break-word; margin: 0.25rem 0 0.75rem 
 
 # --- Work log ---
 
-@router.get("/api/items/{item_id}/log")
-async def get_work_log(request: Request, item_id: str):
-    db = request.app.state.db
-    async with db.connect() as conn:
-        cursor = await conn.execute(
-            "SELECT * FROM work_log WHERE item_id = ? ORDER BY timestamp",
-            (item_id,),
-        )
+async def _item_rows(request: Request, sql: str, item_id: str) -> list[dict]:
+    """Rows of a one-parameter ``... WHERE item_id = ?`` query, as dicts."""
+    async with request.app.state.db.connect() as conn:
+        cursor = await conn.execute(sql, (item_id,))
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+
+@router.get("/api/items/{item_id}/log")
+async def get_work_log(request: Request, item_id: str):
+    return await _item_rows(
+        request, "SELECT * FROM work_log WHERE item_id = ? ORDER BY timestamp", item_id,
+    )
 
 
 # --- Agent actions ---
@@ -1176,70 +1195,77 @@ async def skills_remove(request: Request, name: str):
 @router.get("/api/ollama/models")
 async def get_ollama_models(request: Request, force: bool = False):
     """Discover locally available Ollama models via the Ollama REST API."""
-    import urllib.request
-    import urllib.error
+    base_url, enabled = await _ollama_settings(request.app.state.db)
+    if not enabled and not force:
+        return {"models": [], "error": None, "enabled": False}
+    try:
+        data = await asyncio.to_thread(_fetch_ollama_tags, base_url)
+        models = [_ollama_model_entry(m) for m in data.get("models", [])]
+        # Sort by name for stable ordering
+        models.sort(key=lambda x: x["name"])
+        return {"models": models, "error": None, "enabled": True}
+    except Exception as e:
+        return {"models": [], "error": _ollama_error_message(e), "enabled": True}
 
-    # Get Ollama base URL from config
-    db = request.app.state.db
-    base_url = DEFAULT_OLLAMA_BASE_URL
+
+async def _ollama_settings(db) -> tuple[str, bool]:
+    """(ollama_base_url, ollama_enabled) from agent_config; enabled when unreadable."""
+    base_url, enabled = DEFAULT_OLLAMA_BASE_URL, True
     try:
         async with db.connect() as conn:
             cursor = await conn.execute("SELECT ollama_base_url, ollama_enabled FROM agent_config WHERE id = 1")
             row = await cursor.fetchone()
             if row:
                 base_url = row["ollama_base_url"] or base_url
-                if not row["ollama_enabled"] and not force:
-                    return {"models": [], "error": None, "enabled": False}
+                enabled = bool(row["ollama_enabled"])
     except Exception:
         pass
+    return base_url, enabled
 
-    def _fetch_ollama_tags():
-        """Synchronous fetch — runs in a thread to avoid blocking the event loop."""
-        req = urllib.request.Request(f"{base_url}/api/tags", method="GET")
-        req.add_header("Accept", "application/json")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read().decode())
 
-    try:
-        data = await asyncio.to_thread(_fetch_ollama_tags)
+def _fetch_ollama_tags(base_url: str) -> dict:
+    """Blocking GET of Ollama's /api/tags — run it in a thread."""
+    import urllib.request
 
-        models = []
-        for m in data.get("models", []):
-            details = m.get("details", {})
-            name = m.get("name", "")
-            param_size = details.get("parameter_size", "")
-            quant = details.get("quantization_level", "")
-            family = details.get("family", "")
+    req = urllib.request.Request(f"{base_url}/api/tags", method="GET")
+    req.add_header("Accept", "application/json")
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        return json.loads(resp.read().decode())
 
-            # Build a human-readable display name
-            display_parts = [name]
-            if param_size:
-                display_parts.append(f"({param_size})")
-            if quant:
-                display_parts.append(f"[{quant}]")
 
-            models.append({
-                "name": name,
-                "display_name": " ".join(display_parts),
-                "parameter_size": param_size,
-                "quantization_level": quant,
-                "family": family,
-                "size": m.get("size", 0),
-            })
+def _ollama_model_entry(m: dict) -> dict:
+    """One /api/tags model as a dashboard model entry, with a readable display name."""
+    details = m.get("details", {})
+    name = m.get("name", "")
+    param_size = details.get("parameter_size", "")
+    quant = details.get("quantization_level", "")
+    display_parts = [name]
+    if param_size:
+        display_parts.append(f"({param_size})")
+    if quant:
+        display_parts.append(f"[{quant}]")
+    return {
+        "name": name,
+        "display_name": " ".join(display_parts),
+        "parameter_size": param_size,
+        "quantization_level": quant,
+        "family": details.get("family", ""),
+        "size": m.get("size", 0),
+    }
 
-        # Sort by name for stable ordering
-        models.sort(key=lambda x: x["name"])
-        return {"models": models, "error": None, "enabled": True}
 
-    except urllib.error.URLError as e:
+def _ollama_error_message(e: Exception) -> str:
+    """User-facing message for a failed Ollama model listing."""
+    import urllib.error
+
+    if isinstance(e, urllib.error.URLError):
         reason = str(e.reason) if hasattr(e, 'reason') else str(e)
         if "Connection refused" in reason or "No connection" in reason:
-            return {"models": [], "error": "Cannot connect to Ollama. Is it running?", "enabled": True}
-        return {"models": [], "error": f"Failed to reach Ollama: {reason}", "enabled": True}
-    except TimeoutError:
-        return {"models": [], "error": "Ollama API timed out.", "enabled": True}
-    except Exception as e:
-        return {"models": [], "error": f"Failed to fetch models: {str(e)}", "enabled": True}
+            return "Cannot connect to Ollama. Is it running?"
+        return f"Failed to reach Ollama: {reason}"
+    if isinstance(e, TimeoutError):
+        return "Ollama API timed out."
+    return f"Failed to fetch models: {str(e)}"
 
 
 # --- Tiiny (experimental local provider) ---
@@ -1325,13 +1351,7 @@ async def get_tiiny_models(request: Request, force: bool = False):
     models = [default]
     error = None
     if status == 200 and isinstance(data, dict):
-        for m in data.get("data") or []:
-            model_id = m.get("id") if isinstance(m, dict) else None
-            if model_id and model_id != "default":
-                models.append({
-                    "name": f"{TIINY_MODEL_PREFIX}{model_id}",
-                    "display_name": f"Tiiny — {m.get('display_name') or model_id}",
-                })
+        models += _tiiny_listed_models(data, TIINY_MODEL_PREFIX)
     elif status in (0, 401, 502):
         error = _tiiny_status_message(status, data)
     # Other statuses (e.g. 404: no model listing on this endpoint) are not an
@@ -1339,16 +1359,25 @@ async def get_tiiny_models(request: Request, force: bool = False):
     return {"models": models, "error": error, "enabled": True, "key_present": True}
 
 
+def _tiiny_listed_models(listing: dict, prefix: str) -> list[dict]:
+    """Model entries for a /v1/models listing, skipping "default" (always offered)."""
+    models = []
+    for m in listing.get("data") or []:
+        model_id = m.get("id") if isinstance(m, dict) else None
+        if model_id and model_id != "default":
+            models.append({
+                "name": f"{prefix}{model_id}",
+                "display_name": f"Tiiny — {m.get('display_name') or model_id}",
+            })
+    return models
+
+
 @router.post("/api/tiiny/test")
 async def test_tiiny_connection(request: Request):
     """Send one short message ("Reply with the word OK") and report the reply."""
     from ..agent.profiles import get_tiiny_api_key, sdk_model_id
 
-    body = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
+    body = await _json_body_or_empty(request)
     _, base_url = await _tiiny_settings(request)
     base_url = (body.get("base_url") or base_url).rstrip("/")
     model = sdk_model_id(body.get("model") or "tiiny/default")
@@ -1366,14 +1395,26 @@ async def test_tiiny_connection(request: Request):
     )
     if status != 200:
         return {"ok": False, "status": status or None, "message": _tiiny_status_message(status, data)}
-    reply = ""
-    if isinstance(data, dict):
-        reply = "".join(
-            b.get("text", "") for b in data.get("content") or []
-            if isinstance(b, dict) and b.get("type") == "text"
-        ).strip()
-    return {"ok": True, "status": 200, "model": data.get("model") if isinstance(data, dict) else None,
-            "reply": reply[:200], "message": "Connected"}
+    if not isinstance(data, dict):
+        return {"ok": True, "status": 200, "model": None, "reply": "", "message": "Connected"}
+    return {"ok": True, "status": 200, "model": data.get("model"),
+            "reply": _message_text(data)[:200], "message": "Connected"}
+
+
+async def _json_body_or_empty(request: Request) -> dict:
+    """The request's JSON body, or {} when it has none (or it isn't JSON)."""
+    try:
+        return await request.json()
+    except Exception:
+        return {}
+
+
+def _message_text(message: dict) -> str:
+    """The joined text blocks of an Anthropic Messages API response, stripped."""
+    return "".join(
+        b.get("text", "") for b in message.get("content") or []
+        if isinstance(b, dict) and b.get("type") == "text"
+    ).strip()
 
 
 @router.get("/api/yolo-items")
@@ -1399,14 +1440,9 @@ async def get_auto_reviewing_items(request: Request):
 
 @router.get("/api/items/{item_id}/attachments")
 async def list_attachments(request: Request, item_id: str):
-    db = request.app.state.db
-    async with db.connect() as conn:
-        cursor = await conn.execute(
-            "SELECT * FROM attachments WHERE item_id = ? ORDER BY created_at",
-            (item_id,),
-        )
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+    return await _item_rows(
+        request, "SELECT * FROM attachments WHERE item_id = ? ORDER BY created_at", item_id,
+    )
 
 
 class UploadAnnotation(BaseModel):
@@ -1491,9 +1527,8 @@ def add_notification(level: str, message: str, source: str = "", action: dict | 
     """
     global _next_notification_id
     # Skip if an identical message already exists
-    for existing in _notifications:
-        if existing["message"] == message:
-            return None
+    if any(existing["message"] == message for existing in _notifications):
+        return None
     _next_notification_id += 1
     entry = {
         "id": _next_notification_id,
@@ -1505,15 +1540,20 @@ def add_notification(level: str, message: str, source: str = "", action: dict | 
     if action:
         entry["action"] = action
     _notifications.append(entry)
-    # Best-effort async broadcast
-    if _ws_manager_ref:
-        import asyncio
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(_ws_manager_ref.broadcast("notification_added", entry))
-        except RuntimeError:
-            pass
+    _broadcast_notification(entry)
     return entry
+
+
+def _broadcast_notification(entry: dict) -> None:
+    """Best-effort async broadcast (only once a request has captured the ws manager,
+    and only from inside a running event loop)."""
+    if not _ws_manager_ref:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_ws_manager_ref.broadcast("notification_added", entry))
+    except RuntimeError:
+        pass
 
 
 @router.get("/api/notifications")
@@ -1693,6 +1733,29 @@ def _save_shortcuts(path: Path, shortcuts: list[dict]):
     path.write_text(json.dumps(shortcuts, indent=2))
 
 
+def _find_shortcut(shortcuts: list[dict], shortcut_id: str) -> dict:
+    """The shortcut with ``shortcut_id``; HTTP 404 if there is none."""
+    sc = next((s for s in shortcuts if s["id"] == shortcut_id), None)
+    if not sc:
+        raise HTTPException(status_code=404, detail="Shortcut not found")
+    return sc
+
+
+def _kill_shortcut_process(proc_info: dict | None, only_if_running: bool = False) -> bool:
+    """Kill the shortcut's process, if it has one (and, with ``only_if_running``,
+    only while it is still running). True if a kill was sent."""
+    proc = proc_info.get("process") if proc_info else None
+    if not proc:
+        return False
+    if only_if_running and proc.returncode is not None:
+        return False
+    try:
+        proc.kill()
+    except ProcessLookupError:
+        pass
+    return True
+
+
 @router.get("/api/shortcuts")
 async def list_shortcuts(request: Request):
     return _load_shortcuts(_shortcuts_file(request))
@@ -1722,9 +1785,7 @@ class ShortcutUpdate(BaseModel):
 async def update_shortcut(request: Request, shortcut_id: str, body: ShortcutUpdate):
     path = _shortcuts_file(request)
     shortcuts = _load_shortcuts(path)
-    sc = next((s for s in shortcuts if s["id"] == shortcut_id), None)
-    if not sc:
-        raise HTTPException(status_code=404, detail="Shortcut not found")
+    sc = _find_shortcut(shortcuts, shortcut_id)
     if body.name is not None:
         sc["name"] = body.name
     if body.command is not None:
@@ -1740,31 +1801,17 @@ async def delete_shortcut(request: Request, shortcut_id: str):
     shortcuts = [s for s in shortcuts if s["id"] != shortcut_id]
     _save_shortcuts(path, shortcuts)
     # Kill running process if any
-    proc_info = _shortcut_processes.pop(shortcut_id, None)
-    if proc_info and proc_info.get("process"):
-        try:
-            proc_info["process"].kill()
-        except ProcessLookupError:
-            pass
+    _kill_shortcut_process(_shortcut_processes.pop(shortcut_id, None))
     return {"ok": True}
 
 
 @router.post("/api/shortcuts/{shortcut_id}/run")
 async def run_shortcut(request: Request, shortcut_id: str):
     """Run a shortcut command as a subprocess."""
-    path = _shortcuts_file(request)
-    shortcuts = _load_shortcuts(path)
-    sc = next((s for s in shortcuts if s["id"] == shortcut_id), None)
-    if not sc:
-        raise HTTPException(status_code=404, detail="Shortcut not found")
+    sc = _find_shortcut(_load_shortcuts(_shortcuts_file(request)), shortcut_id)
 
     # Kill previous process for this shortcut if still running
-    existing = _shortcut_processes.get(shortcut_id)
-    if existing and existing.get("process") and existing["process"].returncode is None:
-        try:
-            existing["process"].kill()
-        except ProcessLookupError:
-            pass
+    _kill_shortcut_process(_shortcut_processes.get(shortcut_id), only_if_running=True)
 
     # Start the subprocess
     cwd = str(request.app.state.target_project)
@@ -1784,32 +1831,38 @@ async def run_shortcut(request: Request, shortcut_id: str):
     _shortcut_processes[shortcut_id] = proc_info
 
     # Background task to read output
-    async def _read_output():
-        try:
-            while True:
-                line = await proc.stdout.readline()
-                if not line:
-                    break
-                # Stop appending once the process has been stopped by the user
-                if proc_info.get("_stopped"):
-                    continue
-                proc_info["output"] += line.decode("utf-8", errors="replace")
-                # Cap output at 500KB
-                if len(proc_info["output"]) > 500_000:
-                    proc_info["output"] = proc_info["output"][-400_000:]
-            await proc.wait()
-            # Don't overwrite status if already stopped by user
-            if not proc_info.get("_stopped"):
-                proc_info["exit_code"] = proc.returncode
-                proc_info["status"] = "done" if proc.returncode == 0 else "failed"
-        except Exception as e:
-            if not proc_info.get("_stopped"):
-                proc_info["output"] += f"\n[Error reading output: {e}]"
-                proc_info["status"] = "failed"
-                proc_info["exit_code"] = -1
-
-    asyncio.create_task(_read_output())
+    asyncio.create_task(_read_shortcut_output(proc, proc_info))
     return {"status": "started"}
+
+
+async def _read_shortcut_output(proc, proc_info: dict) -> None:
+    """Collect a shortcut's output into ``proc_info`` and record how it ended.
+
+    Once the user stops the shortcut (``_stopped``), late output and the exit
+    status are no longer recorded.
+    """
+    try:
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            # Stop appending once the process has been stopped by the user
+            if proc_info.get("_stopped"):
+                continue
+            proc_info["output"] += line.decode("utf-8", errors="replace")
+            # Cap output at 500KB
+            if len(proc_info["output"]) > 500_000:
+                proc_info["output"] = proc_info["output"][-400_000:]
+        await proc.wait()
+        # Don't overwrite status if already stopped by user
+        if not proc_info.get("_stopped"):
+            proc_info["exit_code"] = proc.returncode
+            proc_info["status"] = "done" if proc.returncode == 0 else "failed"
+    except Exception as e:
+        if not proc_info.get("_stopped"):
+            proc_info["output"] += f"\n[Error reading output: {e}]"
+            proc_info["status"] = "failed"
+            proc_info["exit_code"] = -1
 
 
 @router.get("/api/shortcuts/{shortcut_id}/output")
@@ -1833,11 +1886,7 @@ async def stop_shortcut(shortcut_id: str):
         return {"ok": False, "detail": "No process found"}
     # Set _stopped flag first so _read_output() stops appending late output
     proc_info["_stopped"] = True
-    if proc_info.get("process") and proc_info["process"].returncode is None:
-        try:
-            proc_info["process"].kill()
-        except ProcessLookupError:
-            pass
+    if _kill_shortcut_process(proc_info, only_if_running=True):
         # Wait briefly for process to finish
         try:
             await asyncio.wait_for(proc_info["process"].wait(), timeout=2.0)
@@ -1854,12 +1903,7 @@ async def stop_shortcut(shortcut_id: str):
 @router.post("/api/shortcuts/{shortcut_id}/reset")
 async def reset_shortcut(shortcut_id: str):
     """Reset a shortcut: kill any running process and clear its output log."""
-    proc_info = _shortcut_processes.pop(shortcut_id, None)
-    if proc_info and proc_info.get("process"):
-        try:
-            proc_info["process"].kill()
-        except ProcessLookupError:
-            pass
+    _kill_shortcut_process(_shortcut_processes.pop(shortcut_id, None))
     return {"ok": True}
 
 

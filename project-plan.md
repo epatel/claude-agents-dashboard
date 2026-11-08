@@ -139,7 +139,17 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     `_top_level_skill_names`, `_discovered_skill`, `_fresh_skill_dir`; network calls keep their order.
     Harness: a fake GitHub behind `_get` (and a stubbed `_ensure_gitignore`), 32 cases of browse /
     discover / install / list / `_parse_spec` identical in result, URL sequence and files written.
-  - **Scores** (2026-11-08, after 10c): headline 8.93, src 9.27, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+    10d `web/routes.py` 7.07 → 8.78 — `_validated_repo` (create), `_release_agent_resources` /
+    `_unblock_dependents` (move), `_item_rows` (work log + attachments), Ollama listing →
+    `_ollama_settings` / `_fetch_ollama_tags` / `_ollama_model_entry` / `_ollama_error_message`,
+    `_tiiny_listed_models` / `_message_text` / `_json_body_or_empty`, `_broadcast_notification`,
+    shortcuts → `_find_shortcut` / `_kill_shortcut_process` / `_read_shortcut_output`.
+    `_tiiny_request` keeps its 5 positional parameters (tests patch it and read `call_args`).
+    Harness: handlers of both modules called directly with the same fake request / DB /
+    orchestrator, `urlopen` patched, real shortcut subprocesses — 42 cases identical. Left: file size
+    (next: split into routers; keep each group's route order — FastAPI matches in registration
+    order, e.g. `/api/items/blocked-status` before `/api/items/{item_id}`).
+  - **Scores** (2026-11-08, after 10d): headline 8.99, src 9.41, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
