@@ -25,23 +25,26 @@ const DiffViewer = {
             const body = document.createElement('div');
             body.className = 'diff-file-body';
 
-            for (const line of file.lines) {
-                const lineEl = document.createElement('div');
-                lineEl.className = 'diff-line';
-                if (line.startsWith('+') && !line.startsWith('+++')) {
-                    lineEl.classList.add('diff-add');
-                } else if (line.startsWith('-') && !line.startsWith('---')) {
-                    lineEl.classList.add('diff-del');
-                } else if (line.startsWith('@@')) {
-                    lineEl.classList.add('diff-hunk');
-                }
-                lineEl.textContent = line;
-                body.appendChild(lineEl);
-            }
+            for (const line of file.lines) body.appendChild(this.renderLine(line));
 
             fileEl.appendChild(body);
             container.appendChild(fileEl);
         }
+    },
+
+    /** One unified-diff line as a `.diff-line` div, classed add / del / hunk. Also used by ReviewFileBrowser. */
+    renderLine(line) {
+        const lineEl = document.createElement('div');
+        lineEl.className = 'diff-line';
+        if (line.startsWith('+') && !line.startsWith('+++')) {
+            lineEl.classList.add('diff-add');
+        } else if (line.startsWith('-') && !line.startsWith('---')) {
+            lineEl.classList.add('diff-del');
+        } else if (line.startsWith('@@')) {
+            lineEl.classList.add('diff-hunk');
+        }
+        lineEl.textContent = line;
+        return lineEl;
     },
 
     parseDiff(text) {

@@ -282,19 +282,7 @@ const ReviewFileBrowser = {
 
         const wrapper = document.createElement('div');
         wrapper.className = 'rfb-inline-diff';
-        for (const line of lines) {
-            const lineEl = document.createElement('div');
-            lineEl.className = 'diff-line';
-            if (line.startsWith('+') && !line.startsWith('+++')) {
-                lineEl.classList.add('diff-add');
-            } else if (line.startsWith('-') && !line.startsWith('---')) {
-                lineEl.classList.add('diff-del');
-            } else if (line.startsWith('@@')) {
-                lineEl.classList.add('diff-hunk');
-            }
-            lineEl.textContent = line;
-            wrapper.appendChild(lineEl);
-        }
+        for (const line of lines) wrapper.appendChild(DiffViewer.renderLine(line));
         container.innerHTML = '';
         container.appendChild(wrapper);
     },

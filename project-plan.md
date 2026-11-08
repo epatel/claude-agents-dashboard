@@ -96,10 +96,11 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     command / tool / question prompts), 8p `--ui-map` overlays (new `overlay_dom.js`, loaded first:
     `topOpenDialog` / `overlayParent` / `placeIn` / `createBadge` shared by `map_overlay.js`,
     `spacing_overlay.js`, `map_coordinator.js`; harness: old vs new scripts in two iframes, 34 steps ×
-    3 initial states identical). Lowest JS files in a **directory** scan (2026-11-08) — the per-file
-    scan misses cross-file duplication: `diff.js` 8.88 (`render` ≈ `ReviewFileBrowser._renderDiff`),
-    `dialog-utils.js` 9.26; all others ≥ 9.53. `.aihealth.toml` excludes the local untracked `run` script.
-  - **Scores** (2026-11-08, after 8p): headline 8.69, JS 9.92. aihealth started scanning JS
+    3 initial states identical), 8q `diff.js` (`DiffViewer.renderLine` shared with
+    `ReviewFileBrowser._renderDiff`; 3000 random diffs identical side by side, file-browser harness
+    41/41). Lowest JS files in a **directory** scan (2026-11-08) — the per-file scan misses
+    cross-file duplication: `dialog-utils.js` 9.26; all others ≥ 9.56. `.aihealth.toml` excludes the local untracked `run` script.
+  - **Scores** (2026-11-08, after 8q): headline 8.69, JS 9.97 (directory scan; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
