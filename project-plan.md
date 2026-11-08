@@ -155,7 +155,13 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     routes; verified with `_match` resolution of 44,442 (method, path) pairs in old vs new apps (every
     path parameter filled with every static segment): 0 differ. Handler harness 42/42 vs 10d; tests
     patch `_tiiny_request` in `src.web.provider_routes` now; 1441 tests; live smoke on :8017.
-  - **Scores** (2026-11-08, after 10e): headline 9.04, src 9.50, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+    10f `agent/kimi_session.py` 7.27 → 9.08 — `_decide_permission` → `_boundary_violation` (the
+    PathScope deny, logged) / `_shell_command` / `_decide_command`, keeping the decision order;
+    `_tool_call_paths` → `_raw_input_path_values` / `_as_list`; `_run` → `_kimi_env` / `_mcp_servers`;
+    `cancel` → `_cancel_acp_session` / `_stop_task`. `__init__` keeps the shared 15-parameter session
+    contract. Fuzz: 119,098 random `_decide_permission` / `_tool_call_paths` calls (real `PathScope`,
+    force-ask env, yolo, allowlists) identical incl. the boundary warning; 19 env / MCP / cancel cases.
+  - **Scores** (2026-11-08, after 10f): headline 9.07, src 9.55, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser

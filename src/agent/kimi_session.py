@@ -138,29 +138,29 @@ _PATH_LIST_KEYS = ("paths", "files", "file_paths", "filePaths")
 _READ_ONLY_KINDS = {"read", "search", "think", "fetch"}
 
 
+def _as_list(value) -> list:
+    """``value`` as a list if it is a list or tuple, else []."""
+    return list(value) if isinstance(value, (list, tuple)) else []
+
+
 def _tool_call_paths(tool_call: dict) -> list[str]:
     """Every path-looking argument of an ACP tool call."""
-    paths: list[str] = []
+    candidates = _raw_input_path_values(tool_call.get("rawInput"))
+    candidates += [
+        location.get("path") for location in _as_list(tool_call.get("locations"))
+        if isinstance(location, dict)
+    ]
+    return [value for value in candidates if isinstance(value, str) and value.strip()]
 
-    def add(value) -> None:
-        if isinstance(value, str) and value.strip():
-            paths.append(value)
 
-    raw_input = tool_call.get("rawInput")
-    if isinstance(raw_input, dict):
-        for key in _PATH_KEYS:
-            add(raw_input.get(key))
-        for key in _PATH_LIST_KEYS:
-            value = raw_input.get(key)
-            if isinstance(value, (list, tuple)):
-                for entry in value:
-                    add(entry)
-    locations = tool_call.get("locations")
-    if isinstance(locations, (list, tuple)):
-        for location in locations:
-            if isinstance(location, dict):
-                add(location.get("path"))
-    return paths
+def _raw_input_path_values(raw_input) -> list:
+    """Values of the path-like keys (single and list-valued) of a tool call's rawInput."""
+    if not isinstance(raw_input, dict):
+        return []
+    values = [raw_input.get(key) for key in _PATH_KEYS]
+    for key in _PATH_LIST_KEYS:
+        values += _as_list(raw_input.get(key))
+    return values
 
 
 def _scope_violations(tool_call: dict, path_scope: PathScope) -> list[str]:
@@ -204,21 +204,44 @@ def _decide_permission(tool_call, allowed_commands, bash_yolo,
     """
     tool_call = tool_call or {}
     if path_scope is not None:
-        violations = _scope_violations(tool_call, path_scope)
-        if violations:
-            logger.warning(
-                "Kimi mode: worktree boundary violation — denied %r on %s "
-                "(worktree %s)",
-                tool_call.get("title") or tool_call.get("kind") or "tool call",
-                ", ".join(violations), path_scope.worktree,
-            )
-            return "deny", violations[0]
+        denied_path = _boundary_violation(tool_call, path_scope)
+        if denied_path:
+            return "deny", denied_path
+    command = _shell_command(tool_call)
+    if command is None:
+        return "allow", ""
+    return _decide_command(command, allowed_commands, bash_yolo)
+
+
+def _boundary_violation(tool_call: dict, path_scope: PathScope) -> str | None:
+    """The first path argument that leaves the agent's boundary (logged), or None."""
+    violations = _scope_violations(tool_call, path_scope)
+    if not violations:
+        return None
+    logger.warning(
+        "Kimi mode: worktree boundary violation — denied %r on %s "
+        "(worktree %s)",
+        tool_call.get("title") or tool_call.get("kind") or "tool call",
+        ", ".join(violations), path_scope.worktree,
+    )
+    return violations[0]
+
+
+def _shell_command(tool_call: dict) -> str | None:
+    """The shell command an execute tool call (or a call carrying a command) runs;
+    None for every other tool call. Falls back to the call's title."""
     raw_input = tool_call.get("rawInput")
     command = raw_input.get("command") if isinstance(raw_input, dict) else None
-    if tool_call.get("kind") != "execute" and not isinstance(command, str):
-        return "allow", ""
-    if not isinstance(command, str):
-        command = str(tool_call.get("title") or "")
+    if isinstance(command, str):
+        return command
+    if tool_call.get("kind") != "execute":
+        return None
+    return str(tool_call.get("title") or "")
+
+
+def _decide_command(command: str, allowed_commands, bash_yolo) -> tuple[str, str]:
+    """allow / ask for a shell command: yolo or an allowlisted first word allows it;
+    shell operators or anything else escalates to the user."""
     if os.environ.get("KIMI_FORCE_PERMISSION_ASK"):
         # Debug aid: escalate every execute permission request that kimi
         # raises to the user, regardless of allowlist/bash_yolo. Repeatable
@@ -229,7 +252,8 @@ def _decide_permission(tool_call, allowed_commands, bash_yolo,
     if _contains_shell_operators(command):
         return "ask", command
     first_word = _extract_command_name(command)
-    if first_word and first_word in (allowed_commands or []):
+    allowed = allowed_commands or []
+    if first_word and first_word in allowed:
         return "allow", command
     return "ask", command
 
@@ -559,15 +583,9 @@ class KimiAgentSession(AbstractAgentSession):
                     await self.on_error(KIMI_SDK_INSTALL_HINT)
                 return
 
-            env = dict(os.environ)
-            if self.model:
-                env["KIMI_MODEL_NAME"] = self.model
-
+            env = self._kimi_env()
             logger.info(f"Kimi mode: spawning `kimi acp` for model {self.model}")
-            board_cfg = _board_mcp_config(self.item_id)
-            mcp_servers = [board_cfg] if board_cfg else None
-            if board_cfg:
-                logger.info("Kimi mode: board tools MCP proxy enabled")
+            mcp_servers = self._mcp_servers()
 
             async def permission_handler(request):
                 return await self._handle_permission(request, acp)
@@ -594,6 +612,21 @@ class KimiAgentSession(AbstractAgentSession):
                 await self.on_error(str(e))
         finally:
             self._acp_session = None
+
+    def _kimi_env(self) -> dict:
+        """The `kimi acp` subprocess environment: ours, plus the model to use."""
+        env = dict(os.environ)
+        if self.model:
+            env["KIMI_MODEL_NAME"] = self.model
+        return env
+
+    def _mcp_servers(self) -> list | None:
+        """ACP mcpServers: the board-tools proxy when it is available, else None."""
+        board_cfg = _board_mcp_config(self.item_id)
+        if not board_cfg:
+            return None
+        logger.info("Kimi mode: board tools MCP proxy enabled")
+        return [board_cfg]
 
     async def _handle_permission(self, request, acp):
         """Answer an ACP session/request_permission: allow, deny, or ask the user."""
@@ -697,14 +730,24 @@ class KimiAgentSession(AbstractAgentSession):
     async def cancel(self) -> None:
         """Stop the run: ask ACP to cancel, then tear down the task/subprocess."""
         self._cancelled = True
-        if self._acp_session is not None:
-            try:
-                await asyncio.wait_for(self._acp_session.cancel(), timeout=5)
-            except Exception:
-                pass
-        if self._task and not self._task.done():
-            self._task.cancel()
-            try:
-                await self._task
-            except (asyncio.CancelledError, Exception):
-                pass
+        await self._cancel_acp_session()
+        await self._stop_task()
+
+    async def _cancel_acp_session(self) -> None:
+        """Ask the ACP session (if one is open) to cancel; give up after 5 s."""
+        if self._acp_session is None:
+            return
+        try:
+            await asyncio.wait_for(self._acp_session.cancel(), timeout=5)
+        except Exception:
+            pass
+
+    async def _stop_task(self) -> None:
+        """Cancel the run task (if still running) and wait for it to end."""
+        if not self._task or self._task.done():
+            return
+        self._task.cancel()
+        try:
+            await self._task
+        except (asyncio.CancelledError, Exception):
+            pass
