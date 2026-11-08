@@ -131,7 +131,8 @@ def create_todo_server(on_create_todo, on_delete_todo=None, on_create_epic=None)
             auto_approve = 0
         use_chrome = bool(input.get("use_chrome", False))
         item_info = await on_create_todo(
-            title, description, epic_id, requires, autostart, auto_approve, use_chrome
+            title, description, epic_id=epic_id, requires=requires,
+            autostart=autostart, auto_approve=auto_approve, use_chrome=use_chrome,
         )
         msg = f"Created todo item: {item_info['title']} (ID: {item_info['id']})"
         if item_info.get("autostart_scheduled"):

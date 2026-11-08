@@ -39,6 +39,16 @@ def get_tool(tools, name):
     raise KeyError(f"Tool '{name}' not found. Available: {[t.name for t in tools]}")
 
 
+# The create_todo tool passes title / description positionally and the rest by keyword.
+_TODO_OPTION_NAMES = ("epic_id", "requires", "autostart", "auto_approve", "use_chrome")
+
+
+def _assert_todo_call(cb, expected):
+    """``cb`` was awaited once with (title, description, epic_id, requires, autostart, auto_approve, use_chrome)."""
+    title, description, *options = expected
+    cb.assert_awaited_once_with(title, description, **dict(zip(_TODO_OPTION_NAMES, options)))
+
+
 def _text(result):
     """The text of the first content block of a tool result."""
     return result["content"][0]["text"]
@@ -426,7 +436,7 @@ class TestTodoServer:
     ):
         cb, result = await self._call("create_todo", cb_return, tool_input)
 
-        cb.assert_awaited_once_with(*expected_args)
+        _assert_todo_call(cb, expected_args)
         text = _text(result)
         for fragment in expected_text:
             assert fragment in text
@@ -455,7 +465,7 @@ class TestTodoServer:
     ])
     async def test_create_todo_forwards_args(self, tool_input, expected_args):
         cb, _result = await self._call("create_todo", _TODO, tool_input)
-        cb.assert_awaited_once_with(*expected_args)
+        _assert_todo_call(cb, expected_args)
 
     @pytest.mark.asyncio
     async def test_create_todo_use_chrome_defaults_false(self):
@@ -463,8 +473,8 @@ class TestTodoServer:
             "create_todo", {"id": "7", "title": "Code Task"}, {"title": "Code Task"}
         )
 
-        # use_chrome is the 7th positional arg and defaults to False.
-        assert cb.await_args.args[6] is False
+        # use_chrome is passed explicitly and defaults to False.
+        assert cb.await_args.kwargs["use_chrome"] is False
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("cb_return, tool_input, expected_fragment", [

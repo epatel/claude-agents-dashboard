@@ -72,7 +72,7 @@ async def _create_from_creator_in(ws, column):
     creator = await ws.db.create_todo_item("Creator", f"card in {column}")
     await ws.db.update_item(creator["id"], column_name=column)
     callback = ws._create_on_create_todo_callback(creator["id"])
-    result = await callback("Autostart task", "desc", None, None, True)
+    result = await callback("Autostart task", "desc", epic_id=None, requires=None, autostart=True)
     return creator, result
 
 
@@ -118,7 +118,7 @@ async def test_on_create_todo_callback_forwards_autostart(ws):
     passed it through to db.create_todo_item().
     """
     callback = ws._create_on_create_todo_callback("parent-item-123")
-    result = await callback("Autostart Todo", "desc", None, None, True)
+    result = await callback("Autostart Todo", "desc", epic_id=None, requires=None, autostart=True)
 
     # The item should be saved with auto_start=1 in the database
     assert result["auto_start"] == 1, "autostart flag must be forwarded and persisted"
@@ -172,7 +172,7 @@ async def test_create_todo_callback_receives_requires_and_autostart(ws):
     dep2 = await ws.db.create_todo_item("Dep 2", "Second dep")
 
     callback = ws._create_on_create_todo_callback("parent-123")
-    result = await callback("New Task", "desc", None, [dep1["id"], dep2["id"]], True)
+    result = await callback("New Task", "desc", epic_id=None, requires=[dep1["id"], dep2["id"]], autostart=True)
 
     # Verify the item was created with autostart flag
     assert result["auto_start"] == 1
@@ -192,7 +192,7 @@ async def test_create_todo_callback_sets_dependencies_in_db(ws):
     """Dependencies passed via requires must be stored in item_dependencies table."""
     dep = await ws.db.create_todo_item("Prerequisite", "Must do first")
     callback = ws._create_on_create_todo_callback("parent-123")
-    await callback("Dependent Task", "needs prereq", None, [dep["id"]], False)
+    await callback("Dependent Task", "needs prereq", epic_id=None, requires=[dep["id"]], autostart=False)
 
     # Verify blocked_status_changed was broadcast
     ws.notifications.ws_manager.broadcast.assert_called()
@@ -204,7 +204,7 @@ async def test_create_todo_callback_sets_dependencies_in_db(ws):
 async def test_create_todo_callback_no_requires_no_blocked_broadcast(ws):
     """When no requires, blocked_status_changed should NOT be broadcast."""
     callback = ws._create_on_create_todo_callback("parent-123")
-    await callback("Simple Task", "no deps", None, None, False)
+    await callback("Simple Task", "no deps", epic_id=None, requires=None, autostart=False)
 
     # blocked_status_changed should NOT have been broadcast
     if ws.notifications.ws_manager.broadcast.called:
@@ -223,7 +223,7 @@ async def test_callback_does_not_immediately_start_with_dependencies(ws):
     dep_item = await ws.db.create_todo_item("Dependency", "Must finish first")
 
     callback = ws._create_on_create_todo_callback("parent-item-123")
-    result = await callback("Blocked Task", "desc", None, [dep_item["id"]], True)
+    result = await callback("Blocked Task", "desc", epic_id=None, requires=[dep_item["id"]], autostart=True)
 
     # start_agent should NOT have been called since there are unmet dependencies
     ws.start_agent.assert_not_called()
@@ -282,21 +282,15 @@ async def test_create_todo_item_persists_auto_approve(db_service, kwargs, expect
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "extra_args, expected",
-    [
-        # autostart=False, auto_approve=2 (direct)
-        pytest.param((2,), 2, id="forwards_direct"),
-        # Invalid auto_approve values are coerced to OFF before hitting the db
-        pytest.param((99,), 0, id="invalid_coerced_to_off"),
-        # Legacy 5-positional-arg call site: auto_approve defaults to 0
-        pytest.param((), 0, id="legacy_default_is_off"),
-    ],
-)
-async def test_callback_forwards_auto_approve_to_db(ws, extra_args, expected):
+@pytest.mark.parametrize("auto_approve_option, expected", [
+    ({"auto_approve": 2}, 2),     # forwarded as-is (direct merge)
+    ({"auto_approve": 99}, 0),    # invalid values are coerced to OFF before the db
+    ({}, 0),                      # omitted: defaults to OFF
+], ids=["forwards_direct", "invalid_coerced_to_off", "legacy_default_is_off"])
+async def test_callback_forwards_auto_approve_to_db(ws, auto_approve_option, expected):
     """The on_create_todo callback must forward auto_approve to create_todo_item."""
     callback = ws._create_on_create_todo_callback("parent-123")
-    result = await callback("Task", "desc", None, None, False, *extra_args)
+    result = await callback("Task", "desc", autostart=False, **auto_approve_option)
 
     assert result["auto_approve"] == expected
 
@@ -305,7 +299,7 @@ async def test_callback_forwards_auto_approve_to_db(ws, extra_args, expected):
 async def test_callback_supports_autostart_and_auto_approve_together(ws):
     """Callback must accept both autostart and auto_approve in the same call."""
     callback = ws._create_on_create_todo_callback("parent-123")
-    result = await callback("Both", "desc", None, None, True, 1)
+    result = await callback("Both", "desc", epic_id=None, requires=None, autostart=True, auto_approve=1)
 
     # Give the asyncio.create_task a chance to run (autostart with no deps)
     await asyncio.sleep(0.1)
@@ -326,7 +320,7 @@ async def test_callback_starts_agent_immediately_without_dependencies(ws):
     test_autostart_empty_requires_anchors_to_creating_card.
     """
     callback = ws._create_on_create_todo_callback("parent-item-123")
-    result = await callback("Immediate Task", "desc", None, None, True)
+    result = await callback("Immediate Task", "desc", epic_id=None, requires=None, autostart=True)
 
     # Give the asyncio.create_task a chance to run
     await asyncio.sleep(0.1)

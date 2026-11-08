@@ -29,13 +29,11 @@ TODO_OPTION_DEFAULTS: Dict[str, Any] = {
 }
 
 
-def _todo_options(options: Dict[str, Any]) -> Dict[str, Any]:
-    """``options`` over ``TODO_OPTION_DEFAULTS``; an unknown name is a TypeError."""
+def _todo_options(options: Dict[str, Any], function: str) -> Dict[str, Any]:
+    """``options`` over ``TODO_OPTION_DEFAULTS``; an unknown name is a TypeError (naming ``function``)."""
     unknown = [name for name in options if name not in TODO_OPTION_DEFAULTS]
     if unknown:
-        raise TypeError(
-            f"BoardToolCallbacksMixin.create_agent_todo() got an unexpected keyword argument '{unknown[0]}'"
-        )
+        raise TypeError(f"{function}() got an unexpected keyword argument '{unknown[0]}'")
     return {**TODO_OPTION_DEFAULTS, **options}
 
 
@@ -53,17 +51,22 @@ class BoardToolCallbacksMixin:
         options in ``TODO_OPTION_DEFAULTS``; any other keyword is a TypeError.
         """
         callback = self._create_on_create_todo_callback(creator_item_id)
-        return await callback(title, description, **_todo_options(options))
+        return await callback(
+            title, description, **_todo_options(options, "BoardToolCallbacksMixin.create_agent_todo")
+        )
 
     def _create_on_create_todo_callback(self, item_id: str):
-        async def on_create_todo(title: str, description: str, epic_id: str = None, requires: list[str] = None, autostart: bool = False, auto_approve: int = 0, use_chrome: bool = False) -> Dict[str, Any]:
+        async def on_create_todo(title: str, description: str, **options) -> Dict[str, Any]:
+            """Create the todo. ``options`` are the keywords in ``TODO_OPTION_DEFAULTS``."""
+            opts = _todo_options(options, "on_create_todo")
+            autostart = opts["autostart"]
             item = await self.db.create_todo_item(
-                title, description, epic_id, autostart,
-                auto_approve=self._coerce_auto_approve(auto_approve),
-                use_chrome=bool(use_chrome),
+                title, description, opts["epic_id"], autostart,
+                auto_approve=self._coerce_auto_approve(opts["auto_approve"]),
+                use_chrome=bool(opts["use_chrome"]),
             )
             effective_requires, auto_anchored = await self._effective_requires(
-                item_id, item["id"], requires, autostart,
+                item_id, item["id"], opts["requires"], autostart,
             )
             if effective_requires:
                 await self.db.set_item_dependencies(item["id"], effective_requires)
