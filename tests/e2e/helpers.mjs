@@ -103,14 +103,43 @@ export async function stopServer(port, proc) {
 }
 
 /**
- * Create an item, start the agent, and poll until completion.
- * Returns { finished, finalStatus, workLog, itemId }.
+ * Run `run(page, base)` against a dashboard for `targetRepo`: start the server
+ * (or reuse $E2E_PORT), open the board in headless Chromium, and tear both down
+ * afterwards. `cleanup(page, base)` runs first in teardown. A thrown error is
+ * reported and exits with code 1 (without teardown, as the tests always did).
  */
-export async function runAgentTask(page, base, { title, description }) {
-  const createRes = await page.evaluate(async (args) => {
-    const [b, t, d] = args;
+export async function withBoard(targetRepo, run, { cleanup } = {}) {
+  console.log(`Starting server with target: ${targetRepo}`);
+  const { port, proc: serverProc } = await startServer(targetRepo);
+  const base = `http://127.0.0.1:${port}`;
+  console.log(`Server running on port ${port}`);
+
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+
+  try {
+    await page.goto(base);
+    await page.waitForTimeout(1000);
+    console.log('Board loaded');
+    await run(page, base);
+  } catch (err) {
+    console.error('Test error:', err);
+    process.exit(1);
+  } finally {
+    if (cleanup) await cleanup(page, base);
+    await browser.close();
+    await stopServer(port, serverProc);
+  }
+}
+
+// --- Dashboard API calls, made from inside the page ---
+
+/** Create an item (with $E2E_MODEL as its model when set); returns the created item. */
+export function apiCreateItem(page, base, title, description) {
+  return page.evaluate(async (args) => {
+    const [b, t, d, model] = args;
     const payload = { title: t, description: d };
-    if (args[3]) payload.model = args[3];
+    if (model) payload.model = model;
     const r = await fetch(`${b}/api/items`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -118,50 +147,92 @@ export async function runAgentTask(page, base, { title, description }) {
     });
     return r.json();
   }, [base, title, description, E2E_MODEL]);
+}
 
-  const itemId = createRes.id;
-  console.log(`Created item: ${itemId}${E2E_MODEL ? ` (model: ${E2E_MODEL})` : ''}`);
-
-  await page.evaluate(async (args) => {
+/** Start the agent for an item. */
+export function apiStartItem(page, base, itemId) {
+  return page.evaluate(async (args) => {
     const [b, id] = args;
     await fetch(`${b}/api/items/${id}/start`, { method: 'POST' });
   }, [base, itemId]);
-  console.log('Agent started');
+}
 
+/** One item-list fetch; returns the item for each id, or {} for a missing one. */
+export function apiGetItems(page, base, itemIds) {
+  return page.evaluate(async (args) => {
+    const [b, ids] = args;
+    const listRes = await fetch(`${b}/api/items`);
+    const items = await listRes.json();
+    return ids.map(id => items.find(i => i.id === id) || {});
+  }, [base, itemIds]);
+}
+
+/** An item's work log. */
+export function apiGetLog(page, base, itemId) {
+  return page.evaluate(async (args) => {
+    const [b, id] = args;
+    const logRes = await fetch(`${b}/api/items/${id}/log`);
+    return logRes.json();
+  }, [base, itemId]);
+}
+
+/** An item (or {}) and then its work log. */
+export async function apiGetItemWithLog(page, base, itemId) {
+  const [item] = await apiGetItems(page, base, [itemId]);
+  const log = await apiGetLog(page, base, itemId);
+  return { item, log };
+}
+
+/** Approve an item; returns { status, body } of the response. */
+export function apiApproveItem(page, base, itemId) {
+  return page.evaluate(async (args) => {
+    const [b, id] = args;
+    const r = await fetch(`${b}/api/items/${id}/approve`, { method: 'POST' });
+    return { status: r.status, body: await r.json() };
+  }, [base, itemId]);
+}
+
+/**
+ * Wait POLL_INTERVAL, then call `step(elapsed)`, until it returns a truthy value
+ * or `maxWait` ms have passed. Returns { result, elapsed } (result null on timeout).
+ */
+export async function pollEvery(page, maxWait, step) {
   let elapsed = 0;
-  let finished = false;
-  let finalStatus = '';
-  let workLog = [];
-
-  while (elapsed < MAX_WAIT) {
+  while (elapsed < maxWait) {
     await page.waitForTimeout(POLL_INTERVAL);
     elapsed += POLL_INTERVAL;
+    const result = await step(elapsed);
+    if (result) return { result, elapsed };
+  }
+  return { result: null, elapsed };
+}
 
-    const status = await page.evaluate(async (args) => {
-      const [b, id] = args;
-      const listRes = await fetch(`${b}/api/items`);
-      const items = await listRes.json();
-      const item = items.find(i => i.id === id) || {};
-      const logRes = await fetch(`${b}/api/items/${id}/log`);
-      const log = await logRes.json();
-      return { status: item.column_name, log };
-    }, [base, itemId]);
+/**
+ * Create an item, start the agent, and poll until completion.
+ * Returns { finished, finalStatus, workLog, itemId }.
+ */
+export async function runAgentTask(page, base, { title, description }) {
+  const createRes = await apiCreateItem(page, base, title, description);
+  const itemId = createRes.id;
+  console.log(`Created item: ${itemId}${E2E_MODEL ? ` (model: ${E2E_MODEL})` : ''}`);
 
-    workLog = status.log || [];
-    finalStatus = status.status;
+  await apiStartItem(page, base, itemId);
+  console.log('Agent started');
+
+  let finalStatus = '';
+  let workLog = [];
+  const { result } = await pollEvery(page, MAX_WAIT, async (elapsed) => {
+    const { item, log } = await apiGetItemWithLog(page, base, itemId);
+    workLog = log || [];
+    finalStatus = item.column_name;
     const completionInLog = workLog.some(e => (e.message || '').includes('Agent completed'));
     console.log(`  [${Math.round(elapsed/1000)}s] Status: ${finalStatus}, log entries: ${workLog.length}${completionInLog ? ' [COMPLETED]' : ''}`);
+    if (['review', 'done'].includes(finalStatus) || completionInLog) return 'finished';
+    if (['error', 'failed', 'todo'].includes(finalStatus) && workLog.length > 3) return 'stopped';
+    return null;
+  });
 
-    if (['review', 'done'].includes(finalStatus) || completionInLog) {
-      finished = true;
-      break;
-    }
-    if (['error', 'failed', 'todo'].includes(finalStatus) && workLog.length > 3) {
-      break;
-    }
-  }
-
-  return { finished, finalStatus, workLog, itemId };
+  return { finished: result === 'finished', finalStatus, workLog, itemId };
 }
 
 /** Delete a test item. */
