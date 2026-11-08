@@ -128,15 +128,7 @@ struct DashboardTabsView: View {
                 .foregroundColor(.secondary)
 
             if !dashboard.outputLog.isEmpty {
-                ScrollView {
-                    Text(dashboard.outputLog)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                }
-                .frame(maxWidth: 500, maxHeight: 200)
-                .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(8)
+                outputLogView(dashboard.outputLog, maxWidth: 500, maxHeight: 200)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -144,9 +136,7 @@ struct DashboardTabsView: View {
 
     private func errorView(_ dashboard: DashboardInstance) -> some View {
         VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 48))
-                .foregroundColor(.red)
+            stateIcon("exclamationmark.triangle.fill", color: .red)
 
             Text("Dashboard Error")
                 .font(.title2)
@@ -158,55 +148,59 @@ struct DashboardTabsView: View {
             }
 
             if !dashboard.outputLog.isEmpty {
-                ScrollView {
-                    Text(dashboard.outputLog)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                }
-                .frame(maxWidth: 600, maxHeight: 300)
-                .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(8)
+                outputLogView(dashboard.outputLog, maxWidth: 600, maxHeight: 300)
             }
 
-            HStack {
-                Button("Restart") {
-                    projectManager.removeDashboard(id: dashboard.id)
-                    projectManager.startDashboard(for: dashboard.project)
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button("Remove") {
-                    projectManager.removeDashboard(id: dashboard.id)
-                }
-            }
+            restartButtons(dashboard, removeTitle: "Remove")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func stoppedView(_ dashboard: DashboardInstance) -> some View {
         VStack(spacing: 16) {
-            Image(systemName: "stop.circle")
-                .font(.system(size: 48))
-                .foregroundColor(.secondary)
+            stateIcon("stop.circle", color: .secondary)
 
             Text("Dashboard Stopped")
                 .font(.title2)
                 .foregroundColor(.secondary)
 
-            HStack {
-                Button("Restart") {
-                    projectManager.removeDashboard(id: dashboard.id)
-                    projectManager.startDashboard(for: dashboard.project)
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button("Remove Tab") {
-                    projectManager.removeDashboard(id: dashboard.id)
-                }
-            }
+            restartButtons(dashboard, removeTitle: "Remove Tab")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func stateIcon(_ systemImage: String, color: Color) -> some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 48))
+            .foregroundColor(color)
+    }
+
+    /// The server's startup output in a scrollable monospaced box.
+    private func outputLogView(_ log: String, maxWidth: CGFloat, maxHeight: CGFloat) -> some View {
+        ScrollView {
+            Text(log)
+                .font(.system(.caption, design: .monospaced))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+        }
+        .frame(maxWidth: maxWidth, maxHeight: maxHeight)
+        .background(Color(nsColor: .textBackgroundColor))
+        .cornerRadius(8)
+    }
+
+    /// Restart (remove the tab and start the project again) and a remove button.
+    private func restartButtons(_ dashboard: DashboardInstance, removeTitle: String) -> some View {
+        HStack {
+            Button("Restart") {
+                projectManager.removeDashboard(id: dashboard.id)
+                projectManager.startDashboard(for: dashboard.project)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button(removeTitle) {
+                projectManager.removeDashboard(id: dashboard.id)
+            }
+        }
     }
 }
 
@@ -232,33 +226,10 @@ struct TabButton: View {
             // already conveys "running", so the port suffix that used to
             // live here was redundant — we use the freed space for these.
             if dashboard.status == .running {
-                if dashboard.questionsCount > 0 {
-                    badge(
-                        count: dashboard.questionsCount,
-                        color: .orange,
-                        systemImage: "questionmark",
-                        help: "\(dashboard.questionsCount) item\(dashboard.questionsCount == 1 ? "" : "s") awaiting your answer"
-                    )
-                }
-                if dashboard.reviewsCount > 0 {
-                    badge(
-                        count: dashboard.reviewsCount,
-                        color: .blue,
-                        systemImage: "eye",
-                        help: "\(dashboard.reviewsCount) item\(dashboard.reviewsCount == 1 ? "" : "s") in review"
-                    )
-                }
+                attentionBadges
             }
 
-            Button(action: {
-                projectManager.removeDashboard(id: dashboard.id)
-            }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            .opacity(isSelected ? 1 : 0)
+            closeButton
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -281,6 +252,44 @@ struct TabButton: View {
                 NSCursor.pop()
             }
         }
+    }
+
+    @ViewBuilder
+    private var attentionBadges: some View {
+        if dashboard.questionsCount > 0 {
+            badge(
+                count: dashboard.questionsCount,
+                color: .orange,
+                systemImage: "questionmark",
+                help: "\(TabButton.items(dashboard.questionsCount)) awaiting your answer"
+            )
+        }
+        if dashboard.reviewsCount > 0 {
+            badge(
+                count: dashboard.reviewsCount,
+                color: .blue,
+                systemImage: "eye",
+                help: "\(TabButton.items(dashboard.reviewsCount)) in review"
+            )
+        }
+    }
+
+    /// "1 item" / "3 items".
+    static func items(_ count: Int) -> String {
+        "\(count) item\(count == 1 ? "" : "s")"
+    }
+
+    /// The tab's close button, visible only on the selected tab.
+    private var closeButton: some View {
+        Button(action: {
+            projectManager.removeDashboard(id: dashboard.id)
+        }) {
+            Image(systemName: "xmark")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.secondary)
+        }
+        .buttonStyle(.plain)
+        .opacity(isSelected ? 1 : 0)
     }
 
     /// Compact pill showing an SF Symbol + count, e.g. ❓ 2 or 👁 1.

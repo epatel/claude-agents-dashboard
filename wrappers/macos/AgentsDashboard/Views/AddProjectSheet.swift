@@ -8,27 +8,14 @@ struct AddProjectSheet: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            // Header
-            VStack(spacing: 4) {
-                Image(systemName: "folder.badge.plus")
-                    .font(.system(size: 36))
-                    .foregroundColor(.accentColor)
-
-                Text("Add Project")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-
-                Text("Select a git repository — or a folder containing several repos — to manage with Agents Dashboard")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+            SheetHeader(
+                systemImage: "folder.badge.plus",
+                title: "Add Project",
+                message: "Select a git repository — or a folder containing several repos — to manage with Agents Dashboard"
+            )
 
             // Path input
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Project Path")
-                    .font(.headline)
-
+            SheetField(title: "Project Path") {
                 HStack {
                     TextField("/path/to/your/project", text: $projectPath)
                         .textFieldStyle(.roundedBorder)
@@ -47,58 +34,50 @@ struct AddProjectSheet: View {
 
             // Quick add from recent
             if !existingProjectSuggestions.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Suggestions")
-                        .font(.headline)
-
+                SheetField(title: "Suggestions") {
                     ForEach(existingProjectSuggestions, id: \.self) { path in
-                        Button(action: {
-                            projectPath = path
-                        }) {
-                            HStack {
-                                Image(systemName: "folder")
-                                    .foregroundColor(.secondary)
-                                Text(URL(fileURLWithPath: path).lastPathComponent)
-                                    .font(.body)
-                                Spacer()
-                                Text(path)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.head)
-                            }
-                            .padding(.vertical, 4)
-                            .padding(.horizontal, 8)
-                            .background(Color(nsColor: .controlBackgroundColor))
-                            .cornerRadius(6)
-                        }
-                        .buttonStyle(.plain)
+                        suggestionButton(path)
                     }
                 }
             }
 
-            // Actions
-            HStack {
-                Button("Cancel") {
-                    projectManager.showAddProject = false
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Spacer()
-
-                Button("Add Project") {
-                    addProject()
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .disabled(projectPath.isEmpty)
-            }
+            SheetActions(
+                onCancel: { projectManager.showAddProject = false },
+                confirmTitle: "Add Project",
+                confirmDisabled: projectPath.isEmpty,
+                onConfirm: addProject
+            )
         }
         .padding(24)
         .frame(width: 500)
         .onAppear {
             loadRecentPaths()
         }
+    }
+
+    /// A recent repository; clicking it fills in the path.
+    private func suggestionButton(_ path: String) -> some View {
+        Button(action: {
+            projectPath = path
+        }) {
+            HStack {
+                Image(systemName: "folder")
+                    .foregroundColor(.secondary)
+                Text(URL(fileURLWithPath: path).lastPathComponent)
+                    .font(.body)
+                Spacer()
+                Text(path)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 8)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
     }
 
     private var existingProjectSuggestions: [String] {

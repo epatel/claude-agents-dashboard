@@ -8,36 +8,20 @@ struct CreateProjectSheet: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            // Header
-            VStack(spacing: 4) {
-                Image(systemName: "plus.rectangle.on.folder")
-                    .font(.system(size: 36))
-                    .foregroundColor(.accentColor)
-
-                Text("Create New Project")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-
-                Text("Create a new git repository to manage with Agents Dashboard")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+            SheetHeader(
+                systemImage: "plus.rectangle.on.folder",
+                title: "Create New Project",
+                message: "Create a new git repository to manage with Agents Dashboard"
+            )
 
             // Project name
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Project Name")
-                    .font(.headline)
-
+            SheetField(title: "Project Name") {
                 TextField("my-project", text: $projectName)
                     .textFieldStyle(.roundedBorder)
             }
 
             // Parent directory
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Location")
-                    .font(.headline)
-
+            SheetField(title: "Location") {
                 HStack {
                     TextField("~/Development", text: $parentPath)
                         .textFieldStyle(.roundedBorder)
@@ -60,22 +44,12 @@ struct CreateProjectSheet: View {
                     .foregroundColor(.red)
             }
 
-            // Actions
-            HStack {
-                Button("Cancel") {
-                    projectManager.showCreateProject = false
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Spacer()
-
-                Button("Create Project") {
-                    createProject()
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .disabled(projectName.isEmpty || parentPath.isEmpty)
-            }
+            SheetActions(
+                onCancel: { projectManager.showCreateProject = false },
+                confirmTitle: "Create Project",
+                confirmDisabled: projectName.isEmpty || parentPath.isEmpty,
+                onConfirm: createProject
+            )
         }
         .padding(24)
         .frame(width: 500)
@@ -122,38 +96,11 @@ struct CreateProjectSheet: View {
     private func createProject() {
         let name = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
         let parent = parentPath.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !name.isEmpty else {
-            errorMessage = "Project name cannot be empty"
-            return
-        }
-
-        // Validate no path-unsafe characters
-        let invalidChars = CharacterSet(charactersIn: "/\\:")
-        if name.unicodeScalars.contains(where: { invalidChars.contains($0) }) {
-            errorMessage = "Project name contains invalid characters"
-            return
-        }
-
-        // Validate parent exists
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: parent, isDirectory: &isDir), isDir.boolValue else {
-            errorMessage = "Parent directory does not exist"
-            return
-        }
-
         let projectURL = URL(fileURLWithPath: parent).appendingPathComponent(name)
         let projectPath = projectURL.path
 
-        // Check it doesn't already exist
-        if FileManager.default.fileExists(atPath: projectPath) {
-            errorMessage = "A file or directory named \"\(name)\" already exists at this location"
-            return
-        }
-
-        // Check if already in project list
-        if projectManager.projects.contains(where: { $0.path == projectPath }) {
-            errorMessage = "This project is already added"
+        if let problem = validationError(name: name, parent: parent, projectPath: projectPath) {
+            errorMessage = problem
             return
         }
 
@@ -165,25 +112,59 @@ struct CreateProjectSheet: View {
             return
         }
 
-        // git init
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["init", "-b", "main"]
-        process.currentDirectoryURL = projectURL
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        if let problem = CreateProjectSheet.initRepository(at: projectURL) {
+            errorMessage = problem
+            return
+        }
 
+        // Add to project manager
+        projectManager.addProject(path: projectPath)
+        projectManager.showCreateProject = false
+    }
+
+    /// Why a project named ``name`` cannot be created under ``parent`` (nil when it can).
+    private func validationError(name: String, parent: String, projectPath: String) -> String? {
+        guard !name.isEmpty else {
+            return "Project name cannot be empty"
+        }
+
+        // Validate no path-unsafe characters
+        let invalidChars = CharacterSet(charactersIn: "/\\:")
+        if name.unicodeScalars.contains(where: { invalidChars.contains($0) }) {
+            return "Project name contains invalid characters"
+        }
+
+        // Validate parent exists
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: parent, isDirectory: &isDir), isDir.boolValue else {
+            return "Parent directory does not exist"
+        }
+
+        // Check it doesn't already exist
+        if FileManager.default.fileExists(atPath: projectPath) {
+            return "A file or directory named \"\(name)\" already exists at this location"
+        }
+
+        // Check if already in project list
+        if projectManager.projects.contains(where: { $0.path == projectPath }) {
+            return "This project is already added"
+        }
+        return nil
+    }
+
+    /// `git init -b main` in ``projectURL`` plus an initial commit of an empty README and a
+    /// .gitignore for agents-lab/. Returns an error message when git init fails.
+    static func initRepository(at projectURL: URL) -> String? {
+        let process = gitProcess(["init", "-b", "main"], in: projectURL)
         do {
             try process.run()
             process.waitUntilExit()
         } catch {
-            errorMessage = "Failed to initialize git repository: \(error.localizedDescription)"
-            return
+            return "Failed to initialize git repository: \(error.localizedDescription)"
         }
 
         guard process.terminationStatus == 0 else {
-            errorMessage = "git init failed with exit code \(process.terminationStatus)"
-            return
+            return "git init failed with exit code \(process.terminationStatus)"
         }
 
         // Create an initial commit with an empty README and .gitignore
@@ -193,26 +174,22 @@ struct CreateProjectSheet: View {
         let gitignoreURL = projectURL.appendingPathComponent(".gitignore")
         try? "agents-lab/\n".data(using: .utf8)?.write(to: gitignoreURL)
 
-        let addProcess = Process()
-        addProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        addProcess.arguments = ["add", "README.md", ".gitignore"]
-        addProcess.currentDirectoryURL = projectURL
-        addProcess.standardOutput = FileHandle.nullDevice
-        addProcess.standardError = FileHandle.nullDevice
-        try? addProcess.run()
-        addProcess.waitUntilExit()
+        for arguments in [["add", "README.md", ".gitignore"], ["commit", "-m", "Initial commit"]] {
+            let step = gitProcess(arguments, in: projectURL)
+            try? step.run()
+            step.waitUntilExit()
+        }
+        return nil
+    }
 
-        let commitProcess = Process()
-        commitProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        commitProcess.arguments = ["commit", "-m", "Initial commit"]
-        commitProcess.currentDirectoryURL = projectURL
-        commitProcess.standardOutput = FileHandle.nullDevice
-        commitProcess.standardError = FileHandle.nullDevice
-        try? commitProcess.run()
-        commitProcess.waitUntilExit()
-
-        // Add to project manager
-        projectManager.addProject(path: projectPath)
-        projectManager.showCreateProject = false
+    /// A /usr/bin/git process in ``directory`` with its output discarded.
+    private static func gitProcess(_ arguments: [String], in directory: URL) -> Process {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = arguments
+        process.currentDirectoryURL = directory
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        return process
     }
 }

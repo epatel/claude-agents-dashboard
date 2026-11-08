@@ -61,7 +61,7 @@ behavior change** — every step keeps the full test suite green and `aihealth d
   - [x] 5 — small `src/` dedups (git operations, routes, DB reads, `main()`, file routes, skills).
   - [x] 6 — test dedup via `tests/unit/workflow_fixtures.py` (plain module, NOT a conftest — generic
     fixture names would leak) and `parametrize`; 1441 tests.
-  - [ ] 7 — Optional: `.aihealth.toml` + `aihealth scan --fail-under` gate; Swift wrapper files.
+  - [ ] 7 — Optional: `.aihealth.toml` + `aihealth scan --fail-under` gate (the Swift wrapper moved to step 12).
   - [ ] 8 — Frontend JS (`src/static/js/`). **Risk:** no JS unit tests; the 7 Node E2E tests spawn
     paid agents (confirm first). Each file was verified with an old-vs-new browser harness on a
     scratch target (dashboard on :8017; harness scripts/baselines in that origin's localStorage,
@@ -218,7 +218,25 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     `test_*_routes.py` (125 tests, ids unchanged); the rest got per-file helpers (DB fetch / count,
     fake socket, `_run_manage`, `run_session` for the Kimi ACP fake, recording git fakes, ...).
     Left: `make_acp_module.AcpClient`'s low cohesion (a fake), small 6–7-line cross-file overlaps.
-  - **Scores** (2026-11-08, after 11): headline 9.60, src 9.72, tests 9.89, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+  - [x] 12 — macOS wrapper (`wrappers/macos`, 7.53 → 9.88; no file below 9.0). `ProjectManager`:
+    badge polling → `fetchBadgeCounts` / `badgeCounts(in:)` / `applyBadgeCounts`; one
+    `interruptLaterThenCleanup` for both stop paths; `launchProcess` → `makeServerProcess` /
+    `readServerOutput` / `appendServerOutput` / `serverPort(in:)` / `serverProcessExited`; the two
+    update alerts share `runInformationalAlert`. Views: new `SheetComponents.swift` (`SheetHeader`,
+    `SheetField`, `SheetActions`) shared by the Add / Create / Install sheets; `InstallSheet` status rows
+    → `statusRows` / `statusLine` / `fixRow` and one `recheckClaude`; `CreateProjectSheet.createProject`
+    → `validationError` + `initRepository`; `DashboardTabsView` / `TabButton` / `ProjectRow` helpers.
+    New `Tests/ProjectManagerTests.swift` (14 Swift tests). Verified on scratch copies of HEAD and new
+    with the private lifecycle methods exposed the same way: a lifecycle transcript (fake `run.sh` +
+    fake dashboard server: start, port detection, badges, stop with / without port, SIGTERM-ignoring
+    server, self-exit, restart, launch failure, `--experimental`, stopAll, remove) identical in 3+3
+    runs; 118 `ImageRenderer` PNGs of every sheet / tab / row state byte-identical (both copies with the
+    InstallSheet `.task` removed and `ScrollView`s as stacks, else those parts render blank).
+    Pre-existing, fixed: the Xcode project never listed `SidebarReorderPrototype.swift` (xcodebuild
+    failed); `release` added to `.PHONY`. Pre-existing, not fixed: stopping a server that ignores
+    SIGTERM ends as "error: Process exited with code 0" (the 5 s cleanup marks it stopped, then the exit
+    handler sees a non-stopping state).
+  - **Scores** (2026-11-08, after 12): headline 9.77, src 9.72, tests 9.89, wrapper 9.88, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
@@ -337,7 +355,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-08): steps 0–6, 8a–8r (JS 9.99), 9 (E2E tests 10.00), 10a–10k (Python `src/` 9.72) and 11 (Python tests 9.89) done; 7 (optional) and the Swift wrapper remain.** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 in flight (2026-11-08): steps 0–6, 8a–8r (JS 9.99), 9 (E2E tests 10.00), 10a–10k (Python `src/` 9.72) 11 (Python tests 9.89) and 12 (macOS wrapper 9.88) done; only 7 (optional gate) remains.** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above

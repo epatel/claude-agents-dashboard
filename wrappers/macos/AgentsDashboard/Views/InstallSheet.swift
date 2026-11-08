@@ -94,32 +94,7 @@ struct InstallSheet: View {
 
             Divider()
 
-            HStack {
-                Button("Cancel") {
-                    projectManager.showInstallSheet = false
-                    projectManager.pendingProject = nil
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Spacer()
-
-                Button("Recheck") {
-                    Task {
-                        isCheckingClaude = true
-                        claudeStatus = await serverManager.checkClaudeCLI(userPATH: projectManager.resolvedUserPATH)
-                        isCheckingClaude = false
-
-                        if claudeStatus?.isReady == true {
-                            projectManager.showInstallSheet = false
-                            if let project = projectManager.pendingProject {
-                                projectManager.pendingProject = nil
-                                projectManager.startDashboard(for: project)
-                            }
-                        }
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-            }
+            SheetActions(onCancel: cancel, confirmTitle: "Recheck", isDefaultAction: false, onConfirm: recheckClaude)
         }
     }
 
@@ -155,22 +130,7 @@ struct InstallSheet: View {
             .font(.callout)
             .foregroundColor(.secondary)
 
-            HStack {
-                Button("Cancel") {
-                    projectManager.showInstallSheet = false
-                    projectManager.pendingProject = nil
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Spacer()
-
-                Button("Install") {
-                    install()
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .disabled(!canInstall)
-            }
+            SheetActions(onCancel: cancel, confirmTitle: "Install", confirmDisabled: !canInstall, onConfirm: install)
         }
     }
 
@@ -190,73 +150,7 @@ struct InstallSheet: View {
                         .foregroundColor(.secondary)
                 }
             } else if let status = claudeStatus {
-                switch status {
-                case .installed(let version, let loggedIn, let outdated):
-                    HStack(spacing: 8) {
-                        Image(systemName: outdated ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                            .foregroundColor(outdated ? .orange : .green)
-                        Text("Claude CLI \(version)")
-                            .font(.callout)
-                            .foregroundColor(.secondary)
-                    }
-                    if outdated {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "arrow.up.circle.fill")
-                                    .foregroundColor(.orange)
-                                Text("Requires \(ServerManager.minimumClaudeCLIVersion)+ — upgrade with:")
-                                    .font(.callout)
-                                    .foregroundColor(.orange)
-                                Spacer()
-                                retryButton
-                            }
-                            commandRow("claude update")
-                        }
-                    }
-                    if loggedIn {
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                            Text("Logged in")
-                                .font(.callout)
-                                .foregroundColor(.secondary)
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.red)
-                                Text("Not logged in — run this in Terminal:")
-                                    .font(.callout)
-                                    .foregroundColor(.red)
-                                Spacer()
-                                retryButton
-                            }
-                            commandRow("claude auth login")
-                        }
-                    }
-                case .notInstalled:
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.red)
-                            Text("Claude CLI not found — install it:")
-                                .font(.callout)
-                                .foregroundColor(.red)
-                            Spacer()
-                            retryButton
-                        }
-                        commandRow("curl -fsSL https://claude.ai/install.sh | bash")
-                    }
-                case .error(let msg):
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                        Text(msg)
-                            .font(.callout)
-                            .foregroundColor(.orange)
-                    }
-                }
+                statusRows(for: status)
             }
         }
         .padding(16)
@@ -265,21 +159,61 @@ struct InstallSheet: View {
         .cornerRadius(10)
     }
 
+    @ViewBuilder
+    private func statusRows(for status: ClaudeCLIStatus) -> some View {
+        switch status {
+        case .installed(let version, let loggedIn, let outdated):
+            statusLine(outdated ? "exclamationmark.triangle.fill" : "checkmark.circle.fill",
+                       iconColor: outdated ? .orange : .green, text: "Claude CLI \(version)", textColor: .secondary)
+            if outdated {
+                fixRow("arrow.up.circle.fill", color: .orange,
+                       message: "Requires \(ServerManager.minimumClaudeCLIVersion)+ — upgrade with:",
+                       command: "claude update")
+            }
+            if loggedIn {
+                statusLine("checkmark.circle.fill", iconColor: .green, text: "Logged in", textColor: .secondary)
+            } else {
+                fixRow("xmark.circle.fill", color: .red,
+                       message: "Not logged in — run this in Terminal:", command: "claude auth login")
+            }
+        case .notInstalled:
+            fixRow("xmark.circle.fill", color: .red, message: "Claude CLI not found — install it:",
+                   command: "curl -fsSL https://claude.ai/install.sh | bash")
+        case .error(let msg):
+            statusLine("exclamationmark.triangle.fill", iconColor: .orange, text: msg, textColor: .orange)
+        }
+    }
+
+    /// An icon and a line of text.
+    private func statusLine(_ systemImage: String, iconColor: Color, text: String, textColor: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundColor(iconColor)
+            Text(text)
+                .font(.callout)
+                .foregroundColor(textColor)
+        }
+    }
+
+    /// A problem line with a Retry button, and the command that fixes it.
+    private func fixRow(_ systemImage: String, color: Color, message: String, command: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .foregroundColor(color)
+                Text(message)
+                    .font(.callout)
+                    .foregroundColor(color)
+                Spacer()
+                retryButton
+            }
+            commandRow(command)
+        }
+    }
+
     private var retryButton: some View {
         Button {
-            Task {
-                isCheckingClaude = true
-                claudeStatus = await serverManager.checkClaudeCLI(userPATH: projectManager.resolvedUserPATH)
-                isCheckingClaude = false
-
-                if claudeStatus?.isReady == true {
-                    projectManager.showInstallSheet = false
-                    if let project = projectManager.pendingProject {
-                        projectManager.pendingProject = nil
-                        projectManager.startDashboard(for: project)
-                    }
-                }
-            }
+            recheckClaude()
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "arrow.clockwise")
@@ -334,24 +268,37 @@ struct InstallSheet: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
 
-            HStack {
-                Button("Cancel") {
-                    projectManager.showInstallSheet = false
-                    projectManager.pendingProject = nil
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Spacer()
-
-                Button("Retry") {
-                    install()
-                }
-                .buttonStyle(.borderedProminent)
-            }
+            SheetActions(onCancel: cancel, confirmTitle: "Retry", isDefaultAction: false, onConfirm: install)
         }
     }
 
     // MARK: - Actions
+
+    private func cancel() {
+        projectManager.showInstallSheet = false
+        projectManager.pendingProject = nil
+    }
+
+    /// Check the Claude CLI again; once it is ready, close the sheet and start the waiting project.
+    private func recheckClaude() {
+        Task {
+            isCheckingClaude = true
+            claudeStatus = await serverManager.checkClaudeCLI(userPATH: projectManager.resolvedUserPATH)
+            isCheckingClaude = false
+
+            if claudeStatus?.isReady == true {
+                projectManager.showInstallSheet = false
+                startPendingProject()
+            }
+        }
+    }
+
+    private func startPendingProject() {
+        if let project = projectManager.pendingProject {
+            projectManager.pendingProject = nil
+            projectManager.startDashboard(for: project)
+        }
+    }
 
     private func install() {
         isInstalling = true
@@ -361,10 +308,7 @@ struct InstallSheet: View {
                 await MainActor.run {
                     isInstalling = false
                     projectManager.showInstallSheet = false
-                    if let project = projectManager.pendingProject {
-                        projectManager.pendingProject = nil
-                        projectManager.startDashboard(for: project)
-                    }
+                    startPendingProject()
                 }
             } catch {
                 await MainActor.run {

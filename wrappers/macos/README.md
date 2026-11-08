@@ -72,12 +72,14 @@ AgentsDashboard/
     ├── DashboardTabsView.swift  # Tab bar + dashboard content
     ├── DashboardWebView.swift   # WKWebView wrapper
     ├── AddProjectSheet.swift    # Add project dialog with suggestions
+    ├── CreateProjectSheet.swift # New git repo + initial commit
+    ├── SheetComponents.swift    # Shared sheet header / field / Cancel+confirm bar
     └── InstallSheet.swift       # First-run installation flow
 ```
 
 **ServerManager** handles the server clone at `~/.agents-dashboard/` — installation (clone only — `run.sh` owns the Python venv) and update checks.
 
-**ProjectManager** orchestrates project CRUD and dashboard process lifecycle — launching `run.sh` as a subprocess, capturing output via pipes, detecting the server port from stdout, and graceful shutdown (SIGTERM → SIGKILL after 5s).
+**ProjectManager** orchestrates project CRUD and dashboard process lifecycle — launching `run.sh` as a subprocess, capturing output via pipes, detecting the server port from stdout, and graceful shutdown (`POST /api/shutdown`, then SIGTERM, then SIGINT after 5s).
 
 ## Make targets
 

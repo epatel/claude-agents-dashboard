@@ -57,23 +57,11 @@ class ServerManager: ObservableObject {
             "/opt/homebrew/bin/claude",
             "/usr/local/bin/claude",
         ]
-        for path in candidates {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                return path
-            }
-        }
-
-        // Search the user's PATH directories
-        if let pathStr = userPATH ?? ProcessInfo.processInfo.environment["PATH"] {
-            for dir in pathStr.split(separator: ":") {
-                let candidate = "\(dir)/claude"
-                if FileManager.default.isExecutableFile(atPath: candidate) {
-                    return candidate
-                }
-            }
-        }
-
-        return nil
+        // Then the user's PATH directories, in order
+        let pathCandidates = (userPATH ?? ProcessInfo.processInfo.environment["PATH"])?
+            .split(separator: ":")
+            .map { "\($0)/claude" } ?? []
+        return (candidates + pathCandidates).first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
     /// Check if Claude CLI is installed and the user is logged in.

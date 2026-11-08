@@ -24,7 +24,7 @@ APP_PASSWORD ?=
 SOURCES = $(shell find $(APP_NAME) -name '*.swift') Package.swift
 RESOURCES = $(APP_NAME)/Info.plist $(APP_NAME)/AppIcon.icns $(APP_NAME)/$(APP_NAME).entitlements VERSION
 
-.PHONY: all build test sign notarize zip run clean install uninstall
+.PHONY: all build test release sign notarize zip run clean install uninstall
 
 all: build
 
