@@ -39,6 +39,17 @@ async def _fetch_row(orchestrator, sql, item_id):
         return dict(await cursor.fetchone())
 
 
+async def _seed_item_state(orchestrator, item_id, **fields):
+    """Helper: write item fields straight to the DB and broadcast the update.
+
+    Deliberately bypasses the ItemState machine — tests use it to seed an
+    arbitrary (column_name, status) starting state.
+    """
+    item = await orchestrator.db_service.update_item(item_id, **fields)
+    await orchestrator.notification_service.broadcast_item_updated(item)
+    return item
+
+
 async def _db_item(orchestrator, item_id):
     """Helper: the item's current DB row as a dict."""
     return await _fetch_row(orchestrator, "SELECT * FROM items WHERE id = ?", item_id)
@@ -145,8 +156,8 @@ class TestOrchestratorLifecycle:
         """Test cancelling review and cleaning up worktree."""
         item_id = test_item["id"]
 
-        await test_orchestrator._update_item(
-            item_id,
+        await _seed_item_state(
+            test_orchestrator, item_id,
             column_name="review",
             branch_name=f"agent/{item_id}",
             worktree_path="/mock/worktree"
@@ -166,8 +177,8 @@ class TestOrchestratorLifecycle:
         """Test retrying a failed agent."""
         item_id = test_item["id"]
 
-        await test_orchestrator._update_item(
-            item_id,
+        await _seed_item_state(
+            test_orchestrator, item_id,
             status="failed",
             column_name="doing",
             branch_name=f"agent/{item_id}",
@@ -186,8 +197,8 @@ class TestOrchestratorLifecycle:
         """Test handling of merge conflicts during approval."""
         item_id = test_item["id"]
 
-        await test_orchestrator._update_item(
-            item_id,
+        await _seed_item_state(
+            test_orchestrator, item_id,
             column_name="review",
             branch_name=f"agent/{item_id}",
             worktree_path="/mock/worktree",
@@ -225,7 +236,7 @@ class TestOrchestratorLifecycle:
         prompt = "What color should the button be?"
         choices = ["red", "blue", "green"]
 
-        await test_orchestrator._update_item(item_id, column_name="doing", status="running")
+        await _seed_item_state(test_orchestrator, item_id, column_name="doing", status="running")
 
         callback = test_orchestrator.workflow_service._create_on_clarify_callback(item_id)
         clarification_task = asyncio.create_task(callback(prompt, choices))

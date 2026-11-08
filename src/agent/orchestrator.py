@@ -26,6 +26,7 @@ class AgentOrchestrator:
 
     def __init__(
         self,
+        *,
         target_project: Path,
         data_dir: Path,
         db: Database,
@@ -135,34 +136,6 @@ class AgentOrchestrator:
     async def shutdown(self):
         """Gracefully stop all running agents."""
         await self.workflow_service.shutdown()
-
-    # Legacy compatibility methods - delegate to services
-    async def _update_item(self, item_id: str, **kwargs):
-        """Legacy direct-update path retained for integration tests that
-        bypass the SM to seed item state. Routes through the repo so the
-        column allowlist is still enforced. Tests that use this should
-        gradually migrate to item_repository.transition / update_fields."""
-        if "column_name" in kwargs or "status" in kwargs:
-            # Direct state writes used by integration test setup. Bypass
-            # the SM here on purpose — the test seeds an arbitrary state.
-            item = await self.db_service.update_item(item_id, **kwargs)
-        else:
-            item = await self.item_repository.update_fields(item_id, **kwargs)
-        await self.notification_service.broadcast_item_updated(item)
-        return item
-
-    async def _log(self, item_id: str, entry_type: str, content: str, metadata: str | None = None):
-        """Legacy method for backward compatibility."""
-        await self.db_service.log_entry(item_id, entry_type, content, metadata)
-        await self.notification_service.broadcast_agent_log(item_id, entry_type, content)
-
-    def _format_tool_use(self, name: str, inp: Dict[str, Any]) -> str:
-        """Legacy method for backward compatibility."""
-        return self.notification_service.format_tool_use(name, inp)
-
-    async def _get_agent_config(self) -> Dict[str, Any]:
-        """Legacy method for backward compatibility."""
-        return await self.db_service.get_agent_config()
 
     # Properties for backward compatibility
     @property
