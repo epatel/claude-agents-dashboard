@@ -117,7 +117,18 @@ behavior change** — every step keeps the full test suite green and `aihealth d
     `runAgentTask`'s loop → `waitForAgentCompletion` (start elapsed, shared by the clarification
     test); DnD cases and config steps → one function each. 46 fake-API scenarios over all 7 tests
     identical; DnD + config also run for real, old and new, identical and passing.
-  - **Scores** (2026-11-08, after 9b): headline 8.77, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
+  - [ ] 10 — Python in `src/` (9.0 at start; worst: `workflow_service.py` 5.71, `skills_service.py`,
+    `routes.py`, `kimi_session.py`). Verify with the test suite plus an old-vs-new harness that loads
+    the saved old module as `src.services._wf_old` (relative imports still resolve) and drives both
+    against the same recording fakes. Done: 10a `workflow_service.py` 5.71 → 7.87 — `on_complete`
+    → success / failure handlers + `_has_file_changes` / `_schedule_auto_approve`; `on_create_todo` →
+    `_coerce_auto_approve` / `_effective_requires` / `_announce_new_todo` / `_schedule_autostart`;
+    `on_view_board`, `peek_worktree`, `_item_session_kwargs`, `find_stale_worktrees` and
+    `_run_auto_review` split into helpers (`run_auto_review` is still called from this module — a
+    test patches it there); 52 harness cases identical, 1441 tests. Left: file size (next: move
+    cohesive groups — session callbacks, peek, auto-review, stale worktrees — out of the file) and
+    parameter counts that are public / tool contracts.
+  - **Scores** (2026-11-08, after 10a): headline 8.86, src 9.14, JS 9.99, E2E 10.00 (directory scans; `aihealth delta` scores files one at a time, so it cannot see cross-file duplication). aihealth started scanning JS
     mid-pass, so compare like with like (baseline 7.14 had no JS).
   - Pre-existing bugs seen, not fixed: (1) `/api/stats` returns null counts when the work log is
     empty (one all-NULL summary row) → `stats.js` throws every 10 s; (2) the review browser
@@ -234,7 +245,7 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 
 ## Current state / handoff
 
-**M12 in flight (2026-11-08): steps 0–6, 8a–8r (JS 9.99) and 9 (E2E tests 10.00) done; 7 is optional.** `aihealth` is set up for the repo (`.mcp.json`,
+**M12 in flight (2026-11-08): steps 0–6, 8a–8r (JS 9.99) and 9 (E2E tests 10.00) done; step 10 (Python `src/`) in progress; 7 is optional.** `aihealth` is set up for the repo (`.mcp.json`,
 hooks in `.claude/settings.json`, `## Code health` in CLAUDE.md). Pick the lowest unchecked M12
 step whose prerequisites are done, check it off here when its PR lands, and record the new
 `aihealth scan .` score. Refactor rules: no behavior change; keep the locked Decisions above

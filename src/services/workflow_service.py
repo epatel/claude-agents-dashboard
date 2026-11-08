@@ -109,40 +109,43 @@ class WorkflowService:
         Uses getattr so mocks that don't expose `repos` (e.g. MagicMock spec'd
         against GitService before this attribute existed) behave as single-mode.
         """
+        item = item or {}
         kwargs: Dict[str, Any] = {
-            "use_chrome": bool(item.get("use_chrome")) if item else False,
+            "use_chrome": bool(item.get("use_chrome")),
             # Self-view tool: lets the agent fetch its own card (incl. its item ID
             # for `requires`) instead of guessing from view_board. Threaded here so
             # it reaches every create_session call site in one place.
-            "on_who_am_i": self._create_on_who_am_i_callback(item.get("id") if item else None),
+            "on_who_am_i": self._create_on_who_am_i_callback(item.get("id")),
             # Peek tool: lets this agent read what the other running agents have
             # changed in their worktrees, so parallel work converges instead of
             # colliding at merge time.
-            "on_peek_worktree": self._create_on_peek_worktree_callback(item.get("id") if item else None),
+            "on_peek_worktree": self._create_on_peek_worktree_callback(item.get("id")),
         }
-        # Epic-scoped shared plan: tasks are usually created under an epic, so
-        # point the agent at that epic's plan file (derived from the epic title)
-        # in addition to the repo-root project-plan.md.
-        epic_id = item.get("epic_id") if item else None
-        if epic_id:
-            epic = await self.epics.get(epic_id)
-            if epic:
-                kwargs["epic_plan_relpath"] = epic_plan_relpath(epic["title"])
+        kwargs.update(await self._epic_plan_kwargs(item.get("epic_id")))
+        kwargs.update(self._multi_repo_kwargs(item.get("repo")))
+        return kwargs
+
+    async def _epic_plan_kwargs(self, epic_id: Optional[str]) -> Dict[str, Any]:
+        """Epic-scoped shared plan: tasks are usually created under an epic, so
+        point the agent at that epic's plan file (derived from the epic title)
+        in addition to the repo-root project-plan.md."""
+        if not epic_id:
+            return {}
+        epic = await self.epics.get(epic_id)
+        return {"epic_plan_relpath": epic_plan_relpath(epic["title"])} if epic else {}
+
+    def _multi_repo_kwargs(self, item_repo: Optional[str]) -> Dict[str, Any]:
+        """Multi-repo read scope: every known repo except the one the item is
+        actively working on (the agent's own repo is reached via the worktree,
+        not as a sibling). Empty in single-repo mode."""
         repos = getattr(self.git, "repos", None)
         if not repos:
-            return kwargs
-        item_repo = item.get("repo") if item else None
-        # Read scope: all known repos except the one the item is actively working on
-        # (the agent's own repo is reached via the worktree, not as a sibling).
-        sibling_paths = [
-            self.git.base_repo_path(r) for r in repos if r != item_repo
-        ]
-        kwargs.update({
+            return {}
+        return {
             "workspace_root": self.git.target_project,
-            "sibling_repo_paths": sibling_paths,
+            "sibling_repo_paths": [self.git.base_repo_path(r) for r in repos if r != item_repo],
             "item_repo_name": item_repo,
-        })
-        return kwargs
+        }
 
     async def _is_at_wip_limit(self) -> bool:
         """Check if the number of running agents has reached the WIP limit."""
@@ -863,72 +866,82 @@ class WorkflowService:
         async def on_complete(result: AgentResult):
             # Save token usage
             await self.db.save_token_usage(item_id, result)
-
             if result.success:
-                # Create log message with cost and token info
-                log_message = self.notifications.format_completion_log(
-                    result.cost_usd, result.total_tokens, result.input_tokens, result.output_tokens
-                )
-                await self._log_and_notify(item_id, "system", log_message)
-
-                # Use commit message from session
-                commit_message = self.sessions.get_commit_message(item_id)
-
-                # Check if the agent produced any file changes
-                has_file_changes = 1  # assume yes
-                current_item = await self.db.get_item(item_id)
-                wt = Path(current_item["worktree_path"]) if current_item.get("worktree_path") else None
-                br = current_item.get("branch_name")
-                if wt and br:
-                    from ..git.operations import get_changed_files
-                    try:
-                        base = current_item.get("base_branch") or "main"
-                        base_commit = current_item.get("base_commit")
-                        changed = await get_changed_files(wt, br, base, wt, base_commit)
-                        has_file_changes = 1 if len(changed) > 0 else 0
-                    except Exception as e:
-                        logger.warning(f"Failed to check changed files for review: {e}")
-
-                extras: Dict[str, Any] = dict(
-                    session_id=result.session_id,
-                    has_file_changes=has_file_changes,
-                )
-                if commit_message:
-                    extras["commit_message"] = commit_message
-                item = await self.items.transition(item_id, Event.COMPLETE, **extras)
-                await self.notifications.broadcast_item_updated(item, source="agent")
-
-                # Auto-approve workflow. Tri-state (see constants.py):
-                #   OFF    — leave it for a human in the Review column.
-                #   REVIEW — spin up a read-only review agent (or, with no
-                #            file changes, approve directly since there's
-                #            nothing to review).
-                #   DIRECT — skip the review agent entirely and approve as
-                #            soon as the agent finishes.
-                #
-                # All paths are scheduled as background tasks so we don't block
-                # this callback (the review may take tens of seconds, and
-                # request_changes/approve_item create new sessions that would
-                # deadlock if awaited inline).
-                mode = int(item.get("auto_approve") or 0)
-                if mode == AUTO_APPROVE_DIRECT:
-                    asyncio.create_task(self._auto_approve_direct(item_id))
-                elif mode == AUTO_APPROVE_REVIEW:
-                    if has_file_changes:
-                        asyncio.create_task(self._run_auto_review(item_id))
-                    else:
-                        asyncio.create_task(self._auto_approve_no_changes(item_id))
+                await self._handle_agent_success(item_id, result)
             else:
-                await self._log_and_notify(item_id, "error", f"Agent failed: {result.error}")
-                item = await self.items.transition(
-                    item_id, Event.FAIL, session_id=result.session_id,
-                )
-                await self.notifications.broadcast_item_updated(item, source="agent")
-                self._add_failure_notification(item_id, result.error, result.api_error_status)
-
+                await self._handle_agent_failure(item_id, result)
             await self._release_session(item_id)
 
         return on_complete
+
+    async def _handle_agent_success(self, item_id: str, result: AgentResult) -> None:
+        """Log the cost, move the item to review, and kick off auto-approve if on."""
+        # Create log message with cost and token info
+        log_message = self.notifications.format_completion_log(
+            result.cost_usd, result.total_tokens, result.input_tokens, result.output_tokens
+        )
+        await self._log_and_notify(item_id, "system", log_message)
+
+        # Use commit message from session
+        commit_message = self.sessions.get_commit_message(item_id)
+        has_file_changes = await self._has_file_changes(item_id)
+
+        extras: Dict[str, Any] = dict(
+            session_id=result.session_id,
+            has_file_changes=has_file_changes,
+        )
+        if commit_message:
+            extras["commit_message"] = commit_message
+        item = await self.items.transition(item_id, Event.COMPLETE, **extras)
+        await self.notifications.broadcast_item_updated(item, source="agent")
+        self._schedule_auto_approve(item_id, item, has_file_changes)
+
+    async def _has_file_changes(self, item_id: str) -> int:
+        """1 if the agent's worktree has changed files (or we can't tell), else 0."""
+        current_item = await self.db.get_item(item_id)
+        wt = _worktree_of(current_item)
+        br = current_item.get("branch_name")
+        if not (wt and br):
+            return 1  # assume yes
+        from ..git.operations import get_changed_files
+        try:
+            base = current_item.get("base_branch") or "main"
+            base_commit = current_item.get("base_commit")
+            changed = await get_changed_files(wt, br, base, wt, base_commit)
+            return 1 if len(changed) > 0 else 0
+        except Exception as e:
+            logger.warning(f"Failed to check changed files for review: {e}")
+            return 1
+
+    def _schedule_auto_approve(self, item_id: str, item: Dict[str, Any], has_file_changes: int) -> None:
+        """Auto-approve workflow. Tri-state (see constants.py):
+          OFF    — leave it for a human in the Review column.
+          REVIEW — spin up a read-only review agent (or, with no file changes,
+                   approve directly since there's nothing to review).
+          DIRECT — skip the review agent entirely and approve as soon as the
+                   agent finishes.
+
+        All paths are scheduled as background tasks so we don't block the
+        completion callback (the review may take tens of seconds, and
+        request_changes/approve_item create new sessions that would deadlock if
+        awaited inline).
+        """
+        mode = int(item.get("auto_approve") or 0)
+        if mode == AUTO_APPROVE_DIRECT:
+            asyncio.create_task(self._auto_approve_direct(item_id))
+        elif mode == AUTO_APPROVE_REVIEW:
+            if has_file_changes:
+                asyncio.create_task(self._run_auto_review(item_id))
+            else:
+                asyncio.create_task(self._auto_approve_no_changes(item_id))
+
+    async def _handle_agent_failure(self, item_id: str, result: AgentResult) -> None:
+        await self._log_and_notify(item_id, "error", f"Agent failed: {result.error}")
+        item = await self.items.transition(
+            item_id, Event.FAIL, session_id=result.session_id,
+        )
+        await self.notifications.broadcast_item_updated(item, source="agent")
+        self._add_failure_notification(item_id, result.error, result.api_error_status)
 
     async def _release_session(self, item_id: str) -> None:
         """Bookkeeping once an agent session has ended (completed or errored)."""
@@ -1114,62 +1127,85 @@ class WorkflowService:
 
     def _create_on_create_todo_callback(self, item_id: str):
         async def on_create_todo(title: str, description: str, epic_id: str = None, requires: list[str] = None, autostart: bool = False, auto_approve: int = 0, use_chrome: bool = False) -> Dict[str, Any]:
-            # Coerce auto_approve to a known mode (0/1/2). Anything else falls back to OFF.
-            try:
-                auto_approve_int = int(auto_approve) if auto_approve is not None else 0
-            except (TypeError, ValueError):
-                auto_approve_int = 0
-            if auto_approve_int not in AUTO_APPROVE_MODES:
-                auto_approve_int = AUTO_APPROVE_OFF
             item = await self.db.create_todo_item(
-                title, description, epic_id, autostart, auto_approve=auto_approve_int,
+                title, description, epic_id, autostart,
+                auto_approve=self._coerce_auto_approve(auto_approve),
                 use_chrome=bool(use_chrome),
             )
-
-            # Safe default for the empty-requires footgun: a task spawned by an
-            # in-flight agent must not start before the creating card's own work
-            # merges, or it branches off a `main` that doesn't have that work yet.
-            # When the agent asks for autostart but gives no deps, anchor the new
-            # task to the creating card so it waits for our merge. Only do this
-            # while the creator is still in flight (not yet merged) — if it's
-            # already done/archived its work is on main and immediate start is fine.
-            effective_requires = list(requires) if requires else []
-            auto_anchored = False
-            if autostart and not effective_requires and item["id"] != item_id:
-                creator = await self.db.get_item(item_id)
-                if creator and creator.get("column_name") not in ("done", "archive"):
-                    effective_requires = [item_id]
-                    auto_anchored = True
-
+            effective_requires, auto_anchored = await self._effective_requires(
+                item_id, item["id"], requires, autostart,
+            )
             if effective_requires:
                 await self.db.set_item_dependencies(item["id"], effective_requires)
-            await self._log_and_notify(item_id, "system", f"Created todo item: {title}")
-            if auto_anchored:
-                await self._log_and_notify(
-                    item_id, "system",
-                    f"'{title}' will wait for this card to merge before it starts "
-                    "(auto-added dependency to avoid branching off an unmerged main).",
-                )
-            await self.notifications.broadcast_item_created(item)
+            await self._announce_new_todo(item_id, item, title, auto_anchored)
             if effective_requires:
-                blocked_status = await self.db.get_all_blocked_status()
-                await self.notifications.ws_manager.broadcast("blocked_status_changed", {
-                    "blocked": blocked_status,
-                })
+                await self._broadcast_blocked_status()
             if autostart and not effective_requires:
-                async def _autostart_agent(new_item_id: str, new_title: str):
-                    try:
-                        await self.start_agent(new_item_id)
-                        await self._log_and_notify(item_id, "system", f"Auto-started agent for: {new_title}")
-                    except Exception as e:
-                        logger.error(f"Autostart failed for item {new_item_id}: {e}")
-                        await self._log_and_notify(item_id, "system", f"⚠️ Auto-start failed for '{new_title}': {e}")
-
-                task = asyncio.create_task(_autostart_agent(item["id"], title))
-                task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
-                item["autostart_scheduled"] = True
+                self._schedule_autostart(item_id, item, title)
             return item
         return on_create_todo
+
+    @staticmethod
+    def _coerce_auto_approve(auto_approve: Any) -> int:
+        """Coerce auto_approve to a known mode (0/1/2). Anything else falls back to OFF."""
+        try:
+            mode = int(auto_approve) if auto_approve is not None else 0
+        except (TypeError, ValueError):
+            mode = 0
+        return mode if mode in AUTO_APPROVE_MODES else AUTO_APPROVE_OFF
+
+    async def _effective_requires(self, creator_id: str, new_item_id: str,
+                                  requires: Optional[list], autostart: bool) -> tuple[list, bool]:
+        """The new todo's dependencies, and whether the creator was auto-added.
+
+        Safe default for the empty-requires footgun: a task spawned by an
+        in-flight agent must not start before the creating card's own work
+        merges, or it branches off a `main` that doesn't have that work yet.
+        When the agent asks for autostart but gives no deps, anchor the new
+        task to the creating card so it waits for our merge. Only do this
+        while the creator is still in flight (not yet merged) — if it's
+        already done/archived its work is on main and immediate start is fine.
+        """
+        if requires:
+            return list(requires), False
+        if not autostart or new_item_id == creator_id:
+            return [], False
+        creator = await self.db.get_item(creator_id)
+        if creator and creator.get("column_name") not in ("done", "archive"):
+            return [creator_id], True
+        return [], False
+
+    async def _announce_new_todo(self, creator_id: str, item: Dict[str, Any], title: str,
+                                 auto_anchored: bool) -> None:
+        """Log the new todo on the creator's card and broadcast it."""
+        await self._log_and_notify(creator_id, "system", f"Created todo item: {title}")
+        if auto_anchored:
+            await self._log_and_notify(
+                creator_id, "system",
+                f"'{title}' will wait for this card to merge before it starts "
+                "(auto-added dependency to avoid branching off an unmerged main).",
+            )
+        await self.notifications.broadcast_item_created(item)
+
+    async def _broadcast_blocked_status(self) -> None:
+        blocked_status = await self.db.get_all_blocked_status()
+        await self.notifications.ws_manager.broadcast("blocked_status_changed", {
+            "blocked": blocked_status,
+        })
+
+    def _schedule_autostart(self, creator_id: str, item: Dict[str, Any], title: str) -> None:
+        """Start the new todo's agent in the background; failures are logged on the creator."""
+        async def _autostart_agent(new_item_id: str, new_title: str):
+            try:
+                await self.start_agent(new_item_id)
+                await self._log_and_notify(creator_id, "system", f"Auto-started agent for: {new_title}")
+            except Exception as e:
+                logger.error(f"Autostart failed for item {new_item_id}: {e}")
+                await self._log_and_notify(creator_id, "system", f"⚠️ Auto-start failed for '{new_title}': {e}")
+
+        task = asyncio.create_task(_autostart_agent(item["id"], title))
+        task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
+        item["autostart_scheduled"] = True
 
     def _create_on_create_epic_callback(self, item_id: str):
         async def on_create_epic(title: str, color: str) -> Dict[str, Any]:
@@ -1266,45 +1302,54 @@ class WorkflowService:
             items = await self.db.get_all_items()
             epics = await self.epics.list_all()
             epic_map = {e["id"]: e["title"] for e in epics}
-
-            # Build dependency map: item_id -> list of required item IDs
-            dep_map = {}
-            for item in items:
-                deps = await self.db.get_item_dependencies(item["id"])
-                if deps:
-                    dep_map[item["id"]] = deps
+            dep_map = await self._dependency_map(items)
 
             # Group by column
-            by_column = {}
+            by_column: Dict[str, List[Dict[str, Any]]] = {}
             for item in items:
-                col = item["column_name"]
-                by_column.setdefault(col, []).append(item)
+                by_column.setdefault(item["column_name"], []).append(item)
 
-            lines = []
-
-            # Show available epics
-            if epics:
-                lines.append("## Epics")
-                for epic in epics:
-                    lines.append(f"- [{epic['id']}] {epic['title']} (color: {epic.get('color', 'blue')})")
-                lines.append("")
-
+            lines = self._board_epic_lines(epics)
             for col in COLUMNS:
-                col_id = col["id"]
-                col_items = by_column.get(col_id, [])
-                lines.append(f"## {col['label']} ({len(col_items)})")
-                if col_items:
-                    for item in col_items:
-                        status = f" [{item['status']}]" if item.get("status") else ""
-                        epic_text = f" [Epic: {epic_map.get(item.get('epic_id', ''), '')}]" if item.get('epic_id') else ""
-                        deps = dep_map.get(item["id"], [])
-                        dep_text = f" [requires: {', '.join(d['id'] for d in deps)}]" if deps else ""
-                        lines.append(f"- [{item['id']}] {item['title']}{status}{epic_text}{dep_text}")
-                else:
-                    lines.append("  (empty)")
-                lines.append("")
+                lines += self._board_column_lines(col, by_column.get(col["id"], []), epic_map, dep_map)
             return "\n".join(lines)
         return on_view_board
+
+    async def _dependency_map(self, items: List[Dict[str, Any]]) -> Dict[str, list]:
+        """item_id -> its required items, for items that have any."""
+        dep_map = {}
+        for item in items:
+            deps = await self.db.get_item_dependencies(item["id"])
+            if deps:
+                dep_map[item["id"]] = deps
+        return dep_map
+
+    @staticmethod
+    def _board_epic_lines(epics: List[Dict[str, Any]]) -> List[str]:
+        """The board view's "## Epics" section (none when there are no epics)."""
+        if not epics:
+            return []
+        lines = ["## Epics"]
+        for epic in epics:
+            lines.append(f"- [{epic['id']}] {epic['title']} (color: {epic.get('color', 'blue')})")
+        lines.append("")
+        return lines
+
+    @staticmethod
+    def _board_column_lines(col: Dict[str, Any], col_items: List[Dict[str, Any]],
+                            epic_map: Dict[str, str], dep_map: Dict[str, list]) -> List[str]:
+        """One board column: heading, one line per item (or "(empty)"), blank line."""
+        lines = [f"## {col['label']} ({len(col_items)})"]
+        for item in col_items:
+            status = f" [{item['status']}]" if item.get("status") else ""
+            epic_text = f" [Epic: {epic_map.get(item.get('epic_id', ''), '')}]" if item.get('epic_id') else ""
+            deps = dep_map.get(item["id"], [])
+            dep_text = f" [requires: {', '.join(d['id'] for d in deps)}]" if deps else ""
+            lines.append(f"- [{item['id']}] {item['title']}{status}{epic_text}{dep_text}")
+        if not col_items:
+            lines.append("  (empty)")
+        lines.append("")
+        return lines
 
     def _create_on_peek_worktree_callback(self, item_id: str):
         """Callback backing the peek_worktree tool.
@@ -1350,10 +1395,7 @@ class WorkflowService:
         """Render another agent's in-flight worktree changes as text."""
         active = await self._active_worktree_items()
         by_id = {i["id"]: i for i in active}
-
-        own_paths: set = set()
-        if self_item_id and self_item_id in by_id:
-            own_paths = {f["path"] for f in await self._changed_paths(by_id[self_item_id])}
+        own_paths = await self._own_changed_paths(by_id.get(self_item_id) if self_item_id else None)
 
         if not target_item_id:
             return await self._peek_overview(
@@ -1361,14 +1403,25 @@ class WorkflowService:
             )
         item = by_id.get(target_item_id)
         if not item:
-            known = ", ".join(i["id"] for i in active if i["id"] != self_item_id)
-            return (
-                f"No active worktree for item {target_item_id}. "
-                f"Worktrees on disk right now: {known or '(none)'}."
-            )
+            return self._no_active_worktree(target_item_id, active, self_item_id)
         if path:
             return await self._peek_file_diff(item, path)
         return await self._peek_item(item, own_paths)
+
+    @staticmethod
+    def _no_active_worktree(target_item_id: str, active: List[Dict[str, Any]],
+                            self_item_id: Optional[str]) -> str:
+        known = ", ".join(i["id"] for i in active if i["id"] != self_item_id)
+        return (
+            f"No active worktree for item {target_item_id}. "
+            f"Worktrees on disk right now: {known or '(none)'}."
+        )
+
+    async def _own_changed_paths(self, own_item: Optional[Dict[str, Any]]) -> set:
+        """Paths the caller's own worktree changes (empty if it has none on disk)."""
+        if not own_item:
+            return set()
+        return {f["path"] for f in await self._changed_paths(own_item)}
 
     @staticmethod
     def _peek_file_lines(files: List[Dict[str, Any]], marked: set, limit: int) -> List[str]:
@@ -1591,21 +1644,11 @@ class WorkflowService:
             item = await self._auto_approvable_item(item_id)
             if not item:
                 return
-
-            attempt = self._auto_approve_retries.get(item_id, 0) + 1
-            if attempt > _MAX_AUTO_APPROVE_RETRIES:
-                # Hit the cap. Stop the cycle and let a human step in.
-                self._auto_approve_retries.pop(item_id, None)
-                await self._log_and_notify(
-                    item_id, "system",
-                    f"Auto-approve cycle stopped after {_MAX_AUTO_APPROVE_RETRIES} "
-                    f"review iterations — manual review required."
-                )
+            attempt = await self._next_auto_review_attempt(item_id)
+            if attempt is None:
                 return
 
-            self._auto_approve_retries[item_id] = attempt
-
-            worktree_path = Path(item["worktree_path"]) if item.get("worktree_path") else None
+            worktree_path = _worktree_of(item)
             if not worktree_path or not worktree_path.exists():
                 await self._log_and_notify(
                     item_id, "system",
@@ -1613,121 +1656,157 @@ class WorkflowService:
                 )
                 return
 
-            # Compute the agent's full diff vs the base branch (committed +
-            # uncommitted). We feed both to the reviewer so it sees the same
-            # state a human reviewer would.
-            from ..git.operations import run_git, get_current_branch
-            base = item.get("base_branch")
-            try:
-                if not base:
-                    base = await get_current_branch(self.git.base_repo_path(item.get("repo")))
-            except Exception:
-                base = "main"
-
-            diff_parts: list[str] = []
-            try:
-                committed = await run_git(worktree_path, "diff", base, "HEAD")
-                if committed.strip():
-                    diff_parts.append(committed)
-            except Exception as e:
-                logger.warning(f"Auto-review: failed to read committed diff: {e}")
-            try:
-                # Uncommitted (working tree vs HEAD) — covers any leftover
-                # work the agent didn't commit before exiting.
-                uncommitted = await run_git(worktree_path, "diff", "HEAD")
-                if uncommitted.strip():
-                    diff_parts.append(
-                        "\n# Uncommitted working-tree changes:\n" + uncommitted
-                    )
-            except Exception:
-                pass
-            full_diff = "\n".join(diff_parts).strip()
-
+            # The agent's full diff vs the base branch (committed + uncommitted),
+            # so the reviewer sees the same state a human reviewer would.
+            full_diff = await self._full_agent_diff(worktree_path, await self._review_base_branch(item))
             last_message = self._last_agent_message.get(item_id, "")
 
-            # Build the local-provider (Tiiny/Ollama) env for the reviewer if the
-            # workspace is configured for it. The reviewer uses the same model
-            # selection logic as the implementing agent so a Claude/local mix
-            # doesn't get mismatched.
-            config = await self.db.get_agent_config()
-            review_model = item.get("model") or config.get("model")
-            # The one-shot reviewer runs on the Claude Agent SDK; Kimi models
-            # (separate runtime, experimental) are not supported there yet.
-            # Leave the item in Review for a human rather than mis-routing.
-            if is_kimi_model(review_model):
-                await self._log_and_notify(
-                    item_id, "system",
-                    "Auto-review is not yet supported for Kimi models — "
-                    "leaving item in Review for manual approval."
-                )
+            model_env = await self._review_model_and_env(item_id, item)
+            if model_env is None:
                 return
-            local_env = resolve_local_env(config, review_model)
+            review_model, local_env = model_env
 
             await self._log_and_notify(
                 item_id, "system",
                 f"Auto-review starting (attempt {attempt}/{_MAX_AUTO_APPROVE_RETRIES})…"
             )
-
-            # Mark this review-column item as actively under review so the UI
-            # can render a "Reviewing" badge. Cleared in finally even if the
-            # review agent crashes — never leave a stale badge.
-            self._auto_reviewing.add(item_id)
-            await self.notifications.ws_manager.broadcast("auto_review_changed", {
-                "item_id": item_id, "active": True,
-            })
-            try:
-                decision = await run_auto_review(
-                    worktree_path=worktree_path,
-                    model=review_model,
-                    item_title=item.get("title", ""),
-                    item_description=item.get("description", ""),
-                    diff=full_diff,
-                    last_message=last_message,
-                    local_env=local_env,
-                )
-            finally:
-                self._auto_reviewing.discard(item_id)
-                await self.notifications.ws_manager.broadcast("auto_review_changed", {
-                    "item_id": item_id, "active": False,
-                })
-
-            if decision.get("approved"):
-                summary = decision.get("summary") or "Auto-review approved."
-                await self._log_and_notify(
-                    item_id, "system", f"Auto-review approved: {summary}"
-                )
-                self._auto_approve_retries.pop(item_id, None)
-                try:
-                    await self.approve_item(item_id)
-                except Exception as e:
-                    logger.exception("Auto-approve merge failed: %s", e)
-                    await self._log_and_notify(
-                        item_id, "system",
-                        f"Auto-approve approved but merge failed: {e}"
-                    )
-                return
-
-            comments = decision.get("comments") or [
-                "Auto-reviewer requested changes (no specific comments)."
-            ]
-            await self._log_and_notify(
-                item_id, "system",
-                f"Auto-review requested changes (attempt {attempt}/"
-                f"{_MAX_AUTO_APPROVE_RETRIES}): {'; '.join(comments)}"
-            )
-            try:
-                await self.request_changes(item_id, comments)
-            except Exception as e:
-                logger.exception("Auto-approve request_changes failed: %s", e)
-                await self._log_and_notify(
-                    item_id, "system",
-                    f"Auto-review failed to relay comments: {e}"
-                )
+            decision = await self._review_with_badge(item_id, dict(
+                worktree_path=worktree_path,
+                model=review_model,
+                item_title=item.get("title", ""),
+                item_description=item.get("description", ""),
+                diff=full_diff,
+                last_message=last_message,
+                local_env=local_env,
+            ))
+            await self._apply_review_decision(item_id, decision, attempt)
         except Exception as e:
             logger.exception("Auto-review crashed for %s: %s", item_id, e)
             await self._log_and_notify(
                 item_id, "system",
                 f"Auto-review crashed: {e}. Item left for manual review."
+            )
+
+    async def _next_auto_review_attempt(self, item_id: str) -> Optional[int]:
+        """Count one more review cycle; None (after logging) once the cap is hit."""
+        attempt = self._auto_approve_retries.get(item_id, 0) + 1
+        if attempt > _MAX_AUTO_APPROVE_RETRIES:
+            # Hit the cap. Stop the cycle and let a human step in.
+            self._auto_approve_retries.pop(item_id, None)
+            await self._log_and_notify(
+                item_id, "system",
+                f"Auto-approve cycle stopped after {_MAX_AUTO_APPROVE_RETRIES} "
+                f"review iterations — manual review required."
+            )
+            return None
+        self._auto_approve_retries[item_id] = attempt
+        return attempt
+
+    async def _review_base_branch(self, item: Dict[str, Any]) -> str:
+        """The item's base branch, else the base repo's current branch, else "main"."""
+        from ..git.operations import get_current_branch
+        base = item.get("base_branch")
+        try:
+            if not base:
+                base = await get_current_branch(self.git.base_repo_path(item.get("repo")))
+        except Exception:
+            base = "main"
+        return base
+
+    @staticmethod
+    async def _full_agent_diff(worktree_path: Path, base: str) -> str:
+        """Committed diff vs ``base`` plus any uncommitted working-tree changes."""
+        from ..git.operations import run_git
+        diff_parts: list[str] = []
+        try:
+            committed = await run_git(worktree_path, "diff", base, "HEAD")
+            if committed.strip():
+                diff_parts.append(committed)
+        except Exception as e:
+            logger.warning(f"Auto-review: failed to read committed diff: {e}")
+        try:
+            # Uncommitted (working tree vs HEAD) — covers any leftover
+            # work the agent didn't commit before exiting.
+            uncommitted = await run_git(worktree_path, "diff", "HEAD")
+            if uncommitted.strip():
+                diff_parts.append(
+                    "\n# Uncommitted working-tree changes:\n" + uncommitted
+                )
+        except Exception:
+            pass
+        return "\n".join(diff_parts).strip()
+
+    async def _review_model_and_env(self, item_id: str, item: Dict[str, Any]) -> Optional[tuple]:
+        """(model, local-provider env) for the reviewer; None (after logging) for Kimi.
+
+        The reviewer uses the same model selection logic as the implementing
+        agent so a Claude/local mix doesn't get mismatched.
+        """
+        config = await self.db.get_agent_config()
+        review_model = item.get("model") or config.get("model")
+        # The one-shot reviewer runs on the Claude Agent SDK; Kimi models
+        # (separate runtime, experimental) are not supported there yet.
+        # Leave the item in Review for a human rather than mis-routing.
+        if is_kimi_model(review_model):
+            await self._log_and_notify(
+                item_id, "system",
+                "Auto-review is not yet supported for Kimi models — "
+                "leaving item in Review for manual approval."
+            )
+            return None
+        return review_model, resolve_local_env(config, review_model)
+
+    async def _review_with_badge(self, item_id: str, review_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """Run the review agent while the UI shows a "Reviewing" badge on the item.
+
+        The badge is cleared in finally even if the review agent crashes —
+        never leave a stale badge.
+        """
+        self._auto_reviewing.add(item_id)
+        await self.notifications.ws_manager.broadcast("auto_review_changed", {
+            "item_id": item_id, "active": True,
+        })
+        try:
+            return await run_auto_review(**review_kwargs)
+        finally:
+            self._auto_reviewing.discard(item_id)
+            await self.notifications.ws_manager.broadcast("auto_review_changed", {
+                "item_id": item_id, "active": False,
+            })
+
+    async def _apply_review_decision(self, item_id: str, decision: Dict[str, Any], attempt: int) -> None:
+        """Merge on approval; otherwise send the reviewer's comments back to the agent."""
+        if decision.get("approved"):
+            summary = decision.get("summary") or "Auto-review approved."
+            await self._log_and_notify(
+                item_id, "system", f"Auto-review approved: {summary}"
+            )
+            self._auto_approve_retries.pop(item_id, None)
+            try:
+                await self.approve_item(item_id)
+            except Exception as e:
+                logger.exception("Auto-approve merge failed: %s", e)
+                await self._log_and_notify(
+                    item_id, "system",
+                    f"Auto-approve approved but merge failed: {e}"
+                )
+            return
+
+        comments = decision.get("comments") or [
+            "Auto-reviewer requested changes (no specific comments)."
+        ]
+        await self._log_and_notify(
+            item_id, "system",
+            f"Auto-review requested changes (attempt {attempt}/"
+            f"{_MAX_AUTO_APPROVE_RETRIES}): {'; '.join(comments)}"
+        )
+        try:
+            await self.request_changes(item_id, comments)
+        except Exception as e:
+            logger.exception("Auto-approve request_changes failed: %s", e)
+            await self._log_and_notify(
+                item_id, "system",
+                f"Auto-review failed to relay comments: {e}"
             )
 
     async def _restart_session_with_new_permissions(self, item_id: str, command: str, resume_id: str | None, item: Dict[str, Any] | None = None):
@@ -1771,58 +1850,74 @@ class WorkflowService:
         In multi-repo mode iterates each subrepo's worktrees; in single-repo
         mode asks the one target_project for its list.
         """
+        stale = []
+        for wt in await self._all_worktree_records():
+            entry = await self._stale_worktree_entry(wt)
+            if entry:
+                stale.append(entry)
+        return stale
+
+    async def _all_worktree_records(self) -> List[Dict[str, Any]]:
+        """Worktree records across all repos (multi-repo records carry ``_source_repo``)."""
         from ..git.worktree import list_worktrees
 
-        # Collect (worktree_record, source_repo) across all repos.
+        if not self.git.is_multi():
+            return list(await list_worktrees(self.git.target_project))
+        return await self._multi_repo_worktree_records(list_worktrees)
+
+    async def _multi_repo_worktree_records(self, list_worktrees) -> List[Dict[str, Any]]:
+        """Each subrepo's worktree records, tagged with ``_source_repo``; a repo
+        whose worktrees can't be listed is skipped with a warning."""
         worktree_records: List[Dict[str, Any]] = []
-        if self.git.is_multi():
-            for repo_name in (self.git.repos or []):
-                base = self.git.base_repo_path(repo_name)
-                try:
-                    for wt in await list_worktrees(base):
-                        wt["_source_repo"] = repo_name
-                        worktree_records.append(wt)
-                except Exception as e:
-                    logger.warning(f"Failed to list worktrees for repo {repo_name}: {e}")
-        else:
-            for wt in await list_worktrees(self.git.target_project):
-                worktree_records.append(wt)
-
-        stale = []
-        for wt in worktree_records:
-            path = wt.get("path", "")
-            branch = wt.get("branch", "")
-            # Only check agent worktrees (refs/heads/agent/...)
-            if not branch.startswith("refs/heads/agent/"):
-                continue
-            branch_name = branch.removeprefix("refs/heads/")
-            # Extract item_id from branch name "agent/{item_id}"
-            item_id = branch_name.removeprefix("agent/")
-            if not item_id:
-                continue
-
-            item = await self.db.get_item(item_id)
-            if not item:
-                # Item deleted from DB but worktree remains
-                stale.append({"item_id": item_id, "branch_name": branch_name, "worktree_path": path, "reason": "Item no longer exists in database"})
-                continue
-
-            # Check if item is in a terminal/inactive state with no running session
-            has_session = item_id in self.sessions.sessions
+        for repo_name in (self.git.repos or []):
+            base = self.git.base_repo_path(repo_name)
             try:
-                state = from_columns(item.get("column_name", ""), item.get("status"))
-            except UnknownStateEncoding:
-                continue  # unknown legacy encoding — leave alone, audit logs it on startup
+                for wt in await list_worktrees(base):
+                    wt["_source_repo"] = repo_name
+                    worktree_records.append(wt)
+            except Exception as e:
+                logger.warning(f"Failed to list worktrees for repo {repo_name}: {e}")
+        return worktree_records
 
-            terminal_states = {ItemState.CANCELLED, ItemState.DONE, ItemState.ARCHIVED}
-            if state in terminal_states and not has_session:
-                title = item.get("title", item_id[:8])
-                stale.append({"item_id": item_id, "title": title, "branch_name": branch_name, "worktree_path": path, "reason": f"Item is {state.value}"})
-            elif state is ItemState.BACKLOG and not has_session:
-                title = item.get("title", item_id[:8])
-                stale.append({"item_id": item_id, "title": title, "branch_name": branch_name, "worktree_path": path, "reason": "Item is in todo with no active agent"})
+    async def _stale_worktree_entry(self, wt: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """The stale-worktree record for an agent worktree, or None if it is still in use."""
+        path = wt.get("path", "")
+        branch = wt.get("branch", "")
+        # Only check agent worktrees (refs/heads/agent/...)
+        if not branch.startswith("refs/heads/agent/"):
+            return None
+        branch_name = branch.removeprefix("refs/heads/")
+        # Extract item_id from branch name "agent/{item_id}"
+        item_id = branch_name.removeprefix("agent/")
+        if not item_id:
+            return None
 
-        return stale
+        item = await self.db.get_item(item_id)
+        if not item:
+            # Item deleted from DB but worktree remains
+            return {"item_id": item_id, "branch_name": branch_name, "worktree_path": path, "reason": "Item no longer exists in database"}
+
+        reason = self._stale_reason(item_id, item)
+        if not reason:
+            return None
+        title = item.get("title", item_id[:8])
+        return {"item_id": item_id, "title": title, "branch_name": branch_name, "worktree_path": path, "reason": reason}
+
+    def _stale_reason(self, item_id: str, item: Dict[str, Any]) -> Optional[str]:
+        """Why an existing item's worktree is stale (inactive state, no running
+        session), or None if it isn't."""
+        has_session = item_id in self.sessions.sessions
+        try:
+            state = from_columns(item.get("column_name", ""), item.get("status"))
+        except UnknownStateEncoding:
+            return None  # unknown legacy encoding — leave alone, audit logs it on startup
+        if has_session:
+            return None
+        if state in {ItemState.CANCELLED, ItemState.DONE, ItemState.ARCHIVED}:
+            return f"Item is {state.value}"
+        if state is ItemState.BACKLOG:
+            return "Item is in todo with no active agent"
+        return None
 
     async def cleanup_stale_worktree(self, item_id: str) -> Dict[str, Any]:
         """Clean up a stale worktree and clear git metadata on the item."""

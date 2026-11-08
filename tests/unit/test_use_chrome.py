@@ -7,7 +7,7 @@ prompt. Chrome is gated off in Ollama mode (small local models).
 """
 
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -168,6 +168,9 @@ class TestItemSessionKwargs:
             _create_on_who_am_i_callback=lambda item_id: None,
             _create_on_peek_worktree_callback=lambda item_id: None,
         )
+        # The real epic-plan / multi-repo helpers, bound to the fake.
+        fake._epic_plan_kwargs = MethodType(WorkflowService._epic_plan_kwargs, fake)
+        fake._multi_repo_kwargs = MethodType(WorkflowService._multi_repo_kwargs, fake)
         return await WorkflowService._item_session_kwargs(fake, item)
 
     async def test_true_when_flag_set(self):
