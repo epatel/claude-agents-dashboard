@@ -28,7 +28,7 @@ Before doing real work, scan **[`AGENT_FILES/CARDS/README.md`](AGENT_FILES/CARDS
 
 Project skills live in `.claude/skills/` (committed): `review-agentic-setup` and `files-skill` for maintaining this setup, `ste-writing` for doc prose.
 
-`AGENT_FILES/` root holds historical snapshots only (`AUDIT.md`, `ASSESSMENT_CODE.md`, dated `PLAN_*`/`EVAL_*` records) — don't edit those to match current state. Living docs are under `CARDS/`, plus [`docs/item-states.md`](docs/item-states.md) (the `ItemState` FSM and its diagram, kept in sync with `src/domain/item_state.py`).
+`AGENT_FILES/` root holds historical snapshots (`ASSESSMENT_CODE.md`, dated `PLAN_*`/`EVAL_*` records) — don't edit those to match current state. Two exceptions (see Decisions): `AUDIT.md` gets a new rev when agent-facing surface is added, and `SDK_BUMP_*.md` gets a rev note per SDK bump. Living docs are under `CARDS/`, plus [`docs/item-states.md`](docs/item-states.md) (the `ItemState` FSM and its diagram, kept in sync with `src/domain/item_state.py`).
 
 ## Code health
 
@@ -36,4 +36,4 @@ Project skills live in `.claude/skills/` (committed): `review-agentic-setup` and
   in code you touched (exit code 1 = health degraded).
 - `aihealth scan .` gives an overview of the codebase.
 - A full `./run-tests.sh` (no test path) also fails if the score drops below the floors in
-  `HEALTH_FLOORS` (project 9.5, `src/` 9.6); `AIHEALTH_GATE=0` skips that check.
+  `HEALTH_FLOORS` in `run-tests.sh` (project 9.5, `src/` 9.6); `AIHEALTH_GATE=0` skips that check.

@@ -28,6 +28,7 @@ Common operations and the cards that cover them. Order is suggested reading orde
 | Work on the Kimi runtime / add a new agent runtime | [KIMI_PROVIDER](KIMI_PROVIDER.md) → [ARCHITECTURE](ARCHITECTURE.md) (agent runtime) |
 | Query / rebuild / upgrade the knowledge graph | [GRAPHIFY](GRAPHIFY.md) only |
 | Work on the skills library / how skills reach agents | [SKILLS](SKILLS.md) → [ARCHITECTURE](ARCHITECTURE.md) (`SessionService`) |
+| Refactor with no behavior change (code-health work) | [TESTING](TESTING.md) ("Behavior-preserving refactors") |
 | Localized bug fix in existing code | None — read the code |
 | Demo the dashboard end-to-end / reproduce the kanban-demo run | [DEMO](DEMO.md) only |
 | About to commit | [COMMIT_POLICY](COMMIT_POLICY.md) |
@@ -58,7 +59,7 @@ If your task isn't above, fall through to the **Load when** triggers below.
 - *Migration CLI, whitelist requirements, inspection commands.*
 
 ### [TESTING](TESTING.md)
-- **Load when**: adding or modifying tests; deciding which suite to put a new test in.
+- **Load when**: adding or modifying tests; deciding which suite to put a new test in; proving a refactor changes no behavior.
 - **Skip when**: writing production code with no test changes.
 - *Test layout (unit / integration / smoke / e2e), suite conventions.*
 

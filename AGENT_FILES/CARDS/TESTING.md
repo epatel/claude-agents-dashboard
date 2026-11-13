@@ -283,6 +283,16 @@ The first five tests run real agent sessions against a temporary test project an
 
 For coverage across an E2E run use `./run-e2e-coverage.sh`, which starts the server under `coverage run`, sets `E2E_PORT`, and shuts it down via `POST /api/shutdown`. `./run-coverage.sh` is the pytest-only equivalent.
 
+## Behavior-preserving refactors
+
+A green suite is not enough proof of "no behavior change". For each refactor, M12 (`git log --grep 'M12 step'`) also compared the old and the new code side by side. Each commit message records its harness and case counts.
+
+- **Python `src/`**: save the old module next to the new one (for example `src.services._wf_old`, so relative imports still resolve). Drive both with the same recording fakes or fuzzed inputs. Compare the results, the calls made, the logs, and the exceptions.
+- **Python tests**: run the HEAD version (a detached worktree) and the new version with `--cov=src --cov-branch`. Expect the same pass count, the same test ids, and the same executed lines and branches. First copy the untracked files that the code scans (for example `plugins/.DS_Store`) into the worktree.
+- **Frontend JS** (no JS unit tests): load the old and new scripts in a browser harness on a scratch target, or replay recorded calls in Node. Then check the UI live.
+- **Node E2E**: run the old and new copies against a fake dashboard API through `E2E_PORT`. Do not spawn paid agents unless the user agrees.
+- Shared test helpers are plain modules that you import explicitly (`tests/unit/workflow_fixtures.py`, `route_fixtures.py`, `migrations/migration_helpers.py`), never conftests. Generic fixture names in a conftest would leak into every test.
+
 ---
 
 **See also**: [CONVENTIONS](CONVENTIONS.md) (testing section), [DATABASE](DATABASE.md) (when adding migration tests).
