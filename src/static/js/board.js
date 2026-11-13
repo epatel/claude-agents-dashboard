@@ -453,25 +453,7 @@ const Board = {
             // Copy attachments from the original item to the new item
             try {
                 const attachments = await Api.getAttachments(itemId);
-                const copyPromises = attachments.map(attachment => {
-                    return fetch(`/api/assets/${attachment.asset_path.split('/').pop()}`)
-                        .then(response => response.blob())
-                        .then(blob => new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onloadend = async () => {
-                                try {
-                                    await Api.createAttachment(newItem.id, attachment.filename, reader.result);
-                                    resolve();
-                                } catch (attachErr) {
-                                    console.error('Failed to copy attachment:', attachErr);
-                                    resolve(); // resolve anyway so we still refresh
-                                }
-                            };
-                            reader.onerror = () => resolve();
-                            reader.readAsDataURL(blob);
-                        }));
-                });
-                await Promise.all(copyPromises);
+                await Promise.all(attachments.map(a => this._copyAttachment(a, newItem.id)));
             } catch (attachmentErr) {
                 console.error('Failed to copy attachments:', attachmentErr);
                 // Continue even if attachments fail - the item is still created
@@ -483,6 +465,26 @@ const Board = {
         } catch (err) {
             console.error('Failed to re-run item:', err);
         }
+    },
+
+    /** Copy one attachment's asset onto another item; a missing asset (404) is skipped. */
+    async _copyAttachment(attachment, toItemId) {
+        const response = await fetch(`/api/assets/${attachment.asset_path.split('/').pop()}`);
+        if (!response.ok) return;
+        const blob = await response.blob();
+        await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                try {
+                    await Api.createAttachment(toItemId, attachment.filename, reader.result);
+                } catch (attachErr) {
+                    console.error('Failed to copy attachment:', attachErr);
+                }
+                resolve(); // resolve anyway so we still refresh
+            };
+            reader.onerror = () => resolve();
+            reader.readAsDataURL(blob);
+        });
     },
 
     // --- Re-rendering ---

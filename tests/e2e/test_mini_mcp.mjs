@@ -10,6 +10,7 @@
  */
 import {
   withBoard, requireTargetRepo, runAgentTask, deleteItem, printWorkLog, pass, fail, warn, PROJECT_ROOT,
+  apiRequest, jsonInit,
 } from './helpers.mjs';
 import path from 'node:path';
 
@@ -19,35 +20,16 @@ const EXPECTED_SECRET = 'FEC52599-123E-49FF-9E32-9E0D7E51BBA9';
 const SERVER_SCRIPT = path.join(PROJECT_ROOT, 'examples', 'mini-mcp', 'server.py');
 
 async function configureMiniMcp(page, base) {
-  // Get current config
-  const config = await page.evaluate(async (b) => {
-    const r = await fetch(`${b}/api/config`);
-    return r.json();
-  }, base);
-
-  // Build MCP servers config: preserve existing servers, add mini-mcp
-  let existingServers = {};
-  try {
-    existingServers = JSON.parse(config.mcp_servers || '{}');
-  } catch { /* ignore */ }
-
-  existingServers['mini-mcp'] = {
-    command: '/usr/bin/python3',
-    args: [SERVER_SCRIPT],
+  // GET returns mcp_servers as an object; PUT replaces the whole config, so
+  // send the current config back with only the MCP fields changed.
+  const { body: config } = await apiRequest(page, base, '/api/config');
+  const mcpServers = {
+    ...(config.mcp_servers || {}),
+    'mini-mcp': { command: '/usr/bin/python3', args: [SERVER_SCRIPT] },
   };
-
-  // Update config with MCP enabled and mini-mcp server
-  await page.evaluate(async (args) => {
-    const [b, mcpServers] = args;
-    await fetch(`${b}/api/config`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mcp_servers: JSON.stringify(mcpServers),
-        mcp_enabled: true,
-      }),
-    });
-  }, [base, existingServers]);
+  const res = await apiRequest(page, base, '/api/config',
+    jsonInit('PUT', { ...config, mcp_servers: mcpServers, mcp_enabled: true }));
+  if (res.status !== 200) fail(`PUT /api/config returned ${res.status}: ${JSON.stringify(res.body)}`);
 
   console.log('Mini-MCP configured');
 }

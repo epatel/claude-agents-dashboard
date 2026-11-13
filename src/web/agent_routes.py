@@ -94,7 +94,10 @@ async def get_item_diff(request: Request, item_id: str):
     db = request.app.state.db
     async with db.connect() as conn:
         cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-        item = dict(await cursor.fetchone())
+        row = await cursor.fetchone()
+    if row is None:
+        return JSONResponse({"error": "Item not found"}, status_code=404)
+    item = dict(row)
 
     if not item.get("branch_name"):
         return {"diff": "", "files": []}

@@ -4,7 +4,7 @@ import base64
 import uuid
 from pathlib import Path
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from .route_helpers import _item_rows
 
@@ -66,7 +66,7 @@ async def serve_asset(request: Request, filename: str):
     assets_dir = request.app.state.data_dir / "assets"
     file_path = assets_dir / filename
     if not file_path.exists() or not file_path.is_relative_to(assets_dir):
-        return {"error": "not found"}
+        return JSONResponse({"error": "not found"}, status_code=404)
     return FileResponse(file_path)
 
 

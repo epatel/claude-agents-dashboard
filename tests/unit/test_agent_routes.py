@@ -196,6 +196,13 @@ class TestDiff:
         assert data["diff"] == ""
         assert data["files"] == []
 
+    @pytest.mark.asyncio
+    async def test_get_diff_unknown_item_is_404(self, client_with_item):
+        client, app = client_with_item
+        resp = await client.get("/api/items/nope/diff")
+        assert resp.status_code == 404
+        assert resp.json() == {"error": "Item not found"}
+
 
 # ---------------------------------------------------------------------------
 # Graphify endpoints

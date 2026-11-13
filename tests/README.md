@@ -1,6 +1,6 @@
 # Agent Dashboard Test Suite
 
-This directory contains the automated test suite (1445 tests across 64 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (33 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
+This directory contains the automated test suite (1450 tests across 64 Python test files plus `conftest.py`, plus 7 Node Playwright `.mjs` E2E tests under `e2e/`) for the Agent Dashboard application, covering orchestrator lifecycle, database migrations (33 migrations), security, git operations, services (including the graphify `GraphService` and the `SkillsService`), routes, WebSocket, sessions, agent tools, the `ItemState` finite state machine, item/epic repositories, and multi-repo workspace mode.
 
 ## Test Structure
 
@@ -49,13 +49,13 @@ tests/
 │   ├── test_notification_service.py             # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py                  # Path traversal prevention (14 tests)
 │   ├── test_peek_worktree.py                    # peek_worktree tool, git reads, rendering (23 tests)
-│   ├── test_routes.py                           # HTTP endpoint tests for routes.py (58 tests)
-│   ├── test_agent_routes.py                     # Agent action / peek / diff routes (19 tests)
+│   ├── test_routes.py                           # HTTP endpoint tests for routes.py (60 tests)
+│   ├── test_agent_routes.py                     # Agent action / peek / diff routes (20 tests)
 │   ├── test_settings_routes.py                  # Config, graphify, skills routes (20 tests)
 │   ├── test_provider_routes.py                  # Ollama / Tiiny provider routes (9 tests)
 │   ├── test_epic_routes.py                      # Epic routes (7 tests)
 │   ├── test_shortcut_routes.py                  # Shortcut routes (9 tests)
-│   ├── test_attachment_routes.py                # Attachment routes (3 tests)
+│   ├── test_attachment_routes.py                # Attachment routes (5 tests)
 │   ├── route_fixtures.py                        # Shared route-test fixtures (not a conftest)
 │   ├── test_base.py                             # AbstractAgentSession contract (4 tests)
 │   ├── test_kimi_board_mcp.py                   # Kimi board-tools stdio MCP proxy (12 tests)
@@ -98,8 +98,8 @@ tests/
 - **GraphService** (12 tests) — graphify build/refresh/query/status, version detection, cost tracking
 - **SkillsService** (14 tests) — library install/list/remove, browse Anthropic source, multi-skill repo discovery, spec parsing, gitignore management
 
-### 3. Web Layer (262 tests)
-- **Routes** (125 tests: `test_routes.py` plus one `test_*_routes.py` per route module, sharing `route_fixtures.py`) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, graphify endpoints, skills library endpoints
+### 3. Web Layer (267 tests)
+- **Routes** (130 tests: `test_routes.py` plus one `test_*_routes.py` per route module, sharing `route_fixtures.py`) — HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, graphify endpoints, skills library endpoints
 - **File Routes** (66 tests) — File browser path validation, secret detection, .browserhidden, language mapping, directory scanning
 - **WebSocket** (45 tests) — Connection management, rate limiting, dead-connection cleanup
 - **App** (26 tests) — FastAPI factory, middleware, CORS, security headers, lifespan
@@ -178,7 +178,7 @@ Use `--model` to override the Claude model used by all E2E agents (defaults to t
 
 ### Quick Start
 ```bash
-# Run all 1445 tests
+# Run all 1450 tests
 ./run-tests.sh
 
 # Run specific test categories (any path narrows the run)
@@ -206,7 +206,7 @@ pytest tests/unit/migrations/
 
 # Select by path, not by marker. The unit/integration/smoke markers exist in
 # pytest.ini but are applied to only a minority of files — `pytest -m unit`
-# collects ~94 of 1411 unit tests and silently skips the rest.
+# collects ~94 of 1416 unit tests and silently skips the rest.
 pytest tests/unit/
 pytest tests/integration/
 pytest tests/smoke/

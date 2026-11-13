@@ -53,3 +53,22 @@ class TestAttachments:
 # ---------------------------------------------------------------------------
 # Item detail (standalone page)
 # ---------------------------------------------------------------------------
+
+
+class TestServeAsset:
+    @pytest.mark.asyncio
+    async def test_missing_asset_is_404(self, client_with_item):
+        client, app = client_with_item
+        resp = await client.get("/api/assets/missing.png")
+        assert resp.status_code == 404
+        assert resp.json() == {"error": "not found"}
+
+    @pytest.mark.asyncio
+    async def test_existing_asset_is_served(self, client_with_item):
+        client, app = client_with_item
+        assets = app.state.data_dir / "assets"
+        assets.mkdir(exist_ok=True)
+        (assets / "a.txt").write_text("hello")
+        resp = await client.get("/api/assets/a.txt")
+        assert resp.status_code == 200
+        assert resp.text == "hello"

@@ -6,7 +6,7 @@
 ## Running Tests
 
 ```bash
-./run-tests.sh              # Run all 1445 tests
+./run-tests.sh              # Run all 1450 tests
 ./run-tests.sh tests/smoke/ # Smoke tests only
 ./run-tests.sh -k "test_cancel" # Filter by name
 ./run-tests.sh -v --tb=long # Verbose with full tracebacks
@@ -66,13 +66,13 @@ tests/
 │   ├── test_notification_service.py  # WebSocket broadcasting (41 tests)
 │   ├── test_path_validation.py       # Path traversal prevention (14 tests)
 │   ├── test_peek_worktree.py        # peek_worktree tool, git reads, rendering (23 tests)
-│   ├── test_routes.py               # HTTP endpoint tests for routes.py: items, bulk, move, log, search, detail (58 tests)
-│   ├── test_agent_routes.py         # Agent actions, peek, start-copy, retry-merge, diff routes (19 tests)
+│   ├── test_routes.py               # HTTP endpoint tests for routes.py: items, bulk, move, log, search, detail (60 tests)
+│   ├── test_agent_routes.py         # Agent actions, peek, start-copy, retry-merge, diff routes (20 tests)
 │   ├── test_settings_routes.py      # Config, graphify and skills routes (20 tests)
 │   ├── test_provider_routes.py      # Ollama / Tiiny provider routes (9 tests)
 │   ├── test_epic_routes.py          # Epic routes (7 tests)
 │   ├── test_shortcut_routes.py      # Shortcut routes (9 tests)
-│   ├── test_attachment_routes.py    # Attachment routes (3 tests)
+│   ├── test_attachment_routes.py    # Attachment routes (5 tests)
 │   ├── route_fixtures.py            # Shared route-test fixtures + seed/request helpers (plain module, imported explicitly — not a conftest)
 │   ├── test_run_sh_args.py          # run.sh target/flag argument parsing (11 tests)
 │   ├── test_python_env.py           # scripts/python-env.sh venv bootstrap (13 tests)
@@ -100,7 +100,7 @@ tests/
 
 ## Test Categories
 
-**1445 total** = 20 smoke + 1411 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1411 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
+**1450 total** = 20 smoke + 1416 unit + 14 integration. The ten `Unit Tests — …` buckets below partition those 1416 exactly; if you add a test file, put it in a bucket and update both numbers, or the totals stop reconciling. (E2E tests are counted separately — they are Node, not pytest.)
 
 ### Smoke Tests (20 tests)
 Quick checks that core components work:
@@ -124,8 +124,8 @@ Quick checks that core components work:
 - **GraphService** (12 tests): graphify build/refresh/query/status, version detection, cost tracking
 - **SkillsService** (14 tests): library install/list/remove, browse Anthropic source, multi-skill repo discovery, spec parsing, gitignore management, remote-tree path validation (traversal + absolute entries skipped) and the HTTP response size cap
 
-### Unit Tests — Web Layer (262 tests)
-- **Routes** (125 tests in `test_routes.py` + the six `test_*_routes.py` files, one per route module; shared fixtures in `route_fixtures.py`): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, `/api/graphify/*`, `/api/skills/*`, `/api/tiiny/*`
+### Unit Tests — Web Layer (267 tests)
+- **Routes** (130 tests in `test_routes.py` + the six `test_*_routes.py` files, one per route module; shared fixtures in `route_fixtures.py`): HTTP endpoints for items, review, epics, shortcuts, config, stats, search, item detail, clarification context retrieval, `/api/graphify/*`, `/api/skills/*`, `/api/tiiny/*`
 - **File Routes** (66 tests): Path validation, secret detection, .browserhidden, language mapping, directory scanning, file content
 - **WebSocket** (45 tests): Connection management, rate limiting, dead-connection cleanup
 - **App** (26 tests): FastAPI factory, middleware, CORS, security headers, lifespan
@@ -245,7 +245,7 @@ async def test_apply_migration(self, raw_db, runner):
 ### Adding New Tests
 
 1. Place in the appropriate directory (`unit/`, `integration/`, `smoke/`)
-2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1411. Select by path (`./run-tests.sh tests/unit/`), not by marker.
+2. Markers (`@pytest.mark.unit` / `integration` / `smoke`) are declared in `pytest.ini` but applied to only a minority of files — `pytest -m unit` collects ~94 of 1416. Select by path (`./run-tests.sh tests/unit/`), not by marker.
 3. Async tests work automatically (no `@pytest.mark.asyncio` needed)
 4. Run `./run-tests.sh` to verify all tests pass
 5. Put a new test file in one of the category buckets above and update that bucket's count and the totals here and in `tests/README.md` — the buckets partition the unit tests exactly, and unmaintained counts drift silently.

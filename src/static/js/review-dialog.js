@@ -67,7 +67,7 @@ const ReviewFileBrowser = {
             this._renderTreeNodes(treeEl, data.tree, 0);
 
             // Auto-expand directories containing changed files
-            if (!path) this._autoExpandChanged();
+            if (!path) await this._autoExpandChanged();
         } catch {
             treeEl.innerHTML = '<div style="padding:12px;color:var(--danger);font-size:12px;">Failed to load files</div>';
         }
@@ -96,14 +96,33 @@ const ReviewFileBrowser = {
         return statusColor ? `<span class="rfb-tab-status" style="background:${statusColor}"></span>` : '';
     },
 
-    _autoExpandChanged() {
+    async _autoExpandChanged() {
         // Collect parent dirs of all changed files and expand them
         const dirsToExpand = this._changedFileDirs();
         if (dirsToExpand.size === 0) return;
         for (const d of dirsToExpand) this._expandedDirs.add(d);
+        if (!this._treeData) return;
+        // Fetch the children of expanded dirs the tree has not loaded yet,
+        // or they would render expanded but empty
+        await this._loadExpandedChildren(this._treeData);
         // Re-render tree with expansions
         const treeEl = document.getElementById('rfb-tree');
-        if (this._treeData) this._renderTreeNodes(treeEl, this._treeData, 0);
+        this._renderTreeNodes(treeEl, this._treeData, 0);
+    },
+
+    /** Load (in place) the missing children of every expanded dir under ``nodes``. */
+    async _loadExpandedChildren(nodes) {
+        const expanded = nodes.filter(n => n.type === 'dir' && this._expandedDirs.has(n.path));
+        await Promise.all(expanded.map(async (node) => {
+            if (node.children === null) {
+                try {
+                    node.children = (await Api.request('GET', this._treeUrl(node.path))).tree;
+                } catch {
+                    return; // left unloaded; a click on the dir retries
+                }
+            }
+            await this._loadExpandedChildren(node.children || []);
+        }));
     },
 
     _changedFileDirs() {

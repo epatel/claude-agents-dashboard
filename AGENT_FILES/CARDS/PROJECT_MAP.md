@@ -33,7 +33,7 @@ Spawns a Claude session in a fresh worktree (`agents-lab/worktrees/agent-{item_i
 ### `flow.merge`
 Commits uncommitted worktree changes, merges into base. On conflict: captures diff, resets worktree to latest base, restarts agent with conflict prompt.
 - **Entry:** `src/services/workflow_service.py:459` `approve_item`
-- **HTTP:** `POST /api/items/{id}/approve` (`src/web/agent_routes.py:229`)
+- **HTTP:** `POST /api/items/{id}/approve` (`src/web/agent_routes.py:232`)
 - **WS events:** `item_updated`, `merge_blocked`, `agent_log`
 - **Tables:** `items`
 
@@ -42,7 +42,7 @@ MCP `ask_user` moves item to "Clarify" column, awaits `asyncio.Event`. HTTP endp
 - **MCP tool:** `src/agent/clarification.py:55` `ask_user`
 - **Callback:** `src/services/workflow_callbacks.py:178` `_create_on_clarify_callback`
 - **Resume:** `src/services/workflow_service.py:793` `submit_clarification`
-- **HTTP:** `POST /api/items/{id}/clarify` (`src/web/agent_routes.py:280`)
+- **HTTP:** `POST /api/items/{id}/clarify` (`src/web/agent_routes.py:283`)
 - **WS events:** `clarification_requested`, `item_updated`
 - **Tables:** `items`
 
@@ -97,7 +97,7 @@ PreToolUse hook denies shell commands not in the allowlist. Agent calls `request
 - **Access MCP:** `src/agent/command_access.py:36` `request_command_access`
 - **Callback:** `src/services/workflow_callbacks.py:237` `_create_on_request_command_callback`
 - **Restart:** `src/services/workflow_service.py:1117` `_restart_session_with_new_permissions`
-- **HTTP:** `POST /api/items/{id}/approve-command` (`src/web/agent_routes.py:286`)
+- **HTTP:** `POST /api/items/{id}/approve-command` (`src/web/agent_routes.py:289`)
 - **WS events:** `item_updated`, `agent_log`
 - **Tables:** `items` (`allowed_commands` from migration 003)
 

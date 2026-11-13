@@ -59,14 +59,15 @@ _STATS_SUMMARY_SQL = """
         ts.total_input_tokens,
         ts.total_output_tokens,
         ts.total_tokens,
-        -- Work log aggregates
-        SUM(wls.fallback_cost) as fallback_total_cost,
-        MAX(wls.completed_today) as completed_today,
-        SUM(wls.count) as total_messages,
-        SUM(CASE WHEN wls.entry_type = 'agent_message' THEN wls.count ELSE 0 END) as agent_messages,
-        SUM(CASE WHEN wls.entry_type = 'tool_use' THEN wls.count ELSE 0 END) as tool_calls
+        -- Work log aggregates (0, not NULL, when the work log is empty)
+        COALESCE(SUM(wls.fallback_cost), 0) as fallback_total_cost,
+        COALESCE(MAX(wls.completed_today), 0) as completed_today,
+        COALESCE(SUM(wls.count), 0) as total_messages,
+        COALESCE(SUM(CASE WHEN wls.entry_type = 'agent_message' THEN wls.count ELSE 0 END), 0) as agent_messages,
+        COALESCE(SUM(CASE WHEN wls.entry_type = 'tool_use' THEN wls.count ELSE 0 END), 0) as tool_calls
     FROM token_stats ts
-    CROSS JOIN work_log_stats wls
+    -- LEFT JOIN keeps the single token_stats row when work_log_stats is empty
+    LEFT JOIN work_log_stats wls ON 1
 """
 
 

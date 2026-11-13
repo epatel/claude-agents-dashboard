@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 from tests.unit.route_fixtures import app_and_db, client, client_with_item  # noqa: F401  (pytest fixtures)
 from tests.unit.route_fixtures import get_json, item_row, request, seed, seed_logged_item
+from src.web.stats_cache import _invalidate_stats_cache
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +384,28 @@ class TestStats:
         data = resp.json()
         assert "usage" in data
         assert "activity" in data
+
+    @pytest.mark.asyncio
+    async def test_empty_work_log_gives_zero_counts(self, client):
+        _invalidate_stats_cache()
+        usage = (await client.get("/api/stats")).json()["usage"]
+        assert usage["total_messages"] == 0
+        assert usage["agent_messages"] == 0
+        assert usage["tool_calls"] == 0
+        assert usage["completed_today"] == 0
+        assert usage["total_cost_usd"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_token_usage_counts_with_empty_work_log(self, app_and_db):
+        app, db = app_and_db
+        await seed(db, item_row("s1", "Stats"), ("token_usage", {
+            "item_id": "s1", "input_tokens": 10, "output_tokens": 5,
+            "total_tokens": 15, "cost_usd": 0.25}))
+        _invalidate_stats_cache()
+        usage = (await get_json(app, "/api/stats"))["usage"]
+        assert usage["total_cost_usd"] == 0.25
+        assert usage["total_tokens"] == 15
+        assert usage["total_messages"] == 0
 
     @pytest.mark.asyncio
     async def test_get_websocket_stats(self, client):

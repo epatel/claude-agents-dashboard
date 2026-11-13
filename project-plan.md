@@ -56,12 +56,7 @@ shippable on the latest Claude models, without letting the `aihealth` scores fal
   - Left on purpose: the shared session `__init__` contracts (35 / 15 parameters),
     `_tiiny_request`'s 5 positional parameters (tests
     read `call_args`), `orchestrator.py` 8.51 (app facade + legacy helpers integration tests use).
-  - Known pre-existing bugs, not fixed: (1) `/api/stats` returns null counts when the work log is
-    empty → `stats.js` throws every 10 s; (2) the review browser auto-expands folders with changed
-    files without loading their children (deeper files hidden until toggled twice);
-    (3) `test_mini_mcp.mjs` still `JSON.parse`s `config.mcp_servers` (now an object), dropping the
-    existing servers from its PUT; (4) `GET /api/items/{id}/diff` for an unknown item → HTTP 500,
-    and `GET /api/assets/{name}` for a missing file → 200 with `{"error": "not found"}`.
+  - The 4 pre-existing bugs seen during M12 were fixed on 2026-11-13 (`git log`).
 
 ## Decisions
 
@@ -172,7 +167,8 @@ architectural rationale graduates to a decision card under `AGENT_FILES/CARDS/`.
 ## Current state / handoff
 
 **No milestone in flight.** M12 (code-health pass) finished 2026-11-08; after it, `create_todo`
-got a keyword contract and `run.sh` / the macOS wrapper got exit-handling fixes (see `git log`).
+got a keyword contract, `run.sh` / the macOS wrapper got exit-handling fixes, and the four
+known bugs from M12 were fixed (2026-11-13; see `git log`).
 Refactor rules still apply: no behavior change; keep the locked Decisions above (ItemState FSM,
 `ClaudeAgentOptions` built at its call sites, `verbatim_prompts=True`, `PathScope`). Line
 numbers in `aihealth` output count code lines only — locate functions by name.
@@ -181,7 +177,7 @@ Previous change (2026-11-06, M11): Tiiny provider, live-verified on the user's d
 security audit (`AGENT_FILES/AUDIT.md`, rev 14) has no open actionable finding.
 
 Authoritative counts, re-verified by collection/grep — trust these over prose: **33 migrations
-(001–033)**; **1445 tests = 20 smoke + 1411 unit + 14 integration** (plus 7 Node E2E tests,
+(001–033)**; **1450 tests = 20 smoke + 1416 unit + 14 integration** (plus 7 Node E2E tests,
 counted separately); **7 services**; **10 MCP tool servers exposing 12 tools** (`todo.py`
 serves three); skills ship as plugins, not as an MCP tool.
 
