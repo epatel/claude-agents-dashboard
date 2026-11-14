@@ -2,6 +2,19 @@
 
 Standalone scrum board that orchestrates Claude agents working on a **separate target project** (or a workspace of sibling git repos in multi-repo mode). Server code lives here; data directory (`agents-lab/`) is created in the target project / workspace root.
 
+## Known stack — use what you already know
+
+Standard and used the standard way: read the code and apply the usual idioms. The cards cover what is project-specific.
+
+- **FastAPI + uvicorn**: `create_app` / `lifespan` in `src/web/app.py`; shared objects on `app.state` (`db`, `orchestrator`, `ws_manager`). Each route group is an `APIRouter` in `src/web/*_routes.py`, included into `routes.router`.
+- **Pydantic v2** request and config models in `src/models.py`.
+- **aiosqlite / SQLite**: `Database` in `src/database.py`; schema changes only through numbered migrations in `src/migrations/versions/`.
+- **Jinja2 + plain browser JS**: no bundler, no ES modules. Each `src/static/js/*.js` defines one global object (`const Api = {…}`), loaded by `<script>` tags in `src/templates/base.html` / `board.html` in dependency order; CDN libraries (marked, DOMPurify, mermaid, Prism) are globals too.
+- **WebSocket** `/ws`, broadcast through `ConnectionManager` (`src/web/websocket.py`).
+- **claude-agent-sdk** (`ClaudeSDKClient`, `ClaudeAgentOptions`) runs agents; the session layer around it is custom (see cards).
+- **pytest + pytest-asyncio** (`asyncio_mode = auto`), route tests via httpx `AsyncClient` + `ASGITransport`; **Playwright (Node)** for `tests/e2e/*.mjs`.
+- **SwiftUI** macOS wrapper in `wrappers/macos` (SwiftPM + Xcode project).
+
 ## Quick start
 
 ```bash
@@ -26,7 +39,7 @@ Always read the shared plan above before starting — it holds the shared goal a
 
 Before doing real work, scan **[`AGENT_FILES/CARDS/README.md`](AGENT_FILES/CARDS/README.md)** — the routing manifest — and load only the cards whose **Load when** matches the task. Don't bulk-load.
 
-Project skills live in `.claude/skills/` (committed): `review-agentic-setup` and `files-skill` for maintaining this setup, `ste-writing` for doc prose.
+Project skills live in `.claude/skills/` (committed): `review-agentic-setup` and `files-skill` for maintaining this setup, `ste-writing` for doc prose, `double-check` before committing or shipping a change.
 
 `AGENT_FILES/` root holds historical snapshots (`ASSESSMENT_CODE.md`, dated `PLAN_*`/`EVAL_*` records) — don't edit those to match current state. Two exceptions (see Decisions): `AUDIT.md` gets a new rev when agent-facing surface is added, and `SDK_BUMP_*.md` gets a rev note per SDK bump. Living docs are under `CARDS/`, plus [`docs/item-states.md`](docs/item-states.md) (the `ItemState` FSM and its diagram, kept in sync with `src/domain/item_state.py`).
 

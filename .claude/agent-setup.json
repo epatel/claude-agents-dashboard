@@ -1,12 +1,15 @@
 {
   "source": "https://ai.memention.net/setup",
-  "version": "2026-10-16.2",
-  "updated": "2026-10-16",
+  "version": "2026-11-14.4",
+  "updated": "2026-11-14",
   "applied": [
     "context-cards",
     "project-plan",
+    "known-stack",
+    "code-health",
     "skill:review-agentic-setup",
-    "skill:ste-writing"
+    "skill:ste-writing",
+    "skill:double-check"
   ],
   "declined": [
     "feature-first",
@@ -14,8 +17,15 @@
     "two-tier",
     "standing-defaults",
     "hooks-over-prose",
+    "skill:minimal-repro",
     "plugin:example-skills@anthropic-agent-skills",
     "plugin:document-skills@anthropic-agent-skills"
   ],
-  "copied": {}
+  "copied": {},
+  "skills_release": "v2026.11.14",
+  "tools": {
+    "aihealth": { "pattern": "code-health", "min": "0.3.1", "form": "user" },
+    "python": { "pattern": "code-health", "min": "3.11", "form": "existing" },
+    "git": { "pattern": "code-health", "min": "2.24", "form": "existing" }
+  }
 }

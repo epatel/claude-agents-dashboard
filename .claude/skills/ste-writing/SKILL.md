@@ -53,4 +53,4 @@ The mechanical rules above are lintable and are what removes slop. Full STE also
 
 Free official standard (do not paste it in full; it is copyrighted): https://asd-ste100.org
 
-(Original at https://github.com/woosal1337/blog/tree/main/videos/ep01-the-cure-for-ai-slop)
+(Adapted from https://github.com/woosal1337/blog/tree/main/videos/ep01-the-cure-for-ai-slop, MIT license — see `LICENSE.txt`.)
