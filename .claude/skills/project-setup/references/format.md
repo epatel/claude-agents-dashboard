@@ -61,7 +61,7 @@ The blockquote above is the **canonical agent block**. Copy it into every setup 
 | `required` | `yes` / `no` | `yes` | `no` = optional. The agent offers it and you can skip it without it counting as a failure. |
 | `gate` | `auto` / `approve` / `input` | `approve` | `auto`: safe to run without asking (read-only, or local and reversible). `approve`: show what will run and wait for yes. `input`: ask for the values in `inputs` first, then treat it as `approve`. |
 | `rev` | integer | `1` | Bump this when the step's meaning changes. A bump makes doctor re-flag the step. |
-| `check` | shell command in backticks, or `manual` | `manual` | Exit code 0 means the step is satisfied. Runs in `bash` (Git Bash on Windows). Must be read-only and fast. `manual` means you have to confirm it yourself. |
+| `check` | shell command in backticks, or `manual` | `manual` | Exit code 0 means the step is satisfied. Runs in a non-interactive `bash` (Git Bash on Windows), so tools installed through shell init (`~/.cargo/bin`, nvm, pyenv, …) may not be on PATH. Source their env in the check, e.g. `. "$HOME/.cargo/env" 2>/dev/null; rustc --version`. Must be read-only and fast. `manual` means you have to confirm it yourself. |
 | `inputs` | `NAME (secret?) — "prompt"`, comma-separated | — | Values to ask for. Mark sensitive ones with `(secret)`. |
 | `platforms` | `macos`, `linux`, `windows` | all | Skip the step on other platforms. |
 | `depends` | step ids | — | Must be `done` first. |
@@ -73,6 +73,13 @@ The body below the fields is free-form instructions for the agent and for humans
 - Bump `rev` when a step's meaning changes (new minimum version, different command). Don't bump it for wording fixes.
 - Every `check` must be read-only, fast, and exit 0 when the step is satisfied.
 - `auto` is only for read-only or project-local, reversible steps. Anything global, `sudo`, or with side effects outside the project is `approve`.
+  - Package-manager caches (`~/.cargo/registry`, `~/.npm`, the pub cache, …) count as project-local. Fetching dependencies and building (`cargo build`, `npm ci`, `flutter pub get`) can be `auto`.
+  - Installing tools from a remote source is `approve`, even into a project-local `.venv` or `node_modules`, because it runs code fetched from outside the lockfile.
+
+### What belongs in the list
+- **Developer setup only:** what someone needs to build, run and work on the project. End-user install instructions (prebuilt binaries, installing into `~/bin`) stay in the README.
+- **No verification-only steps.** "Tests pass" or "lint is clean" has no fast read-only check, so doctor would show it as unverified forever. Run mode instead ends by suggesting the project's test command.
+- **Minimum versions:** take them from version files (`rust-toolchain.toml`, `.nvmrc`, `.tool-versions`, the `environment` in `pubspec.yaml`), from CI, or from the dependencies' declared minimums (`rust-version` via `cargo metadata`, `engines`, `python_requires`). Use the highest of them.
 
 ## Local file: `setup-todo-list.local.md`
 
