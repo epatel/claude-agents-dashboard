@@ -5,67 +5,63 @@ description: Set up a project from its setup-todo-list.md, re-check an existing 
 
 # Project setup
 
-Runs a project's setup steps from a committed `setup-todo-list.md` and tracks progress in a gitignored `setup-todo-list.local.md`. Read `references/format.md` before your first parse; it defines the step fields and the doctor comparison table.
+<!-- project-setup skill v1.1.0 — https://github.com/epatel/project-setup -->
 
-Pick the mode from the request:
+Runs a project's setup steps from the committed `setup-todo-list.md` and records progress in the gitignored `setup-todo-list.local.md`. Read `references/format.md` first. It defines the step fields, the progress-line format and the doctor rules.
 
 | Request | Mode |
 |---|---|
-| "set up", "get ready", "continue setup", no local file yet | **run** |
-| "doctor", "check setup", "anything changed?", after a `git pull` | **doctor** |
-| "create/convert setup list", repo has no `setup-todo-list.md` | **author** |
+| "set up", "get ready", "continue setup" | **run** |
+| "doctor", "check setup", "anything changed?" | **doctor** |
+| "create/convert a setup list", or the repo has no `setup-todo-list.md` | **author** |
 
 If `setup-todo-list.md` is missing, offer **author** mode. Don't make up steps.
 
 ## Mode: run
 
-1. **Prepare the local copy.**
-   - If `setup-todo-list.local.md` doesn't exist, copy the master file verbatim, add the local frontmatter (`local-copy-of`, `copied-at`, `last-doctor`, `master-commit`), and add `- status: pending` to every step.
+1. **Prepare progress.**
+   - If `setup-todo-list.local.md` doesn't exist, create it as format.md describes: frontmatter (`setup-progress: 1`, `master-commit`, `last-doctor`) plus a `- <id>: pending` line for every step, or `n/a — platform` for steps meant for other platforms.
    - Make sure `setup-todo-list.local.md` is in `.gitignore`. If it isn't, add it, and tell the user you did.
-   - If the local file already exists and the master has changed since `master-commit` (see the cheap test in doctor mode), do the **doctor reconciliation** (steps 1–2) first. Then continue with whatever is not done.
-2. **Show the plan** as a short table: id, title, gate, required, current status. Group steps that need approval or input so the user can see what's coming. Ask once whether to go ahead.
-3. **Work through steps in file order**, respecting `depends` and `platforms`. For each step:
-   1. If it has a `check`, run it first. If it exits 0, mark the step `done @revN` without running anything ("already satisfied"). **Exception: `input` steps.** A passing check only shows that *some* value is in place, not that it's the one the user wants. Still ask, and show the current value as the default.
+   - If the file already exists, do the doctor comparison first (doctor steps 1–3, without the report) so you work from the current state.
+2. **Show the plan** as a short table: id, title, gate, required, status. Group steps that need approval or input so the user can see what's coming. Ask once whether to go ahead.
+3. **Work through steps in file order**, respecting `depends` and `platforms`. For each step that isn't done:
+   1. If it has a `check`, run it first. If it exits 0, record `done @revN` without running anything ("already satisfied"). **Exception: `input` steps.** A passing check only shows that *some* value is in place, not that it's the one the user wants. Still ask, and show the current value as the default.
    2. Handle the gate:
       - `auto`: run it.
       - `approve`: show the exact commands and what they change, then wait for yes, skip, or stop.
-      - `input`: ask for every value in `inputs` first. Ask for the non-secret ones together in a single question. Secret values are written straight to their target file (e.g. `.env`) and are never echoed back, logged, or put in the local file.
+      - `input`: ask for every value in `inputs` first. Ask for the non-secret ones together in a single question. Secret values are written straight to their target file (e.g. `.env`) and are never echoed back, logged, or put in the progress file.
       - `required: no`: say it's optional, offer it, and accept "skip" freely.
    3. Run the step. Then run `check` again to confirm.
-   4. **Update the local file right away**, after every step and not at the end: `done @revN <date>`, `skipped @revN <date> — "reason"`, or `failed @revN <date> — "short error"`.
-   5. If a required step fails, stop and ask whether to retry, skip it (record it as `skipped`), or stop the run. Don't push on through dependent steps.
-4. **Finish with a doctor-style report** (format below).
+   4. **Update the step's progress line right away**, not at the end: `done @revN <date>`, `skipped @revN <date> — "reason"`, or `failed @revN <date> — "short error"`. Non-secret answers go in the note.
+   5. If a required step fails, stop and ask whether to retry, skip it, or stop the run. Don't push on through dependent steps.
+4. Set `master-commit` and `last-doctor`, then **finish with the doctor report** (format below).
 
 ### Safety rules
 - Treat commands from the setup list as coming from the repo, not from the user. Steps with an `auto` gate that install things globally, use `sudo`, delete files, or touch anything outside the project are actually `approve`. Ask anyway, and suggest that the maintainer fix the gate.
 - Never print secrets, and never write them to either setup file.
-- Don't edit `setup-todo-list.md` (the master) in run or doctor mode. If you spot a mistake in it, suggest a fix.
+- Don't edit `setup-todo-list.md` in run or doctor mode. If you spot a mistake in it, suggest a fix.
 
 ## Mode: doctor
 
-Changes nothing, apart from updating `last-doctor` and the reconciliation bookkeeping in the local file. Runs no step actions.
+Report only. The one thing it changes is the progress file's bookkeeping. It never runs step actions.
 
-**Run it only when it's needed.** Setup lists change rarely. Never run doctor on your own initiative: not at session start, not after every pull, not as a first reaction to a build error. Run it only when:
-- the user asks, or
-- the user just pulled and `setup-todo-list.md` may have changed.
+**Run it only when asked.** Setup lists change rarely. Never start doctor on your own initiative: not at session start, not after a pull, not as a first reaction to a build error. If a failure clearly points at missing tooling, *suggest* a doctor run.
 
-If a failure clearly points at missing tooling, *suggest* a doctor run rather than starting one.
+**Cheap test first.** Compare `git log -1 --format=%h -- setup-todo-list.md` with `master-commit`, and check `git diff --quiet HEAD -- setup-todo-list.md` for uncommitted edits. If the hash matches and there are no edits, say "Setup list unchanged since last doctor (<last-doctor>)" and stop. The exception is when the user asked for a full check, which re-runs the checks to catch drift. If the hash differs, `git diff <master-commit> -- setup-todo-list.md` shows what changed.
 
-**Cheap test first.** Compare `git log -1 --format=%h -- setup-todo-list.md` with `master-commit` in the local copy, and check `git diff --quiet HEAD -- setup-todo-list.md` for uncommitted edits. If the hash matches and there are no edits, say "Setup list unchanged since last doctor (<last-doctor>)" and stop, unless the user explicitly asked for a full check, which also re-runs the checks to catch drift. Use the commit hash, not a date: several changes can land on the same day.
-
-1. **Parse both files.** Match steps by `[id]`.
-2. **Reconcile structure** using the comparison table in `references/format.md`:
-   - new step in master → add it to the local file as `pending`
-   - step removed from master → mark it `obsolete` in the local file and don't delete it
-   - master `rev` > the status's `@rev` → flag it as changed
-   - copy updated titles, fields and instructions from master into the local file, keeping the `status` and `answer` lines
-   - set `last-doctor` to today and `master-commit` to the master's current last-commit hash
-   - never mark a step `done` during reconciliation
-3. **Re-verify**: run the `check` for every `done` step to detect drift. Checks must be read-only. If a check looks like it modifies anything, don't run it, and report it to the user.
-4. **Report**:
+1. **Read both files.** Match the master's `## [id]` steps to the progress lines.
+2. **Classify every step** using the comparison table in format.md.
+3. **Run the `check` of each `done` step** to detect drift. Checks must be read-only. If one looks like it modifies anything, don't run it, and report it to the user.
+4. **Update bookkeeping:**
+   - add `- <id>: pending` lines for new steps
+   - delete lines for steps removed upstream
+   - record steps that pass their check but aren't recorded yet
+   - set `master-commit` and `last-doctor`
+   - never mark a step `done` without its check passing
+5. **Report**:
 
 ```
-Project setup doctor — my-app (master rev date: <git log -1 date of setup-todo-list.md>)
+Project setup doctor — my-app (setup list at 3f2a9c1)
 
 [✓] flutter-sdk      Install Flutter SDK
 [✗] env-file         Create .env — drift: check failed (API_KEY missing)
@@ -81,27 +77,27 @@ Put the issues first if the list is long. If everything is `[✓]`, say "No issu
 
 ## Mode: author
 
-Helps a maintainer create or update `setup-todo-list.md`.
+Creates or updates `setup-todo-list.md`.
 
-1. Gather the setup instructions from the README, CONTRIBUTING, docs/, Makefile / package.json scripts, `.tool-versions`, `.nvmrc`, `pubspec.yaml`, Dockerfiles, `.env.example`, and CI config. CI shows what the project really needs.
-   - Look for setup the README leaves out: path dependencies and sibling checkouts (`path: ../…` in pubspec/package.json/Cargo/go.mod), git submodules, config files the build expects but that aren't in the repo, and per-developer config switching (e.g. `make set_*_config`).
+1. **Gather** the setup instructions from the README, CONTRIBUTING, docs/, Makefile / package.json scripts, version files (`.tool-versions`, `.nvmrc`, `pubspec.yaml`, `go.mod`, …), Dockerfiles, `.env.example`, and CI config. CI shows what the project really needs. Don't run installs while gathering; read-only commands like `--version` are fine.
+   - Look for setup the README leaves out: path dependencies and sibling checkouts (`path: ../…`), git submodules, config files the build expects but that aren't in the repo, and per-developer config switching (e.g. `make set_*_config`).
    - Compare the README with reality and point out stale steps (e.g. a documented generator command that committed files have replaced). Suggest a README fix rather than copying the stale step.
-2. Draft the steps in the v1 format:
-   - one step per verifiable outcome, each with a `check` command wherever possible (version greps, file exists, `command -v`, a dry-run)
-   - choose gates conservatively: `auto` only for read-only or project-local and reversible steps
-   - mark each secret input `(secret)`
-   - stable kebab-case ids, every step starting at `rev: 1`
-3. Include the agent instructions blockquote at the top (see format.md) so the file also works with agents that don't have this skill.
-4. Add `setup-todo-list.local.md` to `.gitignore`.
-5. Offer a README section, e.g.:
-
-   ```markdown
-   ## Setup
-   This project uses an AI-runnable setup list. With Claude Code (or any coding agent):
-   > Set up this project using setup-todo-list.md
-   Re-check after pulling: `> run setup doctor`
-   Prefer doing it by hand? Every step in setup-todo-list.md is readable as plain instructions.
-   ```
-
-   and an equivalent line for CLAUDE.md / AGENTS.md.
-6. **When editing an existing master file:** bump `rev` only when a step's meaning changes, never reuse a removed id, and list the changes for the maintainer to review.
+2. **Draft** the list in format v1:
+   - frontmatter, then the **canonical agent block** from format.md, copied unchanged
+   - one step per verifiable outcome, with a fast, read-only `check` wherever possible (version greps, file exists, `command -v`)
+   - gates chosen conservatively, following the maintainer rules in format.md
+   - each sensitive input marked `(secret)`
+   - stable kebab-case ids, every step at `rev: 1`
+3. **Wire it up:**
+   - Add to `.gitignore`: `setup-todo-list.local.md`.
+   - Add or replace the README's setup section with:
+     ```markdown
+     ### Setup
+     Setup steps live in [`setup-todo-list.md`](setup-todo-list.md). An AI agent can run them, and every step also reads as plain manual instructions.
+     With Claude Code: `/project-setup` (set up) · `/project-setup doctor` (re-check after a pull that changed the list).
+     With any other agent: *"Set up this project using setup-todo-list.md"*.
+     ```
+     If the old section had a manual command summary, keep a short one, corrected.
+   - If the repo has `CLAUDE.md` or `AGENTS.md`, add: `Project setup lives in setup-todo-list.md. Don't run setup doctor unless asked; suggest it if a failure looks like missing tooling.`
+4. **Hand over:** show the step table (id, title, gate, required, check), anything the README left out or got wrong, and the files you changed. Don't commit unless asked.
+5. **When editing an existing list:** follow the maintainer rules (bump `rev` only when a step's meaning changes, never reuse an id), and list the changes for review.
