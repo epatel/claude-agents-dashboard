@@ -28,3 +28,6 @@ annotation_*.webp
 .build
 
 skill-library/
+
+# Local setup progress (project-setup)
+setup-todo-list.local.md

@@ -39,7 +39,9 @@ Always read the shared plan above before starting — it holds the shared goal a
 
 Before doing real work, scan **[`AGENT_FILES/CARDS/README.md`](AGENT_FILES/CARDS/README.md)** — the routing manifest — and load only the cards whose **Load when** matches the task. Don't bulk-load.
 
-Project skills live in `.claude/skills/` (committed): `review-agentic-setup` and `files-skill` for maintaining this setup, `ste-writing` for doc prose, `double-check` before committing or shipping a change.
+Project skills live in `.claude/skills/` (committed): `review-agentic-setup` and `files-skill` for maintaining this setup, `ste-writing` for doc prose, `double-check` before committing or shipping a change, `project-setup` for `setup-todo-list.md`.
+
+Project setup lives in setup-todo-list.md. Don't run setup doctor unless asked; suggest it if a failure looks like missing tooling.
 
 `AGENT_FILES/` root holds historical snapshots (`ASSESSMENT_CODE.md`, dated `PLAN_*`/`EVAL_*` records) — don't edit those to match current state. Two exceptions (see Decisions): `AUDIT.md` gets a new rev when agent-facing surface is added, and `SDK_BUMP_*.md` gets a rev note per SDK bump. Living docs are under `CARDS/`, plus [`docs/item-states.md`](docs/item-states.md) (the `ItemState` FSM and its diagram, kept in sync with `src/domain/item_state.py`).
 

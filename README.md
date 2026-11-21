@@ -8,6 +8,15 @@ A standalone scrum board that orchestrates Claude agents working on your project
 
 ## Quick start
 
+### Setup
+Setup steps live in [`setup-todo-list.md`](setup-todo-list.md). An AI agent can run them, and every step also reads as plain manual instructions.
+With Claude Code: `/project-setup` (set up) · `/project-setup doctor` (re-check after a pull that changed the list).
+With any other agent: *"Set up this project using setup-todo-list.md"*.
+
+Manual summary: install Git, Python 3.12+ (or uv) and Claude Code, run `claude` once to log in, then `make setup` (creates `venv/` and installs the dependencies; `run.sh` also does this on first launch). The E2E suite also needs Node.js plus `npx playwright install chromium`. See [Requirements](#requirements) for optional providers.
+
+### Run
+
 From your project repository:
 
 ```bash
